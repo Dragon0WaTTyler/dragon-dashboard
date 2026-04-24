@@ -23,8 +23,8 @@
 </section>
 
 {% if entry_type == 'youtube' %}
-<section class="detail-grid">
-    <div class="player-column">
+<section class="detail-grid youtube-detail-grid">
+    <div class="player-column youtube-player-column">
         <section class="mode-toolbar">
             <div class="mode-toolbar-copy">
                 <div class="hero-meta">
@@ -45,7 +45,7 @@
         </div>
     </div>
 
-    <aside class="detail-sidebar">
+    <aside class="detail-sidebar youtube-detail-sidebar">
         <section class="surface-card section-card">
             <div class="info-stack">
                 <div class="info-row"><span>Type</span><strong>YouTube Video</strong></div>
@@ -229,7 +229,7 @@
 </section>
 {% endif %}
 
-<section class="surface-card section-card">
+<section class="surface-card section-card youtube-related-section">
     <div class="detail-header">
         <div>
             <div class="hero-meta">
@@ -239,7 +239,7 @@
             <h3 class="title-scaled" style="margin-top:12px;">Continue Exploring</h3>
         </div>
         {% if entry_type == 'youtube' %}
-        <div class="detail-controls">
+        <div class="detail-controls youtube-detail-controls">
             {% if prev_entry %}
             <a class="btn" href="{{ prev_entry_url or url_for('video_detail', entry_id=prev_entry.entry_id) }}" data-scroll-top="true"><i data-lucide="chevron-left"></i>Previous</a>
             {% endif %}
@@ -254,12 +254,13 @@
     </div>
 
     {% if related_entries %}
-    <div id="relatedGrid" class="{{ 'video-grid' if entry_type == 'youtube' else 'movie-grid' }}" style="margin-top:18px;">
+    <div id="relatedGrid" class="{{ 'video-grid youtube-related-grid' if entry_type == 'youtube' else 'movie-grid' }}" style="margin-top:18px;">
         {% for item in related_entries %}
-        <a class="content-card {{ 'video-card' if item.source_type == 'youtube' else 'media-card' }}" href="{{ item.detail_url or url_for('video_detail', entry_id=item.entry_id) }}" {% if item.source_type == 'youtube' %}data-video-id="{{ item.video_id }}" data-video-duration="{{ item.duration_seconds or 0 }}" data-playlist-item-id="{{ item.playlist_item_id or '' }}" data-entry-id="{{ item.entry_id or '' }}" data-state-key="{{ item.state_key or item.watch_key or item.video_id or item.entry_id or (item.playlist_item_id or '') }}" data-watch-key="{{ item.watch_key or item.video_id or item.entry_id or (item.playlist_item_id or '') }}"{% endif %} data-scroll-top="true">
+        <a class="content-card {{ 'video-card related-video-card' if item.source_type == 'youtube' else 'media-card' }}" href="{{ item.detail_url or url_for('video_detail', entry_id=item.entry_id) }}" {% if item.source_type == 'youtube' %}data-video-id="{{ item.video_id }}" data-video-duration="{{ item.duration_seconds or 0 }}" data-playlist-item-id="{{ item.playlist_item_id or '' }}" data-entry-id="{{ item.entry_id or '' }}" data-state-key="{{ item.state_key or item.watch_key or item.video_id or item.entry_id or (item.playlist_item_id or '') }}" data-watch-key="{{ item.watch_key or item.video_id or item.entry_id or (item.playlist_item_id or '') }}"{% endif %} data-scroll-top="true">
             <div class="{{ 'video-frame' if item.source_type == 'youtube' else 'media-poster' }} {{ 'video-poster' if item.source_type == 'youtube' else '' }}">
                 {% if item.source_type == 'youtube' %}
-                <img class="video-thumb" src="{{ item.thumb or item.thumbnail_url or item.thumbnail or item.image_url }}" alt="{{ item.title }}" loading="eager" decoding="async" fetchpriority="high">
+                {% set related_thumb = item.thumb or item.thumbnail_url or item.thumbnail or item.image_url or ('https://img.youtube.com/vi/' ~ item.video_id ~ '/hqdefault.jpg' if item.video_id else '') %}
+                <img class="video-thumb" src="{{ related_thumb }}" alt="{{ item.title }}" loading="eager" decoding="async" fetchpriority="high">
                 <button class="card-ai-action study-with-ai-btn" type="button" data-ai-mode="{{ 'german' if item.section and 'german' in item.section|lower else 'study' }}" data-ai-title="{{ item.title or item.name }}" data-ai-playlist="{{ item.playlist_name or related_title }}" data-ai-section="{{ item.section or '' }}" data-ai-video-id="{{ item.video_id or '' }}" aria-label="Study this video with AI"><i data-lucide="sparkles"></i><span>Study with AI</span></button>
                 <div class="video-progress-track"><div class="video-progress-fill"></div></div>
                 <span class="duration-pill">{{ item.duration or '0:00' }}</span>

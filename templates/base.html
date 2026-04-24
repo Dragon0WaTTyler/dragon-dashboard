@@ -290,6 +290,122 @@
             .admin-thumb{width:100%;max-width:160px}
             .video-grid,.movie-grid,.top-rated-grid{grid-template-columns:1fr}
         }
+        /* Tablet and phone V1 responsive pass */
+        .top-tabs{scrollbar-width:none}
+        .top-tabs::-webkit-scrollbar{display:none}
+        .youtube-detail-grid,.youtube-player-column,.youtube-detail-sidebar,.youtube-related-section,.youtube-related-grid,.youtube-related-grid > *,#relatedGrid.video-grid,.mode-toolbar,.mode-toolbar-actions,.detail-controls,.playlist-controls,.page-shell,.workspace-main{min-width:0}
+        .youtube-player-shell{width:100%;max-width:100%;aspect-ratio:16/9;overflow:hidden}
+        .youtube-player-shell iframe{width:100%;height:100%;display:block;border:0;aspect-ratio:auto}
+        .youtube-related-grid .video-frame,.youtube-related-grid .video-poster,.youtube-related-grid .video-thumb,.youtube-related-grid img,.content-card,.video-card{max-width:100%}
+        .youtube-related-grid .card-title,.youtube-related-grid .card-meta{overflow-wrap:anywhere;word-break:break-word}
+
+        @media (max-width:1180px){
+            .workspace-sidebar{display:none}
+            .workspace-pane,body.sidebar-collapsed .workspace-pane{grid-template-columns:1fr}
+            .workspace-main{padding:16px 16px 28px}
+            .top-tabs,body.sidebar-collapsed .top-tabs{
+                display:flex;
+                position:sticky;
+                top:10px;
+                left:auto;
+                right:auto;
+                width:100%;
+                max-width:100%;
+                transform:none;
+                opacity:1;
+                pointer-events:auto;
+                overflow-x:auto;
+                overflow-y:hidden;
+                flex-wrap:nowrap;
+                white-space:nowrap;
+                -webkit-overflow-scrolling:touch;
+                padding:8px 10px;
+                gap:8px;
+                margin-bottom:0;
+                z-index:26;
+            }
+            .top-tabs .top-tab,.top-tabs .sync-tab{flex:0 0 auto}
+            .top-tabs .sync-tab{height:44px;padding:0 14px}
+            .page-shell,body.sidebar-collapsed .page-shell{padding-top:8px}
+            .video-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+            .movie-grid,.top-rated-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+            .youtube-detail-grid{grid-template-columns:1fr;gap:18px}
+            .youtube-player-shell{margin:0 auto}
+            .youtube-detail-sidebar{gap:16px}
+            .youtube-related-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+        }
+
+        @media (max-width:1024px){
+            .workspace-main{padding:14px 14px 24px}
+            .page-hero,.section-card,.notebook-card{padding:20px}
+            .page-hero h2,.title-scaled{font-size:clamp(1.9rem,4.8vw,2.8rem)}
+            .youtube-detail-grid{grid-template-columns:1fr}
+            .youtube-player-shell{width:100%;max-width:100%;aspect-ratio:16/9}
+            .youtube-player-shell iframe{width:100%;height:100%;display:block}
+            .mode-toolbar{padding:10px;gap:10px}
+            .mode-toolbar-actions{gap:8px}
+            .youtube-detail-sidebar .btn,.youtube-detail-sidebar .mode-toggle{width:100%;justify-content:center}
+            .youtube-detail-controls,.detail-controls{gap:8px}
+            .youtube-related-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+        }
+
+        @media (max-width:900px){
+            .workspace-main{padding:14px 12px 22px}
+            .movie-grid,.top-rated-grid,.video-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+            .youtube-related-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+            .top-tabs,body.sidebar-collapsed .top-tabs{top:8px}
+        }
+
+        @media (max-width:820px){
+            .workspace-main{padding:12px 12px 22px}
+            .page-hero,.section-card,.notebook-card{padding:18px}
+            .subhead{font-size:.94rem;line-height:1.6}
+            .top-tabs,body.sidebar-collapsed .top-tabs{padding:8px 8px;gap:8px}
+            .top-tab{padding:10px 12px}
+            .youtube-related-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+            .detail-header{gap:12px}
+            .detail-controls,.playlist-controls,.mode-toolbar-actions{gap:8px}
+        }
+
+        @media (max-width:768px){
+            .workspace-main{padding:12px 10px 20px}
+            .page-shell,body.sidebar-collapsed .page-shell{padding-top:6px}
+            .page-hero,.section-card,.notebook-card,.surface-card,.player-shell{border-radius:22px}
+            .page-hero h2,.title-scaled{font-size:clamp(1.65rem,5.4vw,2.2rem)}
+            .youtube-related-grid,.movie-grid,.top-rated-grid,.video-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+            .youtube-player-shell{max-width:100%}
+            .youtube-detail-controls{overflow-x:auto;-webkit-overflow-scrolling:touch;flex-wrap:nowrap}
+            .youtube-detail-controls .btn{flex:0 0 auto}
+            .ai-sidebar-toggle{right:16px;bottom:16px;width:54px;height:54px}
+        }
+
+        @media (max-width:640px){
+            .workspace-main{padding:10px 10px 18px}
+            .top-tabs,body.sidebar-collapsed .top-tabs{padding:6px 8px;gap:6px;top:6px}
+            .top-tab{padding:9px 11px;border-radius:14px}
+            .top-tabs .sync-tab{height:40px;padding:0 12px}
+            .page-hero,.section-card,.notebook-card{padding:16px}
+            .btn,.filter-form button,.playlist-controls button,.notebook-launch-btn,.toolbar-btn{padding:10px 12px}
+            .youtube-related-grid,.movie-grid,.top-rated-grid,.video-grid{grid-template-columns:1fr}
+            .youtube-player-shell{width:100%;aspect-ratio:16/9}
+            .mode-toolbar-actions{width:100%}
+            .mode-toolbar-actions .btn,.mode-toolbar-actions .mode-toggle{flex:1 1 calc(50% - 8px)}
+            .youtube-detail-sidebar .btn,.youtube-detail-sidebar .mode-toggle{width:100%}
+            .ai-sidebar-toggle{right:12px;bottom:12px;width:50px;height:50px}
+        }
+
+        @media (max-width:480px){
+            .workspace-main{padding:8px 8px 16px}
+            .page-shell,body.sidebar-collapsed .page-shell{padding-top:4px}
+            .page-hero,.section-card,.notebook-card,.surface-card,.player-shell{padding:14px;border-radius:20px}
+            .page-hero h2,.title-scaled{font-size:clamp(1.45rem,6.2vw,1.95rem)}
+            .top-tab{padding:8px 10px}
+            .detail-header,.playlist-header,.mode-toolbar{gap:10px}
+            .mode-toolbar-actions .btn,.mode-toolbar-actions .mode-toggle,.youtube-detail-controls .btn{width:100%;flex:1 1 100%}
+            .youtube-related-grid,.movie-grid,.top-rated-grid,.video-grid{grid-template-columns:1fr}
+            .ai-sidebar-toggle{width:46px;height:46px}
+            .ai-sidebar-toggle-label{font-size:.64rem}
+        }
     </style>
 </head>
 <body data-ai-default-mode="{{ ai_default_mode|default('cinematic') }}" data-ai-page-context="{{ ai_page_context|default('general') }}">
