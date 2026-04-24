@@ -49,6 +49,14 @@ h2{font-size:clamp(2.2rem,4vw,3.6rem);margin-top:14px;letter-spacing:-.03em}.det
 .youtube-open-actions{display:grid;gap:10px}
 .youtube-open-note{display:none;margin-top:2px;line-height:1.55;font-size:.86rem;color:var(--text-2)}
 .youtube-open-note strong{color:var(--text);font-weight:600}
+.old-ipad-youtube-fallback{display:none;gap:12px;align-content:start}
+.old-ipad-youtube-fallback h3{font-size:1.5rem;line-height:1.1}
+.old-ipad-youtube-fallback p{color:var(--text-2);line-height:1.6;max-width:none}
+.old-ipad-youtube-fallback .btn{min-height:44px;width:100%;justify-content:center}
+.old-ipad-ios12 .youtube-player-shell{display:none !important}
+.old-ipad-ios12 .youtube-player-column .mode-toolbar{display:none !important}
+.old-ipad-ios12 .old-ipad-youtube-fallback{display:grid !important}
+.old-ipad-ios12 .youtube-detail-sidebar .youtube-open-actions{display:none !important}
 
 @media (max-width:1180px){
   .workspace-sidebar{display:none}

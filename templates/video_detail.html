@@ -40,6 +40,37 @@
         padding-bottom: 0 !important;
         aspect-ratio: auto !important;
     }
+    .old-ipad-youtube-fallback {
+        display: none;
+        gap: 12px;
+        align-content: start;
+    }
+    .old-ipad-youtube-fallback h3 {
+        font-size: 1.5rem;
+        line-height: 1.1;
+    }
+    .old-ipad-youtube-fallback p {
+        color: var(--text-2);
+        line-height: 1.6;
+        max-width: none;
+    }
+    .old-ipad-youtube-fallback .btn {
+        min-height: 44px;
+        width: 100%;
+        justify-content: center;
+    }
+    .old-ipad-ios12 .youtube-player-shell {
+        display: none !important;
+    }
+    .old-ipad-ios12 .youtube-player-column .mode-toolbar {
+        display: none !important;
+    }
+    .old-ipad-ios12 .old-ipad-youtube-fallback {
+        display: grid !important;
+    }
+    .old-ipad-ios12 .youtube-detail-sidebar .youtube-open-actions {
+        display: none !important;
+    }
 </style>
 <section class="page-hero">
     <div class="hero-meta">
@@ -83,6 +114,17 @@
                 {% endif %}
             </div>
         </div>
+        {% if player_video_id %}
+        <div class="surface-card section-card old-ipad-youtube-fallback">
+            <div class="hero-meta">
+                <span class="hero-badge matte-tag">Fallback</span>
+                <span>Older iPad Safari</span>
+            </div>
+            <h3 class="title-scaled" style="margin-top:0;">Open this video on YouTube</h3>
+            <p class="subhead" style="max-width:none; margin-top:10px;">Older iPad Safari may not play embedded YouTube videos correctly.</p>
+            <a class="btn" href="https://www.youtube.com/watch?v={{ entry.video_id }}" target="_blank" rel="noopener noreferrer"><i data-lucide="play-circle"></i>Open on YouTube</a>
+        </div>
+        {% endif %}
     </div>
 
     <aside class="detail-sidebar youtube-detail-sidebar">
