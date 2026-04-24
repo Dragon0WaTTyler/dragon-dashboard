@@ -34,133 +34,11 @@
         max-height: none !important;
         aspect-ratio: auto !important;
     }
-    .youtube-player-poster {
-        display: none;
-        position: relative;
-        width: 100%;
-        height: 0;
-        padding-top: 56.25%;
-        overflow: hidden;
-        background: #000;
-        border-radius: inherit;
-        color: inherit;
-        text-decoration: none;
-    }
-    .youtube-player-poster-frame {
-        position: absolute;
-        inset: 0;
-        display: block;
-        width: 100%;
-        height: 100%;
-        overflow: hidden;
-        background: #000;
-    }
-    .youtube-player-poster img {
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        display: block;
-        object-fit: cover;
-    }
-    .youtube-player-poster-overlay {
-        position: absolute;
-        inset: 0;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        background: linear-gradient(180deg, rgba(0,0,0,.08), rgba(0,0,0,.26));
-    }
-    .youtube-player-poster-play {
-        display: inline-flex;
-        align-items: center;
-        gap: 10px;
-        padding: 12px 16px;
-        border-radius: 999px;
-        background: rgba(0,0,0,.82);
-        border: 1px solid rgba(255,255,255,.12);
-        color: #fff;
-        font-weight: 700;
-        box-shadow: 0 8px 22px rgba(0,0,0,.24);
-    }
-    .youtube-player-poster-title {
-        position: absolute;
-        left: 12px;
-        right: 12px;
-        bottom: 12px;
-        padding: 10px 12px;
-        border-radius: 14px;
-        background: rgba(0,0,0,.7);
-        color: #fff;
-        font-size: .88rem;
-        line-height: 1.4;
-        display: -webkit-box;
-        -webkit-line-clamp: 2;
-        -webkit-box-orient: vertical;
-        overflow: hidden;
-    }
-    .legacy-ios .youtube-player-shell iframe {
-        display: none !important;
-    }
-    .legacy-ios .youtube-player-poster {
-        display: block !important;
-    }
-    .video-detail-thumb-frame {
-        position: relative !important;
-        display: block !important;
-        width: 100% !important;
-        height: 0 !important;
-        padding-top: 56.25% !important;
-        overflow: hidden !important;
-        background: #111 !important;
-        border-radius: 18px !important;
-    }
-    .video-detail-thumb-frame img,
-    .video-detail-thumb {
-        position: absolute !important;
-        top: 0 !important;
-        left: 0 !important;
-        width: 100% !important;
-        height: 100% !important;
-        display: block !important;
-        opacity: 1 !important;
-        visibility: visible !important;
-        object-fit: cover !important;
-    }
     .youtube-related-grid .video-frame,
     .youtube-related-grid .video-poster {
         height: auto !important;
         padding-bottom: 0 !important;
         aspect-ratio: auto !important;
-    }
-    @media (min-width: 700px) and (max-width: 1100px) {
-        .video-detail-page .detail-grid.youtube-detail-grid {
-            grid-template-columns: 1fr !important;
-        }
-        .video-detail-page .player-shell.youtube-player-shell {
-            overflow: visible !important;
-            background: #000 !important;
-        }
-        .video-detail-page .youtube-player-ratio {
-            position: static !important;
-            display: block !important;
-            width: 100% !important;
-            height: auto !important;
-            padding-top: 0 !important;
-            overflow: visible !important;
-            background: #000 !important;
-        }
-        .video-detail-page .youtube-player-ratio iframe {
-            position: static !important;
-            display: block !important;
-            width: 100% !important;
-            height: calc((100vw - 48px) * 0.5625) !important;
-            min-height: 300px !important;
-            max-height: 560px !important;
-            border: 0 !important;
-            background: #000 !important;
-        }
     }
 </style>
 <section class="page-hero">
@@ -204,22 +82,6 @@
                 <iframe id="youtubePlayer" src="https://www.youtube.com/embed/{{ player_video_id }}?enablejsapi=1&rel=0&playsinline=1" title="{{ entry.title or entry.name }}" allowfullscreen allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"></iframe>
                 {% endif %}
             </div>
-            {% if player_video_id %}
-            {% set player_thumb = entry.thumb or entry.thumbnail_url or entry.thumbnail or entry.image_url or ('https://img.youtube.com/vi/' ~ player_video_id ~ '/hqdefault.jpg' if player_video_id else '') %}
-            <a class="youtube-player-poster" href="https://www.youtube.com/watch?v={{ player_video_id }}" target="_blank" rel="noopener noreferrer">
-                <div class="youtube-player-poster-frame">
-                    {% if player_thumb %}
-                    <img src="{{ player_thumb }}" alt="{{ entry.title or entry.name }}" loading="eager" decoding="async" fetchpriority="high">
-                    {% endif %}
-                    <div class="youtube-player-poster-overlay">
-                        <span class="youtube-player-poster-play"><i data-lucide="play"></i><span>Play on YouTube</span></span>
-                    </div>
-                    {% if entry.title or entry.name %}
-                    <div class="youtube-player-poster-title">{{ entry.title or entry.name }}</div>
-                    {% endif %}
-                </div>
-            </a>
-            {% endif %}
         </div>
     </div>
 
@@ -252,7 +114,10 @@
             {% if entry.feed_source == 'pockettube_group' %}
             <button class="btn mode-toggle pockettube-watched-toggle" id="pockettubeWatchedBtn" type="button" data-entry-id="{{ entry.entry_id }}" data-video-id="{{ entry.video_id or '' }}" data-playlist-item-id="{{ entry.playlist_item_id or '' }}" data-state-key="{{ entry.state_key or entry.watch_key or entry.video_id or entry.entry_id or (entry.playlist_item_id or '') }}" data-watch-key="{{ entry.watch_key or entry.video_id or entry.entry_id or (entry.playlist_item_id or '') }}" style="margin-top:10px;" aria-pressed="false"><i data-lucide="eye"></i><span>Mark Watched</span></button>
             {% endif %}
-            <a class="btn" href="https://youtube.com/watch?v={{ entry.video_id }}" target="_blank"><i data-lucide="play-circle"></i>Open on YouTube</a>
+            <div class="youtube-open-actions">
+                <a class="btn youtube-open-btn" href="https://youtube.com/watch?v={{ entry.video_id }}" target="_blank" rel="noopener noreferrer"><i data-lucide="play-circle"></i>Open on YouTube</a>
+                <div class="youtube-open-note">If the embed does not play well on an older iPad, <strong>Open on YouTube</strong> gives the cleanest playback.</div>
+            </div>
             <a class="btn" href="{{ entry.playlist_url }}" target="_blank" style="margin-top:10px;"><i data-lucide="list-video"></i>Open Playlist</a>
             {% if entry.feed_source == 'pockettube_group' %}
             <div class="muted" style="margin-top:10px; line-height:1.6;">

@@ -46,6 +46,9 @@ h2{font-size:clamp(2.2rem,4vw,3.6rem);margin-top:14px;letter-spacing:-.03em}.det
 .youtube-related-grid .video-thumb{display:block;width:100%;height:100%;object-fit:cover}
 .youtube-related-grid .video-card{min-width:0}
 .youtube-related-grid .card-title,.youtube-related-grid .card-meta{overflow-wrap:anywhere;word-break:break-word}
+.youtube-open-actions{display:grid;gap:10px}
+.youtube-open-note{display:none;margin-top:2px;line-height:1.55;font-size:.86rem;color:var(--text-2)}
+.youtube-open-note strong{color:var(--text);font-weight:600}
 
 @media (max-width:1180px){
   .workspace-sidebar{display:none}
@@ -80,6 +83,7 @@ h2{font-size:clamp(2.2rem,4vw,3.6rem);margin-top:14px;letter-spacing:-.03em}.det
   .youtube-player-shell{margin:0 auto}
   .youtube-detail-sidebar{gap:16px}
   .youtube-related-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .youtube-open-note{display:block}
 }
 
 @media (max-width:1024px){
@@ -91,6 +95,9 @@ h2{font-size:clamp(2.2rem,4vw,3.6rem);margin-top:14px;letter-spacing:-.03em}.det
   .mode-toolbar-actions{gap:8px}
   .youtube-detail-sidebar .btn,.youtube-detail-sidebar .mode-toggle{width:100%;justify-content:center}
   .youtube-related-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .youtube-open-actions{width:100%}
+  .youtube-open-actions .btn{width:100%;min-height:44px;justify-content:center}
+  .youtube-open-note{display:block}
 }
 
 @media (max-width:900px){
@@ -129,6 +136,8 @@ h2{font-size:clamp(2.2rem,4vw,3.6rem);margin-top:14px;letter-spacing:-.03em}.det
   .mode-toolbar-actions{width:100%}
   .mode-toolbar-actions .btn,.mode-toolbar-actions .mode-toggle{flex:1 1 calc(50% - 8px)}
   .youtube-detail-sidebar .btn,.youtube-detail-sidebar .mode-toggle{width:100%}
+  .youtube-open-actions .btn{min-height:46px}
+  .youtube-open-note{font-size:.82rem}
   .ai-sidebar-toggle{right:12px;bottom:12px;width:50px;height:50px}
 }
 
@@ -146,15 +155,6 @@ h2{font-size:clamp(2.2rem,4vw,3.6rem);margin-top:14px;letter-spacing:-.03em}.det
 /* Legacy iPad/iOS 12 fallback for YouTube detail media */
 .youtube-player-ratio{position:relative;display:block;width:100%;height:0;padding-top:56.25%;overflow:hidden;background:#111}
 .youtube-player-ratio iframe{position:absolute !important;top:0 !important;left:0 !important;width:100% !important;height:100% !important;display:block !important;border:0 !important;max-width:100% !important;max-height:none !important;aspect-ratio:auto !important}
-.youtube-player-poster{display:none;position:relative;width:100%;height:0;padding-top:56.25%;overflow:hidden;background:#000;border-radius:inherit;color:inherit;text-decoration:none}
-.youtube-player-poster-frame{position:absolute;inset:0;display:block;width:100%;height:100%;overflow:hidden;background:#000}
-.youtube-player-poster img{position:absolute;top:0;left:0;width:100%;height:100%;display:block;object-fit:cover}
-.youtube-player-poster-overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:linear-gradient(180deg,rgba(0,0,0,.08),rgba(0,0,0,.26))}
-.youtube-player-poster-play{display:inline-flex;align-items:center;gap:10px;padding:12px 16px;border-radius:999px;background:rgba(0,0,0,.82);border:1px solid rgba(255,255,255,.12);color:#fff;font-weight:700;box-shadow:0 8px 22px rgba(0,0,0,.24)}
-.youtube-player-poster-title{position:absolute;left:12px;right:12px;bottom:12px;padding:10px 12px;border-radius:14px;background:rgba(0,0,0,.7);color:#fff;font-size:.88rem;line-height:1.4;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-.legacy-ios .youtube-player-shell iframe{display:none !important}
-.legacy-ios .youtube-player-poster{display:block !important}
-.legacy-ios .video-detail-page.detail-grid.youtube-detail-grid{grid-template-columns:1fr !important}
 .video-detail-thumb-frame{
   position:relative !important;
   display:block !important;
@@ -180,9 +180,3 @@ h2{font-size:clamp(2.2rem,4vw,3.6rem);margin-top:14px;letter-spacing:-.03em}.det
 .youtube-related-grid .video-frame{position:relative;width:100%;height:auto !important;padding-top:56.25%;padding-bottom:0 !important;overflow:hidden;background:#111;border-radius:18px;aspect-ratio:auto !important}
 .youtube-related-grid .video-thumb{position:absolute;top:0;left:0;display:block;width:100%;height:100%;object-fit:cover}
 
-@media (min-width:700px) and (max-width:1100px){
-  .video-detail-page.detail-grid.youtube-detail-grid{grid-template-columns:1fr !important}
-  .video-detail-page .player-shell.youtube-player-shell{overflow:visible !important;background:#000 !important}
-  .video-detail-page .youtube-player-ratio{position:static !important;display:block !important;width:100% !important;height:auto !important;padding-top:0 !important;overflow:visible !important;background:#000 !important}
-  .video-detail-page .youtube-player-ratio iframe{position:static !important;display:block !important;width:100% !important;height:calc((100vw - 48px) * 0.5625) !important;min-height:300px !important;max-height:560px !important;border:0 !important;background:#000 !important}
-}
