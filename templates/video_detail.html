@@ -38,7 +38,7 @@
                 <button class="btn mode-toggle" id="theaterModeToggle" type="button" aria-pressed="false"><i data-lucide="panel-top"></i><span>Theater Mode</span></button>
             </div>
         </section>
-        <div class="player-shell">
+        <div class="player-shell youtube-player-shell">
             {% if player_video_id %}
             <iframe id="youtubePlayer" src="https://www.youtube.com/embed/{{ player_video_id }}?enablejsapi=1&rel=0" title="{{ entry.title or entry.name }}" allowfullscreen allow="autoplay; encrypted-media"></iframe>
             {% endif %}
