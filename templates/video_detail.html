@@ -4,8 +4,36 @@
 <div class="empty-state">This video detail page could not find the requested entry.</div>
 {% else %}
 <style>
-    .video-detail-player-frame,
-    .ios12-media-frame,
+    .youtube-player-shell {
+        display: block !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        min-width: 0 !important;
+        overflow: visible !important;
+        background: transparent !important;
+    }
+    .youtube-player-ratio {
+        position: relative !important;
+        display: block !important;
+        width: 100% !important;
+        height: 0 !important;
+        padding-top: 56.25% !important;
+        overflow: hidden !important;
+        background: #111 !important;
+        border-radius: inherit !important;
+    }
+    .youtube-player-ratio iframe {
+        position: absolute !important;
+        top: 0 !important;
+        left: 0 !important;
+        width: 100% !important;
+        height: 100% !important;
+        display: block !important;
+        border: 0 !important;
+        max-width: 100% !important;
+        max-height: none !important;
+        aspect-ratio: auto !important;
+    }
     .video-detail-thumb-frame {
         position: relative !important;
         display: block !important;
@@ -14,18 +42,9 @@
         padding-top: 56.25% !important;
         overflow: hidden !important;
         background: #111 !important;
-    }
-    .video-detail-player-frame iframe {
-        position: absolute !important;
-        top: 0 !important;
-        left: 0 !important;
-        width: 100% !important;
-        height: 100% !important;
-        display: block !important;
-        border: 0 !important;
+        border-radius: 18px !important;
     }
     .video-detail-thumb-frame img,
-    .ios12-media-frame img,
     .video-detail-thumb {
         position: absolute !important;
         top: 0 !important;
@@ -80,7 +99,7 @@
             </div>
         </section>
         <div class="player-shell youtube-player-shell">
-            <div class="video-detail-player-frame ios12-media-frame">
+            <div class="youtube-player-ratio">
                 {% if player_video_id %}
                 <iframe id="youtubePlayer" src="https://www.youtube.com/embed/{{ player_video_id }}?enablejsapi=1&rel=0" title="{{ entry.title or entry.name }}" allowfullscreen allow="autoplay; encrypted-media"></iframe>
                 {% endif %}
@@ -303,7 +322,7 @@
             <div class="{{ 'video-frame' if item.source_type == 'youtube' else 'media-poster' }} {{ 'video-poster' if item.source_type == 'youtube' else '' }}">
                 {% if item.source_type == 'youtube' %}
                 {% set related_thumb = item.thumb or item.thumbnail_url or item.thumbnail or item.image_url or ('https://img.youtube.com/vi/' ~ item.video_id ~ '/hqdefault.jpg' if item.video_id else '') %}
-                <div class="video-detail-thumb-frame ios12-media-frame">
+                <div class="video-detail-thumb-frame">
                     <img class="video-thumb video-detail-thumb" src="{{ related_thumb }}" alt="{{ item.title }}" loading="eager" decoding="async" fetchpriority="high">
                 </div>
                 <button class="card-ai-action study-with-ai-btn" type="button" data-ai-mode="{{ 'german' if item.section and 'german' in item.section|lower else 'study' }}" data-ai-title="{{ item.title or item.name }}" data-ai-playlist="{{ item.playlist_name or related_title }}" data-ai-section="{{ item.section or '' }}" data-ai-video-id="{{ item.video_id or '' }}" aria-label="Study this video with AI"><i data-lucide="sparkles"></i><span>Study with AI</span></button>
