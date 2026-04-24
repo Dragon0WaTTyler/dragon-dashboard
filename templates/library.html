@@ -156,8 +156,15 @@
             {% endfor %}
         </select>
         <select name="sort">
-            {% for opt in ['Score â†“','Score â†‘','Title Aâ€“Z','Title Zâ€“A','Date Watched â†“','Date Watched â†‘'] %}
-            <option value="{{ opt }}" {% if opt == current_filters.sort %}selected{% endif %}>{{ opt }}</option>
+            {% for sort_value, sort_label in [
+                ('Score â†“', 'Score Desc'),
+                ('Score â†‘', 'Score Asc'),
+                ('Title Aâ€“Z', 'Title A-Z'),
+                ('Title Zâ€“A', 'Title Z-A'),
+                ('Date Watched â†“', 'Date Watched Newest'),
+                ('Date Watched â†‘', 'Date Watched Oldest')
+            ] %}
+            <option value="{{ sort_value }}" {% if sort_value == current_filters.sort %}selected{% endif %}>{{ sort_label }}</option>
             {% endfor %}
         </select>
         <select name="per_page">

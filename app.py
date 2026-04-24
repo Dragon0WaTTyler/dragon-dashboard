@@ -16532,6 +16532,11 @@ def library():
                            ai_default_mode="cinematic", ai_page_context="movie")
 
 
+@app.route("/movies")
+def movies():
+    return library()
+
+
 @app.route("/writing")
 def legacy_books_archive_redirect():
     return redirect(url_for("books_archive"), code=301)
