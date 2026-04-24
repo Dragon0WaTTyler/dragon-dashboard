@@ -62,6 +62,34 @@
         padding-bottom: 0 !important;
         aspect-ratio: auto !important;
     }
+    @media (min-width: 700px) and (max-width: 1100px) {
+        .video-detail-page .detail-grid.youtube-detail-grid {
+            grid-template-columns: 1fr !important;
+        }
+        .video-detail-page .player-shell.youtube-player-shell {
+            overflow: visible !important;
+            background: #000 !important;
+        }
+        .video-detail-page .youtube-player-ratio {
+            position: static !important;
+            display: block !important;
+            width: 100% !important;
+            height: auto !important;
+            padding-top: 0 !important;
+            overflow: visible !important;
+            background: #000 !important;
+        }
+        .video-detail-page .youtube-player-ratio iframe {
+            position: static !important;
+            display: block !important;
+            width: 100% !important;
+            height: calc((100vw - 48px) * 0.5625) !important;
+            min-height: 300px !important;
+            max-height: 560px !important;
+            border: 0 !important;
+            background: #000 !important;
+        }
+    }
 </style>
 <section class="page-hero">
     <div class="hero-meta">
@@ -83,7 +111,7 @@
 </section>
 
 {% if entry_type == 'youtube' %}
-<section class="detail-grid youtube-detail-grid">
+<section class="detail-grid youtube-detail-grid video-detail-page">
     <div class="player-column youtube-player-column">
         <section class="mode-toolbar">
             <div class="mode-toolbar-copy">
@@ -101,7 +129,7 @@
         <div class="player-shell youtube-player-shell">
             <div class="youtube-player-ratio">
                 {% if player_video_id %}
-                <iframe id="youtubePlayer" src="https://www.youtube.com/embed/{{ player_video_id }}?enablejsapi=1&rel=0" title="{{ entry.title or entry.name }}" allowfullscreen allow="autoplay; encrypted-media"></iframe>
+                <iframe id="youtubePlayer" src="https://www.youtube.com/embed/{{ player_video_id }}?enablejsapi=1&rel=0&playsinline=1" title="{{ entry.title or entry.name }}" allowfullscreen allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"></iframe>
                 {% endif %}
             </div>
         </div>
