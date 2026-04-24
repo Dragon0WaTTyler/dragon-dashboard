@@ -6541,12 +6541,10 @@ def build_navigation_context():
         normalize_section_name("Movies"),
         normalize_section_name("Books"),
         normalize_section_name("Reading"),
+        normalize_section_name("PocketTube"),
         normalize_section_name("German"),
         normalize_section_name("Chess"),
         normalize_section_name("YouTube Watch Later"),
-        normalize_section_name("History"),
-        normalize_section_name("Review Queue"),
-        normalize_section_name("Admin"),
     ]
     top_priority = set(top_priority_order)
     top_nav_lookup = {}
