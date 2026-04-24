@@ -52,17 +52,22 @@
         align-items: stretch !important;
         height: auto !important;
         min-height: 0 !important;
+        overflow: hidden !important;
     }
     .video-detail-related .video-detail-thumb-frame {
         position: relative !important;
         display: block !important;
         width: 100% !important;
-        height: 0 !important;
-        padding-top: 56.25% !important;
+        height: clamp(120px, 9vw, 170px) !important;
+        min-height: 120px !important;
+        max-height: 180px !important;
+        padding: 0 !important;
+        padding-top: 0 !important;
         overflow: hidden !important;
         margin: 0 0 12px 0 !important;
         background: #111 !important;
         border-radius: 18px !important;
+        flex: 0 0 auto !important;
     }
     .video-detail-related .video-detail-thumb-frame img,
     .video-detail-related .video-detail-thumb {
@@ -74,12 +79,16 @@
         object-fit: cover !important;
     }
     .video-detail-related .video-card-body {
-        display: grid !important;
-        gap: 6px !important;
+        display: block !important;
         padding-top: 0 !important;
-        align-content: start !important;
+        margin-top: 0 !important;
+        flex: 0 0 auto !important;
     }
     @media (min-width: 700px) and (max-width: 1100px) {
+        .video-detail-related .video-detail-related-card .video-detail-thumb-frame {
+            height: clamp(130px, 22vw, 220px) !important;
+            max-height: 240px !important;
+        }
         .video-detail-page.detail-grid.youtube-detail-grid {
             grid-template-columns: 1fr !important;
         }
@@ -116,6 +125,12 @@
         .video-detail-page .youtube-player-ratio iframe,
         .video-detail-page .youtube-player-shell iframe {
             pointer-events: none !important;
+        }
+    }
+    @media (max-width: 640px) {
+        .video-detail-related .video-detail-related-card .video-detail-thumb-frame {
+            height: clamp(180px, 52vw, 260px) !important;
+            max-height: 280px !important;
         }
     }
 </style>
