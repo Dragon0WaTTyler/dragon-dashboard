@@ -45,6 +45,40 @@
         font-size: 1.15rem;
         line-height: 1;
     }
+    .video-detail-related .video-detail-related-card {
+        display: flex !important;
+        flex-direction: column !important;
+        justify-content: flex-start !important;
+        align-items: stretch !important;
+        height: auto !important;
+        min-height: 0 !important;
+    }
+    .video-detail-related .video-detail-thumb-frame {
+        position: relative !important;
+        display: block !important;
+        width: 100% !important;
+        height: 0 !important;
+        padding-top: 56.25% !important;
+        overflow: hidden !important;
+        margin: 0 0 12px 0 !important;
+        background: #111 !important;
+        border-radius: 18px !important;
+    }
+    .video-detail-related .video-detail-thumb-frame img,
+    .video-detail-related .video-detail-thumb {
+        position: absolute !important;
+        inset: 0 !important;
+        width: 100% !important;
+        height: 100% !important;
+        display: block !important;
+        object-fit: cover !important;
+    }
+    .video-detail-related .video-card-body {
+        display: grid !important;
+        gap: 6px !important;
+        padding-top: 0 !important;
+        align-content: start !important;
+    }
     @media (min-width: 700px) and (max-width: 1100px) {
         .video-detail-page.detail-grid.youtube-detail-grid {
             grid-template-columns: 1fr !important;
@@ -349,29 +383,31 @@
     {% if related_entries %}
     <div id="relatedGrid" class="{{ 'video-grid youtube-related-grid video-detail-related' if entry_type == 'youtube' else 'movie-grid' }}" style="margin-top:18px;">
         {% for item in related_entries %}
-        <a class="content-card {{ 'video-card related-video-card' if item.source_type == 'youtube' else 'media-card' }}" href="{{ item.detail_url or url_for('video_detail', entry_id=item.entry_id) }}" {% if item.source_type == 'youtube' %}data-video-id="{{ item.video_id }}" data-video-duration="{{ item.duration_seconds or 0 }}" data-playlist-item-id="{{ item.playlist_item_id or '' }}" data-entry-id="{{ item.entry_id or '' }}" data-state-key="{{ item.state_key or item.watch_key or item.video_id or item.entry_id or (item.playlist_item_id or '') }}" data-watch-key="{{ item.watch_key or item.video_id or item.entry_id or (item.playlist_item_id or '') }}"{% endif %} data-scroll-top="true">
-            <div class="{{ 'video-frame' if item.source_type == 'youtube' else 'media-poster' }} {{ 'video-poster' if item.source_type == 'youtube' else '' }}">
-                {% if item.source_type == 'youtube' %}
-                {% set related_thumb = item.thumb or item.thumbnail_url or item.thumbnail or item.image_url or ('https://img.youtube.com/vi/' ~ item.video_id ~ '/hqdefault.jpg' if item.video_id else '') %}
+        <a class="content-card {{ 'video-card related-video-card video-detail-related-card' if item.source_type == 'youtube' else 'media-card' }}" href="{{ item.detail_url or url_for('video_detail', entry_id=item.entry_id) }}" {% if item.source_type == 'youtube' %}data-video-id="{{ item.video_id }}" data-video-duration="{{ item.duration_seconds or 0 }}" data-playlist-item-id="{{ item.playlist_item_id or '' }}" data-entry-id="{{ item.entry_id or '' }}" data-state-key="{{ item.state_key or item.watch_key or item.video_id or item.entry_id or (item.playlist_item_id or '') }}" data-watch-key="{{ item.watch_key or item.video_id or item.entry_id or (item.playlist_item_id or '') }}"{% endif %} data-scroll-top="true">
+            {% if item.source_type == 'youtube' %}
+            {% set related_thumb = item.thumb or item.thumbnail_url or item.thumbnail or item.image_url or ('https://img.youtube.com/vi/' ~ item.video_id ~ '/hqdefault.jpg' if item.video_id else '') %}
+            <div class="video-detail-thumb-frame">
                 <img class="video-thumb video-detail-thumb" src="{{ related_thumb }}" alt="{{ item.title }}" loading="eager" decoding="async" fetchpriority="high">
                 <button class="card-ai-action study-with-ai-btn" type="button" data-ai-mode="{{ 'german' if item.section and 'german' in item.section|lower else 'study' }}" data-ai-title="{{ item.title or item.name }}" data-ai-playlist="{{ item.playlist_name or related_title }}" data-ai-section="{{ item.section or '' }}" data-ai-video-id="{{ item.video_id or '' }}" aria-label="Study this video with AI"><i data-lucide="sparkles"></i><span>Study with AI</span></button>
                 <div class="video-progress-track"><div class="video-progress-fill"></div></div>
                 <span class="duration-pill">{{ item.duration or '0:00' }}</span>
                 <span class="score-pill" data-pockettube-watched-badge style="display:none; position:absolute; top:12px; left:12px; z-index:2; padding:.3rem .55rem; font-size:.72rem;">Watched</span>
-                {% elif item.poster %}
-                <div class="poster-placeholder">No Poster</div>
+            </div>
+            <div class="video-card-body">
+                <div class="card-title">{{ item.title or item.name }}</div>
+                <div class="card-meta">{{ item.channel_name or item.category }}{% if item.duration %} | {{ item.duration }}{% endif %}{% if item.playlist_name %} | {{ item.playlist_name }}{% endif %}</div>
+            </div>
+            {% else %}
+            <div class="media-poster">
+                {% if item.poster %}
+                <img src="{{ item.poster }}" alt="{{ item.title or item.name }}" loading="lazy" decoding="async">
                 {% else %}
                 <div class="poster-placeholder">No Poster</div>
                 {% endif %}
             </div>
             <div class="card-title">{{ item.title or item.name }}</div>
-            <div class="card-meta">
-                {% if item.source_type == 'youtube' %}
-                {{ item.channel_name or item.category }}{% if item.duration %} | {{ item.duration }}{% endif %}{% if item.playlist_name %} | {{ item.playlist_name }}{% endif %}
-                {% else %}
-                {{ item.category }} | {{ item.status }}
-                {% endif %}
-            </div>
+            <div class="card-meta">{{ item.category }} | {{ item.status }}</div>
+            {% endif %}
         </a>
         {% endfor %}
     </div>
