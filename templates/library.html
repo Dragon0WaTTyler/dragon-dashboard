@@ -1,0 +1,687 @@
+﻿{% extends "base.html" %}
+{% block content %}
+<style>
+.movies-hero-actions{
+    margin-top:18px;
+}
+.filter-form .filter-submit{
+    background:var(--solid-button-bg);
+    border:1px solid var(--solid-button-border);
+    color:var(--solid-button-text);
+    box-shadow:none;
+    padding:13px 16px;
+}
+.filter-form .filter-submit:hover,
+.filter-form .filter-submit:focus-visible{
+    background:var(--solid-button-bg);
+    border-color:var(--button-hover-border);
+    color:var(--solid-button-text);
+    box-shadow:none;
+}
+.movie-filters-card{
+    position:relative;
+    overflow:visible;
+    z-index:6;
+    margin-top:0;
+    margin-bottom:18px;
+}
+.search-field{
+    position:relative;
+    z-index:8;
+}
+.search-field input{
+    background:var(--select-bg);
+    border-color:var(--border);
+    box-shadow:none;
+}
+.search-field input:hover,
+.search-field input:focus{
+    background:var(--select-bg);
+    border-color:var(--border);
+    box-shadow:none;
+    outline:none;
+}
+.movie-search-suggestions{
+    position:absolute;
+    top:calc(100% + 8px);
+    left:0;
+    right:0;
+    display:none;
+    padding:0;
+    border-radius:10px;
+    border:1px solid var(--border);
+    background:var(--select-bg);
+    backdrop-filter:none;
+    box-shadow:none;
+    z-index:12;
+    overflow:hidden;
+}
+.movie-search-suggestions.is-open{
+    display:block;
+}
+.filter-form .movie-search-suggestion{
+    width:100%;
+    display:block;
+    padding:10px 12px;
+    border:0;
+    border-radius:0;
+    background:transparent;
+    color:var(--text);
+    text-align:left;
+    cursor:pointer;
+    box-shadow:none;
+    transform:none;
+    backdrop-filter:none;
+    font-weight:400;
+}
+.filter-form .movie-search-suggestion + .movie-search-suggestion{
+    border-top:1px solid rgba(255,255,255,.06);
+}
+.filter-form .movie-search-suggestion:hover,
+.filter-form .movie-search-suggestion:focus,
+.filter-form .movie-search-suggestion:focus-visible,
+.filter-form .movie-search-suggestion.is-active{
+    background:rgba(255,255,255,.05);
+    color:var(--text);
+    border-color:transparent;
+    box-shadow:none;
+    outline:none;
+    transform:none;
+}
+.movie-country-meta{
+    margin-top:-6px;
+    color:rgba(239,239,239,.72);
+}
+.movie-genre-meta{
+    margin-top:-6px;
+    color:var(--text-2);
+}
+.movie-genre-link{
+    color:inherit;
+    text-decoration:none;
+    cursor:pointer;
+}
+.movie-genre-link:hover,
+.movie-genre-link:focus,
+.movie-genre-link:focus-visible{
+    color:var(--text);
+    outline:none;
+}
+.movie-card-footer{
+    margin-top:auto;
+    display:flex;
+    flex-direction:column;
+    gap:12px;
+}
+.movie-library-card{
+    cursor:pointer;
+}
+</style>
+<section class="surface-card section-card movie-filters-card">
+    <form method="get" class="filter-form">
+        {% if current_filters.genre %}
+        <input type="hidden" name="genre" value="{{ current_filters.genre }}">
+        {% endif %}
+        {% if current_filters.genre_id %}
+        <input type="hidden" name="genre_id" value="{{ current_filters.genre_id }}">
+        {% endif %}
+        {% if current_filters.director %}
+        <input type="hidden" name="director" value="{{ current_filters.director }}">
+        {% endif %}
+        {% if current_filters.director_id %}
+        <input type="hidden" name="director_id" value="{{ current_filters.director_id }}">
+        {% endif %}
+        <div class="field-wide search-field">
+            <input type="text" name="search" placeholder="Search by title..." value="{{ current_filters.search }}">
+            <div id="movieSearchSuggestions" class="movie-search-suggestions" role="listbox" aria-label="Movie title suggestions"></div>
+        </div>
+        <select name="category">
+            {% for cat in categories %}
+            <option value="{{ cat }}" {% if cat == current_filters.category %}selected{% endif %}>{{ cat }}</option>
+            {% endfor %}
+        </select>
+        <select name="status">
+            {% for st in statuses %}
+            <option value="{{ st }}" {% if st == current_filters.status %}selected{% endif %}>{{ st }}</option>
+            {% endfor %}
+        </select>
+        <select name="source">
+            {% for src in sources %}
+            <option value="{{ src }}" {% if src == current_filters.source %}selected{% endif %}>{{ src }}</option>
+            {% endfor %}
+        </select>
+        <select name="score">
+            {% for sc in scores %}
+            <option value="{{ sc }}" {% if sc == current_filters.score %}selected{% endif %}>{{ sc }}</option>
+            {% endfor %}
+        </select>
+        <select name="sort">
+            {% for opt in ['Score â†“','Score â†‘','Title Aâ€“Z','Title Zâ€“A','Date Watched â†“','Date Watched â†‘'] %}
+            <option value="{{ opt }}" {% if opt == current_filters.sort %}selected{% endif %}>{{ opt }}</option>
+            {% endfor %}
+        </select>
+        <select name="per_page">
+            {% for n in [10,20,50,100] %}
+            <option value="{{ n }}" {% if n == per_page %}selected{% endif %}>{{ n }} / page</option>
+            {% endfor %}
+        </select>
+        <button type="submit" class="filter-submit"><i data-lucide="sliders-horizontal"></i>Apply</button>
+    </form>
+</section>
+
+<section class="page-hero">
+    <div class="hero-meta">
+        <span class="hero-badge">Movies</span>
+        {% if current_filters.genre_label %}
+        <span>Genre: {{ current_filters.genre_label }}</span>
+        {% endif %}
+        {% if current_filters.director_label %}
+        <span>Director: {{ current_filters.director_label }}</span>
+        {% endif %}
+        <span>{{ total }} entries</span>
+    </div>
+    <h2>Movies</h2>
+    <p class="subhead">
+        Filter your archive, open detail pages for trailers and related titles, and keep the whole collection feeling more like a polished media workspace than a simple list.
+    </p>
+    <div class="detail-controls movies-hero-actions">
+        <button type="button" class="btn" id="movieRecommendationButton"><i data-lucide="sparkles"></i>What should I watch?</button>
+        <button type="button" class="btn" id="movieRecommendationShuffleButton" style="display:none;"><i data-lucide="shuffle"></i>Try Another</button>
+    </div>
+</section>
+
+<section class="surface-card section-card movie-filters-card" style="margin-top:-6px;">
+    <div id="movieRecommendationPanel" style="display:none;">
+        <div id="movieRecommendationStatus" class="muted" style="display:none;">Ready to suggest from your library.</div>
+        <div id="movieRecommendationResults" style="display:none; margin-top:18px;"></div>
+    </div>
+</section>
+
+{% if films %}
+<section class="movie-grid">
+    {% for film in films %}
+        <article class="content-card media-card movie-library-card" data-href="{{ url_for('video_detail', entry_id=film.entry_id) }}" data-scroll-top="true" tabindex="0" role="link">
+        <div class="media-poster">
+            {% if film.poster %}
+            <img src="{{ film.poster }}" alt="{{ film.name }}">
+            {% else %}
+            <div class="poster-placeholder">No Poster</div>
+            {% endif %}
+        </div>
+        <div class="card-title">{{ film.name }}</div>
+        {% set card_meta_parts = [] %}
+        {% if film.category %}
+            {% set _ = card_meta_parts.append(film.category) %}
+        {% endif %}
+        {% if film.source %}
+            {% set _ = card_meta_parts.append(film.source) %}
+        {% endif %}
+        <div class="card-meta">{{ card_meta_parts|join(' | ') }}</div>
+        {% if film.genre_entries %}
+        <div class="card-meta movie-genre-meta">
+            {% for genre in film.genre_entries[:2] %}
+            <span class="movie-genre-link" data-href="{{ genre.detail_url }}" tabindex="0" role="link">{{ genre.name }}</span>{% if not loop.last %} | {% endif %}
+            {% endfor %}
+        </div>
+        {% endif %}
+        {% if film.country_display %}
+        <div class="card-meta movie-country-meta">{{ film.country_display }}</div>
+        {% endif %}
+        <div class="movie-card-footer">
+            <div class="score-pill" style="color: {{ score_color.get(film.score, '#777') }};">
+                {{ score_display.get(film.score, 'Not Rated') }}
+            </div>
+            <div class="card-meta">Open detail page</div>
+        </div>
+    </article>
+    {% endfor %}
+</section>
+
+{% if total_pages > 1 %}
+<section class="surface-card section-card">
+    <div class="pagination">
+        {% if page > 1 %}
+        <a href="{{ build_query_url(request.args, page=1) }}" class="pagination-button pagination-nav" data-scroll-top="true">First</a>
+        <a href="{{ build_query_url(request.args, page=page-1) }}" class="pagination-button pagination-nav" data-scroll-top="true">Previous</a>
+        {% endif %}
+        {% for item in pagination_numbers %}
+            {% if item == '...' %}
+            <span class="pagination-ellipsis">...</span>
+            {% elif item == page %}
+            <span class="pagination-button pagination-index active">{{ item }}</span>
+            {% else %}
+            <a href="{{ build_query_url(request.args, page=item) }}" class="pagination-button pagination-index" data-scroll-top="true">{{ item }}</a>
+            {% endif %}
+        {% endfor %}
+        {% if page < total_pages %}
+        <a href="{{ build_query_url(request.args, page=page+1) }}" class="pagination-button pagination-nav" data-scroll-top="true">Next</a>
+        <a href="{{ build_query_url(request.args, page=total_pages) }}" class="pagination-button pagination-nav" data-scroll-top="true">Last</a>
+        {% endif %}
+    </div>
+</section>
+{% endif %}
+{% else %}
+<div class="empty-state">No movies match your current filters.</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+    var button = document.getElementById('movieRecommendationButton');
+    var shuffleButton = document.getElementById('movieRecommendationShuffleButton');
+    var panel = document.getElementById('movieRecommendationPanel');
+    var status = document.getElementById('movieRecommendationStatus');
+    var results = document.getElementById('movieRecommendationResults');
+    var categoryFilter = {{ current_filters.category|tojson }};
+    var sourceFilter = {{ current_filters.source|tojson }};
+    var suggestionTitles = {{ suggestion_titles|tojson }};
+    var placeholderPoster = {{ url_for('static', filename='history-placeholder.svg')|tojson }};
+    var recommendationPool = [];
+    var lastRenderedSignature = '';
+    var sessionSeenTitles = {};
+    var searchInput = document.querySelector('.filter-form input[name="search"]');
+    var searchSuggestions = document.getElementById('movieSearchSuggestions');
+    var activeSuggestionIndex = -1;
+
+    function escapeHtml(value) {
+        return String(value || '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function buildRecommendationUrl() {
+        var url = '{{ url_for("movie_curation_api") }}?use_case=watch_next&limit=All';
+        if (categoryFilter && categoryFilter !== 'All') {
+            url += '&category=' + encodeURIComponent(categoryFilter);
+        }
+        if (sourceFilter && sourceFilter !== 'All sources') {
+            url += '&source=' + encodeURIComponent(sourceFilter);
+        }
+        return url;
+    }
+
+    function normalizeSuggestionValue(value) {
+        return String(value || '').toLowerCase();
+    }
+
+    function closeSearchSuggestions() {
+        activeSuggestionIndex = -1;
+        if (!searchSuggestions) return;
+        searchSuggestions.innerHTML = '';
+        searchSuggestions.className = 'movie-search-suggestions';
+    }
+
+    function applySuggestion(title) {
+        var form;
+        if (!searchInput) return;
+        searchInput.value = title;
+        closeSearchSuggestions();
+        form = searchInput.form;
+        if (form) {
+            form.submit();
+        }
+    }
+
+    function getSuggestionMatches(query) {
+        var normalizedQuery = normalizeSuggestionValue(query).trim();
+        var startsWithMatches = [];
+        var containsMatches = [];
+        var index;
+        var title;
+        var normalizedTitle;
+        if (normalizedQuery.length < 2) return [];
+        for (index = 0; index < suggestionTitles.length; index += 1) {
+            title = suggestionTitles[index];
+            normalizedTitle = normalizeSuggestionValue(title);
+            if (normalizedTitle.indexOf(normalizedQuery) === 0) {
+                startsWithMatches.push(title);
+            } else if (normalizedTitle.indexOf(normalizedQuery) !== -1) {
+                containsMatches.push(title);
+            }
+            if (startsWithMatches.length + containsMatches.length >= 8) {
+                break;
+            }
+        }
+        return startsWithMatches.concat(containsMatches).slice(0, 8);
+    }
+
+    function renderSearchSuggestions(matches) {
+        var html = '';
+        var index;
+        if (!searchSuggestions) return;
+        if (!matches.length) {
+            closeSearchSuggestions();
+            return;
+        }
+        for (index = 0; index < matches.length; index += 1) {
+            html += '<button type="button" class="movie-search-suggestion' + (index === activeSuggestionIndex ? ' is-active' : '') + '" data-title="' + escapeHtml(matches[index]) + '" role="option" aria-selected="' + (index === activeSuggestionIndex ? 'true' : 'false') + '">' + escapeHtml(matches[index]) + '</button>';
+        }
+        searchSuggestions.innerHTML = html;
+        searchSuggestions.className = 'movie-search-suggestions is-open';
+    }
+
+    function updateSearchSuggestions() {
+        var matches;
+        if (!searchInput) return;
+        matches = getSuggestionMatches(searchInput.value);
+        activeSuggestionIndex = -1;
+        renderSearchSuggestions(matches);
+    }
+
+    function buildSignature(items) {
+        var ids = [];
+        var index = 0;
+        for (index = 0; index < items.length; index += 1) {
+            ids.push(String(items[index].entry_id || items[index].name || index));
+        }
+        return ids.join('|');
+    }
+
+    function buildMovieMeta(item) {
+        var parts = [];
+        if (item && item.category) {
+            parts.push(String(item.category));
+        }
+        if (item && item.source) {
+            parts.push(String(item.source));
+        }
+        return parts.join(' | ');
+    }
+
+    function getRecommendationExplanation(item) {
+        var explanation = item && item.recommendation_explanation ? item.recommendation_explanation : {};
+        var summary = String(
+            (item && item.recommendation_reason) ||
+            explanation.summary ||
+            (item && item.curation_reasons && item.curation_reasons.length ? item.curation_reasons[0] : '') ||
+            'Curated from your library.'
+        ).trim();
+        var signals = Array.isArray(explanation.signals) ? explanation.signals : [];
+        var detail = '';
+        var index;
+        var signalText;
+
+        for (index = 0; index < signals.length; index += 1) {
+            signalText = String(signals[index] && signals[index].text ? signals[index].text : '').trim();
+            if (signalText && signalText !== summary) {
+                detail = signalText;
+                break;
+            }
+        }
+
+        if (!detail && item && item.curation_reasons && item.curation_reasons.length > 1) {
+            detail = String(item.curation_reasons[1] || '').trim();
+        }
+
+        return {
+            summary: summary || 'Curated from your library.',
+            detail: detail
+        };
+    }
+
+    function chooseRecommendationSet() {
+        var availablePool = [];
+        var fallbackPool = [];
+        var seenCount = 0;
+        var poolIndex;
+        var item;
+        if (!recommendationPool.length) return [];
+        if (recommendationPool.length === 1) return recommendationPool.slice(0, 1);
+
+        for (poolIndex = 0; poolIndex < recommendationPool.length; poolIndex += 1) {
+            item = recommendationPool[poolIndex];
+            if (!item || !item.name) continue;
+            fallbackPool.push(item);
+            if (!sessionSeenTitles[item.name]) {
+                availablePool.push(item);
+            } else {
+                seenCount += 1;
+            }
+        }
+
+        if (!availablePool.length && fallbackPool.length) {
+            sessionSeenTitles = {};
+            availablePool = fallbackPool.slice(0);
+        }
+
+        if (!availablePool.length) return recommendationPool.slice(0, 1);
+
+        while (availablePool.length > 1) {
+            item = availablePool[Math.floor(Math.random() * availablePool.length)];
+            if (buildSignature([item]) !== lastRenderedSignature) {
+                return [item];
+            }
+            availablePool = availablePool.filter(function(candidate) {
+                return buildSignature([candidate]) !== lastRenderedSignature;
+            });
+        }
+
+        item = availablePool[0];
+        return item ? [item] : recommendationPool.slice(0, 1);
+    }
+
+    function markRecommendationSeen(items) {
+        var index;
+        var item;
+        for (index = 0; index < items.length; index += 1) {
+            item = items[index];
+            if (item && item.name) {
+                sessionSeenTitles[item.name] = true;
+            }
+        }
+    }
+
+    function cardHtml(item, isMain) {
+        var explanation = getRecommendationExplanation(item);
+        var poster = item.poster || placeholderPoster;
+        return (
+            '<a class="content-card media-card" href="' + escapeHtml(item.detail_url || ('/video/' + (item.entry_id || ''))) + '" data-scroll-top="true" style="max-width:' + (isMain ? '260px' : '220px') + ';">' +
+                '<div class="media-poster">' +
+                    '<img src="' + escapeHtml(poster) + '" alt="' + escapeHtml(item.name || 'Untitled') + '" onerror="this.onerror=null;this.src=\'' + escapeHtml(placeholderPoster) + '\';">' +
+                '</div>' +
+                '<div class="card-title">' + escapeHtml(item.name || 'Untitled') + '</div>' +
+                '<div class="card-meta">' + escapeHtml(buildMovieMeta(item)) + '</div>' +
+                '<div class="card-meta" style="color:var(--text);">Why this pick: ' + escapeHtml(explanation.summary) + '</div>' +
+                (explanation.detail ? '<div class="card-meta">' + escapeHtml(explanation.detail) + '</div>' : '') +
+                '<div class="card-meta">Open detail page</div>' +
+            '</a>'
+        );
+    }
+
+    function renderResults(items) {
+        if (!items || !items.length) {
+            if (panel) panel.style.display = 'block';
+            if (status) status.style.display = 'block';
+            results.style.display = 'none';
+            status.textContent = 'No recommendation candidates were returned for this filter.';
+            if (shuffleButton) shuffleButton.style.display = 'none';
+            return;
+        }
+
+        var mainPick = items[0];
+
+        results.innerHTML =
+            '<div class="detail-grid" style="grid-template-columns:minmax(0,280px) minmax(0,1fr); gap:18px;">' +
+                '<div>' +
+                    '<div class="hero-meta" style="margin-bottom:12px;">' +
+                        '<span class="hero-badge">Main Pick</span>' +
+                        '<span>Backend-ranked from your curated pool</span>' +
+                    '</div>' +
+                    cardHtml(mainPick, true) +
+                '</div>' +
+                '<div class="surface-card section-card" style="padding:18px;">' +
+                    '<div class="hero-meta">' +
+                        '<span class="hero-badge matte-tag">Why this pick</span>' +
+                        '<span>Backend curation result</span>' +
+                    '</div>' +
+                    '<div class="info-stack" style="margin-top:16px;">' +
+                        '<div class="info-row"><span>Title</span><strong>' + escapeHtml(mainPick.name || 'Untitled') + '</strong></div>' +
+                        '<div class="info-row"><span>Category</span><strong>' + escapeHtml(mainPick.category || 'Uncategorized') + '</strong></div>' +
+                        '<div class="info-row"><span>Status</span><strong>' + escapeHtml(mainPick.status || 'Unknown') + '</strong></div>' +
+                        '<div class="info-row"><span>Source</span><strong>' + escapeHtml(mainPick.source || 'Unknown source') + '</strong></div>' +
+                        '<div class="info-row"><span>Pool</span><strong>' + escapeHtml(mainPick.pool || 'secondary') + '</strong></div>' +
+                    '</div>' +
+                    (function() {
+                        var explanation = getRecommendationExplanation(mainPick);
+                        var html = '<p class="subhead" style="margin-top:16px; max-width:none;">' + escapeHtml(explanation.summary) + '</p>';
+                        if (explanation.detail) {
+                            html += '<div class="card-meta" style="margin-top:-6px;">' + escapeHtml(explanation.detail) + '</div>';
+                        }
+                        return html;
+                    }()) +
+                '</div>' +
+            '</div>';
+        if (panel) panel.style.display = 'block';
+        results.style.display = 'block';
+        if (status) status.style.display = 'block';
+        lastRenderedSignature = buildSignature(items);
+        markRecommendationSeen(items);
+        if (shuffleButton) shuffleButton.style.display = recommendationPool.length > 1 ? 'inline-flex' : 'none';
+        status.textContent = categoryFilter && categoryFilter !== 'All'
+            ? ('Showing a watch-next pick inside "' + categoryFilter + '".')
+            : 'Showing a watch-next pick from your full movie collection.';
+        if (window.lucide && typeof window.lucide.createIcons === 'function') {
+            window.lucide.createIcons();
+        }
+    }
+
+    function shuffleRecommendations() {
+        var selection = chooseRecommendationSet();
+        if (!selection.length) {
+            status.textContent = 'Load recommendations first.';
+            return;
+        }
+        renderResults(selection);
+        status.textContent = categoryFilter && categoryFilter !== 'All'
+            ? ('Shuffling inside the curated watch-next pool for "' + categoryFilter + '".')
+            : 'Shuffling inside your curated watch-next movie pool.';
+    }
+
+    function requestRecommendations() {
+        var request = new XMLHttpRequest();
+        if (panel) panel.style.display = 'block';
+        if (status) status.style.display = 'block';
+        request.open('GET', buildRecommendationUrl(), true);
+        request.onreadystatechange = function() {
+            var payload;
+            if (request.readyState !== 4) return;
+            button.disabled = false;
+            if (shuffleButton) shuffleButton.disabled = false;
+            if (request.status < 200 || request.status >= 300) {
+                status.textContent = 'Could not load recommendations right now.';
+                return;
+            }
+            try {
+                payload = JSON.parse(request.responseText);
+            } catch (error) {
+                status.textContent = 'Recommendation response was invalid.';
+                return;
+            }
+            if (!payload.ok) {
+                status.textContent = payload.error || 'Recommendation request failed.';
+                return;
+            }
+            recommendationPool = (payload.items || []).filter(function(item) {
+                return item && item.pool === 'primary';
+            });
+            if (!recommendationPool.length) {
+                recommendationPool = payload.items || [];
+            }
+            sessionSeenTitles = {};
+            lastRenderedSignature = '';
+            renderResults(chooseRecommendationSet());
+        };
+        button.disabled = true;
+        if (shuffleButton) shuffleButton.disabled = true;
+        status.textContent = 'Looking through your curated library candidates...';
+        request.send();
+    }
+
+    if (button) {
+        button.addEventListener('click', requestRecommendations);
+    }
+    if (shuffleButton) {
+        shuffleButton.addEventListener('click', shuffleRecommendations);
+    }
+    document.addEventListener('click', function(event) {
+        var card = event.target && event.target.closest ? event.target.closest('.movie-library-card') : null;
+        var href = '';
+        if (!card) return;
+        if (event.target && event.target.closest && event.target.closest('.movie-genre-link')) return;
+        href = card.getAttribute('data-href') || '';
+        if (!href) return;
+        window.location.href = href;
+    });
+    document.addEventListener('keydown', function(event) {
+        var card = event.target && event.target.closest ? event.target.closest('.movie-library-card') : null;
+        var href = '';
+        if (!card) return;
+        if (event.target && event.target.closest && event.target.closest('.movie-genre-link')) return;
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        href = card.getAttribute('data-href') || '';
+        if (!href) return;
+        event.preventDefault();
+        window.location.href = href;
+    });
+    document.addEventListener('click', function(event) {
+        var target = event.target;
+        var href = '';
+        if (!target || !target.classList || !target.classList.contains('movie-genre-link')) return;
+        href = target.getAttribute('data-href') || '';
+        if (!href) return;
+        event.preventDefault();
+        event.stopPropagation();
+        window.location.href = href;
+    });
+    document.addEventListener('keydown', function(event) {
+        var target = event.target;
+        var href = '';
+        if (!target || !target.classList || !target.classList.contains('movie-genre-link')) return;
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        href = target.getAttribute('data-href') || '';
+        if (!href) return;
+        event.preventDefault();
+        event.stopPropagation();
+        window.location.href = href;
+    });
+    if (searchInput && searchSuggestions) {
+        searchInput.setAttribute('autocomplete', 'off');
+        searchInput.addEventListener('input', updateSearchSuggestions);
+        searchInput.addEventListener('keydown', function(event) {
+            var items;
+            if (!searchSuggestions.classList.contains('is-open')) return;
+            items = searchSuggestions.querySelectorAll('.movie-search-suggestion');
+            if (!items.length) return;
+            if (event.key === 'ArrowDown') {
+                event.preventDefault();
+                activeSuggestionIndex = (activeSuggestionIndex + 1) % items.length;
+                renderSearchSuggestions(getSuggestionMatches(searchInput.value));
+            } else if (event.key === 'ArrowUp') {
+                event.preventDefault();
+                activeSuggestionIndex = activeSuggestionIndex <= 0 ? items.length - 1 : activeSuggestionIndex - 1;
+                renderSearchSuggestions(getSuggestionMatches(searchInput.value));
+            } else if (event.key === 'Enter' && activeSuggestionIndex >= 0) {
+                event.preventDefault();
+                applySuggestion(items[activeSuggestionIndex].getAttribute('data-title') || '');
+            } else if (event.key === 'Escape') {
+                closeSearchSuggestions();
+            }
+        });
+        searchSuggestions.addEventListener('click', function(event) {
+            var target = event.target;
+            if (!target || target.className.indexOf('movie-search-suggestion') === -1) return;
+            applySuggestion(target.getAttribute('data-title') || '');
+        });
+        document.addEventListener('click', function(event) {
+            if (!searchSuggestions.classList.contains('is-open')) return;
+            if (event.target === searchInput || searchSuggestions.contains(event.target)) return;
+            closeSearchSuggestions();
+        });
+    }
+})();
+</script>
+{% endblock %}

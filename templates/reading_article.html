@@ -1,0 +1,808 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+    .reading-article-shell{max-width:820px;margin:0 auto;display:grid;gap:18px}
+    .reading-article-top{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
+    .reading-article-top .reading-article-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+    .reading-article-top .reading-article-actions form{margin:0}
+    .reading-article-top .reading-article-actions .btn{padding:10px 14px}
+    .reading-article-nav{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-left:auto}
+    .reading-article-nav .btn[aria-disabled="true"]{opacity:.38;pointer-events:none}
+    .reading-article-card{overflow:hidden;padding:0}
+    .reading-article-hero{background:rgba(255,255,255,.03);border-bottom:1px solid var(--border)}
+    .reading-article-hero img{width:100%;max-height:420px;object-fit:cover;display:block}
+    .reading-article-body{padding:30px 32px 34px;display:grid;gap:20px}
+    .reading-article-body[dir="rtl"]{text-align:right}
+    .reading-article-header{display:grid;gap:14px;max-width:100%}
+    .reading-article-header h2{font-size:clamp(2.2rem,5vw,4.2rem);line-height:1.02;letter-spacing:-.02em;max-width:none;width:100%;unicode-bidi:plaintext;text-wrap:balance}
+    .reading-article-header h2[dir="rtl"]{margin-left:auto;text-align:right}
+    .reading-article-header h2[dir="ltr"]{text-align:left}
+    .reading-article-body[dir="rtl"] .reading-article-header h2{margin-left:auto}
+    .reading-article-meta{display:flex;align-items:center;gap:8px 10px;flex-wrap:wrap}
+    .reading-article-meta .hero-badge{white-space:nowrap}
+    .reading-article-category{font-size:.68rem;text-transform:uppercase;letter-spacing:.12em;color:var(--text-2);padding:4px 8px;border-radius:999px;border:1px solid var(--border);background:rgba(255,255,255,.03);white-space:nowrap}
+    .reading-article-topic{font-size:.58rem;text-transform:uppercase;letter-spacing:.12em;color:var(--text-2);padding:4px 8px;border-radius:999px;border:1px solid rgba(255,255,255,.06);background:rgba(255,255,255,.02);white-space:nowrap}
+    .reading-author-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;color:var(--text-2);font-size:.92rem;line-height:1.4}
+    .reading-author-row img{width:28px;height:28px;border-radius:999px;object-fit:cover;border:1px solid var(--border);background:rgba(255,255,255,.04);flex:none}
+    .reading-author-row span{display:inline-flex;align-items:center;gap:8px}
+    .reading-author-meta{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+    .reading-author-name{color:var(--text);font-weight:600}
+    .reading-article-body[dir="rtl"] .reading-author-row{justify-content:flex-end}
+    .reading-status{display:inline-flex;align-items:center;gap:6px;padding:4px 8px;border-radius:999px;border:1px solid var(--border);background:rgba(255,255,255,.04);font-size:.68rem;text-transform:uppercase;letter-spacing:.12em;color:var(--text-2)}
+    .reading-status-unread{color:#9ecbff}
+    .reading-status-reading{color:#f0d38b}
+    .reading-status-finished{color:#8bd1a8}
+    .reading-status-archived{color:#b3b3b3}
+    .reading-star{color:var(--accent)}
+    .reading-context{color:var(--muted);font-size:.78rem;letter-spacing:.12em;text-transform:uppercase}
+    .reading-prose{display:grid;gap:18px;font-size:1.08rem;line-height:1.92;color:var(--text);max-width:68ch}
+    .reading-article-body[dir="rtl"] .reading-prose{margin-left:0;margin-right:0}
+    .reading-prose p{color:var(--text);margin:0}
+    .reading-prose h1,.reading-prose h2,.reading-prose h3,.reading-prose h4,.reading-prose h5,.reading-prose h6{font-family:'Cormorant Garamond',serif;color:var(--heading);line-height:1.08;margin:20px 0 2px}
+    .reading-prose h1,.reading-prose h2{font-size:2rem}
+    .reading-prose h3{font-size:1.55rem}
+    .reading-prose h4,.reading-prose h5,.reading-prose h6{font-size:1.25rem}
+    .reading-prose blockquote{margin:6px 0;padding:4px 0 4px 18px;border-left:2px solid rgba(255,0,0,.45);color:var(--text-2);font-style:italic}
+    .reading-article-body[dir="rtl"] .reading-prose blockquote{padding:4px 18px 4px 0;border-left:0;border-right:2px solid rgba(255,0,0,.45)}
+    .reading-prose ul,.reading-prose ol{display:grid;gap:8px;padding-left:1.4rem}
+    .reading-article-body[dir="rtl"] .reading-prose ul,.reading-article-body[dir="rtl"] .reading-prose ol{padding-left:0;padding-right:1.4rem}
+    .reading-prose a{color:var(--link-muted);text-decoration:underline;text-decoration-color:rgba(255,0,0,.35);text-underline-offset:3px}
+    .reading-prose figure{margin:14px 0;display:grid;gap:8px}
+    .reading-prose img{width:100%;max-height:520px;object-fit:contain;border-radius:18px;border:1px solid var(--border);background:rgba(255,255,255,.03)}
+    .reading-prose figcaption{font-size:.84rem;line-height:1.5;color:var(--muted)}
+    .reading-inline-media{margin:12px 0}
+    .reading-youtube-embed{display:grid;gap:10px;margin:14px 0}
+    .reading-youtube-embed iframe{width:100%;aspect-ratio:16/9;border:0;border-radius:18px;background:#000}
+    .reading-media-card{display:grid;grid-template-columns:112px minmax(0,1fr);gap:12px;align-items:center;padding:10px;border:1px solid var(--border);border-radius:18px;background:rgba(255,255,255,.03);color:var(--text-2)}
+    .reading-media-card img{width:112px;aspect-ratio:16/9;object-fit:cover;border-radius:12px;border:1px solid var(--border)}
+    .reading-media-card div{display:grid;gap:4px}
+    .reading-media-card span{font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+    .reading-media-card a{color:var(--link-muted)}
+    .reading-embed{position:relative;aspect-ratio:16/9;width:100%;border:1px solid var(--border);border-radius:18px;overflow:hidden;background:#000}
+    .reading-embed iframe{position:absolute;inset:0;width:100%;height:100%;border:0}
+    .reading-media-placeholder{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;border:1px solid var(--border);border-radius:18px;background:rgba(255,255,255,.03);color:var(--text-2)}
+    .reading-media-placeholder a{color:var(--link-muted)}
+    .reading-extraction-note{font-size:.88rem;line-height:1.6;color:var(--text-2);padding:14px 16px;border:1px solid var(--border);border-radius:18px;background:rgba(255,255,255,.03);max-width:68ch}
+    .reading-entry-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+    .reading-entry-actions form{margin:0}
+    .reading-entry-actions .btn{padding:8px 10px;min-height:32px;font-size:.72rem;line-height:1;letter-spacing:.06em}
+    .reading-body-row{display:grid;gap:16px}
+    .reading-audio-shell{display:grid;gap:10px;padding:14px 16px;border:1px solid var(--border);border-radius:18px;background:rgba(255,255,255,.02);max-width:68ch}
+    .reading-audio-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+    .reading-audio-head .btn{padding:8px 12px;min-height:32px}
+    .reading-audio-pill{display:inline-flex;align-items:center;gap:6px;padding:4px 8px;border-radius:999px;border:1px solid rgba(255,255,255,.06);background:rgba(255,255,255,.02);font-size:.58rem;line-height:1.1;letter-spacing:.12em;text-transform:uppercase;color:var(--text-2)}
+    .reading-audio-speed{height:32px;min-width:88px;padding:0 8px;border-radius:999px;border:1px solid var(--border);background:rgba(255,255,255,.03);color:var(--text);font-size:.72rem}
+    .reading-audio-follow{display:inline-flex;align-items:center;gap:8px;padding:0 10px;height:32px;border-radius:999px;border:1px solid var(--border);background:rgba(255,255,255,.03);color:var(--text-2);font-size:.68rem;line-height:1;letter-spacing:.08em;text-transform:uppercase}
+    .reading-audio-follow strong{font-weight:600;color:var(--text)}
+    .reading-audio-follow[aria-checked="false"]{opacity:.78}
+    .reading-audio-status{font-size:.84rem;line-height:1.5;color:var(--text-2)}
+    .reading-audio-status.is-error{color:#ffb0b0}
+    .reading-audio-player{width:100%;height:34px}
+    .reading-readalong-sentence{border-radius:6px;box-decoration-break:clone;-webkit-box-decoration-break:clone;transition:background-color .16s ease,color .16s ease,box-shadow .16s ease}
+    .reading-readalong-sentence.is-active{background:rgba(255,255,255,.12);box-shadow:0 0 0 1px rgba(255,255,255,.09),0 8px 22px rgba(255,255,255,.035);color:var(--heading)}
+    @media (max-width:700px){
+        .reading-article-body{padding:22px}
+        .reading-article-top{align-items:flex-start}
+        .reading-article-nav{width:100%;justify-content:space-between;margin-left:0}
+        .reading-media-card{grid-template-columns:1fr}
+        .reading-media-card img{width:100%}
+    }
+</style>
+<div class="reading-article-shell">
+    <section class="page-hero">
+        <div class="reading-article-top">
+            <div class="reading-article-actions">
+                <a class="btn" href="{{ reading_return_url }}"><i data-lucide="arrow-left"></i>Back to inbox</a>
+                {% if entry.url %}
+                <a class="btn" href="{{ entry.url }}" target="_blank" rel="noopener"><i data-lucide="external-link"></i>Open original</a>
+                {% endif %}
+            </div>
+            <div class="reading-article-nav">
+                {% if reading_prev_url %}
+                <a class="btn" href="{{ reading_prev_url }}"><i data-lucide="chevron-left"></i>Previous</a>
+                {% endif %}
+                {% if reading_next_url %}
+                <a class="btn" href="{{ reading_next_url }}"><i data-lucide="chevron-right"></i>Next</a>
+                {% endif %}
+            </div>
+        </div>
+    </section>
+
+    <article class="surface-card reading-article-card">
+        {% if article_hero_image %}
+        <div class="reading-article-hero">
+            <img src="{{ article_hero_image }}" alt="" loading="lazy" referrerpolicy="no-referrer">
+        </div>
+        {% endif %}
+        <div class="reading-article-body" dir="{{ article_dir }}" lang="{{ article_lang }}">
+            <div class="reading-article-header">
+                <div class="reading-article-meta hero-meta" dir="auto">
+                    <span class="hero-badge" dir="{{ entry.source_dir or 'auto' }}">{{ entry.source }}</span>
+                    {% if entry.category %}<span class="reading-article-category">{{ entry.category|title }}</span>{% endif %}
+                    <span class="reading-status reading-status-{{ entry.status }}">{{ entry.status }}</span>
+                    {% if entry.topic_display %}<span class="reading-article-topic">{{ entry.topic_display }}</span>{% endif %}
+                    {% if entry.starred %}<span class="reading-star">Starred</span>{% endif %}
+                </div>
+                {% if reading_context_label %}
+                <div class="reading-context">{{ reading_context_label }}</div>
+                {% endif %}
+                <h2 dir="{{ entry.title_dir or 'auto' }}">{{ entry.title }}</h2>
+                {% if article_author_name %}
+                <div class="reading-author-row" dir="auto">
+                    {% if article_author_image_url %}
+                    <img src="{{ article_author_image_url }}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.remove()">
+                    {% endif %}
+                    <span class="reading-author-meta">
+                        <span class="reading-author-name">{{ article_author_name }}</span>
+                        {% if entry.published_display %}<span>Published {{ entry.published_display }}</span>{% endif %}
+                    </span>
+                </div>
+                {% elif entry.published_display %}
+                <div class="reading-author-row" dir="auto">
+                    <span class="reading-author-meta"><span>Published {{ entry.published_display }}</span></span>
+                </div>
+                {% endif %}
+                <div class="reading-audio-shell" data-reading-audio-shell
+                     data-audio-url="{{ reading_tts_audio_url }}"
+                     data-timings-url="{{ reading_tts_timings_url }}"
+                     data-ready="{{ '1' if reading_tts_available else '0' }}">
+                    <div class="reading-audio-head">
+                        <button type="button" class="btn" data-reading-audio-button {% if not reading_tts_available %}disabled{% endif %}>
+                            <i data-lucide="volume-2"></i>Listen
+                        </button>
+                        <select class="reading-audio-speed" data-reading-audio-speed {% if not reading_tts_available %}disabled{% endif %} aria-label="Playback speed">
+                            <option value="0.75">0.75x</option>
+                            <option value="1">1x</option>
+                            <option value="1.25">1.25x</option>
+                            <option value="1.5">1.5x</option>
+                            <option value="1.75">1.75x</option>
+                            <option value="2">2x</option>
+                        </select>
+                        <button type="button" class="reading-audio-follow" data-reading-audio-follow {% if not reading_tts_available %}disabled{% endif %} aria-checked="true">
+                            Follow along <strong data-reading-audio-follow-state>On</strong>
+                        </button>
+                        <span class="reading-audio-pill">{{ reading_tts_lang|upper }}</span>
+                    </div>
+                    <audio class="reading-audio-player" controls preload="none" hidden data-audio-version="{{ reading_tts_version }}" data-entry-id="{{ entry.id }}"></audio>
+                    <div class="reading-audio-status" data-reading-audio-status>
+                        {% if reading_tts_available %}
+                        {{ reading_tts_status_message }}
+                        {% else %}
+                        {{ reading_tts_status_message }}
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <div class="reading-entry-actions">
+                <form method="post" action="{{ url_for('reading_entry_action', entry_id=entry.id) }}">
+                    <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
+                    <input type="hidden" name="action" value="unread">
+                    <button type="submit" class="btn"><i data-lucide="circle"></i>Unread</button>
+                </form>
+                <form method="post" action="{{ url_for('reading_entry_action', entry_id=entry.id) }}">
+                    <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
+                    <input type="hidden" name="action" value="reading">
+                    <button type="submit" class="btn"><i data-lucide="book-open"></i>Reading</button>
+                </form>
+                <form method="post" action="{{ url_for('reading_entry_action', entry_id=entry.id) }}">
+                    <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
+                    <input type="hidden" name="action" value="finished">
+                    <button type="submit" class="btn"><i data-lucide="check-check"></i>Finished</button>
+                </form>
+                <form method="post" action="{{ url_for('reading_entry_action', entry_id=entry.id) }}">
+                    <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
+                    <input type="hidden" name="action" value="archived">
+                    <button type="submit" class="btn"><i data-lucide="archive"></i>Archive</button>
+                </form>
+                <form method="post" action="{{ url_for('reading_entry_action', entry_id=entry.id) }}">
+                    <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
+                    <input type="hidden" name="action" value="{{ 'unstar' if entry.starred else 'star' }}">
+                    <button type="submit" class="btn"><i data-lucide="{{ 'star-off' if entry.starred else 'star' }}"></i>{{ 'Unstar' if entry.starred else 'Star' }}</button>
+                </form>
+            </div>
+
+            <div class="reading-body-row">
+                {% if article_html %}
+                <div class="reading-prose" dir="{{ article_dir }}" lang="{{ article_lang }}">
+                    {{ article_html }}
+                </div>
+                {% elif article_paragraphs %}
+                <div class="reading-prose" dir="{{ article_dir }}" lang="{{ article_lang }}">
+                    {% for paragraph in article_paragraphs %}
+                        <p dir="auto">{{ paragraph }}</p>
+                    {% endfor %}
+                </div>
+                {% elif entry.excerpt %}
+                <div class="reading-prose" dir="{{ article_dir }}" lang="{{ article_lang }}">
+                    <p dir="auto">{{ entry.excerpt }}</p>
+                </div>
+                <div class="reading-extraction-note">Only an excerpt is available locally. Open the original for the full article.</div>
+                {% else %}
+                <div class="reading-extraction-note">No clean article body is cached yet. The page stays readable, but the original source is the fallback.</div>
+                {% endif %}
+
+                {% if entry.extraction_status or entry.extraction_error %}
+                <div class="reading-extraction-note">
+                    Reader cache: {{ entry.extraction_status or 'not cached' }}{% if entry.content_cached_at %} at {{ entry.content_cached_at }}{% endif %}{% if entry.extraction_error %}. {{ entry.extraction_error }}{% endif %}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </article>
+</div>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    document.querySelectorAll('[data-reading-audio-shell]').forEach(function (shell) {
+        const button = shell.querySelector('[data-reading-audio-button]');
+        const speed = shell.querySelector('[data-reading-audio-speed]');
+        const follow = shell.querySelector('[data-reading-audio-follow]');
+        const followState = shell.querySelector('[data-reading-audio-follow-state]');
+        const audio = shell.querySelector('audio');
+        const status = shell.querySelector('[data-reading-audio-status]');
+        const audioUrl = shell.dataset.audioUrl || '';
+        const timingsUrl = shell.dataset.timingsUrl || '';
+        const entryId = audio && audio.dataset.entryId ? audio.dataset.entryId : '';
+        const version = audio && audio.dataset.audioVersion ? audio.dataset.audioVersion : '';
+        if (!button || !audio || !status) return;
+
+        let loaded = false;
+        let timingsLoaded = false;
+        let timingsLoading = false;
+        let sentenceTimings = [];
+        let syncLeadSeconds = 0;
+        let activeSentenceIndex = -1;
+        let followAlongEnabled = true;
+        let positionTimer = null;
+        let restoring = false;
+        let hasRestoredPosition = false;
+        let isUserSeeking = false;
+        let seekSettleTimer = null;
+        let syncFrameHandle = 0;
+
+        const requestSyncFrame = window.requestAnimationFrame
+            ? function (callback) { return window.requestAnimationFrame(callback); }
+            : function (callback) { return window.setTimeout(callback, 33); };
+        const cancelSyncFrame = window.cancelAnimationFrame
+            ? function (handle) { window.cancelAnimationFrame(handle); }
+            : function (handle) { window.clearTimeout(handle); };
+
+        function setStatus(message, isError) {
+            status.textContent = message || '';
+            status.classList.toggle('is-error', !!isError);
+        }
+
+        function storageKey(kind) {
+            return ['dragon', 'reading', 'tts', kind, entryId || 'article', version || 'noversion'].join(':');
+        }
+
+        function safeGet(key) {
+            try { return window.localStorage ? localStorage.getItem(key) : null; } catch (err) { return null; }
+        }
+
+        function safeSet(key, value) {
+            try { if (window.localStorage) localStorage.setItem(key, value); } catch (err) {}
+        }
+
+        function safeRemove(key) {
+            try { if (window.localStorage) localStorage.removeItem(key); } catch (err) {}
+        }
+
+        function followKey() {
+            return ['dragon', 'reading', 'tts', 'follow', entryId || 'article'].join(':');
+        }
+
+        function loadFollowPreference() {
+            var raw = safeGet(followKey());
+            if (raw === null || raw === undefined || raw === '') return true;
+            return raw !== '0' && raw !== 'false' && raw !== 'off';
+        }
+
+        function saveFollowPreference(enabled) {
+            safeSet(followKey(), enabled ? '1' : '0');
+        }
+
+        function splitSentences(text, blockType) {
+            var source = String(text || '');
+            if (blockType === 'title' || blockType === 'heading' || blockType === 'subheading') {
+                return source.trim() ? [source] : [];
+            }
+            var matches = source.match(/[^.!?\u061F\u06D4\u3002\uFF01\uFF1F]+[.!?\u061F\u06D4\u3002\uFF01\uFF1F]*/g);
+            if (!matches || !matches.length) return source.trim() ? [source] : [];
+            var merged = [];
+            matches.forEach(function (part) {
+                var trimmed = String(part || '').trim();
+                var previous = merged.length ? merged[merged.length - 1] : '';
+                if (previous && /\d\.$/.test(String(previous).trim()) && /^\d/.test(trimmed)) {
+                    merged[merged.length - 1] = previous + part;
+                    return;
+                }
+                merged.push(part);
+            });
+            matches = merged;
+            return matches;
+        }
+
+        function comparableSentence(text) {
+            return String(text || '')
+                .toLowerCase()
+                .replace(/[.!?\u061F\u06D4\u3002\uFF01\uFF1F]+$/g, '')
+                .replace(/\s+/g, ' ')
+                .trim();
+        }
+
+        function normalizeReadAlongBlockKey(text) {
+            return String(text || '')
+                .toLowerCase()
+                .replace(/\s+/g, ' ')
+                .trim();
+        }
+
+        function findSentenceIndex(core, state, authoritativeSentences) {
+            var current = comparableSentence(core);
+            if (!current) return -1;
+            for (var offset = 0; offset < 3; offset += 1) {
+                var candidate = authoritativeSentences[state.index + offset];
+                if (!candidate) continue;
+                var expected = comparableSentence(candidate.text || '');
+                if (!expected) continue;
+                if (current === expected || expected.indexOf(current) === 0 || current.indexOf(expected) === 0) {
+                    state.index += offset + 1;
+                    return Number(candidate.index);
+                }
+            }
+            return -1;
+        }
+
+        function wrapTextNode(node, state, authoritativeSentences, blockType) {
+            var value = node.nodeValue || '';
+            if (!value.trim()) return;
+            var parts = splitSentences(value, blockType);
+            if (!parts.length) return;
+            var fragment = document.createDocumentFragment();
+            parts.forEach(function (part) {
+                if (!part) return;
+                if (!part.trim()) {
+                    fragment.appendChild(document.createTextNode(part));
+                    return;
+                }
+                var leading = part.match(/^\s*/)[0] || '';
+                var trailing = part.match(/\s*$/)[0] || '';
+                var core = part.slice(leading.length, part.length - trailing.length);
+                if (leading) fragment.appendChild(document.createTextNode(leading));
+                if (core) {
+                    var sentenceIndex = findSentenceIndex(core, state, authoritativeSentences);
+                    if (sentenceIndex >= 0) {
+                        var span = document.createElement('span');
+                        span.className = 'reading-readalong-sentence';
+                        span.setAttribute('data-sentence-index', String(sentenceIndex));
+                        span.textContent = core;
+                        fragment.appendChild(span);
+                    } else {
+                        fragment.appendChild(document.createTextNode(core));
+                    }
+                }
+                if (trailing) fragment.appendChild(document.createTextNode(trailing));
+            });
+            if (fragment.childNodes.length) {
+                node.parentNode.replaceChild(fragment, node);
+            }
+        }
+
+        function normalizeDomBlockType(element) {
+            if (!element) return 'paragraph';
+            if (element.matches && element.matches('.reading-article-header h2')) return 'title';
+            var tag = String(element.tagName || '').toLowerCase();
+            if (tag === 'h1' || tag === 'h2') return 'heading';
+            if (tag === 'h3' || tag === 'h4' || tag === 'h5' || tag === 'h6') return 'subheading';
+            if (tag === 'li') return 'list_item';
+            if (tag === 'blockquote') return 'blockquote';
+            return 'paragraph';
+        }
+
+        function readAlongBlockTypeMatches(domType, payloadType) {
+            if (domType === payloadType) return true;
+            if ((domType === 'heading' || domType === 'subheading') && (payloadType === 'heading' || payloadType === 'subheading')) {
+                return true;
+            }
+            if (domType === 'paragraph' && (payloadType === 'paragraph' || payloadType === 'blockquote')) {
+                return true;
+            }
+            return false;
+        }
+
+        function collectReadAlongBlocks() {
+            var blocks = [];
+            var seenBodyBlockKeys = {};
+            var title = document.querySelector('.reading-article-header h2');
+            var titleKey = title ? normalizeReadAlongBlockKey(title.textContent || '') : '';
+            if (title) {
+                blocks.push({ element: title, type: 'title' });
+            }
+            var prose = document.querySelector('.reading-prose');
+            if (!prose || !prose.querySelectorAll) return blocks;
+            var selector = 'h1, h2, h3, h4, h5, h6, p, li, blockquote, figcaption';
+            var bodyBlocks = prose.querySelectorAll(selector);
+            Array.prototype.forEach.call(bodyBlocks, function (element) {
+                var parentBlock = element.parentElement && element.parentElement.closest ? element.parentElement.closest(selector) : null;
+                if (parentBlock && prose.contains(parentBlock)) return;
+                var blockKey = normalizeReadAlongBlockKey(element.textContent || '');
+                if (!blockKey || blockKey === titleKey || seenBodyBlockKeys[blockKey]) return;
+                seenBodyBlockKeys[blockKey] = true;
+                blocks.push({
+                    element: element,
+                    type: normalizeDomBlockType(element)
+                });
+            });
+            return blocks;
+        }
+
+        function wrapReadAlongBlock(element, blockMeta, blockSentences) {
+            if (!element || !blockSentences || !blockSentences.length) return;
+            var state = { index: 0 };
+            try {
+                var walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT, {
+                    acceptNode: function (node) {
+                        var parent = node.parentNode;
+                        if (!parent || !node.nodeValue || !node.nodeValue.trim()) return NodeFilter.FILTER_REJECT;
+                        if (parent.closest && parent.closest('[data-sentence-index], script, style, audio, iframe, button, select')) {
+                            return NodeFilter.FILTER_REJECT;
+                        }
+                        return NodeFilter.FILTER_ACCEPT;
+                    }
+                });
+                var nodes = [];
+                while (walker.nextNode()) nodes.push(walker.currentNode);
+                nodes.forEach(function (node) {
+                    wrapTextNode(node, state, blockSentences, blockMeta.type || 'paragraph');
+                });
+            } catch (err) {}
+        }
+
+        function wrapReadAlongText(payload) {
+            if (document.querySelector('[data-sentence-index]')) return;
+            var authoritativeSentences = (payload && payload.sentences) || [];
+            var authoritativeBlocks = (payload && payload.blocks) || [];
+            if (!authoritativeSentences.length || !authoritativeBlocks.length) return;
+            var sentencesByBlock = {};
+            authoritativeSentences.forEach(function (sentence) {
+                if (!sentence) return;
+                var blockIndex = String(sentence.block_index);
+                if (!sentencesByBlock[blockIndex]) sentencesByBlock[blockIndex] = [];
+                sentencesByBlock[blockIndex].push(sentence);
+            });
+            var domBlocks = collectReadAlongBlocks();
+            if (!domBlocks.length) return;
+            var payloadIndex = 0;
+            domBlocks.forEach(function (domBlock) {
+                while (payloadIndex < authoritativeBlocks.length) {
+                    var blockMeta = authoritativeBlocks[payloadIndex];
+                    payloadIndex += 1;
+                    if (!blockMeta) continue;
+                    if (!readAlongBlockTypeMatches(domBlock.type, blockMeta.type || 'paragraph')) continue;
+                    wrapReadAlongBlock(
+                        domBlock.element,
+                        blockMeta,
+                        sentencesByBlock[String(blockMeta.index)] || []
+                    );
+                    break;
+                }
+            });
+        }
+
+        function clearActiveSentence() {
+            if (activeSentenceIndex < 0) return;
+            var previous = document.querySelector('[data-sentence-index="' + activeSentenceIndex + '"]');
+            if (previous) previous.classList.remove('is-active');
+            activeSentenceIndex = -1;
+        }
+
+        function setActiveSentence(index) {
+            if (!followAlongEnabled) return;
+            if (index === activeSentenceIndex) return;
+            clearActiveSentence();
+            var next = document.querySelector('[data-sentence-index="' + index + '"]');
+            if (next) {
+                next.classList.add('is-active');
+                activeSentenceIndex = index;
+            }
+        }
+
+        function getEffectiveReadAlongTime() {
+            if (!isFinite(audio.currentTime)) return -1;
+            return audio.currentTime + syncLeadSeconds;
+        }
+
+        function resolveActiveSentenceIndex(current) {
+            if (!sentenceTimings.length) return -1;
+            if (!isFinite(current) || current < 0) return -1;
+            var firstStart = Number((sentenceTimings[0] || {}).start || 0);
+            if (current < firstStart) return -1;
+            var low = 0;
+            var high = sentenceTimings.length - 1;
+            var found = -1;
+            while (low <= high) {
+                var mid = Math.floor((low + high) / 2);
+                var start = Number((sentenceTimings[mid] || {}).start || 0);
+                if (current >= start) {
+                    found = mid;
+                    low = mid + 1;
+                } else {
+                    high = mid - 1;
+                }
+            }
+            if (found < 0) return -1;
+            return Number((sentenceTimings[found] || {}).index);
+        }
+
+        function updateReadAlongHighlight() {
+            if (!followAlongEnabled) return;
+            if (!sentenceTimings.length) return;
+            var current = getEffectiveReadAlongTime();
+            var found = resolveActiveSentenceIndex(current);
+            if (found >= 0) {
+                setActiveSentence(found);
+            } else if (current <= 0 || audio.ended) {
+                clearActiveSentence();
+            }
+        }
+
+        function stopReadAlongLoop() {
+            if (!syncFrameHandle) return;
+            cancelSyncFrame(syncFrameHandle);
+            syncFrameHandle = 0;
+        }
+
+        function runReadAlongLoop() {
+            syncFrameHandle = 0;
+            if (!followAlongEnabled || !sentenceTimings.length || audio.paused || audio.ended || isUserSeeking || restoring) {
+                return;
+            }
+            updateReadAlongHighlight();
+            syncFrameHandle = requestSyncFrame(runReadAlongLoop);
+        }
+
+        function ensureReadAlongLoop() {
+            if (syncFrameHandle) return;
+            if (!followAlongEnabled || !sentenceTimings.length || audio.paused || audio.ended || isUserSeeking || restoring) {
+                return;
+            }
+            syncFrameHandle = requestSyncFrame(runReadAlongLoop);
+        }
+
+        function loadTimings() {
+            if (timingsLoaded || timingsLoading || !timingsUrl || !window.fetch) return;
+            timingsLoading = true;
+            fetch(timingsUrl, { credentials: 'same-origin' })
+                .then(function (response) {
+                    if (!response.ok) throw new Error('Timing data unavailable');
+                    return response.json();
+                })
+                .then(function (payload) {
+                    var timings = payload && payload.timings;
+                    if (!timings || !timings.length) return;
+                    var authoritativeSentences = payload.sentences || timings;
+                    syncLeadSeconds = Number(payload.sync_lead_seconds || 0);
+                    if (!isFinite(syncLeadSeconds) || syncLeadSeconds < 0) syncLeadSeconds = 0;
+                    wrapReadAlongText({
+                        blocks: payload.blocks || [],
+                        sentences: authoritativeSentences
+                    });
+                    sentenceTimings = timings.filter(function (item) {
+                        return item && isFinite(Number(item.start));
+                    });
+                    timingsLoaded = true;
+                    if (followAlongEnabled) {
+                        updateReadAlongHighlight();
+                        ensureReadAlongLoop();
+                    }
+                })
+                .catch(function () {
+                    sentenceTimings = [];
+                })
+                .then(function () {
+                    timingsLoading = false;
+                });
+        }
+
+        function savePosition(force) {
+            if (restoring || isUserSeeking) return;
+            if (!entryId || !version || !audio.duration || !isFinite(audio.currentTime)) return;
+            if (!force && audio.currentTime < 1) return;
+            var payload = JSON.stringify({
+                t: Math.max(0, Math.floor(audio.currentTime * 1000)),
+                d: Math.max(0, Math.floor(audio.duration * 1000)),
+                v: version,
+                when: Date.now()
+            });
+            safeSet(storageKey('position'), payload);
+        }
+
+        function restorePosition() {
+            if (hasRestoredPosition || !entryId || !version) return;
+            hasRestoredPosition = true;
+            var raw = safeGet(storageKey('position'));
+            if (!raw) return;
+            var saved;
+            try { saved = JSON.parse(raw); } catch (err) { safeRemove(storageKey('position')); return; }
+            if (!saved || saved.v !== version) return;
+            var seconds = Number(saved.t || 0) / 1000;
+            if (!isFinite(seconds) || seconds <= 3) return;
+            if (audio.duration && isFinite(audio.duration) && seconds >= audio.duration - 3) return;
+            restoring = true;
+            try { audio.currentTime = seconds; } catch (err) {}
+            window.setTimeout(function () {
+                restoring = false;
+            }, 0);
+            setStatus('Restored last position.', false);
+        }
+
+        function applyPlaybackRate(rate) {
+            var numeric = Number(rate);
+            if (!isFinite(numeric) || numeric <= 0) numeric = 1;
+            audio.playbackRate = numeric;
+            if (speed) {
+                speed.value = String(numeric);
+            }
+            safeSet(storageKey('speed'), String(numeric));
+        }
+
+        function syncFollowButton() {
+            if (!follow) return;
+            follow.setAttribute('aria-checked', followAlongEnabled ? 'true' : 'false');
+            if (followState) {
+                followState.textContent = followAlongEnabled ? 'On' : 'Off';
+            }
+        }
+
+        function setFollowAlong(enabled) {
+            followAlongEnabled = !!enabled;
+            saveFollowPreference(followAlongEnabled);
+            syncFollowButton();
+            if (followAlongEnabled) {
+                updateReadAlongHighlight();
+                ensureReadAlongLoop();
+            } else {
+                stopReadAlongLoop();
+                clearActiveSentence();
+            }
+        }
+
+        followAlongEnabled = loadFollowPreference();
+        syncFollowButton();
+        if (follow) {
+            follow.addEventListener('click', function () {
+                setFollowAlong(!followAlongEnabled);
+            });
+        }
+
+        button.addEventListener('click', function () {
+            if (!audioUrl) {
+                setStatus('Audio is not available for this article yet.', true);
+                return;
+            }
+            if (!loaded) {
+                setStatus('Loading audio...', false);
+                audio.src = audioUrl;
+                audio.hidden = false;
+                audio.load();
+                loadTimings();
+                loaded = true;
+            } else {
+                audio.hidden = false;
+                loadTimings();
+            }
+        });
+
+        if (speed) {
+            var savedSpeed = Number(safeGet(storageKey('speed')) || 1);
+            if (!isFinite(savedSpeed) || savedSpeed <= 0) savedSpeed = 1;
+            speed.value = String(savedSpeed);
+            applyPlaybackRate(savedSpeed);
+            speed.addEventListener('change', function () {
+                applyPlaybackRate(speed.value);
+                setStatus('Playback speed saved.', false);
+            });
+        }
+
+        audio.addEventListener('loadedmetadata', function () {
+            restorePosition();
+            if (followAlongEnabled) {
+                updateReadAlongHighlight();
+                ensureReadAlongLoop();
+            }
+            setStatus('Audio ready.', false);
+        });
+        audio.addEventListener('canplay', function () {
+            restorePosition();
+            if (followAlongEnabled) {
+                updateReadAlongHighlight();
+                ensureReadAlongLoop();
+            }
+            if (status.textContent !== 'Audio ready.') {
+                setStatus('Audio ready.', false);
+            }
+        });
+        audio.addEventListener('seeking', function () {
+            isUserSeeking = true;
+            stopReadAlongLoop();
+            if (positionTimer) {
+                window.clearTimeout(positionTimer);
+                positionTimer = null;
+            }
+            if (seekSettleTimer) {
+                window.clearTimeout(seekSettleTimer);
+                seekSettleTimer = null;
+            }
+        });
+        audio.addEventListener('seeked', function () {
+            if (seekSettleTimer) {
+                window.clearTimeout(seekSettleTimer);
+            }
+            seekSettleTimer = window.setTimeout(function () {
+                isUserSeeking = false;
+                seekSettleTimer = null;
+                if (followAlongEnabled) {
+                    updateReadAlongHighlight();
+                    ensureReadAlongLoop();
+                }
+                savePosition(true);
+            }, 250);
+        });
+        audio.addEventListener('timeupdate', function () {
+            if (restoring || isUserSeeking) return;
+            if (!positionTimer) {
+                positionTimer = window.setTimeout(function () {
+                    positionTimer = null;
+                    savePosition(false);
+                }, 4000);
+            }
+        });
+        audio.addEventListener('play', function () {
+            if (followAlongEnabled) {
+                updateReadAlongHighlight();
+                ensureReadAlongLoop();
+            }
+        });
+        audio.addEventListener('playing', function () {
+            if (followAlongEnabled) {
+                ensureReadAlongLoop();
+            }
+        });
+        audio.addEventListener('waiting', function () {
+            stopReadAlongLoop();
+        });
+        audio.addEventListener('pause', function () {
+            stopReadAlongLoop();
+            if (isUserSeeking || restoring) return;
+            if (followAlongEnabled) {
+                updateReadAlongHighlight();
+            }
+            savePosition(true);
+        });
+        audio.addEventListener('ended', function () {
+            stopReadAlongLoop();
+            if (seekSettleTimer) {
+                window.clearTimeout(seekSettleTimer);
+                seekSettleTimer = null;
+            }
+            clearActiveSentence();
+            safeRemove(storageKey('position'));
+        });
+        audio.addEventListener('error', function () {
+            stopReadAlongLoop();
+            setStatus('Audio could not be prepared for this article.', true);
+        });
+
+        window.addEventListener('beforeunload', function () {
+            stopReadAlongLoop();
+            if (seekSettleTimer) {
+                window.clearTimeout(seekSettleTimer);
+                seekSettleTimer = null;
+            }
+            savePosition(true);
+        });
+    });
+});
+</script>
+{% endblock %}

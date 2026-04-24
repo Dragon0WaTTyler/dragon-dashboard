@@ -1,0 +1,215 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+    .reading-feedback{display:grid;gap:10px;margin-bottom:18px}
+    .reading-feedback .message{padding:12px 14px;border-radius:16px;border:1px solid var(--border);background:rgba(255,255,255,.03);color:var(--text-2)}
+    .reading-feedback .message.error{border-color:rgba(255,0,0,.28);color:#f0b0b0}
+    .reading-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px;margin-top:18px}
+    .reading-card{display:flex;flex-direction:column;min-height:100%;padding:0;overflow:hidden}
+    .reading-card-media{display:block;aspect-ratio:16/9;background:rgba(255,255,255,.035);border-bottom:1px solid var(--border);color:var(--muted);text-decoration:none;overflow:hidden}
+    .reading-card-media img{width:100%;height:100%;object-fit:cover;display:block;filter:saturate(.92)}
+    .reading-card-placeholder{height:100%;display:flex;flex-direction:column;justify-content:space-between;gap:10px;padding:12px 13px 13px;background:
+        radial-gradient(circle at 20% 18%, rgba(255,255,255,.08), transparent 30%),
+        radial-gradient(circle at 82% 74%, rgba(255,255,255,.06), transparent 26%),
+        linear-gradient(180deg, rgba(255,255,255,.055), rgba(255,255,255,.016));
+        color:var(--muted);text-decoration:none;overflow:hidden}
+    .reading-card-fallback-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+    .reading-card-fallback-badge{display:inline-flex;align-items:center;gap:6px;max-width:100%;padding:5px 8px;border-radius:999px;border:1px solid var(--border);background:rgba(255,255,255,.04);font-size:.58rem;line-height:1.1;letter-spacing:.12em;text-transform:uppercase;color:var(--text-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .reading-card-fallback-badge i{width:12px;height:12px;opacity:.75;flex:0 0 auto}
+    .reading-card-fallback-mark{display:grid;place-items:center;flex:1;min-height:0;font-size:2rem;color:rgba(255,255,255,.72)}
+    .reading-card-fallback-foot{display:flex;align-items:flex-end;justify-content:space-between;gap:8px}
+    .reading-card-fallback-foot span{font-size:.66rem;letter-spacing:.12em;text-transform:uppercase;color:var(--text-2)}
+    .reading-card-fallback-category{padding:4px 7px;border-radius:999px;border:1px solid rgba(255,255,255,.08);background:rgba(0,0,0,.14);font-size:.56rem;line-height:1.1;letter-spacing:.12em;text-transform:uppercase;color:var(--text-2);white-space:nowrap}
+    .reading-card-body{display:flex;flex-direction:column;gap:8px;padding:14px 16px 15px;flex:1;min-height:0}
+    .reading-card.is-fresh-import{box-shadow:inset 0 0 0 1px rgba(255,255,255,.08)}
+    .reading-card-title{font-size:1.02rem;font-weight:700;line-height:1.28;color:var(--heading);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;unicode-bidi:plaintext}
+    .reading-card-title[dir="rtl"]{text-align:right}
+    .reading-card-title[dir="ltr"]{text-align:left}
+    .reading-card-title a{color:inherit;text-decoration:none}
+    .reading-card-title a:hover,.reading-card-title a:focus{color:var(--text);text-decoration:underline;text-decoration-color:rgba(255,0,0,.45);outline:none}
+    .reading-card-source{display:inline-flex;align-items:center;width:fit-content;max-width:100%;padding:5px 9px;border-radius:999px;border:1px solid rgba(255,255,255,.09);background:rgba(255,255,255,.025);font-size:.74rem;line-height:1.25;color:var(--heading);font-weight:600;word-break:break-word;align-self:flex-start}
+    .reading-card-source[dir="rtl"]{text-align:right;align-self:flex-end}
+    .reading-card-source[dir="ltr"]{text-align:left;align-self:flex-start}
+    .reading-card-source-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+    .reading-fresh-pill{display:inline-flex;align-items:center;gap:4px;padding:3px 7px;border-radius:999px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.03);font-size:.56rem;line-height:1.1;letter-spacing:.12em;text-transform:uppercase;color:var(--text-2);white-space:nowrap}
+    .reading-sync-row{display:flex;align-items:center;justify-content:space-between;gap:10px 14px;flex-wrap:wrap;margin-top:16px;padding-top:14px;border-top:1px solid rgba(255,255,255,.06)}
+    .reading-sync-meta{display:flex;align-items:center;gap:8px 10px;flex-wrap:wrap;color:var(--text-2);font-size:.72rem;line-height:1.35}
+    .reading-sync-meta span{white-space:nowrap}
+    .reading-sync-row .btn{padding:8px 12px;min-height:32px}
+    .reading-card-badges{display:flex;align-items:center;gap:7px 8px;flex-wrap:wrap;margin-top:-1px}
+    .reading-entry-meta{display:flex;align-items:center;gap:8px 10px;flex-wrap:wrap;font-size:.76rem;line-height:1.35}
+    .reading-entry-footer{display:grid;gap:8px;margin-top:auto;padding-top:2px}
+    .reading-entry-actions{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+    .reading-entry-actions form{margin:0}
+    .reading-entry-actions .btn{padding:6px 8px;min-height:28px;font-size:.65rem;line-height:1;letter-spacing:.05em;background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.07);color:var(--text-2);box-shadow:none;border-radius:999px}
+    .reading-entry-actions .btn:hover,.reading-entry-actions .btn:focus{background:rgba(255,255,255,.07);border-color:rgba(255,255,255,.12);color:var(--text)}
+    .reading-entry-actions .btn i{width:13px;height:13px;color:var(--accent);opacity:.72}
+    .reading-entry-actions .btn:hover i,.reading-entry-actions .btn:focus i{opacity:.95}
+    .reading-entry-actions .btn:active{background:rgba(255,255,255,.1);transform:translateY(1px)}
+    .reading-status{display:inline-flex;align-items:center;gap:6px;padding:4px 8px;border-radius:999px;border:1px solid var(--border);background:rgba(255,255,255,.04);font-size:.68rem;text-transform:uppercase;letter-spacing:.12em;color:var(--text-2)}
+    .reading-status-unread{color:#9ecbff}
+    .reading-status-reading{color:#f0d38b}
+    .reading-status-finished{color:#8bd1a8}
+    .reading-status-archived{color:#b3b3b3}
+    .reading-star{color:var(--accent)}
+    .reading-source-pill{font-size:.68rem;text-transform:uppercase;letter-spacing:.12em;color:var(--text-2)}
+    .reading-category-pill{font-size:.64rem;text-transform:uppercase;letter-spacing:.12em;color:var(--text-2);padding:3px 7px;border-radius:999px;border:1px solid var(--border);background:rgba(255,255,255,.03);white-space:nowrap}
+    .reading-topic-pill{font-size:.58rem;text-transform:uppercase;letter-spacing:.12em;color:var(--text-2);padding:3px 7px;border-radius:999px;border:1px solid rgba(255,255,255,.06);background:rgba(255,255,255,.02);white-space:nowrap}
+    .reading-metadata-row{display:flex;align-items:center;gap:8px 10px;flex-wrap:wrap}
+    .reading-metadata-row span{white-space:nowrap}
+    .reading-original-link{color:var(--link-muted);font-size:.78rem;text-decoration:none}
+    .reading-original-link:hover,.reading-original-link:focus{text-decoration:underline;outline:none}
+    @media (max-width:700px){
+        .reading-grid{grid-template-columns:1fr}
+    }
+</style>
+<section class="page-hero">
+    <div class="hero-meta">
+        <span class="hero-badge">Reading</span>
+        <span>{{ source_count }} sources</span>
+        <span>{{ summary.unread }} unread</span>
+        <span>{{ last_sync_at_display }}</span>
+    </div>
+    <h2>{{ title }}</h2>
+    <p class="subhead">A quiet incoming layer for RSS and saved articles. Cards open inside Dragon first, with the original source one click away.</p>
+    <div class="reading-sync-row">
+        <div class="reading-sync-meta">
+            <span>{{ fresh_count }} new since last sync</span>
+            <span>{{ last_sync_message or 'Ready to check for updates.' }}</span>
+        </div>
+        <form method="post" action="{{ url_for('reading_sync') }}">
+            <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
+            <button type="submit" class="btn"><i data-lucide="refresh-cw"></i>Check new</button>
+        </form>
+    </div>
+</section>
+
+{% if success_message or error_message %}
+<section class="reading-feedback">
+    {% if success_message %}
+    <div class="message">{{ success_message }}</div>
+    {% endif %}
+    {% if error_message %}
+    <div class="message error">{{ error_message }}</div>
+    {% endif %}
+</section>
+{% endif %}
+
+<section class="surface-card section-card">
+    <form method="get" class="filter-form">
+        <input type="search" name="search" value="{{ current_filters.search }}" placeholder="Search articles, sources, topics..." autocomplete="off">
+        <select name="source">
+            {% for source in source_options %}
+            <option value="{{ source.id }}" {% if source.id == current_filters.source %}selected{% endif %}>{{ source.name }}</option>
+            {% endfor %}
+        </select>
+        <select name="status">
+            {% for value, label in status_options %}
+            <option value="{{ value }}" {% if value == current_filters.status %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+        <select name="category">
+            {% for value, label in category_options %}
+            <option value="{{ value }}" {% if value == current_filters.category %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+        </select>
+        <button type="submit" class="filter-submit"><i data-lucide="search"></i>Filter</button>
+        {% if current_filters.search or current_filters.source != 'All Sources' or current_filters.status != 'All Status' or current_filters.category != 'All Categories' %}
+        <a class="btn" href="{{ url_for('reading') }}"><i data-lucide="rotate-ccw"></i>Reset</a>
+        {% endif %}
+    </form>
+</section>
+
+<section class="surface-card section-card">
+    <div class="detail-header">
+        <div>
+            <div class="hero-meta">
+                <span class="hero-badge">Inbox</span>
+                <span>{{ total_filtered }} shown</span>
+                <span>{{ summary.starred }} starred</span>
+                <span>{{ summary.reading }} reading</span>
+            </div>
+            <h3 style="font-size:2rem; margin-top:12px;">Articles</h3>
+        </div>
+    </div>
+    <div class="reading-grid">
+        {% for entry in entries %}
+        <article class="surface-card reading-card{% if entry.is_fresh_import %} is-fresh-import{% endif %}">
+            <a class="reading-card-media" href="{{ url_for('reading_article', entry_id=entry.id, **filter_query) }}" aria-label="Read {{ entry.title }}">
+                {% if entry.image_url %}
+                <img src="{{ entry.image_url }}" alt="" loading="lazy" referrerpolicy="no-referrer">
+                {% else %}
+                <span class="reading-card-placeholder">
+                    <span class="reading-card-fallback-head">
+                        <span class="reading-card-fallback-badge"><i data-lucide="book-open"></i>{{ entry.source }}</span>
+                        {% if entry.category %}<span class="reading-card-fallback-category">{{ entry.category|title }}</span>{% endif %}
+                    </span>
+                    <span class="reading-card-fallback-mark"><i data-lucide="newspaper"></i></span>
+                    <span class="reading-card-fallback-foot">
+                        <span class="reading-topic-pill">{{ entry.topic_display or 'Article' }}</span>
+                        {% if entry.published_display %}<span>{{ entry.published_display }}</span>{% endif %}
+                    </span>
+                </span>
+                {% endif %}
+            </a>
+            <div class="reading-card-body">
+                <div class="reading-card-source-row">
+                    <div class="reading-card-source" dir="{{ entry.source_dir or 'auto' }}">{{ entry.source }}</div>
+                    {% if entry.is_fresh_import %}<span class="reading-fresh-pill">New</span>{% endif %}
+                </div>
+                <div class="reading-card-badges" dir="auto">
+                    {% if entry.category %}<span class="reading-category-pill">{{ entry.category|title }}</span>{% endif %}
+                    <span class="reading-status reading-status-{{ entry.status }}">{{ entry.status }}</span>
+                    {% if entry.topic_display %}<span class="reading-topic-pill">{{ entry.topic_display }}</span>{% endif %}
+                    {% if entry.starred %}<span class="reading-star">Starred</span>{% endif %}
+                </div>
+                <div class="reading-card-title" dir="{{ entry.title_dir or 'auto' }}">
+                    <a href="{{ url_for('reading_article', entry_id=entry.id, **filter_query) }}">{{ entry.title }}</a>
+                </div>
+                <div class="reading-entry-meta muted">
+                    {% if entry.published_display %}<span>Published {{ entry.published_display }}</span>{% endif %}
+                    {% if entry.added_display %}<span>Added {{ entry.added_display }}</span>{% endif %}
+                </div>
+                <div class="reading-entry-footer">
+                    <div class="reading-entry-actions">
+                        <form method="post" action="{{ url_for('reading_entry_action', entry_id=entry.id) }}">
+                            <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
+                            <input type="hidden" name="action" value="unread">
+                            <button type="submit" class="btn"><i data-lucide="circle"></i>Unread</button>
+                        </form>
+                        <form method="post" action="{{ url_for('reading_entry_action', entry_id=entry.id) }}">
+                            <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
+                            <input type="hidden" name="action" value="reading">
+                            <button type="submit" class="btn"><i data-lucide="book-open"></i>Reading</button>
+                        </form>
+                        <form method="post" action="{{ url_for('reading_entry_action', entry_id=entry.id) }}">
+                            <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
+                            <input type="hidden" name="action" value="finished">
+                            <button type="submit" class="btn"><i data-lucide="check-check"></i>Finished</button>
+                        </form>
+                        <form method="post" action="{{ url_for('reading_entry_action', entry_id=entry.id) }}">
+                            <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
+                            <input type="hidden" name="action" value="archived">
+                            <button type="submit" class="btn"><i data-lucide="archive"></i>Archive</button>
+                        </form>
+                        <form method="post" action="{{ url_for('reading_entry_action', entry_id=entry.id) }}">
+                            <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
+                            <input type="hidden" name="action" value="{{ 'unstar' if entry.starred else 'star' }}">
+                            <button type="submit" class="btn"><i data-lucide="{{ 'star-off' if entry.starred else 'star' }}"></i>{{ 'Unstar' if entry.starred else 'Star' }}</button>
+                        </form>
+                    </div>
+                    {% if entry.url %}
+                    <a class="reading-original-link" href="{{ entry.url }}" target="_blank" rel="noopener">Open original</a>
+                    {% endif %}
+                </div>
+            </div>
+        </article>
+        {% endfor %}
+        {% if not entries and fresh_only %}
+        <div class="empty-state">Already up to date.</div>
+        {% elif not entries %}
+        <div class="empty-state">No reading entries match these filters.</div>
+        {% endif %}
+    </div>
+</section>
+{% endblock %}

@@ -1,0 +1,740 @@
+﻿{% extends "base.html" %}
+{% block content %}
+{% if missing %}
+<div class="empty-state">This video detail page could not find the requested entry.</div>
+{% else %}
+<section class="page-hero">
+    <div class="hero-meta">
+        <span class="hero-badge{% if entry_type == 'youtube' %} matte-tag youtube-detail{% endif %}">{{ 'YouTube Detail' if entry_type == 'youtube' else 'Movie Detail' }}</span>
+        {% if entry_type == 'youtube' %}
+        <span>{{ entry.playlist_name }}</span>
+        {% else %}
+        <span>{{ entry.category or 'Library Entry' }}</span>
+        {% endif %}
+    </div>
+    <h2 class="title-scaled">{{ entry.title or entry.name }}</h2>
+    <p class="subhead">
+        {% if entry_type == 'youtube' %}
+        Focus view for a single video with its related playlist right below, so you can stay in context while moving through a lesson set or study queue.
+        {% else %}
+        A more intentional film page for your library entry, centered on the poster, metadata, overview, and the related shelf below.
+        {% endif %}
+    </p>
+</section>
+
+{% if entry_type == 'youtube' %}
+<section class="detail-grid">
+    <div class="player-column">
+        <section class="mode-toolbar">
+            <div class="mode-toolbar-copy">
+                <div class="hero-meta">
+                    <span class="hero-badge matte-tag">Viewing Modes</span>
+                    <span>{{ 'Player Controls' if player_video_id else 'Detail View' }}</span>
+                </div>
+            </div>
+            <div class="mode-toolbar-actions">
+                <button class="btn mode-toggle" id="cinemaModeToggle" type="button" aria-pressed="false"><i data-lucide="panel-top-open"></i><span>Cinema Mode</span></button>
+                <button class="btn mode-toggle" id="ultraCinemaToggle" type="button" aria-pressed="false"><i data-lucide="monitor-play"></i><span>Ultra Cinema</span></button>
+                <button class="btn mode-toggle" id="theaterModeToggle" type="button" aria-pressed="false"><i data-lucide="panel-top"></i><span>Theater Mode</span></button>
+            </div>
+        </section>
+        <div class="player-shell">
+            {% if player_video_id %}
+            <iframe id="youtubePlayer" src="https://www.youtube.com/embed/{{ player_video_id }}?enablejsapi=1&rel=0" title="{{ entry.title or entry.name }}" allowfullscreen allow="autoplay; encrypted-media"></iframe>
+            {% endif %}
+        </div>
+    </div>
+
+    <aside class="detail-sidebar">
+        <section class="surface-card section-card">
+            <div class="info-stack">
+                <div class="info-row"><span>Type</span><strong>YouTube Video</strong></div>
+                {% if entry.feed_source == 'pockettube_group' %}
+                <div class="info-row"><span>Group</span><strong>{{ entry.group_name or entry.playlist_name }}</strong></div>
+                <div class="info-row"><span>Source</span><strong>{{ entry.source_name or 'PocketTube' }}</strong></div>
+                {% else %}
+                <div class="info-row"><span>Playlist</span><strong>{{ entry.playlist_name }}</strong></div>
+                {% endif %}
+                <div class="info-row"><span>Video ID</span><strong>{{ entry.video_id }}</strong></div>
+                <div class="info-row"><span>Duration</span><strong>{{ entry.duration or '0:00' }}</strong></div>
+                {% if entry.feed_source == 'pockettube_group' and entry.published_display %}
+                <div class="info-row"><span>Published</span><strong>{{ entry.published_display }}</strong></div>
+                {% endif %}
+            </div>
+        </section>
+
+        <section class="surface-card section-card">
+            {% if entry.feed_source == 'pockettube_group' and entry.group_back_url %}
+            <a class="btn" href="{{ entry.group_back_url }}" data-scroll-top="true" style="margin-bottom:10px;"><i data-lucide="corner-up-left"></i>Back to group</a>
+            <div class="muted" style="margin-bottom:10px; line-height:1.5;">
+                {{ entry.group_back_context or entry.group_name or entry.playlist_name }}
+            </div>
+            {% endif %}
+            <button class="btn study-with-ai-btn" type="button" data-ai-mode="{{ 'german' if entry.section and 'german' in entry.section|lower else 'study' }}" data-ai-title="{{ entry.title or entry.name }}" data-ai-playlist="{{ entry.playlist_name or related_title }}" data-ai-section="{{ entry.section or '' }}" data-ai-video-id="{{ entry.video_id or '' }}"><i data-lucide="sparkles"></i>Study with AI</button>
+            {% if entry.feed_source == 'pockettube_group' %}
+            <button class="btn mode-toggle pockettube-watched-toggle" id="pockettubeWatchedBtn" type="button" data-entry-id="{{ entry.entry_id }}" data-video-id="{{ entry.video_id or '' }}" data-playlist-item-id="{{ entry.playlist_item_id or '' }}" data-state-key="{{ entry.state_key or entry.watch_key or entry.video_id or entry.entry_id or (entry.playlist_item_id or '') }}" data-watch-key="{{ entry.watch_key or entry.video_id or entry.entry_id or (entry.playlist_item_id or '') }}" style="margin-top:10px;" aria-pressed="false"><i data-lucide="eye"></i><span>Mark Watched</span></button>
+            {% endif %}
+            <a class="btn" href="https://youtube.com/watch?v={{ entry.video_id }}" target="_blank"><i data-lucide="play-circle"></i>Open on YouTube</a>
+            <a class="btn" href="{{ entry.playlist_url }}" target="_blank" style="margin-top:10px;"><i data-lucide="list-video"></i>Open Playlist</a>
+            {% if entry.feed_source == 'pockettube_group' %}
+            <div class="muted" style="margin-top:10px; line-height:1.6;">
+                {{ entry.channel_name or entry.category }}{% if entry.duration %} | {{ entry.duration }}{% endif %}{% if entry.group_name %} | {{ entry.group_name }}{% endif %}
+            </div>
+            {% endif %}
+            {% if delete_endpoint %}
+            <button class="btn" id="deleteFromYouTubeBtn" type="button" style="margin-top:10px;"><i data-lucide="trash-2"></i>Remove from YouTube Playlist</button>
+            <div id="deleteStatus" class="muted" style="margin-top:12px; display:none;"></div>
+            {% endif %}
+            {% if request.args.get('pockettube_debug') == '1' and entry.feed_source == 'pockettube_group' %}
+            <div id="pockettubeDetailDebug" style="margin-top:14px; padding:14px; border:2px dashed #ff0000; background:#fff; color:#111; font:600 13px/1.6 Arial, sans-serif; display:block; white-space:pre-wrap;">
+                <div style="font-size:18px; font-weight:800; margin-bottom:8px;">PocketTube Detail Debug</div>
+                <div>Current watched mode: <span data-pockettube-detail-debug-mode>unknown</span></div>
+                <div>Video title: <span data-pockettube-detail-debug-title></span></div>
+                <div>state_key: <span data-pockettube-detail-debug-state-key></span></div>
+                <div>watch_key: <span data-pockettube-detail-debug-watch-key></span></div>
+                <div>video_id: <span data-pockettube-detail-debug-video-id></span></div>
+                <div>entry_id: <span data-pockettube-detail-debug-entry-id></span></div>
+                <div>playlist_item_id: <span data-pockettube-detail-debug-playlist-item-id></span></div>
+                <div>Watched now: <span data-pockettube-detail-debug-watched>unknown</span></div>
+                <div>Watched map count: <span data-pockettube-detail-debug-count>0</span></div>
+                <div>Last action: <span data-pockettube-detail-debug-last-action>none</span></div>
+            </div>
+            {% endif %}
+        </section>
+    </aside>
+</section>
+{% else %}
+<section class="surface-card section-card" style="padding:28px;">
+    <div style="display:grid; grid-template-columns:minmax(220px,280px) minmax(0,1fr); gap:26px; align-items:start;">
+        <div style="display:grid; gap:16px;">
+            <div class="media-poster" style="max-width:280px; margin:0 auto;">
+                {% if entry.poster %}
+                <img src="{{ entry.poster }}" alt="{{ entry.name }}">
+                {% else %}
+                <div class="poster-placeholder">No Poster</div>
+                {% endif %}
+            </div>
+            <section class="surface-card" style="padding:18px; border-radius:22px;">
+                <div class="info-stack">
+                    <div class="info-row"><span>Type</span><strong>Film Entry</strong></div>
+                    <div class="info-row"><span>Status</span><strong>{{ entry.status or 'Unknown' }}</strong></div>
+                    <div class="info-row"><span>Category</span><strong>{{ entry.category or 'Unknown' }}</strong></div>
+                    <div class="info-row"><span>Score</span><strong style="color: {{ score_color.get(entry.score, '#777') }};">{{ score_display.get(entry.score, 'Not Rated') }}</strong></div>
+                    {% if entry.tmdb_rating %}
+                    <div class="info-row"><span>TMDb Rating</span><strong>{{ entry.tmdb_rating }}</strong></div>
+                    {% endif %}
+                </div>
+            </section>
+        </div>
+
+        <div style="display:grid; gap:20px;">
+            <div>
+                <div class="hero-meta">
+                    <span class="hero-badge matte-tag movie-detail">Film Page</span>
+                    <span>Library entry</span>
+                </div>
+                <h3 class="title-scaled" style="margin-top:14px;">{{ entry.title or entry.name }}</h3>
+                <div class="hero-meta" style="margin-top:14px; gap:10px 12px;">
+                    {% if entry.year %}
+                    <span class="score-pill" style="color:var(--text);">{{ entry.year }}</span>
+                    {% endif %}
+                    {% if entry.runtime %}
+                    <span class="score-pill" style="color:var(--text);">{{ entry.runtime }} min</span>
+                    {% endif %}
+                    {% if entry.director_entries %}
+                    {% for director in entry.director_entries %}
+                    <a class="score-pill" href="{{ director.detail_url }}" style="color:var(--text); text-decoration:none;">{{ director.name }}</a>
+                    {% endfor %}
+                    {% elif entry.director %}
+                    <span class="score-pill" style="color:var(--text);">{{ entry.director }}</span>
+                    {% endif %}
+                    {% if entry.genre_entries %}
+                    {% for genre in entry.genre_entries %}
+                    <a class="score-pill" href="{{ genre.detail_url }}" style="color:var(--text); text-decoration:none;">{{ genre.name }}</a>
+                    {% endfor %}
+                    {% endif %}
+                </div>
+            </div>
+
+            {% if entry.overview %}
+            <section class="surface-card" style="padding:22px; border-radius:24px;">
+                <div class="hero-meta">
+                    <span class="hero-badge matte-tag">Overview</span>
+                    <span>Film context</span>
+                </div>
+                <p class="subhead" style="margin-top:14px; max-width:none; font-size:1rem; line-height:1.9;">{{ entry.overview }}</p>
+            </section>
+            {% endif %}
+
+            <section class="surface-card" style="padding:22px; border-radius:24px;">
+                <div class="hero-meta">
+                    <span class="hero-badge matte-tag">Details</span>
+                    <span>Synced library fields</span>
+                </div>
+                <div class="info-stack" style="margin-top:16px; display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px 18px;">
+                    {% if entry.year %}
+                    <div class="info-row"><span>Year</span><strong>{{ entry.year }}</strong></div>
+                    {% endif %}
+                    {% if entry.director_entries %}
+                    <div class="info-row"><span>Director Entry</span><strong>{% for director in entry.director_entries %}<a href="{{ director.detail_url }}" style="color:inherit; text-decoration:none;">{{ director.name }}</a>{% if not loop.last %}, {% endif %}{% endfor %}</strong></div>
+                    {% elif entry.director %}
+                    <div class="info-row"><span>Director</span><strong>{{ entry.director }}</strong></div>
+                    {% endif %}
+                    {% if entry.genre_entries %}
+                    <div class="info-row"><span>Genres</span><strong>{% for genre in entry.genre_entries %}<a href="{{ genre.detail_url }}" style="color:inherit; text-decoration:none;">{{ genre.name }}</a>{% if not loop.last %}, {% endif %}{% endfor %}</strong></div>
+                    {% elif entry.genres %}
+                    <div class="info-row"><span>Genres</span><strong>{{ entry.genres }}</strong></div>
+                    {% endif %}
+                    {% if entry.runtime %}
+                    <div class="info-row"><span>Runtime</span><strong>{{ entry.runtime }} min</strong></div>
+                    {% endif %}
+                </div>
+            </section>
+
+            {% if top_billed_cast %}
+            <section class="surface-card" style="padding:22px; border-radius:24px;">
+                <div class="hero-meta">
+                    <span class="hero-badge matte-tag">Top Billed Cast</span>
+                    <span>{{ top_billed_cast|length }} featured</span>
+                </div>
+                <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:14px; margin-top:16px;">
+                    {% for cast_member in top_billed_cast %}
+                    <article style="display:grid; gap:12px; padding:14px; border-radius:20px; border:1px solid var(--border); background:linear-gradient(180deg,rgba(255,255,255,.02),rgba(255,255,255,.005)), var(--card);">
+                        {% if cast_member.profile_url %}
+                        <div style="width:100%; aspect-ratio:1/1.15; border-radius:16px; overflow:hidden; background:var(--bg-soft);">
+                            <img src="{{ cast_member.profile_url }}" alt="{{ cast_member.name }}" style="width:100%; height:100%; object-fit:cover;" loading="lazy">
+                        </div>
+                        {% endif %}
+                        <div style="display:grid; gap:4px;">
+                            <div style="font-weight:700; color:var(--heading); line-height:1.4;">{{ cast_member.name }}</div>
+                            {% if cast_member.character %}
+                            <div class="card-meta" style="font-size:.8rem;">{{ cast_member.character }}</div>
+                            {% endif %}
+                        </div>
+                    </article>
+                    {% endfor %}
+                </div>
+            </section>
+            {% endif %}
+
+            <div class="detail-controls">
+                {% if entry.trailer %}
+                <a class="btn" href="{{ entry.trailer }}" target="_blank"><i data-lucide="clapperboard"></i>Open Trailer</a>
+                {% endif %}
+                <a class="btn" href="{{ yts_url(entry.name) }}" target="_blank"><i data-lucide="search"></i>Search on YTS</a>
+                <a class="btn" href="{{ url_for('refresh', scope='films', next=request.full_path if request.query_string else request.path) }}"><i data-lucide="refresh-cw"></i>Refresh Movie Data</a>
+            </div>
+        </div>
+    </div>
+</section>
+{% endif %}
+
+<section class="surface-card section-card">
+    <div class="detail-header">
+        <div>
+            <div class="hero-meta">
+                <span class="hero-badge matte-tag">Related</span>
+                <span>{{ related_title }}</span>
+            </div>
+            <h3 class="title-scaled" style="margin-top:12px;">Continue Exploring</h3>
+        </div>
+        {% if entry_type == 'youtube' %}
+        <div class="detail-controls">
+            {% if prev_entry %}
+            <a class="btn" href="{{ prev_entry_url or url_for('video_detail', entry_id=prev_entry.entry_id) }}" data-scroll-top="true"><i data-lucide="chevron-left"></i>Previous</a>
+            {% endif %}
+            {% if next_entry %}
+            <a class="btn" href="{{ next_entry_url or url_for('video_detail', entry_id=next_entry.entry_id) }}" data-scroll-top="true">Next<i data-lucide="chevron-right"></i></a>
+            {% endif %}
+            <button class="btn" id="shuffleRelatedVideo" type="button"><i data-lucide="play"></i>Shuffle Video</button>
+            <a class="btn{% if related_order == 'normal' %} mode-toggle is-armed{% endif %}" href="{{ build_query_url(request.args, related_order='normal', related_seed='', page=1) }}" data-scroll-top="true"><i data-lucide="list-ordered"></i>Normal Order</a>
+            <a class="btn{% if related_order == 'shuffle' %} mode-toggle is-armed{% endif %}" id="shuffleRelatedOrder" href="{{ build_query_url(request.args, related_order='shuffle', related_seed=related_seed or 'shuffle', page=1) }}" data-scroll-top="true"><i data-lucide="shuffle"></i>Shuffle Order</a>
+        </div>
+        {% endif %}
+    </div>
+
+    {% if related_entries %}
+    <div id="relatedGrid" class="{{ 'video-grid' if entry_type == 'youtube' else 'movie-grid' }}" style="margin-top:18px;">
+        {% for item in related_entries %}
+        <a class="content-card {{ 'video-card' if item.source_type == 'youtube' else 'media-card' }}" href="{{ item.detail_url or url_for('video_detail', entry_id=item.entry_id) }}" {% if item.source_type == 'youtube' %}data-video-id="{{ item.video_id }}" data-video-duration="{{ item.duration_seconds or 0 }}" data-playlist-item-id="{{ item.playlist_item_id or '' }}" data-entry-id="{{ item.entry_id or '' }}" data-state-key="{{ item.state_key or item.watch_key or item.video_id or item.entry_id or (item.playlist_item_id or '') }}" data-watch-key="{{ item.watch_key or item.video_id or item.entry_id or (item.playlist_item_id or '') }}"{% endif %} data-scroll-top="true">
+            <div class="{{ 'video-frame' if item.source_type == 'youtube' else 'media-poster' }} {{ 'video-poster' if item.source_type == 'youtube' else '' }}">
+                {% if item.source_type == 'youtube' %}
+                <img class="video-thumb" src="{{ item.thumb or item.thumbnail_url or item.thumbnail or item.image_url }}" alt="{{ item.title }}" loading="lazy" decoding="async">
+                <button class="card-ai-action study-with-ai-btn" type="button" data-ai-mode="{{ 'german' if item.section and 'german' in item.section|lower else 'study' }}" data-ai-title="{{ item.title or item.name }}" data-ai-playlist="{{ item.playlist_name or related_title }}" data-ai-section="{{ item.section or '' }}" data-ai-video-id="{{ item.video_id or '' }}" aria-label="Study this video with AI"><i data-lucide="sparkles"></i><span>Study with AI</span></button>
+                <div class="video-progress-track"><div class="video-progress-fill"></div></div>
+                <span class="duration-pill">{{ item.duration or '0:00' }}</span>
+                <span class="score-pill" data-pockettube-watched-badge style="display:none; position:absolute; top:12px; left:12px; z-index:2; padding:.3rem .55rem; font-size:.72rem;">Watched</span>
+                {% elif item.poster %}
+                <div class="poster-placeholder">No Poster</div>
+                {% else %}
+                <div class="poster-placeholder">No Poster</div>
+                {% endif %}
+            </div>
+            <div class="card-title">{{ item.title or item.name }}</div>
+            <div class="card-meta">
+                {% if item.source_type == 'youtube' %}
+                {{ item.channel_name or item.category }}{% if item.duration %} | {{ item.duration }}{% endif %}{% if item.playlist_name %} | {{ item.playlist_name }}{% endif %}
+                {% else %}
+                {{ item.category }} | {{ item.status }}
+                {% endif %}
+            </div>
+        </a>
+        {% endfor %}
+    </div>
+
+    {% if related_total_pages > 1 %}
+    <div class="pagination" style="margin-top:18px;">
+        {% if related_page > 1 %}
+        <a href="{{ build_query_url(request.args, page=1) }}" class="pagination-button pagination-nav" data-scroll-top="true">First</a>
+        <a href="{{ build_query_url(request.args, page=related_page - 1) }}" class="pagination-button pagination-nav" data-scroll-top="true">Previous</a>
+        {% endif %}
+        {% for item in pagination_numbers %}
+            {% if item == '...' %}
+            <span class="pagination-ellipsis">...</span>
+            {% elif item == related_page %}
+            <span class="pagination-button pagination-index active">{{ item }}</span>
+            {% else %}
+            <a href="{{ build_query_url(request.args, page=item) }}" class="pagination-button pagination-index" data-scroll-top="true">{{ item }}</a>
+            {% endif %}
+        {% endfor %}
+        {% if related_page < related_total_pages %}
+        <a href="{{ build_query_url(request.args, page=related_page + 1) }}" class="pagination-button pagination-nav" data-scroll-top="true">Next</a>
+        <a href="{{ build_query_url(request.args, page=related_total_pages) }}" class="pagination-button pagination-nav" data-scroll-top="true">Last</a>
+        {% endif %}
+    </div>
+    {% endif %}
+    {% else %}
+    <div class="empty-state" style="margin-top:18px;">No related entries available yet.</div>
+    {% endif %}
+</section>
+{% endif %}
+{% endblock %}
+
+{% block global_modals %}
+{% if delete_endpoint %}
+<div id="deleteConfirmModal" class="trailer-modal" aria-hidden="true">
+    <div class="surface-card section-card" style="width:min(92vw, 520px);">
+        <div class="hero-meta">
+            <span class="hero-badge">Delete From Source</span>
+            <span>{{ entry.playlist_name }}</span>
+        </div>
+        <h3 class="title-scaled" style="margin-top:12px;">Remove this video from YouTube?</h3>
+        <p class="subhead">This will archive the link in local history, delete the playlist item from your authorized YouTube account, and hide it from the dashboard.</p>
+        <div class="detail-controls" style="margin-top:18px;">
+            <button class="btn" id="cancelDeleteBtn" type="button"><i data-lucide="x"></i>Cancel</button>
+            <button class="btn" id="confirmDeleteBtn" type="button"><i data-lucide="trash-2"></i>Remove from YouTube Playlist</button>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+    const relatedGrid = document.getElementById('relatedGrid');
+    const shuffleVideo = document.getElementById('shuffleRelatedVideo');
+    const shuffleOrder = document.getElementById('shuffleRelatedOrder');
+    const pockettubeWatchedBtn = document.getElementById('pockettubeWatchedBtn');
+    const deleteBtn = document.getElementById('deleteFromYouTubeBtn');
+    const deleteModal = document.getElementById('deleteConfirmModal');
+    const cancelDeleteBtn = document.getElementById('cancelDeleteBtn');
+    const confirmDeleteBtn = document.getElementById('confirmDeleteBtn');
+    const deleteStatus = document.getElementById('deleteStatus');
+    const playerFrame = document.getElementById('youtubePlayer');
+    const playerShell = document.querySelector('.player-shell');
+    const progressKeyPrefix = 'youtube-progress:';
+    const pockettubeWatchedStorageKey = 'dragon-pockettube-watched-v1';
+    const pockettubeShowWatchedStorageKey = 'dragon-pockettube-show-watched-v1';
+    let player = null;
+    let progressTimer = null;
+    let theaterViewEnabled = document.body.classList.contains('theater-view');
+
+    function readPockettubeWatchedMap() {
+        try {
+            const raw = window.localStorage.getItem(pockettubeWatchedStorageKey) || '{}';
+            const parsed = JSON.parse(raw);
+            return parsed && typeof parsed === 'object' ? parsed : {};
+        } catch (error) {
+            return {};
+        }
+    }
+
+    function writePockettubeWatchedMap(map) {
+        try {
+            window.localStorage.setItem(pockettubeWatchedStorageKey, JSON.stringify(map || {}));
+        } catch (error) {
+        }
+    }
+
+    function readPockettubeShowWatched() {
+        try {
+            const raw = window.localStorage.getItem(pockettubeShowWatchedStorageKey);
+            if (raw === null || typeof raw === 'undefined') return false;
+            const normalized = String(raw).trim().toLowerCase();
+            if (['1', 'true', 'yes', 'on'].includes(normalized)) return true;
+            if (['0', 'false', 'no', 'off', ''].includes(normalized)) return false;
+            return false;
+        } catch (error) {
+            return false;
+        }
+    }
+
+    function writePockettubeShowWatched(value) {
+        const next = !!value;
+        try {
+            window.localStorage.setItem(pockettubeShowWatchedStorageKey, next ? '1' : '0');
+        } catch (error) {
+            return next;
+        }
+        return next;
+    }
+
+    function pockettubeWatchKeys(stateKey, entryId, videoId, playlistItemId, watchKey) {
+        const keys = [];
+        [stateKey, watchKey, videoId, entryId, playlistItemId].forEach(function(value) {
+            const key = String(value || '').trim();
+            if (key && !keys.includes(key)) {
+                keys.push(key);
+            }
+        });
+        return keys;
+    }
+
+    function pockettubeWatched(stateKey, entryId, videoId, playlistItemId, watchKey) {
+        const watchedMap = readPockettubeWatchedMap();
+        return pockettubeWatchKeys(stateKey, entryId, videoId, playlistItemId, watchKey).some(function(key) {
+            return !!watchedMap[key];
+        });
+    }
+
+    function setPockettubeWatchedState(stateKey, entryId, videoId, playlistItemId, watchKey, watched) {
+        const watchedMap = readPockettubeWatchedMap();
+        pockettubeWatchKeys(stateKey, entryId, videoId, playlistItemId, watchKey).forEach(function(key) {
+            if (watched) {
+                watchedMap[key] = Date.now();
+            } else {
+                delete watchedMap[key];
+            }
+        });
+        writePockettubeWatchedMap(watchedMap);
+    }
+
+    let pockettubeDetailSyncing = false;
+    function syncPockettubeWatchedDetails(explicitShowWatched) {
+        if (pockettubeDetailSyncing) return;
+        pockettubeDetailSyncing = true;
+        try {
+            const showWatched = typeof explicitShowWatched === 'boolean' ? explicitShowWatched : readPockettubeShowWatched();
+            if (pockettubeWatchedBtn) {
+                const stateKey = String(pockettubeWatchedBtn.dataset.stateKey || '').trim();
+                const entryId = String(pockettubeWatchedBtn.dataset.entryId || '').trim();
+                const videoId = String(pockettubeWatchedBtn.dataset.videoId || '').trim();
+                const playlistItemId = String(pockettubeWatchedBtn.dataset.playlistItemId || '').trim();
+                const watchKey = String(pockettubeWatchedBtn.dataset.watchKey || '').trim();
+                const isWatched = pockettubeWatched(stateKey, entryId, videoId, playlistItemId, watchKey);
+                const label = pockettubeWatchedBtn.querySelector('span');
+                if (label) label.textContent = isWatched ? 'Unmark Watched' : 'Mark Watched';
+                pockettubeWatchedBtn.setAttribute('aria-pressed', isWatched ? 'true' : 'false');
+                pockettubeWatchedBtn.classList.toggle('is-armed', isWatched);
+            }
+            if (relatedGrid) {
+                relatedGrid.querySelectorAll('.video-card[data-entry-id]').forEach(function(card) {
+                    const stateKey = String(card.dataset.stateKey || '').trim();
+                    const entryId = String(card.dataset.entryId || '').trim();
+                    const videoId = String(card.dataset.videoId || '').trim();
+                    const playlistItemId = String(card.dataset.playlistItemId || '').trim();
+                    const watchKey = String(card.dataset.watchKey || '').trim();
+                    const isWatched = pockettubeWatched(stateKey, entryId, videoId, playlistItemId, watchKey);
+                    const badge = card.querySelector('[data-pockettube-watched-badge]');
+                    if (badge) badge.style.display = isWatched ? '' : 'none';
+                    card.style.opacity = isWatched && !showWatched ? '0.72' : '';
+                });
+            }
+            syncPockettubeWatchedDetailDebug();
+            if (window.location.search.includes('pockettube_debug=1')) {
+                console.debug('[PocketTube detail sync]', {
+                    watched: pockettubeWatchedBtn ? pockettubeWatched(
+                        String(pockettubeWatchedBtn.dataset.stateKey || '').trim(),
+                        String(pockettubeWatchedBtn.dataset.entryId || '').trim(),
+                        String(pockettubeWatchedBtn.dataset.videoId || '').trim(),
+                        String(pockettubeWatchedBtn.dataset.playlistItemId || '').trim(),
+                        String(pockettubeWatchedBtn.dataset.watchKey || '').trim()
+                    ) : false,
+                    relatedCount: relatedGrid ? relatedGrid.querySelectorAll('.video-card[data-entry-id]').length : 0,
+                    showWatched: showWatched,
+                });
+            }
+        } finally {
+            pockettubeDetailSyncing = false;
+        }
+    }
+
+    function syncPockettubeWatchedDetailDebug(lastActionText) {
+        if (window.location.search.indexOf('pockettube_debug=1') === -1) return;
+        const panel = document.getElementById('pockettubeDetailDebug');
+        if (!panel) return;
+        const watchedMap = readPockettubeWatchedMap();
+        const watchedCount = Object.keys(watchedMap).length;
+        const showWatched = readPockettubeShowWatched();
+        const stateKey = pockettubeWatchedBtn ? String(pockettubeWatchedBtn.dataset.stateKey || '').trim() : '';
+        const entryId = pockettubeWatchedBtn ? String(pockettubeWatchedBtn.dataset.entryId || '').trim() : '';
+        const videoId = pockettubeWatchedBtn ? String(pockettubeWatchedBtn.dataset.videoId || '').trim() : '';
+        const playlistItemId = pockettubeWatchedBtn ? String(pockettubeWatchedBtn.dataset.playlistItemId || '').trim() : '';
+        const watchKey = pockettubeWatchedBtn ? String(pockettubeWatchedBtn.dataset.watchKey || '').trim() : '';
+        const watched = pockettubeWatchedBtn ? pockettubeWatched(stateKey, entryId, videoId, playlistItemId, watchKey) : false;
+        const currentUrl = new URL(window.location.href);
+        const debugMessage = lastActionText || currentUrl.searchParams.get('pockettube_debug_action') || 'synced';
+        const setText = function(selector, value) {
+            const el = panel.querySelector(selector);
+            if (el) el.textContent = value;
+        };
+        setText('[data-pockettube-detail-debug-mode]', showWatched ? 'Show Watched' : 'Hide Watched');
+        setText('[data-pockettube-detail-debug-title]', pockettubeWatchedBtn ? (pockettubeWatchedBtn.dataset.entryId ? (document.querySelector('h2.title-scaled') ? document.querySelector('h2.title-scaled').textContent.trim() : '') : '') : '');
+        setText('[data-pockettube-detail-debug-state-key]', stateKey || '-');
+        setText('[data-pockettube-detail-debug-watch-key]', watchKey || '-');
+        setText('[data-pockettube-detail-debug-video-id]', videoId || '-');
+        setText('[data-pockettube-detail-debug-entry-id]', entryId || '-');
+        setText('[data-pockettube-detail-debug-playlist-item-id]', playlistItemId || '-');
+        setText('[data-pockettube-detail-debug-watched]', watched ? 'yes' : 'no');
+        setText('[data-pockettube-detail-debug-count]', String(watchedCount));
+        setText('[data-pockettube-detail-debug-last-action]', debugMessage + ' | localStorage ' + (watched ? 'has key' : 'missing key'));
+    }
+
+    function refreshPockettubeWatchedDetailsNow(explicitShowWatched) {
+        syncPockettubeWatchedDetails(explicitShowWatched);
+    }
+
+    function saveProgress() {
+        if (!player || typeof player.getCurrentTime !== 'function' || typeof player.getVideoData !== 'function') return;
+        const data = player.getVideoData();
+        const videoId = data && data.video_id;
+        if (!videoId) return;
+        try {
+            localStorage.setItem(progressKeyPrefix + videoId, String(player.getCurrentTime() || 0));
+            if (typeof window.renderVideoProgress === 'function') window.renderVideoProgress();
+        } catch (error) {
+        }
+    }
+
+    if (shuffleVideo && relatedGrid) {
+        shuffleVideo.addEventListener('click', function() {
+            const randomUrl = '{{ related_random_url or "" }}';
+            if (!randomUrl) return;
+            window.location.href = randomUrl;
+        });
+    }
+
+    document.addEventListener('click', function(event) {
+        const button = event.target.closest('.pockettube-watched-toggle');
+        if (!button) return;
+        event.preventDefault();
+        event.stopPropagation();
+        const stateKey = String(button.dataset.stateKey || '').trim();
+        const entryId = String(button.dataset.entryId || '').trim();
+        const videoId = String(button.dataset.videoId || '').trim();
+        const playlistItemId = String(button.dataset.playlistItemId || '').trim();
+        const watchKey = String(button.dataset.watchKey || '').trim();
+        const isWatched = pockettubeWatched(stateKey, entryId, videoId, playlistItemId, watchKey);
+        setPockettubeWatchedState(stateKey, entryId, videoId, playlistItemId, watchKey, !isWatched);
+        refreshPockettubeWatchedDetailsNow(readPockettubeShowWatched());
+        syncPockettubeWatchedDetailDebug('clicked watched toggle -> watched=' + (!isWatched ? 'yes' : 'no'));
+    });
+
+    window.addEventListener('pageshow', function() {
+        syncPockettubeWatchedDetails();
+    });
+    window.addEventListener('load', function() {
+        syncPockettubeWatchedDetails();
+    });
+    document.addEventListener('DOMContentLoaded', function() {
+        syncPockettubeWatchedDetails();
+    });
+    window.addEventListener('focus', function() {
+        syncPockettubeWatchedDetails();
+    });
+    document.addEventListener('visibilitychange', function() {
+        if (!document.hidden) {
+            syncPockettubeWatchedDetails();
+        }
+    });
+
+    if (shuffleOrder) {
+        shuffleOrder.addEventListener('click', function(event) {
+            event.preventDefault();
+            try {
+                const targetUrl = new URL(shuffleOrder.href, window.location.origin);
+                targetUrl.searchParams.set('related_order', 'shuffle');
+                targetUrl.searchParams.set('related_seed', String(Date.now()));
+                targetUrl.searchParams.set('page', '1');
+                window.location.href = targetUrl.toString();
+            } catch (error) {
+                const separator = shuffleOrder.href.indexOf('?') === -1 ? '?' : '&';
+                window.location.href = shuffleOrder.href + separator + 'related_seed=' + String(Date.now());
+            }
+        });
+    }
+
+    function closeDeleteModal() {
+        if (!deleteModal) return;
+        deleteModal.classList.remove('active');
+        deleteModal.setAttribute('aria-hidden', 'true');
+    }
+
+    function setCinemaMode(isOpen) {
+        if (typeof window.setCinemaMode === 'function') {
+            window.setCinemaMode(isOpen ? 'cinema' : 'off');
+        }
+    }
+
+    function updateCinemaPlayback(isPlaying) {
+        if (typeof window.updateCinemaPlayback === 'function') {
+            window.updateCinemaPlayback(isPlaying);
+        }
+    }
+
+    function setTheaterView(isEnabled) {
+        theaterViewEnabled = isEnabled;
+        if (typeof window.setTheaterView === 'function') {
+            window.setTheaterView(isEnabled);
+        } else {
+            document.body.classList.toggle('theater-view', isEnabled);
+        }
+    }
+
+    function showDeleteStatus(message, isError) {
+        if (!deleteStatus) return;
+        deleteStatus.style.display = 'block';
+        deleteStatus.textContent = message;
+        deleteStatus.style.color = isError ? '#f28b82' : '#ff4d4d';
+    }
+
+    if (deleteBtn && deleteModal) {
+        deleteBtn.addEventListener('click', function() {
+            deleteModal.classList.add('active');
+            deleteModal.setAttribute('aria-hidden', 'false');
+        });
+    }
+
+    if (cancelDeleteBtn) {
+        cancelDeleteBtn.addEventListener('click', closeDeleteModal);
+    }
+
+    if (deleteModal) {
+        deleteModal.addEventListener('click', function(event) {
+            if (event.target === deleteModal) closeDeleteModal();
+        });
+    }
+
+    document.addEventListener('cinema-overlay-close', function() {
+        if (!player || typeof player.pauseVideo !== 'function') return;
+        try {
+            player.pauseVideo();
+        } catch (error) {
+        }
+        updateCinemaPlayback(false);
+    });
+
+    document.addEventListener('theater-view-change', function(event) {
+        theaterViewEnabled = Boolean(event.detail && event.detail.active);
+    });
+
+    if (playerShell) {
+        playerShell.addEventListener('click', function(event) {
+            event.stopPropagation();
+        });
+    }
+
+    document.addEventListener('click', function(event) {
+        if (!theaterViewEnabled || !playerShell) return;
+        const headerTheaterToggle = document.getElementById('theaterModeToggle');
+        const modeToolbar = document.querySelector('.mode-toolbar');
+        if (playerShell.contains(event.target) || (headerTheaterToggle && headerTheaterToggle.contains(event.target)) || (modeToolbar && modeToolbar.contains(event.target))) return;
+        setTheaterView(false);
+    });
+
+    if (confirmDeleteBtn) {
+        confirmDeleteBtn.addEventListener('click', async function() {
+            confirmDeleteBtn.disabled = true;
+            showDeleteStatus('Removing video from YouTube playlist...', false);
+            try {
+                const response = await fetch('{{ delete_endpoint or "" }}', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        entry_id: '{{ entry.entry_id if entry else "" }}',
+                        video_id: '{{ entry.video_id if entry else "" }}',
+                        playlist_id: '{{ entry.playlist_id if entry else "" }}',
+                        playlist_item_id: '{{ entry.playlist_item_id if entry else "" }}',
+                        next: window.location.pathname + window.location.search
+                    })
+                });
+                const data = await response.json();
+                if (data.auth_required && data.auth_url) {
+                    window.location.href = data.auth_url;
+                    return;
+                }
+                if (!response.ok || !data.ok) {
+                    showDeleteStatus(data.error || 'Delete failed.', true);
+                    confirmDeleteBtn.disabled = false;
+                    return;
+                }
+                document.querySelectorAll('[data-playlist-item-id="{{ entry.playlist_item_id or "" }}"]').forEach(function(card) {
+                    card.remove();
+                });
+                if (deleteBtn) deleteBtn.remove();
+                if (playerShell) {
+                    playerShell.innerHTML = '<div class="empty-state" style="min-height:360px; display:flex; align-items:center; justify-content:center;">This video was removed from the source playlist and archived in local history.</div>';
+                }
+                showDeleteStatus('Removed from YouTube and archived locally. Redirecting back to the section...', false);
+                closeDeleteModal();
+                window.setTimeout(function() {
+                    window.location.href = '{{ section_route }}';
+                }, 1200);
+            } catch (error) {
+                showDeleteStatus('Delete failed. Please try again.', true);
+                confirmDeleteBtn.disabled = false;
+            }
+        });
+    }
+
+    if (relatedGrid && typeof window.loadDurationBadges === 'function') {
+        window.loadDurationBadges(relatedGrid);
+    }
+
+    syncPockettubeWatchedDetails();
+
+    if (playerFrame) {
+        window.onYouTubeIframeAPIReady = function() {
+            player = new YT.Player('youtubePlayer', {
+                events: {
+                    onReady: function() {
+                        saveProgress();
+                        progressTimer = window.setInterval(saveProgress, 5000);
+                    },
+                    onStateChange: function(event) {
+                        if (event.data === YT.PlayerState.PLAYING) {
+                            updateCinemaPlayback(true);
+                            saveProgress();
+                            if (!progressTimer) progressTimer = window.setInterval(saveProgress, 5000);
+                        }
+                        if (event.data === YT.PlayerState.PAUSED || event.data === YT.PlayerState.ENDED) {
+                            updateCinemaPlayback(false);
+                            saveProgress();
+                        }
+                    }
+                }
+            });
+        };
+
+        const script = document.createElement('script');
+        script.src = 'https://www.youtube.com/iframe_api';
+        document.head.appendChild(script);
+
+        window.addEventListener('beforeunload', saveProgress);
+        window.addEventListener('beforeunload', function() { updateCinemaPlayback(false); });
+        window.addEventListener('beforeunload', function() { setTheaterView(false); });
+    }
+})();
+</script>
+{% endblock %}

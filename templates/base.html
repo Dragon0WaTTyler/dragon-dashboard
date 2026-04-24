@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Cinema Prive{% endblock %}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css">
+    <style>
+        :root{--bg:#000000;--bg-soft:rgba(255,255,255,.035);--panel:rgba(0,0,0,.6);--panel-soft:rgba(0,0,0,.6);--card:rgba(0,0,0,.6);--sidebar:rgba(0,0,0,.78);--border:rgba(255,255,255,.1);--border-strong:rgba(255,255,255,.1);--text:#ffffff;--text-2:#b3b3b3;--muted:#9f9f9f;--heading:#ffffff;--accent:#ff0000;--accent-soft:rgba(255,0,0,.16);--accent-glow:rgba(255,0,0,.32);--button-bg:rgba(255,255,255,.08);--button-border:rgba(255,255,255,.02);--button-hover-border:rgba(255,0,0,.32);--surface-grad-start:rgba(255,255,255,.025);--surface-grad-end:rgba(255,255,255,.006);--sidebar-grad-start:rgba(255,255,255,.02);--sidebar-grad-end:rgba(255,255,255,.005);--topbar-bg:rgba(0,0,0,.72);--mode-toolbar-bg:rgba(0,0,0,.42);--input-bg:rgba(0,0,0,.72);--select-bg:rgba(0,0,0,.82);--option-bg:#1a1a1a;--option-text:#e0e0e0;--solid-button-bg:#000000;--solid-button-text:#ffffff;--solid-button-border:rgba(255,0,0,.4);--player-shell-bg:rgba(0,0,0,.6);--music-bar-bg:rgba(0,0,0,.6);--ai-sidebar-bg:rgba(0,0,0,.92);--ai-tab-bg:rgba(255,255,255,.03);--ai-tab-active-bg:#000000;--chat-bubble-bg:rgba(36,36,36,.96);--chat-input-bg:rgba(18,18,18,.98);--ai-toggle-bg:#000000;--link-muted:#d8d8d8;--bg-accent-1:rgba(255,0,0,.12);--bg-accent-2:rgba(255,255,255,.03);--media-grid-min:220px;--media-card-max:240px;--video-grid-min:260px;--video-card-max:420px;--shadow:0 24px 60px rgba(0,0,0,.58)}
+        html[data-theme="light"]{--bg:#f4ede4;--bg-soft:rgba(70,52,36,.055);--panel:rgba(255,252,247,.9);--panel-soft:rgba(255,251,246,.86);--card:rgba(255,252,248,.92);--sidebar:rgba(252,247,241,.94);--border:rgba(74,58,44,.12);--border-strong:rgba(74,58,44,.2);--text:#1f2937;--text-2:#5f6773;--muted:#7c8490;--heading:#1b2233;--accent:#c81414;--accent-soft:rgba(200,20,20,.1);--accent-glow:rgba(200,20,20,.14);--button-bg:rgba(255,251,247,.9);--button-border:rgba(74,58,44,.08);--button-hover-border:rgba(200,20,20,.26);--surface-grad-start:rgba(255,255,255,.92);--surface-grad-end:rgba(242,234,226,.9);--sidebar-grad-start:rgba(255,251,247,.95);--sidebar-grad-end:rgba(241,233,223,.9);--topbar-bg:rgba(255,251,247,.9);--mode-toolbar-bg:rgba(255,251,247,.76);--input-bg:rgba(255,255,255,.96);--select-bg:rgba(255,255,255,.98);--option-bg:#fffdfa;--option-text:#1f2937;--solid-button-bg:rgba(255,252,248,.96);--solid-button-text:#202737;--solid-button-border:rgba(200,20,20,.28);--player-shell-bg:rgba(255,252,247,.9);--music-bar-bg:rgba(255,251,246,.9);--ai-sidebar-bg:rgba(246,239,231,.97);--ai-tab-bg:rgba(74,58,44,.05);--ai-tab-active-bg:rgba(255,255,255,.96);--chat-bubble-bg:#eee6dc;--chat-input-bg:#fffdfa;--ai-toggle-bg:rgba(255,252,248,.96);--link-muted:#8a3324;--bg-accent-1:rgba(200,20,20,.07);--bg-accent-2:rgba(255,248,240,.55);--shadow:0 18px 36px rgba(84,63,45,.08)}
+        *{box-sizing:border-box;margin:0;padding:0} html,body{min-height:100%}
+        body{font-family:'Manrope',sans-serif;background:radial-gradient(circle at top left,var(--bg-accent-1),transparent 24%),radial-gradient(circle at bottom right,var(--bg-accent-2),transparent 18%),var(--bg);color:var(--text);transition:background .3s ease,color .3s ease}
+        a{color:inherit} button,input,select{font:inherit}
+        .app-shell{display:flex;align-items:stretch;min-height:100vh;overflow:visible}
+        .workspace-pane{flex:1;min-width:0;display:grid;grid-template-columns:280px minmax(0,1fr);transition:grid-template-columns .28s ease,margin-right .4s ease-in-out,width .4s ease-in-out}
+        body.sidebar-collapsed .workspace-pane{grid-template-columns:96px minmax(0,1fr)}
+        .workspace-sidebar{position:sticky;top:0;height:100vh;padding:20px 16px;background:linear-gradient(180deg,var(--sidebar-grad-start),var(--sidebar-grad-end)),var(--sidebar);border-right:1px solid var(--border);backdrop-filter:blur(24px);display:flex;flex-direction:column;gap:20px;overflow:hidden}
+        .sidebar-top,.detail-header,.playlist-header,.notebook-header{display:flex;align-items:center;justify-content:space-between;gap:16px}
+        .sidebar-actions{display:flex;align-items:center;gap:10px}
+        .sidebar-main{flex:1;min-height:0;display:flex;flex-direction:column;gap:20px;overflow-y:auto;overflow-x:hidden;padding-right:4px}
+        .brand-kicker{font-size:.68rem;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+        .brand-title,h1,h2,h3{font-family:'Cormorant Garamond',serif;font-weight:500;line-height:.95;color:var(--heading)}
+        .brand-title{font-size:2rem} .brand-subtitle,.muted,.subhead,.card-meta,.info-row{color:var(--text-2)}
+        .brand-link{text-decoration:none;color:inherit;display:block}
+        .sidebar-toggle,.theme-toggle,.toolbar-btn,.btn,.filter-form button,.playlist-controls button,.pagination button,.notebook-launch-btn,.notebook-fab,.pagination-button{border:1px solid var(--button-border);background:var(--button-bg);box-shadow:none;color:var(--text);cursor:pointer;transition:transform .2s ease,box-shadow .2s ease,background .22s ease,border-color .22s ease,opacity .2s ease;color:var(--text);backdrop-filter:blur(14px)}
+        .btn,.filter-form button,.playlist-controls button,.toolbar-btn,.notebook-launch-btn,.mode-toggle,.sync-tab{background:var(--solid-button-bg);border:1px solid var(--solid-button-border);color:var(--solid-button-text)}
+        .sidebar-toggle:hover,.theme-toggle:hover,.toolbar-btn:hover,.btn:hover,.filter-form button:hover,.playlist-controls button:hover,.pagination button:hover,.notebook-launch-btn:hover,.notebook-fab:hover,.pagination-button:hover{transform:translateY(-1px);border-color:var(--button-hover-border);box-shadow:0 0 22px rgba(255,0,0,.18);background:#ff0000;color:#ffffff}
+        .sidebar-toggle{width:46px;height:46px;border-radius:999px;display:inline-flex;align-items:center;justify-content:center}
+        .hamburger{width:18px;height:14px;position:relative}.hamburger span{position:absolute;left:0;width:100%;height:2px;border-radius:999px;background:currentColor}.hamburger span:nth-child(1){top:0}.hamburger span:nth-child(2){top:6px}.hamburger span:nth-child(3){top:12px}
+        .sidebar-nav,.sidebar-nav-group{display:grid;gap:8px}
+        .sidebar-nav-group{padding-top:14px;border-top:1px solid var(--border)}
+        .sidebar-nav-header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:0 8px 4px;color:var(--muted);font-size:.68rem;letter-spacing:.18em;text-transform:uppercase}
+        .sidebar-nav-count{font-size:.72rem;letter-spacing:.08em}
+        .nav-link,.top-tab{position:relative;display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:16px;border:1px solid transparent;text-decoration:none;color:var(--text-2);white-space:nowrap}
+        .nav-link:hover,.top-tab:hover{background:var(--bg-soft);color:var(--text)} .nav-link.active,.top-tab.active{background:rgba(255,0,0,.12);border-color:rgba(255,0,0,.24);color:var(--text)}
+        .nav-link.active::before,.top-tab.active::before{content:"";position:absolute;inset:10px auto 10px 0;width:3px;border-radius:999px;background:var(--accent)}
+        .nav-icon{width:18px;text-align:center;color:var(--text-2);flex-shrink:0;transition:color .2s ease,text-shadow .2s ease}
+        .nav-link.active .nav-icon,.top-tab.active .nav-icon{color:var(--accent);text-shadow:0 0 16px rgba(255,0,0,.28)}
+        body.sidebar-collapsed .brand-copy,body.sidebar-collapsed .nav-label,body.sidebar-collapsed .sidebar-footer-copy{display:none}
+        body.sidebar-collapsed .workspace-sidebar{padding:20px 12px} body.sidebar-collapsed .sidebar-top{justify-content:center}
+        body.sidebar-collapsed .sidebar-nav{justify-items:center}
+        body.sidebar-collapsed .sidebar-nav-header{display:none}
+        body.sidebar-collapsed .sidebar-nav-group{padding-top:0;border-top:0;gap:8px;justify-items:center}
+        body.sidebar-collapsed .nav-link{width:56px;height:56px;justify-content:center;padding:0;border-radius:18px}
+        body.sidebar-collapsed .nav-link:hover,body.sidebar-collapsed .nav-link:focus-visible{box-shadow:0 0 0 1px rgba(255,0,0,.28) inset,0 0 18px rgba(255,0,0,.16)}
+        body.sidebar-collapsed .sidebar-nav-group .nav-link{display:inline-flex;width:56px;height:56px;align-items:center;justify-content:center;padding:0;margin-inline:auto}
+        body.sidebar-collapsed .nav-link.active{background:rgba(255,0,0,.18);border-color:rgba(255,0,0,.4);box-shadow:0 0 0 1px rgba(255,0,0,.24) inset,0 0 16px rgba(255,0,0,.16)}
+        body.sidebar-collapsed .nav-link.active::before{inset:auto 10px 0 10px;width:auto;height:3px}
+        .sidebar-footer{margin-top:auto;display:grid;gap:12px;padding-top:14px;border-top:1px solid var(--border)}
+        .theme-toggle{width:100%;padding:12px 16px;border-radius:999px;display:flex;align-items:center;justify-content:space-between}
+        body.sidebar-collapsed .theme-toggle{justify-content:center;padding:12px}.theme-pill{width:42px;height:24px;border-radius:999px;background:rgba(255,255,255,.08);position:relative}.theme-pill::after{content:"";position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:var(--accent);transition:transform .24s ease} html[data-theme="light"] .theme-pill{background:rgba(15,23,42,.12)} html[data-theme="light"] .theme-pill::after{transform:translateX(18px)}
+        .workspace-main{min-width:0;padding:22px 24px 40px;display:grid;gap:18px}
+        .top-tabs{display:flex;align-items:center;gap:10px;padding:8px 20px 8px 10px;position:fixed;top:14px;left:304px;right:24px;z-index:25;border:1px solid var(--border);border-radius:22px;background:var(--topbar-bg);backdrop-filter:blur(14px);box-shadow:var(--shadow);overflow:auto;transition:transform .5s ease-in-out,opacity .5s ease-in-out,margin-bottom .5s ease-in-out,left .28s ease,right .4s ease-in-out}
+        .top-tabs .sync-tab{margin-left:auto;height:48px;padding:0 18px;flex-shrink:0}
+        .mode-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:10px 12px;border:1px solid var(--border);border-radius:18px;background:var(--mode-toolbar-bg)}
+        .mode-toolbar-copy{display:grid;gap:4px}
+        .mode-toolbar-copy .muted{font-size:.82rem}
+        .mode-toolbar-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+        .player-column{display:grid;gap:14px;align-self:start}
+        .top-tabs{transform:translateY(calc(-100% - 14px));opacity:0;pointer-events:none}
+        body.sidebar-collapsed .top-tabs{transform:translateY(0);opacity:1;pointer-events:auto;left:120px}
+        body.ai-sidebar-open .top-tabs{right:402px}
+        .page-shell,.playlist-section,.detail-sidebar,.info-stack{display:grid;gap:22px}
+        .page-hero,.surface-card,.card,.player-shell,.notebook-card{border:1px solid var(--border);background:linear-gradient(180deg,var(--surface-grad-start),var(--surface-grad-end)),var(--panel-soft);border-radius:28px;backdrop-filter:blur(24px);box-shadow:var(--shadow)}
+        .page-hero,.section-card,.notebook-card{padding:24px}
+        .hero-meta{display:flex;align-items:center;gap:12px;flex-wrap:wrap;color:var(--text-2);font-size:.82rem;letter-spacing:.08em;text-transform:uppercase}
+        .hero-badge,.score-pill{display:inline-flex;align-items:center;gap:8px;padding:7px 10px;border-radius:999px}
+        :where(.hero-badge,.matte-tag,.youtube-detail,.movie-detail,.related-badge,.related-tag,.category-tag,.category-label,.status-label,.status-tag,.label-badge,.red-label,.gemini-badge){
+            background:#ff0000;
+            color:#ffffff;
+            border:1px solid #ff0000;
+            box-shadow:none !important;
+            text-shadow:none !important;
+            backdrop-filter:none;
+            pointer-events:none;
+            cursor:default;
+            border-radius:999px;
+            font-size:.74rem;
+            line-height:1.1;
+            font-weight:600;
+            padding:5px 10px;
+            transition:none !important;
+        }
+        .score-pill{background:rgba(255,0,0,.12);border:1px solid rgba(255,0,0,.18);color:var(--accent)}
+        .score-tone-godmode{color:#e8c96a}
+        .score-tone-closetogodmode,.score-tone-masterpiece{color:#c9a84c}
+        .score-tone-sweet{color:#8a9e7a}
+        .score-tone-good{color:#7a8e6a}
+        .score-tone-acceptable{color:#6a7a8a}
+        .score-tone-naah{color:#6a6460}
+        .score-tone-idontlikeit{color:#5a4444}
+        .score-tone-unrated{color:#777}
+        h2{font-size:clamp(2.4rem,4vw,4.2rem);margin-top:14px;letter-spacing:-.03em} .subhead{margin-top:12px;max-width:720px;line-height:1.7;font-size:.98rem}
+        .stats-grid,.movie-grid,.video-grid,.filter-form,.detail-grid,.top-rated-grid{display:grid;gap:16px}
+        .stats-grid{grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}.stat-card{padding:20px}.stat-label{font-size:.74rem;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}.stat-value,.card-title{color:var(--heading)}.stat-value{margin-top:14px;font-size:2.6rem;font-family:'Cormorant Garamond',serif}
+        .filter-form{grid-template-columns:repeat(auto-fit,minmax(140px,1fr));align-items:end}.field-wide{grid-column:span 2}
+        input,select{width:100%;border-radius:18px;border:1px solid var(--border);background:var(--input-bg);color:var(--text);padding:13px 14px}
+        select{-webkit-appearance:none;appearance:none;background:var(--select-bg);color:var(--text)}
+        select:focus,select:hover,input:focus,input:hover{border-color:var(--accent);outline:none;box-shadow:0 0 0 3px rgba(255,0,0,.12)}
+        option{background:var(--option-bg);color:var(--option-text)}
+        .movie-grid,.top-rated-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,var(--media-grid-min)),1fr));gap:16px;justify-items:center;align-items:start;transition:grid-template-columns .4s ease,width .4s ease}
+        .video-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,var(--video-grid-min)),1fr));gap:20px;justify-items:stretch;align-items:start;transition:all .4s ease}
+        .content-card{position:relative;display:flex;flex-direction:column;gap:12px;min-height:100%;padding:12px;border-radius:24px;border:1px solid var(--border);background:linear-gradient(180deg,rgba(255,255,255,.025),rgba(255,255,255,.006)),var(--card);text-decoration:none;color:var(--text);transition:transform .24s ease,border-color .24s ease,box-shadow .24s ease,opacity .22s ease;overflow:hidden}
+        .media-card{width:100%;max-width:var(--media-card-max)}
+        .video-card{width:100%;max-width:none;min-width:0}
+        .content-card:hover{transform:translateY(-4px);border-color:rgba(255,0,0,.28);box-shadow:0 18px 40px rgba(0,0,0,.28),0 0 24px rgba(255,0,0,.08)} .content-card::after{content:"";position:absolute;inset:auto 18px 0 18px;height:2px;border-radius:999px;background:linear-gradient(90deg,transparent,var(--accent),transparent);opacity:0;transition:opacity .22s ease} .content-card:hover::after{opacity:1}
+        .content-card.removing{opacity:0;transform:scale(.985);pointer-events:none}
+        .media-poster{position:relative;width:100%;aspect-ratio:2/3;border-radius:18px;background:var(--bg-soft);overflow:hidden}
+        .video-frame,.video-poster{position:relative;width:100%;aspect-ratio:16/9;border-radius:18px;background:var(--bg-soft);overflow:hidden}
+        .media-poster img,.video-frame img,.video-thumb{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+        .poster-placeholder{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:2.2rem}
+        .card-title{font-size:.96rem;font-weight:700;line-height:1.5;text-align:left}.card-meta{font-size:.78rem;line-height:1.6;text-align:left}.channel-meta{color:var(--text-2)}
+        .card-quick-action{position:absolute;top:10px;right:10px;width:38px;height:38px;border-radius:999px;border:1px solid var(--border);background:var(--button-bg);color:var(--text);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;z-index:3;opacity:.26;transition:opacity .18s ease,transform .18s ease,border-color .18s ease,background .18s ease,box-shadow .18s ease}
+        .content-card:hover .card-quick-action,.card-quick-action:focus-visible{opacity:1}
+        .card-quick-action:hover{transform:translateY(-1px);border-color:rgba(255,0,0,.5);box-shadow:0 0 18px rgba(255,0,0,.14)}
+        .card-ai-action{position:absolute;left:10px;bottom:10px;display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border-radius:999px;border:1px solid rgba(255,0,0,.36);background:var(--solid-button-bg);color:var(--solid-button-text);cursor:pointer;z-index:3;font-size:.72rem;font-weight:700;letter-spacing:.03em;transition:border-color .18s ease,background .18s ease,transform .18s ease}
+        .card-ai-action:hover,.card-ai-action:focus-visible{background:#130000;border-color:rgba(255,0,0,.56);transform:translateY(-1px);outline:none}
+        .title-scaled{font-size:2rem;line-height:1.05}
+        .playlist-controls,.pagination,.detail-controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.detail-grid{grid-template-columns:1.6fr 1fr;align-items:start}
+        .btn,.filter-form button,.playlist-controls button,.pagination-button,.sidebar-toggle,.theme-toggle,.toolbar-btn,.notebook-launch-btn{display:inline-flex;align-items:center;justify-content:center;gap:9px;font-weight:600;border-radius:999px}
+        .btn,.filter-form button,.playlist-controls button,.notebook-launch-btn,.toolbar-btn{padding:12px 18px}
+        [data-lucide]{width:16px;height:16px;stroke-width:2;flex-shrink:0}
+        .pagination{justify-content:center}
+        .pagination-button{display:inline-flex;align-items:center;justify-content:center;min-width:44px;height:44px;padding:0 16px;border-radius:999px;color:var(--text);text-decoration:none}
+        .pagination-button.active{background:#ff0000;color:#ffffff;border-color:#ff4d4d;font-weight:800;box-shadow:0 0 18px rgba(255,0,0,.26);pointer-events:none}
+        .pagination-index{width:44px;min-width:44px;padding:0;border-radius:50%}
+        .pagination-nav{padding:0 16px}
+        .pagination-ellipsis{color:var(--muted);padding:0 4px}
+        .youtube-pagination .pagination-button.active{background:#ff0000;color:#fff;box-shadow:0 0 18px rgba(255,0,0,.26)}
+        .duration-pill{position:absolute;right:10px;bottom:10px;padding:6px 9px;border-radius:999px;background:rgba(10,10,10,.82);color:#f1f5ec;font-size:.72rem;font-weight:700;border:1px solid rgba(255,255,255,.12);z-index:2}
+        .video-progress-track{position:absolute;left:0;right:0;bottom:0;height:4px;background:rgba(255,255,255,.12);z-index:2}
+        .video-progress-fill{width:0;height:100%;background:#ff0033;box-shadow:0 0 12px rgba(255,0,51,.35);transition:width .2s ease}
+        .player-shell{overflow:hidden;background:linear-gradient(180deg,var(--surface-grad-start),var(--surface-grad-end)),var(--player-shell-bg);backdrop-filter:blur(20px);transition:box-shadow .4s ease-in-out,transform .4s ease-in-out,opacity .4s ease-in-out,width .4s ease-in-out,max-width .4s ease-in-out}.player-shell iframe{width:100%;aspect-ratio:16/9;border:0;display:block}
+        #cinema-overlay{position:fixed;inset:0;background:rgba(0,0,0,.8);opacity:0;pointer-events:none;transition:opacity .4s ease-in-out,background .4s ease-in-out;z-index:80}
+        body.cinema-mode #cinema-overlay{opacity:1;pointer-events:auto;background:rgba(0,0,0,.8)}
+        body.ultra-cinema-active #cinema-overlay{opacity:1;pointer-events:auto;background:#000000}
+        body.cinema-mode .player-shell,body.ultra-cinema-active .player-shell{position:relative;z-index:81;box-shadow:0 0 0 1px rgba(255,255,255,.08),0 0 40px rgba(255,0,0,.18),0 28px 80px rgba(0,0,0,.75)}
+        .mode-toggle.is-armed{border-color:rgba(255,0,0,.32);box-shadow:0 0 18px rgba(255,0,0,.18);background:rgba(255,0,0,.14)}
+        body.theater-view{background:#000000}
+        body.theater-view .page-shell > :not(.detail-grid):not(.trailer-modal):not(script){display:none}
+        body.theater-view .workspace-pane{grid-template-columns:0 minmax(0,1fr)}
+        body.theater-view .detail-grid{width:100%;max-width:calc(100vw - 328px);grid-template-columns:1fr;gap:0;justify-items:center;align-content:start}
+        body.theater-view .detail-sidebar{display:none}
+        body.theater-view .player-column{width:100%;max-width:calc(100vw - 328px);margin:0 auto}
+        body.theater-view .mode-toolbar{display:none}
+        body.theater-view .player-shell{width:100%;max-width:none;margin:0 auto;padding:0;border-radius:24px;min-height:auto;z-index:82}
+        body.theater-view .workspace-sidebar{width:0;min-width:0;padding:0;border-right:0;opacity:0;pointer-events:none;overflow:hidden}
+        body.theater-view .top-tabs{transform:translateY(calc(-100% - 14px));opacity:0;pointer-events:none;margin-bottom:-88px}
+        body.theater-view .workspace-main{padding-inline:24px;padding-top:22px;gap:18px;justify-items:center}
+        body.theater-view .page-shell{width:100%;gap:0;padding:0 0 36px;justify-items:center}
+        .page-shell{padding-top:28px}
+        body.sidebar-collapsed .page-shell{padding-top:86px}
+        .music-player-bar,.bottom-player-bar{position:sticky;bottom:18px;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px 18px;border-radius:22px;border:1px solid var(--border);background:linear-gradient(180deg,var(--surface-grad-start),var(--surface-grad-end)),var(--music-bar-bg);backdrop-filter:blur(24px);box-shadow:0 18px 40px rgba(0,0,0,.42)}
+        .music-player-bar .progress-track,.bottom-player-bar .progress-track{width:100%;height:4px;border-radius:999px;background:rgba(255,255,255,.12);overflow:hidden}
+        .music-player-bar .progress-fill,.bottom-player-bar .progress-fill{height:100%;background:#ff0000;box-shadow:0 0 12px rgba(255,0,0,.35)}
+        .info-row{display:flex;justify-content:space-between;gap:12px;border-bottom:1px solid var(--border);padding-bottom:10px;font-size:.88rem}.info-row strong{color:var(--text)}
+        .empty-state{padding:28px;border:1px dashed var(--border-strong);border-radius:24px;text-align:center;color:var(--text-2)}
+        html[data-theme="light"] .nav-link:hover,html[data-theme="light"] .top-tab:hover{background:rgba(200,20,20,.06)}
+        html[data-theme="light"] .nav-link.active,html[data-theme="light"] .top-tab.active{background:rgba(200,20,20,.08);border-color:rgba(200,20,20,.18)}
+        html[data-theme="light"] .nav-link.active .nav-icon,html[data-theme="light"] .top-tab.active .nav-icon{text-shadow:none}
+        html[data-theme="light"] .hero-badge,html[data-theme="light"] .matte-tag,html[data-theme="light"] .youtube-detail,html[data-theme="light"] .movie-detail,html[data-theme="light"] .related-badge,html[data-theme="light"] .related-tag,html[data-theme="light"] .category-tag,html[data-theme="light"] .category-label,html[data-theme="light"] .status-label,html[data-theme="light"] .status-tag,html[data-theme="light"] .label-badge,html[data-theme="light"] .red-label,html[data-theme="light"] .gemini-badge{background:#d61919;border-color:#d61919;color:#fffaf8}
+        html[data-theme="light"] .score-pill{background:rgba(200,20,20,.08);border-color:rgba(200,20,20,.16)}
+        html[data-theme="light"] .content-card:hover{border-color:rgba(200,20,20,.18);box-shadow:0 18px 34px rgba(84,63,45,.1),0 0 0 rgba(0,0,0,0)}
+        html[data-theme="light"] .page-hero,html[data-theme="light"] .surface-card,html[data-theme="light"] .card,html[data-theme="light"] .player-shell,html[data-theme="light"] .notebook-card{box-shadow:0 16px 32px rgba(84,63,45,.06)}
+        html[data-theme="light"] .top-tabs,html[data-theme="light"] .workspace-sidebar,html[data-theme="light"] .ai-sidebar{box-shadow:0 14px 30px rgba(84,63,45,.05)}
+        html[data-theme="light"] .empty-state{background:rgba(255,255,255,.42)}
+        html[data-theme="light"] .duration-pill{background:rgba(255,250,245,.94);color:#4b5563;border-color:rgba(74,58,44,.12)}
+        html[data-theme="light"] .video-progress-track{background:rgba(74,58,44,.1)}
+        .admin-table{width:100%;border-collapse:collapse}
+        .admin-table th,.admin-table td{padding:14px;border-bottom:1px solid var(--border);text-align:left;vertical-align:top}
+        .admin-category-list{display:grid;gap:16px}
+        .admin-category-item{padding:0 0 16px;border-bottom:1px solid var(--border)}
+        .admin-category-item:last-child{border-bottom:0;padding-bottom:0}
+        .admin-category-header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap}
+        .admin-category-actions,.admin-playlist-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+        .admin-playlist-list{display:grid;gap:10px}
+        .admin-playlist-item{padding:12px 0;border-top:1px solid var(--border);background:none}
+        .admin-playlist-list .admin-playlist-item:first-child{border-top:0;padding-top:0}
+        .admin-playlist-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap}
+        .admin-playlist-meta{display:grid;gap:6px}
+        .admin-playlist-meta a{word-break:break-all;color:var(--link-muted)}
+        .admin-playlist-form{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr) minmax(180px,.7fr) auto;gap:12px;align-items:center;margin-top:14px}
+        .admin-playlist-source{font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+        .admin-table-form{display:grid;grid-template-columns:132px minmax(180px,1.2fr) minmax(240px,2fr) minmax(170px,1fr) minmax(150px,.9fr) auto;gap:12px;align-items:center;padding:14px}
+        .admin-thumb{width:120px;height:68px;border-radius:16px;overflow:hidden;border:1px solid var(--border);background:var(--bg-soft);display:flex;align-items:center;justify-content:center}
+        .admin-thumb img{width:100%;height:100%;object-fit:cover;display:block}
+        .admin-thumb-placeholder{color:var(--muted);font-size:1.35rem}
+        .ai-sidebar{flex:0 0 0;width:0;min-width:0;height:100vh;position:sticky;top:0;border-left:0 solid transparent;background:linear-gradient(180deg,var(--surface-grad-start),var(--surface-grad-end)),var(--ai-sidebar-bg);display:grid;grid-template-rows:auto minmax(0,1fr);padding:22px 0 18px;overflow:hidden;transform:translateX(100%);opacity:0;transition:flex-basis .4s ease-in-out,width .4s ease-in-out,min-width .4s ease-in-out,padding .4s ease-in-out,transform .4s ease-in-out,opacity .4s ease-in-out,border-left-width .4s ease-in-out}
+        body.ai-sidebar-open .ai-sidebar{flex-basis:380px;width:380px;min-width:350px;padding:22px 18px 18px;border-left-width:1px;border-left-color:#ff0000;transform:translateX(0);opacity:1}
+        .ai-sidebar-header{display:grid;gap:10px;padding-bottom:16px}
+        .ai-sidebar-title{font-size:2rem}
+        .ai-sidebar-copy{color:var(--text-2);font-size:.9rem;line-height:1.6}
+        .ai-tabs{display:flex;gap:8px;flex-wrap:wrap}
+        .ai-tab{padding:10px 14px;border-radius:999px;border:1px solid var(--border);background:var(--ai-tab-bg);color:var(--text-2);cursor:pointer;transition:border-color .2s ease,background .2s ease,color .2s ease}
+        .ai-tab:hover,.ai-tab:focus-visible{border-color:rgba(255,0,0,.32);color:var(--text);outline:none}
+        .ai-tab.active{background:var(--ai-tab-active-bg);border-color:rgba(255,0,0,.4);color:var(--heading)}
+        .ai-panel{display:none;grid-template-rows:auto minmax(0,1fr);gap:14px;min-height:0}
+        .ai-panel.active{display:grid}
+        .research-chat-card{display:grid;grid-template-rows:minmax(0,1fr) auto auto;gap:14px;min-height:0}
+        .chat-status{min-height:1.1rem;color:var(--muted);font-size:.78rem}
+        .chat-messages{display:grid;align-content:start;gap:12px;min-height:0;max-height:100%;overflow-y:auto;padding-right:2px;scrollbar-width:none;-ms-overflow-style:none}
+        .chat-messages::-webkit-scrollbar{display:none}
+        .chat-message{max-width:92%;padding:12px 14px;border-radius:18px;line-height:1.6;white-space:pre-wrap;word-break:break-word;color:var(--text)}
+        .chat-message.user{margin-left:auto;background:var(--chat-bubble-bg);border:0;box-shadow:none}
+        .chat-message.assistant{margin-right:auto;background:var(--chat-bubble-bg);border:0;border-left:2px solid #ff0000;padding-left:16px;box-shadow:none}
+        .chat-form{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:end}
+        .chat-input{width:100%;min-height:52px;max-height:132px;resize:none;border-radius:999px;border:1px solid var(--border);background:var(--chat-input-bg);color:var(--text);padding:14px 18px;line-height:1.45}
+        .chat-input::placeholder{color:var(--muted)}
+        .chat-input:focus,.chat-input:hover{border-color:rgba(255,0,0,.45);outline:none;box-shadow:0 0 0 3px rgba(255,0,0,.12)}
+        .chat-send-btn{min-width:72px;height:52px;padding:0 18px;border-radius:999px;border:0;background:#ff0000;color:#ffffff;display:inline-flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:none;text-shadow:none;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
+        .chat-send-btn:hover,.chat-send-btn:focus-visible{background:#d90000;outline:none}
+        .chat-send-btn:disabled{opacity:.55;cursor:wait}
+        .ai-sidebar-toggle{position:fixed;right:22px;bottom:22px;z-index:34;width:58px;height:58px;border-radius:999px;border:1px solid rgba(255,0,0,.4);background:var(--ai-toggle-bg);color:var(--solid-button-text);display:inline-flex;align-items:center;justify-content:center;box-shadow:0 12px 30px rgba(0,0,0,.38);cursor:pointer;transition:transform .2s ease,box-shadow .2s ease,background .22s ease,border-color .22s ease,right .4s ease-in-out}
+        .ai-sidebar-toggle:hover,.ai-sidebar-toggle:focus-visible{transform:translateY(-1px);background:#ff0000;color:#ffffff;box-shadow:0 0 22px rgba(255,0,0,.18),0 12px 30px rgba(0,0,0,.38);border-color:rgba(255,0,0,.32);outline:none}
+        .ai-sidebar-toggle-label{font-size:.72rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase}
+        body.ai-sidebar-open .ai-sidebar-toggle{right:402px}
+        .trailer-modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.78);z-index:40;align-items:center;justify-content:center}.trailer-modal.active{display:flex}.trailer-container{width:min(90vw,1080px);aspect-ratio:16/9;position:relative;border-radius:22px;overflow:hidden;background:#000}.trailer-container iframe{width:100%;height:100%;border:0}.close-modal{position:absolute;top:14px;right:14px;z-index:2}
+        @media (max-width:1200px){.video-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+        @media (max-width:1080px){.detail-grid{grid-template-columns:1fr}body.ai-sidebar-open .ai-sidebar{flex-basis:350px;width:350px;min-width:320px}body.ai-sidebar-open .ai-sidebar-toggle{right:372px}body.ai-sidebar-open .top-tabs{right:372px}}
+        @media (max-width:820px){.app-shell{display:block}.workspace-pane,body.sidebar-collapsed .workspace-pane{grid-template-columns:1fr}.workspace-sidebar{position:relative;height:auto;border-right:0;border-bottom:1px solid var(--border)}body.sidebar-collapsed .brand-copy,body.sidebar-collapsed .nav-label,body.sidebar-collapsed .sidebar-footer-copy{display:inline}body.sidebar-collapsed .sidebar-nav{justify-items:stretch}body.sidebar-collapsed .nav-link{width:100%;height:auto;justify-content:flex-start;padding:12px 14px}body.sidebar-collapsed .nav-link.active::before{inset:10px auto 10px 0;width:3px;height:auto}.top-tabs,body.sidebar-collapsed .top-tabs{display:flex;left:12px;right:12px;top:12px}.top-tabs .sync-tab{margin-left:0}.mode-toolbar{align-items:flex-start}.mode-toolbar-actions{width:100%}body.theater-view .detail-grid,body.theater-view .player-column{max-width:100%}.ai-sidebar{position:fixed;right:0;top:0;height:100vh;border-left:1px solid #ff0000;border-top:0;z-index:33;background:var(--ai-sidebar-bg)}body.ai-sidebar-open .ai-sidebar{width:min(100vw,380px);min-width:min(100vw,320px);flex-basis:min(100vw,380px);padding:22px 18px 18px}body.ai-sidebar-open .ai-sidebar-toggle{right:22px}body.ai-sidebar-open .top-tabs{right:12px}.field-wide{grid-column:span 1}.video-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+        @media (max-width:820px){.admin-table-form{grid-template-columns:120px minmax(0,1fr)}}
+        @media (max-width:640px){.top-tabs .sync-tab{height:44px;padding:0 14px}.admin-playlist-form,.admin-table-form{display:grid;grid-template-columns:1fr}.admin-thumb{width:100%;max-width:160px}.video-grid{grid-template-columns:1fr}}
+    </style>
+</head>
+<body data-ai-default-mode="{{ ai_default_mode|default('cinematic') }}" data-ai-page-context="{{ ai_page_context|default('general') }}">
+    <div class="app-shell">
+        <div class="workspace-pane">
+        <aside class="workspace-sidebar">
+            {% set current_location = request.full_path if request.query_string else request.path %}
+            <div class="sidebar-top">
+                <a class="brand-copy brand-link" href="/" data-scroll-top="true">
+                    <div class="brand-kicker">Private Workspace</div>
+                    <div class="brand-title">Cinema Prive</div>
+                    <div class="brand-subtitle">Films, Chess</div>
+                </a>
+                <div class="sidebar-actions">
+                    <button id="sidebarToggle" class="sidebar-toggle" type="button" aria-label="Toggle sidebar"><span class="hamburger"><span></span><span></span><span></span></span></button>
+                </div>
+            </div>
+            <div class="sidebar-main">
+                <nav class="sidebar-nav">
+                    {% for item in top_nav_items %}
+                    <a class="nav-link {{ 'active' if request.path in item.active_paths else '' }}" href="{{ item.href }}" data-scroll-top="true" title="{{ item.label }}" aria-label="{{ item.label }}"><i class="nav-icon {{ item.icon }}" aria-hidden="true"></i><span class="nav-label">{{ item.label }}</span></a>
+                    {% endfor %}
+                    {% if sidebar_dynamic_items %}
+                    <div class="sidebar-nav-group">
+                        <div class="sidebar-nav-header">
+                            <span>Sections</span>
+                            <span class="sidebar-nav-count">{{ sidebar_dynamic_items|length }}</span>
+                        </div>
+                        {% for item in sidebar_dynamic_items %}
+                        <a class="nav-link {{ 'active' if request.path in item.active_paths else '' }}" href="{{ item.href }}" data-scroll-top="true" title="{{ item.label }}" aria-label="{{ item.label }}"><i class="nav-icon {{ item.icon }}" aria-hidden="true"></i><span class="nav-label">{{ item.label }}</span></a>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                </nav>
+                <div class="sidebar-footer">
+                    <button id="themeToggle" class="theme-toggle" type="button"><span class="sidebar-footer-copy">Black Theme</span><span class="theme-pill" aria-hidden="true"></span></button>
+                    <div class="sidebar-footer-copy brand-kicker">Linear inspired. Cinematic focus.</div>
+                </div>
+            </div>
+        </aside>
+        <main class="workspace-main">
+            <div class="top-tabs">
+                {% for item in top_nav_items %}
+                <a class="top-tab {{ 'active' if request.path in item.active_paths else '' }}" href="{{ item.href }}" data-scroll-top="true" title="{{ item.label }}" aria-label="{{ item.label }}"><i class="nav-icon {{ item.icon }}" aria-hidden="true"></i><span>{{ item.short_label }}</span></a>
+                {% endfor %}
+                <a class="btn sync-tab" href="{{ url_for('refresh', next=current_location) }}" aria-label="Sync dashboard data" title="Sync dashboard data"><i data-lucide="refresh-cw"></i><span>Sync</span></a>
+                {% if dragon_auth_enabled and dragon_authenticated %}
+                <a class="btn sync-tab" href="{{ url_for('logout', next=url_for('login')) }}" aria-label="Log out of Dragon" title="Log out of Dragon"><i data-lucide="log-out"></i><span>Logout</span></a>
+                {% endif %}
+            </div>
+            <div class="page-shell">{% block content %}{% endblock %}</div>
+        </main>
+        </div>
+        <aside class="ai-sidebar" aria-label="Gemini AI Sidebar">
+            <div class="ai-sidebar-header">
+                <div class="hero-badge matte-tag">GEMINI AI</div>
+                <div class="ai-tabs" role="tablist" aria-label="Gemini workspaces">
+                    <button class="ai-tab active" type="button" data-ai-tab="cinematic" role="tab" aria-selected="true">Film Analysis</button>
+                    <button class="ai-tab" type="button" data-ai-tab="curation" role="tab" aria-selected="false">Movie Curation</button>
+                    <button class="ai-tab" type="button" data-ai-tab="study" role="tab" aria-selected="false">YouTube Study</button>
+                </div>
+            </div>
+            <div class="ai-panel active" data-ai-panel="cinematic">
+                <div>
+                    <h3 class="ai-sidebar-title">Film Analysis</h3>
+                    <p class="ai-sidebar-copy">Use this tab only for movies, themes, psychology, symbolism, and cinematic discussion grounded in your library.</p>
+                </div>
+                <div class="research-chat-card">
+                    <div id="geminiChatMessages" class="chat-messages" aria-live="polite"></div>
+                    <div id="geminiChatStatus" class="chat-status">Ready for analysis.</div>
+                    <form id="geminiChatForm" class="chat-form" data-chat-mode="cinematic">
+                        <textarea id="geminiChatInput" class="chat-input" rows="1" placeholder="Ask about themes, psychology, symbolism, or what to watch next..." autocomplete="off"></textarea>
+                        <button id="geminiChatSend" class="chat-send-btn" type="submit">Ask</button>
+                    </form>
+                </div>
+            </div>
+            <div class="ai-panel" data-ai-panel="curation">
+                <div>
+                    <h3 class="ai-sidebar-title">Movie Curation</h3>
+                    <p class="ai-sidebar-copy">Use this tab only for personalized recommendations from your own unseen movie library. Finished titles are excluded before Gemini sees the pool.</p>
+                </div>
+                <div class="research-chat-card">
+                    <div id="curationChatMessages" class="chat-messages" aria-live="polite"></div>
+                    <div id="curationChatStatus" class="chat-status">Ready to curate from unseen titles.</div>
+                    <form id="curationChatForm" class="chat-form" data-chat-mode="curation">
+                        <textarea id="curationChatInput" class="chat-input" rows="1" placeholder="Ask what to watch next from your own unseen library..." autocomplete="off"></textarea>
+                        <button id="curationChatSend" class="chat-send-btn" type="submit">Ask</button>
+                    </form>
+                </div>
+            </div>
+            <div class="ai-panel" data-ai-panel="study">
+                <div>
+                    <h3 class="ai-sidebar-title">YouTube Study</h3>
+                    <p class="ai-sidebar-copy">Use this tab for educational videos, watch-later study items, and practical lesson breakdowns.</p>
+                </div>
+                <div class="research-chat-card">
+                    <div id="studyChatMessages" class="chat-messages" aria-live="polite"></div>
+                    <div id="studyChatStatus" class="chat-status">Ready to study videos.</div>
+                    <form id="studyChatForm" class="chat-form" data-chat-mode="study">
+                        <textarea id="studyChatInput" class="chat-input" rows="1" placeholder="Ask what to focus on, summarize study points, or break down a lesson..." autocomplete="off"></textarea>
+                        <button id="studyChatSend" class="chat-send-btn" type="submit">Ask</button>
+                    </form>
+                </div>
+            </div>
+        </aside>
+    </div>
+    <button id="aiSidebarToggle" class="ai-sidebar-toggle" type="button" aria-label="Toggle Gemini AI sidebar" aria-pressed="false">
+        <span class="ai-sidebar-toggle-label">AI</span>
+    </button>
+
+    <div id="cinema-overlay" aria-hidden="true"></div>
+    {% block global_modals %}{% endblock %}
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script>
+        (function() {
+            const root = document.documentElement, body = document.body;
+            const keys = {theme:'workspace-theme', sidebar:'workspace-sidebar-collapsed', filmState:'workspace-film-analysis-state'};
+            const sidebarToggle = document.getElementById('sidebarToggle');
+            const aiSidebarToggle = document.getElementById('aiSidebarToggle');
+            const themeToggle = document.getElementById('themeToggle');
+            const themeToggleLabel = themeToggle ? themeToggle.querySelector('.sidebar-footer-copy') : null;
+            const cinemaOverlay = document.getElementById('cinema-overlay');
+            const cinemaModeToggle = document.getElementById('cinemaModeToggle');
+            const ultraCinemaToggle = document.getElementById('ultraCinemaToggle');
+            const theaterModeToggle = document.getElementById('theaterModeToggle');
+            const geminiChatForm = document.getElementById('geminiChatForm');
+            const geminiChatInput = document.getElementById('geminiChatInput');
+            const geminiChatMessages = document.getElementById('geminiChatMessages');
+            const geminiChatStatus = document.getElementById('geminiChatStatus');
+            const geminiChatSend = document.getElementById('geminiChatSend');
+            const germanChatForm = document.getElementById('germanChatForm');
+            const germanChatInput = document.getElementById('germanChatInput');
+            const germanChatMessages = document.getElementById('germanChatMessages');
+            const germanChatStatus = document.getElementById('germanChatStatus');
+            const germanChatSend = document.getElementById('germanChatSend');
+            const studyChatForm = document.getElementById('studyChatForm');
+            const studyChatInput = document.getElementById('studyChatInput');
+            const studyChatMessages = document.getElementById('studyChatMessages');
+            const studyChatStatus = document.getElementById('studyChatStatus');
+            const studyChatSend = document.getElementById('studyChatSend');
+            const curationChatForm = document.getElementById('curationChatForm');
+            const curationChatInput = document.getElementById('curationChatInput');
+            const curationChatMessages = document.getElementById('curationChatMessages');
+            const curationChatStatus = document.getElementById('curationChatStatus');
+            const curationChatSend = document.getElementById('curationChatSend');
+            const aiTabs = Array.from(document.querySelectorAll('[data-ai-tab]'));
+            const aiPanels = Array.from(document.querySelectorAll('[data-ai-panel]'));
+            const aiDefaultMode = body.getAttribute('data-ai-default-mode') || 'cinematic';
+            const aiPageContext = body.getAttribute('data-ai-page-context') || 'general';
+            const cinemaState = { mode: 'off', isPlaying: false, theater: false };
+            const chatState = {
+                cinematic: { seeded: false, loaded: false, form: geminiChatForm, input: geminiChatInput, messages: geminiChatMessages, status: geminiChatStatus, send: geminiChatSend },
+                curation: { seeded: false, loaded: false, form: curationChatForm, input: curationChatInput, messages: curationChatMessages, status: curationChatStatus, send: curationChatSend },
+                study: { seeded: false, loaded: false, form: studyChatForm, input: studyChatInput, messages: studyChatMessages, status: studyChatStatus, send: studyChatSend },
+                german: { seeded: false, loaded: false, form: germanChatForm, input: germanChatInput, messages: germanChatMessages, status: germanChatStatus, send: germanChatSend }
+            };
+            let filmDiscussionState = {};
+            try {
+                filmDiscussionState = JSON.parse(localStorage.getItem(keys.filmState) || '{}') || {};
+            } catch (error) {
+                filmDiscussionState = {};
+            }
+            function setTheme(theme){
+                const nextTheme = theme === 'light' ? 'light' : 'dark';
+                root.setAttribute('data-theme', nextTheme);
+                localStorage.setItem(keys.theme, nextTheme);
+                if (themeToggleLabel) themeToggleLabel.textContent = nextTheme === 'light' ? 'Light Theme' : 'Black Theme';
+            }
+            function setSidebar(isCollapsed){body.classList.toggle('sidebar-collapsed', isCollapsed); localStorage.setItem(keys.sidebar, isCollapsed ? '1' : '0');}
+            function setAiSidebar(isOpen){
+                body.classList.toggle('ai-sidebar-open', isOpen);
+                if (aiSidebarToggle) aiSidebarToggle.setAttribute('aria-pressed', String(isOpen));
+            }
+            function appendChatMessage(target, role, text) {
+                if (!target) return;
+                const bubble = document.createElement('div');
+                bubble.className = `chat-message ${role}`;
+                bubble.textContent = text;
+                target.appendChild(bubble);
+                target.scrollTop = target.scrollHeight;
+            }
+            function setChatStatus(target, text, isError) {
+                if (!target) return;
+                target.textContent = text;
+                target.style.color = isError ? '#ff8f8f' : '';
+            }
+            function historyCategoryForMode(mode) {
+                if (mode === 'cinematic') return 'analysis';
+                if (mode === 'curation') return 'curation';
+                if (mode === 'german') return 'german';
+                return '';
+            }
+            function inferMovieModeFromMessage(currentMode, message) {
+                const text = String(message || '').toLowerCase();
+                const recommendationHints = ['recommend', 'recommendation', 'what should i watch', 'what to watch', 'watch next', 'suggest', 'suggestion', 'pick a movie', 'curate'];
+                const discussionHints = ['discuss', 'analyze', 'analysis', 'compare', 'agree', 'disagree', 'go deeper', 'next topic', 'rate it', 'theme', 'symbol', 'psychology'];
+                if (recommendationHints.some(function(item) { return text.indexOf(item) !== -1; })) return 'curation';
+                if (discussionHints.some(function(item) { return text.indexOf(item) !== -1; })) return 'cinematic';
+                return currentMode;
+            }
+            function resolveChatMode(mode, message) {
+                if (aiPageContext === 'movie' && (mode === 'cinematic' || mode === 'curation')) {
+                    return inferMovieModeFromMessage(mode, message);
+                }
+                return mode;
+            }
+            async function loadChatHistory(mode) {
+                const current = chatState[mode];
+                const category = historyCategoryForMode(mode);
+                if (!current || !current.messages || !category || current.loaded) return;
+                current.loaded = true;
+                try {
+                    const response = await fetch('{{ url_for("chat_history") }}?category=' + encodeURIComponent(category) + '&limit=30');
+                    const payload = await response.json();
+                    if (!response.ok || !payload.ok || !Array.isArray(payload.messages)) {
+                        seedChat(mode);
+                        return;
+                    }
+                    current.messages.innerHTML = '';
+                    if (payload.messages.length) {
+                        payload.messages.forEach(function(item) {
+                            appendChatMessage(current.messages, item.role === 'assistant' ? 'assistant' : 'user', item.message || '');
+                        });
+                        current.seeded = true;
+                    } else {
+                        seedChat(mode);
+                    }
+                } catch (error) {
+                    seedChat(mode);
+                }
+            }
+            async function requestChatReply(mode, displayMessage, backendMessage) {
+                const resolvedMode = resolveChatMode(mode, backendMessage || displayMessage);
+                const current = chatState[resolvedMode];
+                if (!current || !current.send) return;
+                if (resolvedMode !== mode) setActiveAiTab(resolvedMode);
+                seedChat(resolvedMode);
+                appendChatMessage(current.messages, 'user', displayMessage);
+                current.send.disabled = true;
+                setChatStatus(current.status, resolvedMode === 'german' ? 'Gemini erklaert gerade...' : (resolvedMode === 'curation' ? 'Gemini is curating...' : (resolvedMode === 'study' ? 'Gemini is studying...' : 'Gemini is thinking...')), false);
+                try {
+                    const response = await fetch('{{ url_for("chat") }}', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({message: backendMessage, display_message: displayMessage, mode: resolvedMode, state: resolvedMode === 'cinematic' ? filmDiscussionState : {}})
+                    });
+                    const payload = await response.json();
+                    if (!response.ok || !payload.ok) {
+                        appendChatMessage(current.messages, 'assistant', payload.error || 'Gemini could not answer right now.');
+                        setChatStatus(current.status, resolvedMode === 'german' ? 'Fehler im Chat.' : (resolvedMode === 'curation' ? 'Curation error.' : (resolvedMode === 'study' ? 'Study error.' : 'Chat error.')), true);
+                        return;
+                    }
+                    if (resolvedMode === 'cinematic') {
+                        filmDiscussionState = payload.state || {};
+                        localStorage.setItem(keys.filmState, JSON.stringify(filmDiscussionState));
+                    }
+                    appendChatMessage(current.messages, 'assistant', payload.reply || 'Gemini returned an empty reply.');
+                    setChatStatus(current.status, resolvedMode === 'german' ? 'Bereit fuer Deutschhilfe.' : (resolvedMode === 'curation' ? 'Ready to curate from unseen titles.' : (resolvedMode === 'study' ? 'Ready to study videos.' : 'Ready for analysis.')), false);
+                } catch (error) {
+                    appendChatMessage(current.messages, 'assistant', resolvedMode === 'german' ? 'Netzwerkfehler beim Zugriff auf Gemini. Bitte versuche es erneut.' : 'Network error while reaching Gemini. Please try again.');
+                    setChatStatus(current.status, resolvedMode === 'german' ? 'Netzwerkfehler.' : 'Network error.', true);
+                } finally {
+                    current.send.disabled = false;
+                    if (current.input) current.input.focus();
+                }
+            }
+            function buildStudyPrompt(payload) {
+                if (payload.mode === 'german') {
+                    return (
+                        'The user selected this German learning video for tutoring.\n' +
+                        'Title: ' + (payload.title || 'Untitled') + '\n' +
+                        'Playlist: ' + (payload.playlist || 'Unknown playlist') + '\n' +
+                        'Section: ' + (payload.section || 'Unknown section') + '\n' +
+                        'Video ID: ' + (payload.videoId || 'Unknown') + '\n\n' +
+                        'Please act only as a simple A1/A2 German tutor. Explain what this lesson is likely about, what the learner should focus on, and give a practical study path using simple German and clear teaching.'
+                    );
+                }
+                if (payload.mode === 'study') {
+                    return (
+                        'The user selected this educational video for study support.\n' +
+                        'Title: ' + (payload.title || 'Untitled') + '\n' +
+                        'Playlist: ' + (payload.playlist || 'Unknown playlist') + '\n' +
+                        'Section: ' + (payload.section || 'Unknown section') + '\n' +
+                        'Video ID: ' + (payload.videoId || 'Unknown') + '\n\n' +
+                        'Please act as the YouTube Study assistant. Explain what the learner should focus on, what the likely key concepts are, and how to study the video effectively.'
+                    );
+                }
+                return (
+                    'The user selected this video for film analysis.\n' +
+                    'Title: ' + (payload.title || 'Untitled') + '\n' +
+                    'Playlist: ' + (payload.playlist || 'Unknown playlist') + '\n' +
+                    'Section: ' + (payload.section || 'Unknown section') + '\n' +
+                    'Video ID: ' + (payload.videoId || 'Unknown') + '\n\n' +
+                    'Please begin by saying that you see the selected video, then analyze what kind of film or cinematic object it appears to be, what themes or psychological angles may matter, and how to approach it critically.'
+                );
+            }
+            function startAiStudy(payload) {
+                const mode = payload && payload.mode ? payload.mode : 'cinematic';
+                const title = payload && payload.title ? payload.title : 'Untitled';
+                setAiSidebar(true);
+                setActiveAiTab(mode);
+                requestChatReply(
+                    mode,
+                    mode === 'german' || mode === 'study' ? ('Study this lesson: ' + title) : ('Analyze this video: ' + title),
+                    buildStudyPrompt({
+                        mode: mode,
+                        title: title,
+                        playlist: payload && payload.playlist ? payload.playlist : '',
+                        section: payload && payload.section ? payload.section : '',
+                        videoId: payload && payload.videoId ? payload.videoId : ''
+                    })
+                );
+            }
+            function seedChat(mode) {
+                const current = chatState[mode];
+                if (!current || current.seeded || !current.messages) return;
+                if (mode === 'german') {
+                    appendChatMessage(current.messages, 'assistant', 'Ich bin dein Deutsch-Tutor fuer A1/A2. Ich helfe dir mit einfacher Grammatik, Wortschatz, Satzbau und Korrekturen. Fuer Filme und Analyse benutze bitte den Tab Film Analysis.');
+                } else if (mode === 'curation') {
+                    appendChatMessage(current.messages, 'assistant', 'I am your Movie Curation assistant. I recommend only from your own unseen movie library, and finished titles are filtered out before I see the pool.');
+                } else if (mode === 'study') {
+                    appendChatMessage(current.messages, 'assistant', 'I am your YouTube Study assistant. I help break down educational videos, lessons, and watch-later study items into practical learning steps.');
+                } else {
+                    appendChatMessage(current.messages, 'assistant', 'Film Analysis is ready. Start with DISCUSS: movie name, then continue with AGREE, DISAGREE, GO DEEPER, NEXT TOPIC, COMPARE: movie name, or RATE IT.');
+                }
+                current.seeded = true;
+            }
+            function setActiveAiTab(mode) {
+                aiTabs.forEach(function(tab) {
+                    const active = tab.getAttribute('data-ai-tab') === mode;
+                    tab.classList.toggle('active', active);
+                    tab.setAttribute('aria-selected', String(active));
+                });
+                aiPanels.forEach(function(panel) {
+                    panel.classList.toggle('active', panel.getAttribute('data-ai-panel') === mode);
+                });
+                loadChatHistory(mode);
+            }
+            function syncCinemaUI() {
+                const cinemaArmed = cinemaState.mode === 'cinema';
+                const ultraArmed = cinemaState.mode === 'ultra';
+                const showDim = cinemaArmed;
+                const showUltra = ultraArmed && cinemaState.isPlaying;
+                body.classList.toggle('cinema-mode', showDim);
+                body.classList.toggle('ultra-cinema-active', showUltra);
+                if (cinemaOverlay) cinemaOverlay.setAttribute('aria-hidden', String(!(showDim || showUltra)));
+                if (cinemaModeToggle) {
+                    cinemaModeToggle.classList.toggle('is-armed', cinemaArmed);
+                    cinemaModeToggle.setAttribute('aria-pressed', String(cinemaArmed));
+                }
+                if (ultraCinemaToggle) {
+                    ultraCinemaToggle.classList.toggle('is-armed', ultraArmed);
+                    ultraCinemaToggle.setAttribute('aria-pressed', String(ultraArmed));
+                }
+                if (theaterModeToggle) {
+                    theaterModeToggle.classList.toggle('is-armed', cinemaState.theater);
+                    theaterModeToggle.setAttribute('aria-pressed', String(cinemaState.theater));
+                }
+                body.classList.toggle('theater-view', cinemaState.theater);
+            }
+            function setCinemaMode(mode, isPlaying) {
+                if (typeof isPlaying === 'boolean') cinemaState.isPlaying = isPlaying;
+                cinemaState.mode = mode;
+                syncCinemaUI();
+            }
+            function updateCinemaPlayback(isPlaying) {
+                cinemaState.isPlaying = isPlaying;
+                syncCinemaUI();
+            }
+            function setTheaterView(isOpen) {
+                cinemaState.theater = isOpen;
+                syncCinemaUI();
+                document.dispatchEvent(new CustomEvent('theater-view-change', { detail: { active: isOpen } }));
+            }
+            function scrollToTop(){window.scrollTo({top:0,behavior:'smooth'});}
+            setTheme(localStorage.getItem(keys.theme) === 'light' ? 'light' : 'dark');
+            if (window.innerWidth > 820) setSidebar(localStorage.getItem(keys.sidebar) === '1');
+            setAiSidebar(false);
+            setActiveAiTab(aiDefaultMode);
+            if (sidebarToggle) sidebarToggle.addEventListener('click', function(){setSidebar(!body.classList.contains('sidebar-collapsed'));});
+            if (aiSidebarToggle) aiSidebarToggle.addEventListener('click', function(){setAiSidebar(!body.classList.contains('ai-sidebar-open'));});
+            if (themeToggle) themeToggle.addEventListener('click', function(){setTheme(root.getAttribute('data-theme') === 'light' ? 'dark' : 'light');});
+            aiTabs.forEach(function(tab) {
+                tab.addEventListener('click', function() {
+                    setActiveAiTab(tab.getAttribute('data-ai-tab'));
+                });
+            });
+            Object.keys(chatState).forEach(function(mode) {
+                const current = chatState[mode];
+                if (!current.input || !current.form) return;
+                current.input.addEventListener('input', function() {
+                    current.input.style.height = 'auto';
+                    current.input.style.height = Math.min(current.input.scrollHeight, 132) + 'px';
+                });
+                current.input.addEventListener('keydown', function(event) {
+                    if (event.key === 'Enter' && !event.shiftKey) {
+                        event.preventDefault();
+                        current.form.requestSubmit();
+                    }
+                });
+                current.form.addEventListener('submit', async function(event) {
+                    event.preventDefault();
+                    const message = current.input ? current.input.value.trim() : '';
+                    if (!message || !current.send) return;
+                    current.input.value = '';
+                    current.input.style.height = '52px';
+                    requestChatReply(mode, message, message);
+                });
+            });
+            document.addEventListener('click', function(event) {
+                const studyBtn = event.target.closest('.study-with-ai-btn');
+                if (!studyBtn) return;
+                event.preventDefault();
+                event.stopPropagation();
+                startAiStudy({
+                    mode: studyBtn.dataset.aiMode || 'cinematic',
+                    title: studyBtn.dataset.aiTitle || '',
+                    playlist: studyBtn.dataset.aiPlaylist || '',
+                    section: studyBtn.dataset.aiSection || '',
+                    videoId: studyBtn.dataset.aiVideoId || ''
+                });
+            });
+            if (cinemaModeToggle) cinemaModeToggle.addEventListener('click', function(){ setCinemaMode(cinemaState.mode === 'cinema' ? 'off' : 'cinema'); });
+            if (ultraCinemaToggle) ultraCinemaToggle.addEventListener('click', function(){ setCinemaMode(cinemaState.mode === 'ultra' ? 'off' : 'ultra'); });
+            if (theaterModeToggle) theaterModeToggle.addEventListener('click', function(){ setTheaterView(!cinemaState.theater); });
+            if (cinemaOverlay) cinemaOverlay.addEventListener('click', function(){ setCinemaMode('off'); document.dispatchEvent(new CustomEvent('cinema-overlay-close')); });
+            document.querySelectorAll('[data-scroll-top="true"]').forEach(function(link){link.addEventListener('click', function(){scrollToTop();});});
+            window.addEventListener('resize', function(){
+                if (window.innerWidth <= 820) body.classList.remove('sidebar-collapsed');
+                else setSidebar(localStorage.getItem(keys.sidebar) === '1');
+                setAiSidebar(false);
+            });
+            window.setCinemaMode = setCinemaMode;
+            window.updateCinemaPlayback = updateCinemaPlayback;
+            window.setTheaterView = setTheaterView;
+            window.startAiStudy = startAiStudy;
+            if (window.lucide && typeof window.lucide.createIcons === 'function') window.lucide.createIcons();
+        })();
+
+        (function() {
+            const progressKeyPrefix = 'youtube-progress:';
+
+            function clamp(value, min, max) {
+                return Math.min(Math.max(value, min), max);
+            }
+
+            function renderVideoProgress() {
+                document.querySelectorAll('[data-video-id][data-video-duration]').forEach(function(card) {
+                    const videoId = card.dataset.videoId;
+                    const duration = parseInt(card.dataset.videoDuration || '0', 10);
+                    const fill = card.querySelector('.video-progress-fill');
+                    if (!videoId || !fill || !duration) {
+                        if (fill) fill.style.width = '0%';
+                        return;
+                    }
+                    const currentTime = parseFloat(localStorage.getItem(progressKeyPrefix + videoId) || '0');
+                    const percent = clamp((currentTime / duration) * 100, 0, 100);
+                    fill.style.width = percent + '%';
+                });
+            }
+
+            window.renderVideoProgress = renderVideoProgress;
+            renderVideoProgress();
+        })();
+
+        (function() {
+            async function loadDurationBadges(root) {
+                const scope = root || document;
+                const cards = Array.from(scope.querySelectorAll('[data-video-id][data-video-duration]')).filter(function(card) {
+                    return !card.hidden && Number(card.dataset.videoDuration || '0') <= 0;
+                });
+                const videoIds = cards.map(function(card) { return card.dataset.videoId; }).filter(Boolean);
+                if (!videoIds.length) return;
+                try {
+                    const response = await fetch('{{ url_for("youtube_durations") }}', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({video_ids: videoIds})
+                    });
+                    const payload = await response.json();
+                    if (!response.ok || !payload.ok) return;
+                    cards.forEach(function(card) {
+                        const duration = payload.durations[card.dataset.videoId];
+                        if (!duration) return;
+                        card.dataset.videoDuration = String(duration.seconds || 0);
+                        const pill = card.querySelector('.duration-pill');
+                        if (pill) pill.textContent = duration.display || '0:00';
+                    });
+                    if (typeof window.renderVideoProgress === 'function') window.renderVideoProgress();
+                } catch (error) {
+                }
+            }
+
+            window.loadDurationBadges = loadDurationBadges;
+        })();
+    </script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,744 @@
+{% extends "base.html" %}
+{% block content %}
+{% set is_german_section = 'german' in (title|lower) %}
+<section class="page-hero">
+    <div class="hero-meta">
+        <span class="hero-badge">Video Workspace</span>
+        <span>Playlist browser</span>
+    </div>
+    <h2>{{ title }}</h2>
+    <p class="subhead">
+        Browse playlists like a lightweight media IDE: paginate quickly, shuffle the visible set, and open any lesson or match in a dedicated cinematic detail page.
+    </p>
+</section>
+
+{% if section_feed_context and section_feed_context.feed_visible %}
+<section class="surface-card section-card pockettube-group-feed" style="margin-bottom:18px;">
+    <div class="detail-header">
+        <div>
+            <div class="hero-meta">
+                <span class="hero-badge">PocketTube Group Feed</span>
+                <span>{{ section_feed_context.group_name or section_feed_context.name or title }}</span>
+            </div>
+            <h3 style="font-size:2rem; margin-top:12px;">Videos from this group</h3>
+        </div>
+    </div>
+    <div class="playlist-controls" style="margin-top:14px; flex-wrap:wrap;">
+        <label class="muted" for="pockettube-feed-per-page">Show</label>
+        <select id="pockettube-feed-per-page" class="playlist-limit" autocomplete="off" data-pockettube-feed-per-page>
+            {% for opt in [10, 12, 50, 100, 200, 400] %}
+            <option value="{{ opt }}" {% if section_feed_context.per_page|string == opt|string %}selected{% endif %}>{{ opt }}</option>
+            {% endfor %}
+        </select>
+        <span class="muted">
+            {% if section_feed_context.total_count %}
+            Showing {{ section_feed_context.start_index }}-{{ section_feed_context.end_index }} of {{ section_feed_context.total_count }} videos
+            {% else %}
+            No videos found
+            {% endif %}
+        </span>
+    </div>
+    <div class="playlist-controls" style="margin-top:14px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px 18px; width:100%;">
+        <div class="playlist-controls" style="margin:0; flex-wrap:wrap; gap:8px; align-items:center; justify-content:flex-start;">
+            <span class="muted">Type</span>
+            {% for opt in [('videos', 'Videos'), ('live', 'Live'), ('upcoming', 'Upcoming'), ('shorts', 'Shorts')] %}
+            <button type="button"
+                class="normal-order-btn{% if opt[0] in (section_feed_context.video_types or []) %} mode-toggle is-armed{% endif %}"
+                data-pockettube-feed-video-type="{{ opt[0] }}"
+                aria-pressed="{% if opt[0] in (section_feed_context.video_types or []) %}true{% else %}false{% endif %}">
+                {{ opt[1] }}
+            </button>
+            {% endfor %}
+        </div>
+        <div class="playlist-controls" style="margin:0 0 0 auto; flex-wrap:wrap; gap:8px; align-items:center; justify-content:flex-end;">
+            <button type="button" class="shuffle-order-btn" data-pockettube-feed-action="shuffle-order">Shuffle Order</button>
+            <button type="button" class="normal-order-btn" data-pockettube-feed-action="normal-order">Normal Order</button>
+            <button type="button" class="shuffle-play-btn" data-pockettube-feed-action="shuffle-video">Shuffle Video</button>
+            <button type="button" class="mode-toggle" data-pockettube-feed-action="toggle-watched" aria-pressed="false">Show Watched</button>
+        </div>
+    </div>
+    {% if section_feed_context.feed_order == 'shuffle' %}
+    <div class="muted" style="margin-top:10px; font-size:.84rem;">
+        {% if section_feed_context.shuffle_pool_count and section_feed_context.shuffle_subset_count and section_feed_context.shuffle_pool_count > section_feed_context.shuffle_subset_count %}
+        Mode: Latest per-channel shuffle · {{ section_feed_context.shuffle_subset_count }} of {{ section_feed_context.shuffle_pool_count }} channel videos
+        {% elif section_feed_context.shuffle_pool_count %}
+        Mode: Latest per-channel shuffle · {{ section_feed_context.shuffle_pool_count }} channel videos
+        {% endif %}
+        <div style="margin-top:4px;">Shuffle Video uses the same latest-per-channel pool.</div>
+    </div>
+    {% else %}
+    <div class="muted" style="margin-top:10px; font-size:.84rem;">
+        Mode: Normal feed · Shuffle Video uses the same latest-per-channel pool.
+    </div>
+    {% endif %}
+    <script type="application/json" id="pockettube-shuffle-candidates">{{ section_feed_context.shuffle_candidate_items | tojson }}</script>
+    <div class="muted" style="margin-top:12px;">
+        {{ section_feed_context.channel_count }} channels | {{ section_feed_context.total_count or section_feed_context.video_count }} videos
+    </div>
+    {% if request.args.get('pockettube_debug') == '1' %}
+    <div id="pockettubeFeedDebugMode" style="margin-top:12px; padding:10px 12px; border:1px solid #ff0000; background:#fff; color:#111; font:700 13px/1.5 Arial, sans-serif;">
+        showWatched = <span data-pockettube-debug-showwatched>unknown</span>
+    </div>
+    {% endif %}
+    {% if request.args.get('pockettube_debug') == '1' %}
+    <div id="pockettubeWatchedDebug" style="margin-top:14px; padding:14px; border:2px dashed #ff0000; background:#fff; color:#111; font:600 13px/1.6 Arial, sans-serif; display:block; white-space:pre-wrap;">
+        <div style="font-size:18px; font-weight:800; margin-bottom:8px;">PocketTube Watched Debug</div>
+        <div>Current mode: <span data-pockettube-debug-mode>unknown</span></div>
+        <div>Watched cards: <span data-pockettube-debug-watched-mode>unknown</span></div>
+        <div>Watched map count: <span data-pockettube-debug-count>0</span></div>
+        <div>Visible cards: <span data-pockettube-debug-visible>0</span></div>
+        <div style="margin-top:10px;">Visible card identities:</div>
+        <ol data-pockettube-debug-cards style="margin:8px 0 0 22px; padding:0;"></ol>
+    </div>
+    {% endif %}
+    {% if section_feed_context.feed_page_items %}
+    <div class="video-grid" style="margin-top:18px;">
+        {% for vid in section_feed_context.feed_page_items %}
+        <a class="content-card video-card" href="{{ url_for('video_detail', entry_id=vid.entry_id or ('yt-' ~ (vid.playlist_item_id or vid.video_id))) }}" data-video-id="{{ vid.video_id }}" data-entry-id="{{ vid.entry_id or ('yt-' ~ (vid.playlist_item_id or vid.video_id)) }}" data-playlist-item-id="{{ vid.playlist_item_id or '' }}" data-state-key="{{ vid.state_key or vid.watch_key or vid.video_id or vid.entry_id or (vid.playlist_item_id or '') }}" data-watch-key="{{ vid.watch_key or vid.video_id or vid.entry_id or (vid.playlist_item_id or '') }}" style="height:100%;">
+            {% if request.args.get('pockettube_debug') == '1' %}
+            <div class="pockettube-card-debug" style="position:absolute; inset:10px 10px auto 10px; z-index:4; padding:8px 10px; border-radius:12px; background:rgba(255,255,255,.95); color:#111; border:1px solid #ff0000; font:700 11px/1.45 Arial, sans-serif; pointer-events:none;">
+                <div>watched=<span data-pockettube-debug-watched-state>unknown</span></div>
+                <div>hidden=<span data-pockettube-debug-hidden-state>unknown</span></div>
+                <div>state_key=<span data-pockettube-debug-state-key>{{ vid.state_key or vid.watch_key or vid.video_id or vid.entry_id or (vid.playlist_item_id or '') }}</span></div>
+                <div>watch_key=<span data-pockettube-debug-watch-key>{{ vid.watch_key or vid.video_id or vid.entry_id or (vid.playlist_item_id or '') }}</span></div>
+                <div>video_id=<span data-pockettube-debug-video-id>{{ vid.video_id }}</span></div>
+                <div>entry_id=<span data-pockettube-debug-entry-id>{{ vid.entry_id or ('yt-' ~ (vid.playlist_item_id or vid.video_id)) }}</span></div>
+                <div>playlist_item_id=<span data-pockettube-debug-playlist-item-id>{{ vid.playlist_item_id or '' }}</span></div>
+            </div>
+            {% endif %}
+            <div class="video-frame video-poster">
+                <img class="video-thumb" src="{{ vid.thumb or vid.thumbnail_url or vid.thumbnail or vid.image_url }}" alt="{{ vid.title }}" loading="lazy" decoding="async">
+                <span class="duration-pill">{{ vid.duration or '0:00' }}</span>
+                {% if vid.url %}
+                <button type="button" class="card-quick-action pockettube-secondary-action pockettube-youtube-btn" data-pockettube-external-url="{{ vid.url }}" aria-label="Open video on YouTube" title="Open video on YouTube"><i data-lucide="external-link"></i></button>
+                {% endif %}
+            </div>
+            <div class="card-title">{{ vid.title }}</div>
+            <div class="pockettube-card-meta" style="margin-top:auto; display:flex; flex-direction:column; gap:2px;">
+                <div class="card-meta channel-meta" style="font-size:.8rem; line-height:1.45;">{{ vid.channel_name or 'Unknown Channel' }}</div>
+                {% if vid.published_display %}
+                <div class="card-meta" style="font-size:.75rem; opacity:.72; line-height:1.3; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:block;" title="Published: {{ vid.published_display }}">Published: {{ vid.published_display }}</div>
+                {% endif %}
+            </div>
+        </a>
+        {% endfor %}
+    </div>
+    <div class="empty-state" style="margin-top:18px; display:none;" data-pockettube-watched-empty>All videos in this feed slice are currently hidden.</div>
+    {% else %}
+    <div class="empty-state" style="margin-top:18px;">No videos found for the selected PocketTube filters.</div>
+    {% endif %}
+    <div class="playlist-controls" style="margin-top:18px; flex-wrap:wrap;">
+        {% if section_feed_context.has_previous %}
+        <a href="{{ build_query_url(request.args, page=section_feed_context.previous_page, per_page=section_feed_context.per_page, video_types=section_feed_context.video_types_csv, feed_order=section_feed_context.feed_order, feed_shuffle_seed=section_feed_context.feed_shuffle_seed) }}" class="pagination-button pagination-nav" data-scroll-top="true"><i data-lucide="chevron-left"></i>Previous</a>
+        {% endif %}
+        {% if section_feed_context.has_next %}
+        <a href="{{ build_query_url(request.args, page=section_feed_context.next_page, per_page=section_feed_context.per_page, video_types=section_feed_context.video_types_csv, feed_order=section_feed_context.feed_order, feed_shuffle_seed=section_feed_context.feed_shuffle_seed) }}" class="pagination-button pagination-nav" data-scroll-top="true">Next<i data-lucide="chevron-right"></i></a>
+        {% endif %}
+    </div>
+</section>
+{% endif %}
+
+{% if playlists %}
+    {% set section_ai_mode = 'german' if 'german' in title|lower else 'study' %}
+    {% if is_german_section %}
+    <style>
+        .playlist-section .video-grid{
+            grid-template-columns:repeat(5,minmax(0,1fr));
+            justify-content:start;
+        }
+        @media (max-width: 1700px){
+            .playlist-section .video-grid{grid-template-columns:repeat(4,minmax(0,1fr));}
+        }
+        @media (max-width: 1380px){
+            .playlist-section .video-grid{grid-template-columns:repeat(3,minmax(0,1fr));}
+        }
+        @media (max-width: 980px){
+            .playlist-section .video-grid{grid-template-columns:repeat(2,minmax(0,1fr));}
+        }
+        @media (max-width: 640px){
+            .playlist-section .video-grid{grid-template-columns:repeat(1,minmax(0,1fr));}
+        }
+    </style>
+    {% endif %}
+    {% for pl in playlists %}
+    <section class="surface-card section-card playlist-section playlist-container" data-playlist-id="{{ loop.index }}" data-playlist-source-id="{{ pl.playlist_id }}" data-default-limit="{{ default_limit|default(10) }}" data-total-videos="{{ pl.total_videos or pl.videos|length }}">
+        <div class="playlist-header">
+            <div>
+                <div class="hero-meta">
+                    <span class="hero-badge">Playlist</span>
+                    <span data-playlist-count>{{ pl.total_videos or pl.videos|length }} videos</span>
+                </div>
+                <h3 class="title-scaled" style="margin-top:12px;">
+                    <a href="{{ pl.url }}" target="_blank" style="text-decoration:none;">{{ pl.name }}</a>
+                </h3>
+            </div>
+            <div class="playlist-controls">
+                <label class="muted" for="limit-{{ loop.index }}">Show</label>
+                <select id="limit-{{ loop.index }}" class="playlist-limit" data-playlist="{{ loop.index }}" autocomplete="off">
+                    {% for opt in [4,8,10,12,16,20,50,'All'] %}
+                    <option value="{{ opt }}" {% if opt|string == default_limit|string %}selected{% endif %}>{{ opt }}</option>
+                    {% endfor %}
+                </select>
+                <button class="shuffle-order-btn" data-playlist="{{ loop.index }}" type="button"><i data-lucide="shuffle"></i>Shuffle Order</button>
+                <button class="normal-order-btn{% if not pl.shuffle_active %} mode-toggle is-armed{% endif %}" data-playlist="{{ loop.index }}" type="button"><i data-lucide="list-ordered"></i>Normal Order</button>
+                <button class="shuffle-play-btn" data-playlist="{{ loop.index }}" type="button"><i data-lucide="play"></i>Shuffle Video</button>
+            </div>
+        </div>
+
+        {% if pl.videos %}
+        <div class="video-grid" id="playlist-{{ loop.index }}">
+            {% for vid in pl.videos %}
+            <a class="content-card video-card" href="{{ url_for('video_detail', entry_id='yt-' ~ (vid.playlist_item_id or vid.video_id)) }}" data-video-id="{{ vid.video_id }}" data-video-duration="{{ vid.duration_seconds or 0 }}" data-playlist-id="{{ vid.playlist_id or '' }}" data-playlist-item-id="{{ vid.playlist_item_id or '' }}" data-scroll-top="true">
+                <div class="video-frame video-poster">
+                    <img class="video-thumb" src="{{ vid.thumb or vid.thumbnail_url or vid.thumbnail or vid.image_url }}" alt="{{ vid.title }}" loading="lazy" decoding="async">
+                    <button class="card-ai-action study-with-ai-btn" type="button" data-ai-mode="{{ section_ai_mode }}" data-ai-title="{{ vid.title }}" data-ai-playlist="{{ pl.name }}" data-ai-section="{{ title }}" data-ai-video-id="{{ vid.video_id }}" aria-label="Study this video with AI"><i data-lucide="sparkles"></i><span>Study with AI</span></button>
+                    {% if quick_delete_enabled %}
+                    <button class="card-quick-action quick-delete-btn" type="button" data-delete-url="{{ url_for('delete_from_youtube', playlist_item_id=vid.playlist_item_id or '__lookup__') }}" aria-label="Remove from YouTube playlist" title="Remove from YouTube playlist"><i data-lucide="trash-2"></i></button>
+                    {% endif %}
+                    <div class="video-progress-track"><div class="video-progress-fill"></div></div>
+                    <span class="duration-pill">{{ vid.duration or '0:00' }}</span>
+                </div>
+                <div class="card-title">{{ vid.title }}</div>
+                <div class="card-meta channel-meta">{{ vid.channel_name or 'Unknown Channel' }}</div>
+            </a>
+            {% endfor %}
+        </div>
+        {% if pl.total_pages > 1 %}
+        <div class="pagination youtube-pagination" id="pagination-{{ loop.index }}">
+            {% if pl.current_page > 1 %}
+            <a href="{{ build_query_url(request.args, playlist_page=1, limit=default_limit) }}" class="pagination-button pagination-nav" data-scroll-top="true">Beginning</a>
+            <a href="{{ build_query_url(request.args, playlist_page=pl.current_page-1, limit=default_limit) }}" class="pagination-button pagination-nav" data-scroll-top="true"><i data-lucide="chevron-left"></i>Previous</a>
+            {% endif %}
+            {% for item in pl.pagination_numbers %}
+                {% if item == '...' %}
+                <span class="pagination-ellipsis">...</span>
+                {% elif item == pl.current_page %}
+                <span class="pagination-button pagination-index active">{{ item }}</span>
+                {% else %}
+                <a href="{{ build_query_url(request.args, playlist_page=item, limit=default_limit) }}" class="pagination-button pagination-index" data-scroll-top="true">{{ item }}</a>
+                {% endif %}
+            {% endfor %}
+            {% if pl.current_page < pl.total_pages %}
+            <a href="{{ build_query_url(request.args, playlist_page=pl.current_page+1, limit=default_limit) }}" class="pagination-button pagination-nav" data-scroll-top="true">Next<i data-lucide="chevron-right"></i></a>
+            <a href="{{ build_query_url(request.args, playlist_page=pl.total_pages, limit=default_limit) }}" class="pagination-button pagination-nav" data-scroll-top="true">Ending</a>
+            {% endif %}
+        </div>
+        {% endif %}
+        {% else %}
+        <div class="empty-state">No videos found for this playlist.</div>
+        {% endif %}
+    </section>
+    {% endfor %}
+{% else %}
+<div class="empty-state">No playlists configured in this section.</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+    const playlistState = {};
+    const pockettubeWatchedStorageKey = 'dragon-pockettube-watched-v1';
+    const pockettubeShowWatchedStorageKey = 'dragon-pockettube-show-watched-v1';
+
+    function clearPockettubeTheaterView() {
+        if (!document.body.classList.contains('theater-view')) return;
+        if (typeof window.setTheaterView === 'function') {
+            window.setTheaterView(false);
+        } else {
+            document.body.classList.remove('theater-view');
+        }
+    }
+
+    clearPockettubeTheaterView();
+    window.addEventListener('pageshow', clearPockettubeTheaterView);
+
+    function readPockettubeWatchedMap() {
+        try {
+            const raw = window.localStorage.getItem(pockettubeWatchedStorageKey) || '{}';
+            const parsed = JSON.parse(raw);
+            return parsed && typeof parsed === 'object' ? parsed : {};
+        } catch (error) {
+            return {};
+        }
+    }
+
+    function writePockettubeWatchedMap(map) {
+        try {
+            window.localStorage.setItem(pockettubeWatchedStorageKey, JSON.stringify(map || {}));
+        } catch (error) {
+            return;
+        }
+    }
+
+    function readPockettubeShowWatched() {
+        try {
+            const raw = window.localStorage.getItem(pockettubeShowWatchedStorageKey);
+            if (raw === null || typeof raw === 'undefined') return false;
+            const normalized = String(raw).trim().toLowerCase();
+            if (['1', 'true', 'yes', 'on'].includes(normalized)) return true;
+            if (['0', 'false', 'no', 'off', ''].includes(normalized)) return false;
+            return false;
+        } catch (error) {
+            return false;
+        }
+    }
+
+    function writePockettubeShowWatched(value) {
+        const next = !!value;
+        try {
+            window.localStorage.setItem(pockettubeShowWatchedStorageKey, next ? '1' : '0');
+        } catch (error) {
+            return next;
+        }
+        return next;
+    }
+
+    function pockettubeWatchKeys(stateKey, entryId, videoId, playlistItemId, watchKey) {
+        const keys = [];
+        [stateKey, watchKey, videoId, entryId, playlistItemId].forEach(function(value) {
+            const key = String(value || '').trim();
+            if (key && !keys.includes(key)) {
+                keys.push(key);
+            }
+        });
+        return keys;
+    }
+
+    function pockettubeWatched(stateKey, entryId, videoId, playlistItemId, watchKey) {
+        const watchedMap = readPockettubeWatchedMap();
+        return pockettubeWatchKeys(stateKey, entryId, videoId, playlistItemId, watchKey).some(function(key) {
+            return !!watchedMap[key];
+        });
+    }
+
+    function markPockettubeWatched(stateKey, entryId, videoId, playlistItemId, watchKey, watched) {
+        const watchedMap = readPockettubeWatchedMap();
+        pockettubeWatchKeys(stateKey, entryId, videoId, playlistItemId, watchKey).forEach(function(key) {
+            if (watched) {
+                watchedMap[key] = Date.now();
+            } else {
+                delete watchedMap[key];
+            }
+        });
+        writePockettubeWatchedMap(watchedMap);
+    }
+
+    let pockettubeFeedSyncing = false;
+    function syncPockettubeWatchedFeed(explicitShowWatched) {
+        const feedSection = document.querySelector('.pockettube-group-feed');
+        if (!feedSection) return;
+        if (pockettubeFeedSyncing) return;
+        pockettubeFeedSyncing = true;
+
+        try {
+            const showWatched = typeof explicitShowWatched === 'boolean' ? explicitShowWatched : readPockettubeShowWatched();
+            const watchedToggle = feedSection.querySelector('[data-pockettube-feed-action="toggle-watched"]');
+            const watchedEmpty = feedSection.querySelector('[data-pockettube-watched-empty]');
+            const cards = Array.from(feedSection.querySelectorAll('.video-card[data-video-id]'));
+            let visibleCount = 0;
+
+            cards.forEach(function(card) {
+                const stateKey = String(card.dataset.stateKey || '').trim();
+                const entryId = String(card.dataset.entryId || '').trim();
+                const videoId = String(card.dataset.videoId || '').trim();
+                const playlistItemId = String(card.dataset.playlistItemId || '').trim();
+                const watchKey = String(card.dataset.watchKey || '').trim();
+                const isWatched = pockettubeWatched(stateKey, entryId, videoId, playlistItemId, watchKey);
+                card.hidden = isWatched && !showWatched;
+                if (!card.hidden) {
+                    visibleCount += 1;
+                }
+            });
+
+            if (watchedToggle) {
+                watchedToggle.textContent = showWatched ? 'Hide Watched' : 'Show Watched';
+                watchedToggle.setAttribute('aria-pressed', showWatched ? 'true' : 'false');
+                watchedToggle.classList.toggle('is-armed', showWatched);
+            }
+
+            if (watchedEmpty) {
+                watchedEmpty.style.display = visibleCount ? 'none' : '';
+            }
+
+            if (window.location.search.includes('pockettube_debug=1')) {
+                console.debug('[PocketTube feed sync]', {
+                    visibleCount: visibleCount,
+                    watchedCount: cards.length - visibleCount,
+                    showWatched: showWatched,
+                });
+            }
+            syncPockettubeWatchedFeedDebug(feedSection, cards, showWatched, visibleCount);
+        } finally {
+            pockettubeFeedSyncing = false;
+        }
+    }
+
+    function refreshPockettubeWatchedFeedNow(explicitShowWatched) {
+        syncPockettubeWatchedFeed(explicitShowWatched);
+    }
+
+    function syncPockettubeWatchedFeedDebug(feedSection, cards, showWatched, visibleCount) {
+        if (window.location.search.indexOf('pockettube_debug=1') === -1) return;
+        const panel = document.getElementById('pockettubeWatchedDebug');
+        const modePanel = document.getElementById('pockettubeFeedDebugMode');
+        if (modePanel) {
+            const showWatchedEl = modePanel.querySelector('[data-pockettube-debug-showwatched]');
+            if (showWatchedEl) showWatchedEl.textContent = showWatched ? 'true' : 'false';
+        }
+        if (!panel) return;
+        const watchedMap = readPockettubeWatchedMap();
+        const watchedCount = Object.keys(watchedMap).length;
+        const modeLabel = showWatched ? 'Show Watched' : 'Hide Watched';
+        const watchedCardsLabel = showWatched ? 'visible' : 'hidden';
+        const modeEl = panel.querySelector('[data-pockettube-debug-mode]');
+        const watchedModeEl = panel.querySelector('[data-pockettube-debug-watched-mode]');
+        const countEl = panel.querySelector('[data-pockettube-debug-count]');
+        const visibleEl = panel.querySelector('[data-pockettube-debug-visible]');
+        const cardsEl = panel.querySelector('[data-pockettube-debug-cards]');
+        if (modeEl) modeEl.textContent = modeLabel;
+        if (watchedModeEl) watchedModeEl.textContent = watchedCardsLabel;
+        if (countEl) countEl.textContent = String(watchedCount);
+        if (visibleEl) visibleEl.textContent = String(visibleCount);
+        if (cardsEl) {
+            cardsEl.innerHTML = '';
+            const visibleCards = cards.filter(function(card) { return !card.hidden; }).slice(0, 5);
+            visibleCards.forEach(function(card, index) {
+                const stateKey = String(card.dataset.stateKey || '').trim();
+                const entryId = String(card.dataset.entryId || '').trim();
+                const videoId = String(card.dataset.videoId || '').trim();
+                const playlistItemId = String(card.dataset.playlistItemId || '').trim();
+                const watchKey = String(card.dataset.watchKey || '').trim();
+                const watched = pockettubeWatched(stateKey, entryId, videoId, playlistItemId, watchKey);
+                const debugWatched = watched ? 'yes' : 'no';
+                const li = document.createElement('li');
+                li.style.margin = '4px 0';
+                li.textContent = [
+                    `#${index + 1}`,
+                    `watched=${debugWatched}`,
+                    `state_key=${stateKey || '-'}`,
+                    `watch_key=${watchKey || '-'}`,
+                    `video_id=${videoId || '-'}`,
+                    `entry_id=${entryId || '-'}`,
+                    `playlist_item_id=${playlistItemId || '-'}`,
+                ].join(' | ');
+                cardsEl.appendChild(li);
+            });
+            if (!visibleCards.length) {
+                const li = document.createElement('li');
+                li.textContent = cards.length ? 'No visible PocketTube cards in this slice.' : 'No PocketTube cards found in this slice.';
+                cardsEl.appendChild(li);
+            }
+        }
+
+        cards.forEach(function(card) {
+            const stateKey = String(card.dataset.stateKey || '').trim();
+            const entryId = String(card.dataset.entryId || '').trim();
+            const videoId = String(card.dataset.videoId || '').trim();
+            const playlistItemId = String(card.dataset.playlistItemId || '').trim();
+            const watchKey = String(card.dataset.watchKey || '').trim();
+            const watched = pockettubeWatched(stateKey, entryId, videoId, playlistItemId, watchKey);
+            const hidden = !!card.hidden;
+            card.dataset.pockettubeDebugWatched = watched ? 'yes' : 'no';
+            card.dataset.pockettubeDebugHidden = hidden ? 'yes' : 'no';
+            const stateEl = card.querySelector('[data-pockettube-debug-state-key]');
+            const watchEl = card.querySelector('[data-pockettube-debug-watch-key]');
+            const videoEl = card.querySelector('[data-pockettube-debug-video-id]');
+            const entryEl = card.querySelector('[data-pockettube-debug-entry-id]');
+            const playlistEl = card.querySelector('[data-pockettube-debug-playlist-item-id]');
+            const watchedEl = card.querySelector('[data-pockettube-debug-watched-state]');
+            const hiddenEl = card.querySelector('[data-pockettube-debug-hidden-state]');
+            if (stateEl) stateEl.textContent = stateKey || '-';
+            if (watchEl) watchEl.textContent = watchKey || '-';
+            if (videoEl) videoEl.textContent = videoId || '-';
+            if (entryEl) entryEl.textContent = entryId || '-';
+            if (playlistEl) playlistEl.textContent = playlistItemId || '-';
+            if (watchedEl) watchedEl.textContent = watched ? 'yes' : 'no';
+            if (hiddenEl) hiddenEl.textContent = hidden ? 'yes' : 'no';
+        });
+    }
+
+    const feedPerPageSelect = document.getElementById('pockettube-feed-per-page');
+    if (feedPerPageSelect) {
+        feedPerPageSelect.addEventListener('change', function() {
+            const url = new URL(window.location.href);
+            url.searchParams.set('per_page', feedPerPageSelect.value);
+            url.searchParams.set('page', '1');
+            window.location.href = url.toString();
+        });
+    }
+
+    document.querySelectorAll('[data-pockettube-feed-video-type]').forEach(function(button) {
+        button.addEventListener('click', function() {
+            const allowed = ['videos', 'live', 'upcoming', 'shorts'];
+            const videoType = button.dataset.pockettubeFeedVideoType || 'videos';
+            const url = new URL(window.location.href);
+            const current = (url.searchParams.get('video_types') || '').split(',').map(function(value) {
+                return String(value || '').trim().toLowerCase();
+            }).filter(function(value) {
+                return allowed.includes(value);
+            });
+            const active = Array.from(new Set(current.length ? current : ['videos']));
+            const next = active.includes(videoType)
+                ? active.filter(function(item) { return item !== videoType; })
+                : active.concat(videoType);
+            const selected = next.filter(function(item) { return allowed.includes(item); });
+            url.searchParams.set('video_types', (selected.length ? selected : ['videos']).join(','));
+            url.searchParams.delete('video_type');
+            url.searchParams.set('page', '1');
+            window.location.href = url.toString();
+        });
+    });
+
+    document.querySelectorAll('[data-pockettube-feed-action]').forEach(function(button) {
+        button.addEventListener('click', function() {
+            const action = String(button.dataset.pockettubeFeedAction || '').trim().toLowerCase();
+            const url = new URL(window.location.href);
+            if (action === 'shuffle-order') {
+                url.searchParams.set('feed_order', 'shuffle');
+                url.searchParams.set('feed_shuffle_seed', String(Date.now()));
+                url.searchParams.set('page', '1');
+                window.location.href = url.toString();
+            } else if (action === 'normal-order') {
+                url.searchParams.delete('feed_order');
+                url.searchParams.delete('feed_shuffle_seed');
+                url.searchParams.set('page', '1');
+                window.location.href = url.toString();
+            } else if (action === 'shuffle-video') {
+                const candidateScript = document.getElementById('pockettube-shuffle-candidates');
+                let pool = [];
+                if (candidateScript && candidateScript.textContent) {
+                    try {
+                        const parsed = JSON.parse(candidateScript.textContent || '[]');
+                        if (Array.isArray(parsed)) {
+                            pool = parsed.filter(function(item) {
+                                return item && typeof item === 'object';
+                            });
+                        }
+                    } catch (error) {
+                        pool = [];
+                    }
+                }
+                if (!pool.length) {
+                    const feedSection = document.querySelector('.pockettube-group-feed');
+                    if (!feedSection) return;
+                    const cards = Array.from(feedSection.querySelectorAll('.video-card'));
+                    if (!cards.length) return;
+                    pool = cards.map(function(card) {
+                        return {
+                            detail_url: card.href || '',
+                            state_key: card.dataset.stateKey || '',
+                            watch_key: card.dataset.watchKey || '',
+                            video_id: card.dataset.videoId || '',
+                            entry_id: card.dataset.entryId || '',
+                            playlist_item_id: card.dataset.playlistItemId || ''
+                        };
+                    });
+                }
+                if (!pool.length) return;
+                const randomItem = pool[Math.floor(Math.random() * pool.length)];
+                const targetUrl = String(randomItem.detail_url || '').trim()
+                    || (String(randomItem.entry_id || '').trim() ? `/video/${String(randomItem.entry_id).trim()}` : '');
+                if (targetUrl) {
+                    window.location.href = targetUrl;
+                }
+            } else if (action === 'toggle-watched') {
+                const current = readPockettubeShowWatched();
+                const next = !current;
+                writePockettubeShowWatched(next);
+                refreshPockettubeWatchedFeedNow(next);
+            }
+        });
+    });
+
+    const pockettubeFeed = document.querySelector('.pockettube-group-feed');
+    if (pockettubeFeed) {
+        pockettubeFeed.addEventListener('click', function(event) {
+            if (event.target.closest('.pockettube-secondary-action')) {
+                return;
+            }
+            const card = event.target.closest('.video-card[data-video-id]');
+            if (!card) return;
+            markPockettubeWatched(card.dataset.stateKey || '', card.dataset.entryId || '', card.dataset.videoId || '', card.dataset.playlistItemId || '', card.dataset.watchKey || '', true);
+            refreshPockettubeWatchedFeedNow(readPockettubeShowWatched());
+        }, true);
+        syncPockettubeWatchedFeed();
+        window.addEventListener('storage', function(event) {
+            if (event.key === pockettubeWatchedStorageKey || event.key === pockettubeShowWatchedStorageKey) {
+                syncPockettubeWatchedFeed();
+            }
+        });
+        window.addEventListener('load', function() {
+            syncPockettubeWatchedFeed();
+        });
+        document.addEventListener('DOMContentLoaded', function() {
+            syncPockettubeWatchedFeed();
+        });
+        window.addEventListener('pageshow', function() {
+            syncPockettubeWatchedFeed();
+        });
+        window.addEventListener('focus', function() {
+            syncPockettubeWatchedFeed();
+        });
+        document.addEventListener('visibilitychange', function() {
+            if (!document.hidden) {
+                syncPockettubeWatchedFeed();
+            }
+        });
+    }
+
+    document.addEventListener('click', function(event) {
+        const button = event.target.closest('.pockettube-youtube-btn');
+        if (!button) return;
+        event.preventDefault();
+        event.stopPropagation();
+        const externalUrl = String(button.dataset.pockettubeExternalUrl || '').trim();
+        if (externalUrl) {
+            window.open(externalUrl, '_blank', 'noopener');
+        }
+    });
+
+    function getPageSize(playlistId) {
+        const select = document.getElementById(`limit-${playlistId}`);
+        if (!select) return 12;
+        return select.value === 'All' ? Infinity : parseInt(select.value, 10);
+    }
+
+    function reloadWithPageSize(pageSize) {
+        const url = new URL(window.location.href);
+        url.searchParams.set('limit', pageSize === Infinity ? 'All' : String(pageSize));
+        url.searchParams.delete('playlist_page');
+        window.location.href = url.toString();
+    }
+
+    function initializePlaylist(playlistId) {
+        const container = document.querySelector(`.playlist-container[data-playlist-id="${playlistId}"]`);
+        const grid = document.getElementById(`playlist-${playlistId}`);
+        if (!container || !grid) return;
+
+        const select = document.getElementById(`limit-${playlistId}`);
+        if (select) {
+            const desiredLimit = String(container.dataset.defaultLimit || '12');
+            if ([...select.options].some(function(option) { return option.value === desiredLimit; })) {
+                select.value = desiredLimit;
+            } else {
+                select.value = '10';
+            }
+        }
+
+        playlistState[playlistId] = {
+            container,
+            grid,
+            sourcePlaylistId: container.dataset.playlistSourceId || '',
+            totalVideos: parseInt(container.dataset.totalVideos || String(grid.children.length), 10) || grid.children.length,
+            cards: Array.from(grid.children)
+        };
+        if (typeof window.loadDurationBadges === 'function') {
+            window.loadDurationBadges(grid);
+        }
+
+        if (select) {
+            select.addEventListener('change', function() {
+                reloadWithPageSize(getPageSize(playlistId));
+            });
+        }
+
+        const shuffleOrderBtn = document.querySelector(`.shuffle-order-btn[data-playlist="${playlistId}"]`);
+        if (shuffleOrderBtn) {
+            shuffleOrderBtn.addEventListener('click', function() {
+                const state = playlistState[playlistId];
+                if (!state || !state.sourcePlaylistId) return;
+                const url = new URL(window.location.href);
+                url.searchParams.set('shuffle_playlist', state.sourcePlaylistId);
+                url.searchParams.set('shuffle_seed', String(Date.now()));
+                url.searchParams.set('playlist_page', '1');
+                window.location.href = url.toString();
+            });
+        }
+
+        const normalOrderBtn = document.querySelector(`.normal-order-btn[data-playlist="${playlistId}"]`);
+        if (normalOrderBtn) {
+            normalOrderBtn.addEventListener('click', function() {
+                const url = new URL(window.location.href);
+                url.searchParams.delete('shuffle_playlist');
+                url.searchParams.delete('shuffle_seed');
+                url.searchParams.set('playlist_page', '1');
+                window.location.href = url.toString();
+            });
+        }
+
+        const shufflePlayBtn = document.querySelector(`.shuffle-play-btn[data-playlist="${playlistId}"]`);
+        if (shufflePlayBtn) {
+            shufflePlayBtn.addEventListener('click', function() {
+                const state = playlistState[playlistId];
+                const visibleCards = state.cards.filter(card => !card.hidden);
+                if (!visibleCards.length) return;
+                const randomCard = visibleCards[Math.floor(Math.random() * visibleCards.length)];
+                window.location.href = randomCard.href;
+            });
+        }
+    }
+
+    document.querySelectorAll('.playlist-container').forEach(container => {
+        const playlistId = container.dataset.playlistId;
+        if (playlistId) initializePlaylist(playlistId);
+    });
+
+    document.addEventListener('click', async function(event) {
+        const button = event.target.closest('.quick-delete-btn');
+        if (!button) return;
+        event.preventDefault();
+        event.stopPropagation();
+
+        const card = button.closest('.content-card');
+        if (!card) return;
+
+        const confirmed = window.confirm('Remove this video from YouTube and archive it in history?');
+        if (!confirmed) return;
+
+        button.disabled = true;
+        try {
+            const response = await fetch(button.dataset.deleteUrl, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    video_id: card.dataset.videoId || '',
+                    playlist_id: card.dataset.playlistId || '',
+                    playlist_item_id: card.dataset.playlistItemId || '',
+                    next: window.location.pathname + window.location.search
+                })
+            });
+            const data = await response.json();
+            if (data.auth_required && data.auth_url) {
+                window.location.href = data.auth_url;
+                return;
+            }
+            if (!response.ok || !data.ok) {
+                window.alert(data.error || 'Delete failed.');
+                button.disabled = false;
+                return;
+            }
+
+            const playlistContainer = button.closest('.playlist-container');
+            const playlistId = playlistContainer ? playlistContainer.dataset.playlistId : '';
+            const state = playlistState[playlistId];
+            if (!state) {
+                card.remove();
+                return;
+            }
+
+            card.classList.add('removing');
+            window.setTimeout(function() {
+                state.cards = state.cards.filter(function(item) { return item !== card; });
+                card.remove();
+                const countLabel = state.container.querySelector('[data-playlist-count]');
+                if (countLabel) countLabel.textContent = `${Math.max(state.cards.length, 0)} videos`;
+            }, 220);
+        } catch (error) {
+            window.alert('Delete failed. Please try again.');
+            button.disabled = false;
+        }
+    });
+})();
+</script>
+{% endblock %}

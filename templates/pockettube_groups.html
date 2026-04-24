@@ -1,0 +1,202 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+    .pockettube-hub-toolbar{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap}
+    .pockettube-view-toggle{display:inline-flex;align-items:center;gap:8px;padding:6px;border-radius:999px;background:var(--button-bg);border:1px solid var(--button-border)}
+    .pockettube-view-toggle button{border:0;background:transparent;color:var(--text-2);padding:9px 14px;border-radius:999px;cursor:pointer;transition:background .2s ease,color .2s ease,box-shadow .2s ease}
+    .pockettube-view-toggle button.is-active{background:rgba(255,0,0,.14);color:var(--text);box-shadow:0 0 0 1px rgba(255,0,0,.24) inset}
+    .pockettube-hub-sort{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+    .pockettube-hub-sort select{min-width:180px}
+    .pockettube-hub-view{margin-top:18px}
+    .pockettube-hub-list{display:grid;gap:12px}
+    .pockettube-hub-card{display:grid;gap:10px}
+    .pockettube-hub-card .admin-category-header{display:flex;align-items:flex-start;justify-content:space-between;gap:18px}
+    .pockettube-hub-card .hero-meta{gap:8px 10px}
+    .pockettube-hub-card .pockettube-hub-summary{display:grid;gap:8px}
+    .pockettube-hub-card .pockettube-hub-description{max-width:720px}
+    html[data-pockettube-hub-view="cards"] .pockettube-hub-list{grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px}
+    html[data-pockettube-hub-view="cards"] .pockettube-hub-list .admin-category-item{min-height:100%;padding:18px}
+    html[data-pockettube-hub-view="cards"] .pockettube-hub-list .admin-category-header{display:grid;gap:14px;align-content:start}
+    html[data-pockettube-hub-view="cards"] .pockettube-hub-list .pockettube-hub-card-top{display:grid;gap:8px}
+    html[data-pockettube-hub-view="cards"] .pockettube-hub-list .pockettube-hub-description{min-height:42px}
+    html[data-pockettube-hub-view="cards"] .pockettube-hub-list .pockettube-hub-side{display:flex;align-items:flex-start;justify-content:flex-start;gap:8px;flex-wrap:wrap}
+    html[data-pockettube-hub-view="cards"] .pockettube-hub-list .pockettube-hub-side .score-pill{font-size:.74rem}
+    html[data-pockettube-hub-view="cards"] .pockettube-hub-list .pockettube-hub-open{margin-top:auto}
+    html[data-pockettube-hub-view="cards"] .pockettube-hub-list .pockettube-hub-open .muted{letter-spacing:.12em}
+    html[data-pockettube-hub-view="cards"] .pockettube-hub-toolbar .pockettube-view-toggle [data-view="cards"],
+    html[data-pockettube-hub-view="list"] .pockettube-hub-toolbar .pockettube-view-toggle [data-view="list"]{background:rgba(255,0,0,.14);color:var(--text);box-shadow:0 0 0 1px rgba(255,0,0,.24) inset}
+</style>
+<section class="page-hero">
+    <div class="hero-meta">
+        <span class="hero-badge">PocketTube</span>
+        <span>Group hub</span>
+    </div>
+    <h2>{{ title }}</h2>
+    <p class="subhead">Open one PocketTube group at a time. Each group page keeps the normal playlist browser below the group feed.</p>
+</section>
+
+<section class="surface-card section-card">
+    <div class="detail-header pockettube-hub-toolbar">
+        <div>
+            <div class="hero-meta">
+                <span class="hero-badge">Imported Groups</span>
+                <span>{{ pockettube_sections|length }} sections</span>
+                {% if pockettube_import and pockettube_import.imported_at %}
+                <span>Imported {{ pockettube_import.imported_at }}</span>
+                {% endif %}
+            </div>
+            <h3 style="font-size:2rem; margin-top:12px;">Browse PocketTube Groups</h3>
+        </div>
+        <div class="pockettube-view-toggle" role="tablist" aria-label="PocketTube hub display mode">
+            <button type="button" data-view="list" aria-pressed="true">List</button>
+            <button type="button" data-view="cards" aria-pressed="false">Cards</button>
+        </div>
+    </div>
+    <form method="get" class="playlist-controls" style="margin-top:18px; gap:12px; flex-wrap:wrap;">
+        <label class="muted" for="pockettube-search">Search</label>
+        <input id="pockettube-search" name="q" value="{{ pockettube_search_query or '' }}" type="search" placeholder="Group name, label, section..." autocomplete="off" style="min-width:240px; max-width:420px;">
+        <div class="pockettube-hub-sort">
+            <label class="muted" for="pockettube-sort">Sort</label>
+            <select id="pockettube-sort" name="sort">
+                <option value="default" {% if pockettube_sort_key == 'default' %}selected{% endif %}>Default</option>
+                <option value="channels" {% if pockettube_sort_key == 'channels' %}selected{% endif %}>Most channels</option>
+                <option value="videos" {% if pockettube_sort_key == 'videos' %}selected{% endif %}>Most videos</option>
+                <option value="name" {% if pockettube_sort_key in ['name', 'az'] %}selected{% endif %}>A-Z</option>
+                <option value="name_desc" {% if pockettube_sort_key in ['name_desc', 'za'] %}selected{% endif %}>Z-A</option>
+            </select>
+        </div>
+        <button type="submit" class="btn"><i data-lucide="search"></i>Apply</button>
+        {% if pockettube_search_query or pockettube_sort_key != 'default' %}
+        <a class="btn" href="{{ url_for('pockettube_groups', sort='default') }}"><i data-lucide="rotate-ccw"></i>Reset</a>
+        {% endif %}
+    </form>
+    <div class="pockettube-hub-view pockettube-hub-list" data-pockettube-hub-list>
+        {% for section in pockettube_sections %}
+        <a class="admin-category-item pockettube-hub-card" href="{{ url_for('section_page', section_slug=section.slug) }}" style="text-decoration:none; color:inherit; min-height:92px;">
+            <div class="admin-category-header">
+                <div class="pockettube-hub-card-top">
+                    <div class="hero-meta">
+                        <span class="hero-badge">{{ section.name }}</span>
+                        <span>{{ section.channel_count }} channels</span>
+                        {% if section.video_count %}
+                        <span>{{ section.video_count }} videos</span>
+                        {% endif %}
+                        <span>{{ section.section_kind or 'curated' }} / {{ section.section_scope or 'group' }}</span>
+                    </div>
+                    <div class="pockettube-hub-summary">
+                        <div style="margin-top:8px; font-size:1.08rem; font-weight:700; color:var(--heading); line-height:1.35;">{{ section.group_label or section.name }}</div>
+                        <div class="muted pockettube-hub-description">Open the PocketTube feed for this group and browse the matching section below it.</div>
+                    </div>
+                </div>
+                <div class="pockettube-hub-side">
+                    <span class="score-pill">{{ section.channel_count }} ch</span>
+                    {% if section.video_count %}
+                    <span class="score-pill">{{ section.video_count }} vids</span>
+                    {% endif %}
+                    <span class="muted pockettube-hub-open" style="text-transform:uppercase; letter-spacing:.14em; font-size:.68rem;">Open group feed</span>
+                </div>
+            </div>
+        </a>
+        {% endfor %}
+        {% if not pockettube_sections %}
+        <div class="empty-state">No PocketTube groups imported yet.</div>
+        {% endif %}
+    </div>
+</section>
+{% endblock %}
+{% block scripts %}
+<script>
+(function() {
+    const storageKey = 'pockettube-hub-view-mode';
+    const sortStorageKey = 'pockettube-hub-sort-mode';
+    const root = document.documentElement;
+    const toggle = document.querySelector('.pockettube-view-toggle');
+    const sortSelect = document.getElementById('pockettube-sort');
+    const sortForm = sortSelect ? sortSelect.closest('form') : null;
+    if (!toggle) return;
+
+    function normalizeMode(value) {
+        return value === 'cards' ? 'cards' : 'list';
+    }
+
+    function getMode() {
+        try {
+            const saved = window.localStorage.getItem(storageKey);
+            return saved ? normalizeMode(saved) : 'cards';
+        } catch (error) {
+            return 'cards';
+        }
+    }
+
+    function setMode(mode) {
+        const next = normalizeMode(mode);
+        root.setAttribute('data-pockettube-hub-view', next);
+        toggle.querySelectorAll('button[data-view]').forEach(function(button) {
+            const active = button.dataset.view === next;
+            button.classList.toggle('is-active', active);
+            button.setAttribute('aria-pressed', active ? 'true' : 'false');
+        });
+        try {
+            window.localStorage.setItem(storageKey, next);
+        } catch (error) {
+        }
+    }
+
+    function normalizeSort(value) {
+        const allowed = ['default', 'channels', 'videos', 'name', 'name_desc'];
+        const normalized = String(value || '').trim().toLowerCase();
+        if (allowed.includes(normalized)) return normalized;
+        if (normalized === 'az') return 'name';
+        if (normalized === 'za') return 'name_desc';
+        return 'default';
+    }
+
+    function getSortPreference() {
+        try {
+            return normalizeSort(window.localStorage.getItem(sortStorageKey));
+        } catch (error) {
+            return 'default';
+        }
+    }
+
+    function saveSortPreference(value) {
+        try {
+            window.localStorage.setItem(sortStorageKey, normalizeSort(value));
+        } catch (error) {
+        }
+    }
+
+    function applySortPreference() {
+        if (!sortSelect) return;
+        const currentUrl = new URL(window.location.href);
+        const urlSort = normalizeSort(currentUrl.searchParams.get('sort'));
+        if (!currentUrl.searchParams.get('sort')) {
+            const saved = getSortPreference();
+            if (saved !== 'default') {
+                currentUrl.searchParams.set('sort', saved);
+                window.location.replace(currentUrl.toString());
+                return;
+            }
+        }
+        sortSelect.value = urlSort;
+        saveSortPreference(urlSort);
+    }
+
+    toggle.addEventListener('click', function(event) {
+        const button = event.target.closest('button[data-view]');
+        if (!button) return;
+        setMode(button.dataset.view);
+    });
+
+    setMode(getMode());
+
+    if (sortSelect) {
+        sortSelect.addEventListener('change', function() {
+            saveSortPreference(sortSelect.value);
+            if (sortForm) sortForm.requestSubmit();
+        });
+        applySortPreference();
+    }
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% block title %}{{ director.display_name }} · Cinema Prive{% endblock %}
+{% block content %}
+<style>
+.director-film-genre-meta{
+    margin-top:-6px;
+    color:var(--text-2);
+}
+.director-film-country-meta{
+    margin-top:-6px;
+    color:rgba(239,239,239,.72);
+}
+.director-film-footer{
+    margin-top:auto;
+    display:flex;
+    flex-direction:column;
+    gap:12px;
+}
+</style>
+<section class="page-hero">
+    <div class="hero-meta">
+        <span class="hero-badge">Director</span>
+        <span>{{ films|length }} linked films</span>
+    </div>
+    <h2>{{ director.display_name }}</h2>
+    <p class="subhead">
+        Minimal director view for verification. This page is powered by the Notion `Director Entry` relation so later we can expand it into a full director profile.
+    </p>
+</section>
+
+<section class="surface-card section-card" style="padding:28px;">
+    <div style="display:grid; grid-template-columns:minmax(180px,240px) minmax(0,1fr); gap:24px; align-items:start;">
+        <div>
+            {% if director.image_url %}
+            <div class="media-poster" style="max-width:220px; margin:0 auto;">
+                <img src="{{ director.image_url }}" alt="{{ director.display_name }}">
+            </div>
+            {% else %}
+            <div class="media-poster" style="max-width:220px; margin:0 auto;">
+                <div class="poster-placeholder">◼</div>
+            </div>
+            {% endif %}
+        </div>
+        <div style="display:grid; gap:18px;">
+            <section class="surface-card" style="padding:20px; border-radius:24px;">
+                <div class="hero-meta">
+                    <span class="hero-badge matte-tag">Linked Data</span>
+                    <span>Notion source</span>
+                </div>
+                <div class="info-stack" style="margin-top:16px; display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px 18px;">
+                    <div class="info-row"><span>Name</span><strong>{{ director.display_name }}</strong></div>
+                    <div class="info-row"><span>Watched</span><strong>{{ watched_films|length }}</strong></div>
+                    <div class="info-row"><span>I Want To</span><strong>{{ want_films|length }}</strong></div>
+                    <div class="info-row"><span>Total Linked</span><strong>{{ films|length }}</strong></div>
+                    {% if director.alias_count is not none %}
+                    <div class="info-row"><span>Aliases</span><strong>{{ director.alias_count }}</strong></div>
+                    {% endif %}
+                    {% if director.filmography_match_summary %}
+                    <div class="info-row"><span>Match</span><strong>{{ director.filmography_match_summary }}</strong></div>
+                    {% endif %}
+                </div>
+            </section>
+            {% if director.filmography_summary %}
+            <p class="subhead" style="margin:0; max-width:none; font-size:1rem; line-height:1.8;">{{ director.filmography_summary }}</p>
+            {% endif %}
+            {% if director.biography %}
+            <p class="subhead" style="margin:0; max-width:none; font-size:1rem; line-height:1.8;">{{ director.biography }}</p>
+            {% endif %}
+            {% if director.filmography_source_summary %}
+            <p class="subhead" style="margin:0; max-width:none; font-size:.95rem; line-height:1.7; opacity:.85;">{{ director.filmography_source_summary }}</p>
+            {% endif %}
+        </div>
+    </div>
+</section>
+
+<section class="surface-card section-card">
+    <div class="detail-header">
+        <div>
+            <div class="hero-meta">
+                <span class="hero-badge matte-tag">Filmography</span>
+                <span>Relation-backed movie list</span>
+            </div>
+            <h3 class="title-scaled" style="margin-top:12px;">Linked Movies</h3>
+        </div>
+    </div>
+    {% if films %}
+    <div class="movie-grid" style="margin-top:18px;">
+        {% for film in films %}
+        <a class="content-card media-card" href="{{ url_for('video_detail', entry_id=film.entry_id) }}" data-scroll-top="true">
+            <div class="media-poster">
+                {% if film.poster %}
+                <img src="{{ film.poster }}" alt="{{ film.name }}">
+                {% else %}
+                <div class="poster-placeholder">◼</div>
+                {% endif %}
+            </div>
+            <div class="card-title">{{ film.name }}</div>
+            {% set card_meta_parts = [] %}
+            {% if film.category %}
+                {% set _ = card_meta_parts.append(film.category) %}
+            {% endif %}
+            {% if film.source %}
+                {% set _ = card_meta_parts.append(film.source) %}
+            {% endif %}
+            <div class="card-meta">{{ card_meta_parts|join(' · ') }}</div>
+            {% if film.genre_entries %}
+            <div class="card-meta director-film-genre-meta">
+                {% for genre in film.genre_entries[:2] %}
+                {{ genre.name }}{% if not loop.last %} · {% endif %}
+                {% endfor %}
+            </div>
+            {% endif %}
+            {% if film.country_display %}
+            <div class="card-meta director-film-country-meta">{{ film.country_display }}</div>
+            {% endif %}
+            <div class="director-film-footer">
+                <div class="score-pill" style="color: {{ score_color.get(film.score, '#777') }};">
+                    {{ score_display.get(film.score, '—') }}
+                </div>
+            </div>
+        </a>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state" style="margin-top:18px;">No linked movies yet.</div>
+    {% endif %}
+</section>
+{% endblock %}

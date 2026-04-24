@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="page-hero">
+    <div class="hero-meta">
+        <span class="hero-badge">Archive</span>
+        <span>{{ deleted_entries|length }} deleted links</span>
+    </div>
+    <h2>Deletion History</h2>
+    <p class="subhead">
+        Every YouTube removal is archived here before the source playlist item is deleted, so you keep a clean local record of what was removed and when.
+    </p>
+</section>
+
+<section class="surface-card section-card">
+    {% if deleted_entries %}
+    <table class="admin-table">
+        <thead>
+            <tr>
+                <th>Thumbnail</th>
+                <th>Title</th>
+                <th>Playlist</th>
+                <th>Date Deleted</th>
+                <th>Link</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in deleted_entries %}
+            <tr>
+                <td>
+                    <img
+                        src="{{ item.thumbnail_url or url_for('static', filename='history-placeholder.svg') }}"
+                        alt="{{ item.title }}"
+                        width="120"
+                        style="width:120px; border-radius:14px; display:block; background:rgba(255,255,255,.04);"
+                        onerror="this.onerror=null;this.src='{{ url_for('static', filename='history-placeholder.svg') }}';"
+                    >
+                </td>
+                <td>{{ item.title }}</td>
+                <td>{{ item.playlist_name }}</td>
+                <td>{{ item.date_deleted }}</td>
+                <td><a class="btn" href="{{ item.url }}" target="_blank" rel="noopener noreferrer"><i data-lucide="external-link"></i>Open Link</a></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state">No deleted YouTube links have been archived yet.</div>
+    {% endif %}
+</section>
+{% endblock %}

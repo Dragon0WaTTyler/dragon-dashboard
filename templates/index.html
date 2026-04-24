@@ -1,0 +1,64 @@
+﻿{% extends "base.html" %}
+{% block content %}
+<section class="page-hero">
+    <div class="hero-meta">
+        <span class="hero-badge">Workspace Overview</span>
+        <span>Personal dashboard</span>
+    </div>
+    <h2>Cinema Prive</h2>
+    <p class="subhead">
+        A cinematic command center for films, language learning, and study playlists. Track what you watch, jump into trailers,
+        and move through your German, chess, and movie shelves with a cleaner developer-style workspace.
+    </p>
+</section>
+
+<section class="stats-grid">
+    <article class="surface-card stat-card">
+        <div class="stat-label">Total Entries</div>
+        <div class="stat-value">{{ total }}</div>
+    </article>
+    <article class="surface-card stat-card">
+        <div class="stat-label">Finished</div>
+        <div class="stat-value">{{ finished }}</div>
+    </article>
+    <article class="surface-card stat-card">
+        <div class="stat-label">Watching</div>
+        <div class="stat-value">{{ watching }}</div>
+    </article>
+    <article class="surface-card stat-card">
+        <div class="stat-label">Want To Watch</div>
+        <div class="stat-value">{{ want }}</div>
+    </article>
+</section>
+
+<section class="surface-card section-card">
+    <div class="detail-header">
+        <div>
+            <div class="hero-meta">
+                <span class="hero-badge">Top Rated</span>
+                <span>Fast access</span>
+            </div>
+            <h3 style="font-size:2.2rem; margin-top:12px;">Featured Shelf</h3>
+        </div>
+        <a href="/library" class="btn"><i data-lucide="film"></i>Open Movies</a>
+    </div>
+
+    <div class="top-rated-grid" style="margin-top:18px;">
+        {% for film in top %}
+        <a class="content-card media-card" href="{{ url_for('video_detail', entry_id=film.entry_id) }}">
+            <div class="media-poster">
+                {% if film.poster %}
+                <img src="{{ film.poster }}" alt="{{ film.name }}">
+                {% else %}
+                <div class="poster-placeholder">No Poster</div>
+                {% endif %}
+            </div>
+            <div class="card-title">{{ film.name }}</div>
+            <div class="score-pill" style="color: {{ score_color.get(film.score, '#777') }};">
+                {{ score_display.get(film.score, 'Not Rated') }}
+            </div>
+        </a>
+        {% endfor %}
+    </div>
+</section>
+{% endblock %}

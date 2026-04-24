@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="page-hero">
+    <div class="hero-meta">
+        <span class="hero-badge">Final Movie Review</span>
+        <span>Targeted manual pass</span>
+    </div>
+    <h2>Remaining Movie Corrections</h2>
+    <p class="subhead">
+        This is a small final-review workflow for the titles that still look incorrect. It is read-only and backend-first:
+        current Notion values are compared against a conservative TMDb proposal so you can confirm only the titles that still need correction.
+    </p>
+</section>
+
+<section class="stats-grid">
+    <article class="surface-card stat-card">
+        <div class="stat-label">Review Items</div>
+        <div class="stat-value">{{ summary.total_items }}</div>
+    </article>
+    <article class="surface-card stat-card">
+        <div class="stat-label">High Confidence</div>
+        <div class="stat-value">{{ summary.high_confidence }}</div>
+    </article>
+    <article class="surface-card stat-card">
+        <div class="stat-label">Medium Confidence</div>
+        <div class="stat-value">{{ summary.medium_confidence }}</div>
+    </article>
+    <article class="surface-card stat-card">
+        <div class="stat-label">Low Confidence</div>
+        <div class="stat-value">{{ summary.low_confidence }}</div>
+    </article>
+    <article class="surface-card stat-card">
+        <div class="stat-label">Wrong Match Risk</div>
+        <div class="stat-value">{{ summary.wrong_match_suspicions }}</div>
+    </article>
+</section>
+
+<section class="surface-card section-card">
+    <div class="detail-header">
+        <div>
+            <div class="hero-meta">
+                <span class="hero-badge">Targeted Review</span>
+                <span>Current vs proposed</span>
+            </div>
+            <h3 style="font-size:2rem; margin-top:12px;">Remaining Suspect Titles</h3>
+        </div>
+        <div class="detail-controls">
+            <a class="btn" href="{{ url_for('movies_review') }}" data-scroll-top="true"><i data-lucide="list-filter"></i>Review Queue</a>
+            <a class="btn" href="{{ url_for('refresh', scope='films', next=request.full_path if request.query_string else request.path) }}"><i data-lucide="refresh-cw"></i>Refresh Movie Data</a>
+        </div>
+    </div>
+    <form method="get" action="{{ url_for('movies_final_review') }}" style="margin-top:16px;">
+        <div class="detail-header" style="align-items:flex-end;">
+            <div style="display:flex; gap:14px; flex-wrap:wrap; align-items:flex-end;">
+                <label class="muted">
+                    Confidence
+                    <select name="confidence" class="btn" style="margin-top:6px;">
+                        <option value="all" {% if filter_confidence == 'all' %}selected{% endif %}>All ({{ review_counts.all }})</option>
+                        <option value="high" {% if filter_confidence == 'high' %}selected{% endif %}>HIGH ({{ review_counts.high }})</option>
+                        <option value="medium" {% if filter_confidence == 'medium' %}selected{% endif %}>MEDIUM ({{ review_counts.medium }})</option>
+                    </select>
+                </label>
+                <label class="muted">
+                    Row Type
+                    <select name="row_type" class="btn" style="margin-top:6px;">
+                        <option value="all" {% if filter_row_type == 'all' %}selected{% endif %}>All ({{ review_counts.all }})</option>
+                        <option value="real" {% if filter_row_type == 'real' %}selected{% endif %}>Real changes ({{ review_counts.real }})</option>
+                        <option value="non_movie" {% if filter_row_type == 'non_movie' %}selected{% endif %}>Non-movie items ({{ review_counts.non_movie }})</option>
+                    </select>
+                </label>
+                <div class="muted" style="padding-bottom:8px;">Showing {{ visible_review_count }} of {{ review_counts.all }}</div>
+            </div>
+            <div class="detail-controls">
+                <button class="btn" type="submit"><i data-lucide="filter"></i>Filter</button>
+            </div>
+        </div>
+    </form>
+
+    {% if review_items %}
+    <table class="admin-table" style="margin-top:18px;">
+        <thead>
+            <tr>
+                <th>Title</th>
+                <th>Current Notion Values</th>
+                <th>Suspected Fields</th>
+                <th>Proposed Values</th>
+                <th>Source / Confidence</th>
+                <th>Open</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in review_items %}
+            <tr>
+                <td style="min-width:220px;">
+                    {% if item.poster %}
+                    <img src="{{ item.poster }}" alt="{{ item.title }}" width="110" style="width:110px; border-radius:14px; display:block; margin-bottom:12px; background:rgba(255,255,255,.04);">
+                    {% endif %}
+                    <div style="font-weight:700; color:var(--heading);">{{ item.title }}</div>
+                </td>
+                <td>
+                    {% for key, value in item.current_values.items() %}
+                    <div class="muted" style="margin-bottom:8px;"><strong>{{ key }}:</strong> {{ value }}</div>
+                    {% endfor %}
+                    {% if not item.current_values %}
+                    <div class="muted">No current mismatched values captured.</div>
+                    {% endif %}
+                </td>
+                <td>
+                    {% for field in item.suspected_fields %}
+                    <div class="muted" style="margin-bottom:8px;">- {{ field }}</div>
+                    {% endfor %}
+                </td>
+                <td>
+                    {% for key, value in item.proposed_values.items() %}
+                    <div class="muted" style="margin-bottom:8px;"><strong>{{ key }}:</strong> {{ value }}</div>
+                    {% endfor %}
+                </td>
+                <td>
+                    <div class="muted"><strong>Source:</strong> {{ item.source_used }}</div>
+                    <div class="muted" style="margin-top:8px;"><strong>Confidence:</strong> {{ item.confidence }}</div>
+                    {% for note in item.notes %}
+                    <div class="muted" style="margin-top:8px;">{{ note }}</div>
+                    {% endfor %}
+                </td>
+                <td>
+                    <a class="btn" href="{{ item.detail_url }}" data-scroll-top="true"><i data-lucide="arrow-up-right"></i>Open Detail</a>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state" style="margin-top:18px;">No remaining targeted review items were found in the current movie dataset.</div>
+    {% endif %}
+</section>
+{% endblock %}

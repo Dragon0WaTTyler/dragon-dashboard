@@ -1,0 +1,461 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+    .admin-section-shell{display:grid;gap:16px}
+    .admin-section-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;flex-wrap:wrap}
+    .admin-section-meta{display:flex;align-items:center;gap:8px 10px;flex-wrap:wrap;color:var(--text-2);font-size:.72rem;letter-spacing:.08em;text-transform:uppercase}
+    .admin-section-meta span{white-space:nowrap}
+    .admin-section-grid{display:grid;gap:14px}
+    .admin-section-card{display:grid;gap:12px;padding:16px 18px}
+    .admin-section-compact{display:grid;gap:10px}
+    .admin-section-compact .field-wide{grid-column:1/-1}
+    .admin-section-form{display:grid;gap:10px}
+    .admin-section-form-inline{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;align-items:end}
+    .admin-section-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+    .admin-section-actions form{margin:0}
+    .admin-section-actions .btn{padding:8px 10px;min-height:32px;font-size:.72rem;line-height:1}
+    .admin-section-list{display:grid;gap:12px}
+    .admin-section-item{display:grid;gap:10px;padding:12px 0;border-top:1px solid rgba(255,255,255,.05)}
+    .admin-section-item:first-child{border-top:0;padding-top:0}
+    .admin-section-item-top{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap}
+    .admin-section-item-meta{display:flex;align-items:center;gap:8px 10px;flex-wrap:wrap}
+    .admin-section-item-meta span{white-space:nowrap}
+    .admin-section-pill{display:inline-flex;align-items:center;gap:6px;padding:4px 8px;border-radius:999px;border:1px solid rgba(255,255,255,.06);background:rgba(255,255,255,.02);font-size:.58rem;line-height:1.1;letter-spacing:.12em;text-transform:uppercase;color:var(--text-2)}
+    .admin-section-pill.is-active{color:#98f5c8;border-color:rgba(152,245,200,.22);background:rgba(152,245,200,.07)}
+    .admin-section-pill.is-paused{color:var(--text-2)}
+    .admin-section-pill.is-healthy{color:#98f5c8;border-color:rgba(152,245,200,.22);background:rgba(152,245,200,.07)}
+    .admin-section-pill.is-warning{color:#ffd48a;border-color:rgba(255,212,138,.22);background:rgba(255,212,138,.07)}
+    .admin-section-pill.is-failing{color:#ff9b9b;border-color:rgba(255,155,155,.24);background:rgba(255,155,155,.07)}
+    .admin-section-pill.is-empty{color:#9bc7ff;border-color:rgba(155,199,255,.22);background:rgba(155,199,255,.07)}
+    .admin-section-diagnostics{display:flex;align-items:center;gap:8px 10px;flex-wrap:wrap;color:var(--text-2);font-size:.68rem;line-height:1.35}
+    .admin-section-diagnostics span{white-space:nowrap}
+    .admin-section-back{margin-left:auto}
+    .reading-admin-panel-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;flex-wrap:wrap}
+    .reading-admin-panel-meta{display:flex;align-items:center;gap:8px 10px;flex-wrap:wrap}
+    .reading-admin-source-form{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;align-items:end}
+    .reading-admin-source-form .field-wide{grid-column:1/-1}
+    .reading-admin-source-form input[type="checkbox"]{width:auto;transform:translateY(1px)}
+    .reading-admin-source-list{display:grid;gap:10px}
+    .reading-admin-source{display:grid;gap:10px;padding:12px 0;border-top:1px solid rgba(255,255,255,.05)}
+    .reading-admin-source:first-child{border-top:0;padding-top:0}
+    .reading-admin-source-top{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap}
+    .reading-admin-source-title{display:grid;gap:4px;min-width:0}
+    .reading-admin-source-meta{display:flex;align-items:center;gap:8px 10px;flex-wrap:wrap}
+    .reading-admin-source-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+    .reading-admin-source-actions form{margin:0}
+    .reading-admin-source-actions .btn{padding:7px 9px;min-height:30px;font-size:.7rem;line-height:1}
+    .reading-admin-source-diagnostics{display:flex;align-items:center;gap:8px 10px;flex-wrap:wrap;color:var(--text-2);font-size:.68rem;line-height:1.35}
+    .reading-admin-source-diagnostics span{white-space:nowrap}
+    .reading-admin-source-pill{display:inline-flex;align-items:center;gap:6px;padding:4px 8px;border-radius:999px;border:1px solid rgba(255,255,255,.06);background:rgba(255,255,255,.02);font-size:.58rem;line-height:1.1;letter-spacing:.12em;text-transform:uppercase;color:var(--text-2)}
+    .reading-admin-source-pill.is-active{color:#98f5c8;border-color:rgba(152,245,200,.22);background:rgba(152,245,200,.07)}
+    .reading-admin-source-pill.is-paused{color:var(--text-2)}
+    .reading-admin-source-pill.is-healthy{color:#98f5c8;border-color:rgba(152,245,200,.22);background:rgba(152,245,200,.07)}
+    .reading-admin-source-pill.is-warning{color:#ffd48a;border-color:rgba(255,212,138,.22);background:rgba(255,212,138,.07)}
+    .reading-admin-source-pill.is-failing{color:#ff9b9b;border-color:rgba(255,155,155,.24);background:rgba(255,155,155,.07)}
+    .reading-admin-source-pill.is-empty{color:#9bc7ff;border-color:rgba(155,199,255,.22);background:rgba(155,199,255,.07)}
+    .reading-admin-select{height:46px}
+    .reading-admin-recovery-hit{display:grid;gap:4px;padding:10px 12px;border:1px solid rgba(255,255,255,.06);border-radius:14px;background:rgba(255,255,255,.02)}
+    .reading-admin-recovery-hit .meta{display:flex;align-items:center;gap:8px 10px;flex-wrap:wrap}
+    .reading-admin-recovery-hit .file{font-size:.66rem;letter-spacing:.12em;text-transform:uppercase;color:var(--text-2)}
+    @media (max-width:760px){
+        .admin-section-head{display:grid}
+        .admin-section-back{margin-left:0}
+    }
+</style>
+<section class="page-hero">
+    <div class="hero-meta"><span class="hero-badge">Admin Section</span><span>{{ panel_title }}</span></div>
+    <h2>{{ panel_title }}</h2>
+    <p class="subhead">{{ panel_description }}</p>
+    <div class="admin-section-head" style="margin-top:12px;">
+        <div class="admin-section-meta">
+            <span>{{ panel_section_count }} categories</span>
+            <span>{{ panel_playlist_count }} playlists</span>
+            <span>{{ panel_source_count }} RSS sources</span>
+            <span>{{ panel_active_source_count }} active RSS</span>
+        </div>
+        <a class="btn admin-section-back" href="{{ panel_back_url }}"><i data-lucide="arrow-left"></i>Back to hub</a>
+    </div>
+</section>
+
+{% if success_message %}
+<section class="surface-card section-card" style="padding:16px 20px; border-color:rgba(255,0,0,.18);">
+    <div class="muted" style="color:#ffffff;">{{ success_message }}</div>
+</section>
+{% endif %}
+{% if error_message %}
+<section class="surface-card section-card" style="padding:16px 20px; border-color:rgba(255,0,0,.32);">
+    <div class="muted" style="color:#ff9a9a;">{{ error_message }}</div>
+</section>
+{% endif %}
+
+{% if panel_key == "sections" %}
+<section class="surface-card section-card admin-section-shell">
+    <div class="hero-meta"><span class="hero-badge">Sections</span><span>{{ combined_sections|length }} stored</span></div>
+    <form method="post" class="admin-section-form admin-section-form-inline">
+        <input type="hidden" name="action" value="add_section">
+        <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
+        <div class="field-wide"><input type="text" name="section_name" placeholder="Add a new category/section"></div>
+        <button type="submit" class="btn"><i data-lucide="folder-plus"></i>Add Category</button>
+    </form>
+</section>
+
+<section class="surface-card section-card">
+    <h3 style="font-size:1.6rem;">Stored Categories</h3>
+    <div class="admin-section-list" style="margin-top:18px;">
+        {% for section in combined_sections %}
+        <div class="admin-category-item">
+            <div class="admin-category-header">
+                <div>
+                    <div class="hero-meta">
+                        <span class="hero-badge">{{ section.name }}</span>
+                        <span>{{ section.playlists|length }} playlists</span>
+                    </div>
+                </div>
+                <form method="post" class="admin-category-actions">
+                    <input type="hidden" name="action" value="rename_section">
+                    <input type="hidden" name="current_name" value="{{ section.name }}">
+                    <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
+                    <input type="text" name="new_name" value="{{ section.name }}" aria-label="Rename {{ section.name }}" style="min-width:180px;">
+                    <button type="submit" class="btn"><i data-lucide="pencil"></i>Rename</button>
+                </form>
+            </div>
+            {% if section.playlists %}
+            <div class="admin-playlist-list">
+                {% for item in section.playlists %}
+                <div class="admin-playlist-item">
+                    <div class="admin-playlist-head">
+                        <div class="admin-playlist-meta">
+                            <strong>{{ item.name }}</strong>
+                            <a href="{{ item.url }}" target="_blank" rel="noopener noreferrer">{{ item.url }}</a>
+                            <div class="admin-playlist-source">{{ item.source or 'admin' }}{% if item.id %} - {{ item.id }}{% endif %}</div>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="empty-state">No playlists in this category yet.</div>
+            {% endif %}
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">
+                <div class="muted">Delete is only enabled when the category is empty.</div>
+                <form method="post">
+                    <input type="hidden" name="action" value="delete_section">
+                    <input type="hidden" name="section_name" value="{{ section.name }}">
+                    <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
+                    <button type="submit" class="btn" {% if section.playlists %}disabled title="Remove playlists first"{% endif %}><i data-lucide="trash-2"></i>Delete Category</button>
+                </form>
+            </div>
+        </div>
+        {% else %}
+        <div class="empty-state">No categories stored yet.</div>
+        {% endfor %}
+    </div>
+</section>
+{% elif panel_key == "playlists" %}
+<section class="surface-card section-card admin-section-shell">
+    <div class="hero-meta"><span class="hero-badge">Playlists</span><span>{{ playlist_rows|length }} stored</span></div>
+    <form method="post" class="admin-section-form admin-section-form-inline">
+        <input type="hidden" name="action" value="add_playlist">
+        <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
+        <select name="section_name" required>
+            <option value="">Choose category</option>
+            {% for section_name in section_names %}
+            <option value="{{ section_name }}">{{ section_name }}</option>
+            {% endfor %}
+        </select>
+        <input type="text" name="playlist_name" placeholder="Playlist label" required>
+        <div class="field-wide"><input type="text" name="playlist_url" placeholder="YouTube playlist URL or playlist ID" required></div>
+        <button type="submit" class="btn"><i data-lucide="plus"></i>Add Playlist</button>
+    </form>
+</section>
+
+<section class="surface-card section-card">
+    <h3 style="font-size:1.6rem;">Stored Playlists</h3>
+    <p class="subhead" style="margin-top:12px;">Full playlist inventory view, kept below the add form for focused editing.</p>
+    <table class="admin-table" style="margin-top:18px;">
+        <thead>
+            <tr><th>Preview</th><th>Name</th><th>URL</th><th>Category</th><th>ID</th><th>Actions</th></tr>
+        </thead>
+        <tbody>
+            {% for item in playlist_rows %}
+            <tr>
+                <td colspan="6" style="padding:0;">
+                    <form method="post" class="admin-table-form">
+                        <input type="hidden" name="source_section" value="{{ item.section }}">
+                        <input type="hidden" name="playlist_id" value="{{ item.id }}">
+                        <input type="hidden" name="playlist_source" value="{{ item.source }}">
+                        <input type="hidden" name="source_section_key" value="{{ item.source_section_key }}">
+                        <input type="hidden" name="source_category_key" value="{{ item.source_category_key }}">
+                        <input type="hidden" name="original_playlist_name" value="{{ item.name }}">
+                        <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
+                        <div class="admin-thumb">
+                            {% if item.thumbnail_url %}
+                            <img src="{{ item.thumbnail_url }}" alt="{{ item.name }}">
+                            {% else %}
+                            <div class="admin-thumb-placeholder"><i class="fa-brands fa-youtube" aria-hidden="true"></i></div>
+                            {% endif %}
+                        </div>
+                        <input type="text" name="playlist_name" value="{{ item.name }}" aria-label="Playlist name">
+                        <input type="text" name="playlist_url" value="{{ item.url }}" aria-label="Playlist URL">
+                        <select name="target_section" aria-label="Playlist category">
+                            {% for section_name in section_names %}
+                            <option value="{{ section_name }}" {% if section_name == item.section %}selected{% endif %}>{{ section_name }}</option>
+                            {% endfor %}
+                        </select>
+                        <div class="muted" style="word-break:break-all;">{{ item.id }}</div>
+                        <div style="display:flex; gap:10px; justify-content:flex-end; flex-wrap:wrap;">
+                            <button type="submit" class="btn" name="action" value="update_playlist"><i data-lucide="save"></i>Edit</button>
+                            <button type="submit" class="btn" name="action" value="delete_playlist"><i data-lucide="trash-2"></i>Delete</button>
+                            <input type="hidden" name="section_name" value="{{ item.section }}">
+                        </div>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+            {% if not playlist_rows %}
+            <tr><td colspan="6" class="muted">No playlists stored yet.</td></tr>
+            {% endif %}
+        </tbody>
+    </table>
+</section>
+{% elif panel_key == "reading" %}
+<section class="surface-card section-card admin-section-shell">
+    <div class="reading-admin-panel-head">
+        <div>
+              <div class="hero-meta">
+                <span class="hero-badge">Reading RSS</span>
+                <span>{{ reading_admin.reading_rss_source_count }} RSS sources</span>
+                <span>{{ reading_admin.reading_rss_active_source_count }} active</span>
+                <span>{{ reading_admin.reading_last_sync_at_display }}</span>
+              </div>
+              <h3 style="font-size:1.6rem; margin-top:10px;">Reading sources</h3>
+              <div class="muted" style="margin-top:6px;">{{ reading_admin.reading_last_sync_message or 'No reading sync has run yet.' }}</div>
+              <div class="muted" style="margin-top:6px;">RSS sources only.</div>
+          </div>
+        <form method="post" style="margin:0;">
+            <input type="hidden" name="action" value="reading_sync_all">
+            <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
+            <button type="submit" class="btn"><i data-lucide="refresh-cw"></i>Sync All</button>
+        </form>
+    </div>
+
+    <form method="post" class="reading-admin-source-form">
+        <input type="hidden" name="action" value="reading_source_add">
+        <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
+        <div class="field-wide">
+            <label class="muted" for="admin-reading-source-name">Add RSS source</label>
+        </div>
+        <input id="admin-reading-source-name" type="text" name="name" placeholder="Source name" required>
+        <input type="url" name="url" placeholder="Feed URL" required>
+        <select name="category" class="reading-admin-select" aria-label="Reading category">
+            {% for value, label in reading_admin.reading_category_options %}
+            <option value="{{ value }}">{{ label }}</option>
+            {% endfor %}
+        </select>
+        <label class="muted" style="display:flex;align-items:center;gap:8px;">
+            <input type="checkbox" name="active" checked>
+            Active
+        </label>
+        <div class="field-wide">
+            <button type="submit" class="btn"><i data-lucide="plus"></i>Add source</button>
+        </div>
+    </form>
+</section>
+
+    <section class="surface-card section-card">
+    <h3 style="font-size:1.6rem;">Source Diagnostics</h3>
+    <div class="reading-admin-source-list" style="margin-top:18px;">
+        {% for source in reading_admin.reading_rss_sources %}
+        <div class="reading-admin-source">
+            <div class="reading-admin-source-top">
+                <div class="reading-admin-source-title">
+                    <div class="reading-admin-source-meta">
+                        <span class="hero-badge">{{ source.name }}</span>
+                        <span class="reading-admin-source-pill">{{ source.category|title }}</span>
+                        <span class="reading-admin-source-pill is-{{ source.health }}">{{ source.health_label if source.health_label else source.health|title }}</span>
+                        <span class="reading-admin-source-pill {% if source.active %}is-active{% else %}is-paused{% endif %}">{{ 'active' if source.active else 'paused' }}</span>
+                        <span>{{ source.known_entries_count }} known entries</span>
+                    </div>
+                    <div class="muted" style="word-break:break-word;">{{ source.url }}</div>
+                </div>
+                <div class="reading-admin-source-actions">
+                    <form method="post">
+                        <input type="hidden" name="action" value="reading_source_sync">
+                        <input type="hidden" name="source_id" value="{{ source.id }}">
+                        <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
+                        <button type="submit" class="btn"><i data-lucide="refresh-cw"></i>Retry</button>
+                    </form>
+                    <form method="post">
+                        <input type="hidden" name="action" value="reading_source_toggle">
+                        <input type="hidden" name="source_id" value="{{ source.id }}">
+                        <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
+                        <button type="submit" class="btn"><i data-lucide="{{ 'pause' if source.active else 'play' }}"></i>{{ 'Deactivate' if source.active else 'Activate' }}</button>
+                    </form>
+                    <form method="post">
+                        <input type="hidden" name="action" value="reading_source_remove">
+                        <input type="hidden" name="source_id" value="{{ source.id }}">
+                        <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
+                        <button type="submit" class="btn"><i data-lucide="trash-2"></i>Remove</button>
+                    </form>
+                </div>
+            </div>
+            <div class="reading-admin-source-diagnostics">
+                <span>Last sync: {{ source.last_synced_display or 'Never' }}</span>
+                <span>Status: {{ source.last_sync_status|default('unknown')|title }}</span>
+                <span>Fetched: {{ source.last_sync_raw_count or source.last_sync_count or 0 }}</span>
+                <span>Normalized: {{ source.last_sync_normalized_count or source.last_sync_count or 0 }}</span>
+                <span>Imported: {{ source.last_sync_imported_count or 0 }}</span>
+                <span>Already had: {{ source.last_sync_already_had_count or 0 }}</span>
+                {% if source.last_sync_missing_key_count %}
+                <span>Skipped no-key: {{ source.last_sync_missing_key_count }}</span>
+                {% endif %}
+                {% if source.last_sync_reason %}
+                <span>Reason: {{ source.last_sync_reason }}</span>
+                {% endif %}
+                {% if source.last_sync_error %}
+                <span style="color:#f0b0b0;">Error: {{ source.last_sync_error }}</span>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+        {% if not reading_admin.reading_rss_sources %}
+        <div class="empty-state">No reading sources stored yet.</div>
+        {% endif %}
+    </div>
+</section>
+{% elif panel_key == "io" %}
+<section class="surface-card section-card">
+    <div class="hero-meta">
+        <span class="hero-badge">Exports</span>
+        <span>Backups and imports</span>
+    </div>
+    <h3 style="font-size:1.6rem; margin-top:12px;">Import / Export Tools</h3>
+    <div class="admin-section-grid" style="margin-top:18px;">
+        <div class="surface-card section-card">
+            <div class="hero-meta"><span class="hero-badge">Exports</span><span>Download current state</span></div>
+            <div class="admin-section-grid" style="margin-top:12px;">
+                <div class="reading-admin-recovery-hit">
+                    <div class="meta">
+                        <span class="hero-badge">Movies Data</span>
+                        <span>Notion source export</span>
+                    </div>
+                    <div class="muted">Exports the movie library data currently used by the dashboard.</div>
+                    <div><a class="btn" href="{{ url_for('export_movies_data_route', next=request.full_path if request.query_string else request.path) }}"><i data-lucide="download"></i>Export Movies Data</a></div>
+                </div>
+                <div class="reading-admin-recovery-hit">
+                    <div class="meta">
+                        <span class="hero-badge">Reading JSON</span>
+                        <span>{{ reading_admin.reading_backup_count }} backups available</span>
+                    </div>
+                    <div class="muted">Exports the full Reading store for offline copy, restore, or migration.</div>
+                    <div><a class="btn" href="{{ url_for('reading_export') }}"><i data-lucide="download"></i>Export Reading JSON</a></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="surface-card section-card">
+            <div class="hero-meta"><span class="hero-badge">Import / Restore</span><span>Use a JSON file to bring data back</span></div>
+            <div class="admin-section-grid" style="margin-top:12px;">
+                <form method="post" action="{{ url_for('reading_import') }}" enctype="multipart/form-data" class="admin-section-form">
+                    <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
+                    <label class="muted" for="reading-data-file">Restore Reading from JSON</label>
+                    <div class="muted">Use a Reading export or backup JSON file. This replaces the current Reading store with the imported file.</div>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+                        <input id="reading-data-file" type="file" name="reading_data_file" accept=".json,application/json" required>
+                        <button type="submit" class="btn"><i data-lucide="upload"></i>Import / Restore</button>
+                    </div>
+                </form>
+                <form method="post" action="{{ url_for('youtube_pockettube_import') }}" enctype="multipart/form-data" class="admin-section-form">
+                    <label class="muted" for="pockettube-file">Import PocketTube JSON</label>
+                    <div class="muted">Loads PocketTube playlist export data into the dashboard import store.</div>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+                        <input id="pockettube-file" type="file" name="pockettube_file" accept=".json,application/json" required>
+                        <button type="submit" class="btn"><i data-lucide="upload"></i>Import</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <div class="surface-card section-card">
+            <div class="hero-meta"><span class="hero-badge">Backups</span><span>{{ reading_admin.reading_backup_count }} files stored</span></div>
+            <div class="muted" style="margin-top:12px;">Recent Reading backups are listed below with filename, time, and size.</div>
+            {% if reading_admin.reading_latest_backup %}
+            <div class="reading-admin-recovery-hit" style="margin-top:12px;">
+                <div class="meta">
+                    <span class="hero-badge">Latest backup</span>
+                    <span>{{ reading_admin.reading_latest_backup.name }}</span>
+                </div>
+                <div class="muted">{{ reading_admin.reading_latest_backup.label }}</div>
+                <div class="muted">{{ (reading_admin.reading_latest_backup.size / 1024)|round(1) }} KB</div>
+            </div>
+            {% endif %}
+            {% if reading_admin.reading_backup_files %}
+            <div class="admin-section-list" style="margin-top:14px;">
+                {% for backup in reading_admin.reading_backup_files %}
+                <div class="reading-admin-recovery-hit">
+                    <div class="meta">
+                        <span class="hero-badge">{{ backup.name }}</span>
+                        <span>{{ backup.label }}</span>
+                    </div>
+                    <div class="muted">Size: {{ (backup.size / 1024)|round(1) }} KB</div>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                        <a class="btn" href="{{ url_for('reading_backup_download', filename=backup.name) }}"><i data-lucide="download"></i>Download</a>
+                        <span class="reading-admin-source-pill">Restore via import above</span>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="empty-state" style="margin-top:12px;">No Reading backups found yet.</div>
+            {% endif %}
+        </div>
+    </div>
+</section>
+{% elif panel_key == "diagnostics" %}
+<section class="surface-card section-card">
+    <div class="hero-meta">
+        <span class="hero-badge">Diagnostics</span>
+        <span>{{ reading_admin.reading_recovery_hit_count }} recovery hints</span>
+        <span>{{ reading_admin.reading_last_sync_at_display }}</span>
+    </div>
+    <h3 style="font-size:1.6rem; margin-top:12px;">System Snapshot</h3>
+    <div class="admin-section-grid" style="margin-top:18px;">
+          <div class="surface-card section-card">
+              <div class="hero-meta">
+                  <span class="hero-badge">Reading</span>
+                 <span>{{ reading_admin.reading_rss_source_count }} RSS sources</span>
+                 <span>{{ reading_admin.reading_rss_active_source_count }} active</span>
+              </div>
+              <div class="admin-section-diagnostics" style="margin-top:10px;">
+                  <span>Last sync: {{ reading_admin.reading_last_sync_at_display }}</span>
+                  <span>Imported: {{ reading_admin.reading_last_sync_count }}</span>
+                <span>{{ reading_admin.reading_last_sync_message or 'No reading sync yet.' }}</span>
+            </div>
+        </div>
+        <div class="surface-card section-card">
+            <div class="hero-meta">
+                <span class="hero-badge">Recovery</span>
+                <span>{{ reading_admin.reading_recovery_hit_count }} hints</span>
+            </div>
+            {% if reading_admin.reading_recovery_hits %}
+            <div class="admin-section-list" style="margin-top:12px;">
+                {% for trace in reading_admin.reading_recovery_hits %}
+                <div class="reading-admin-recovery-hit">
+                    <div class="meta">
+                        <span class="hero-badge">{{ trace.name or 'Unnamed source' }}</span>
+                        {% if trace.url %}
+                        <a href="{{ trace.url }}" target="_blank" rel="noopener noreferrer">{{ trace.url }}</a>
+                        {% endif %}
+                    </div>
+                    <div class="file">Found in {{ trace.file }}</div>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="empty-state">No extra local source traces were found beyond the current Reading store and backups.</div>
+            {% endif %}
+        </div>
+    </div>
+</section>
+{% endif %}
+{% endblock %}

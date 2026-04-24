@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+{% block title %}Admin Review Movies · Cinema Prive{% endblock %}
+{% block content %}
+<section class="page-hero">
+    <div class="hero-meta">
+        <span class="hero-badge">Movies Review</span>
+        <span>{{ summary.total_items }} queued</span>
+    </div>
+    <h2>Admin Review Movies</h2>
+    <p class="subhead">
+        Review one movie at a time and step through the current data-quality queue without changing Notion automatically.
+    </p>
+</section>
+
+{% if notice %}
+<section class="surface-card section-card">
+    <div class="subhead" style="margin:0;">{{ notice }}</div>
+</section>
+{% endif %}
+
+<section class="surface-card section-card">
+    <div class="info-stack" style="display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px 18px;">
+        <div class="info-row"><span>Total</span><strong>{{ summary.total_items }}</strong></div>
+        <div class="info-row"><span>Missing TMDb</span><strong>{{ summary.missing_tmdb_match }}</strong></div>
+        <div class="info-row"><span>Missing Year</span><strong>{{ summary.missing_year }}</strong></div>
+        <div class="info-row"><span>Suspicious Year</span><strong>{{ summary.suspicious_year }}</strong></div>
+        <div class="info-row"><span>Missing Director</span><strong>{{ summary.missing_director }}</strong></div>
+        <div class="info-row"><span>Missing Overview</span><strong>{{ summary.missing_overview }}</strong></div>
+    </div>
+</section>
+
+{% if review_item %}
+<section class="surface-card section-card" style="padding:28px;">
+    <div class="detail-header">
+        <div>
+            <div class="hero-meta">
+                <span class="hero-badge matte-tag">Queue Item</span>
+                <span>{{ queue_index + 1 }} of {{ queue_total }}</span>
+            </div>
+            <h3 class="title-scaled" style="margin-top:12px;">{{ review_item.title }}</h3>
+        </div>
+        <div class="detail-controls">
+            <a class="btn" href="{{ review_item.detail_url }}" data-scroll-top="true"><i data-lucide="external-link"></i>Open Detail</a>
+        </div>
+    </div>
+
+    <div style="display:grid; grid-template-columns:minmax(180px,220px) minmax(0,1fr); gap:24px; align-items:start; margin-top:18px;">
+        <div>
+            <div class="media-poster" style="max-width:220px; margin:0 auto;">
+                {% if review_item.poster %}
+                <img src="{{ review_item.poster }}" alt="{{ review_item.title }}">
+                {% else %}
+                <div class="poster-placeholder">◼</div>
+                {% endif %}
+            </div>
+        </div>
+        <div style="display:grid; gap:18px;">
+            <section class="surface-card" style="padding:20px; border-radius:24px;">
+                <div class="hero-meta">
+                    <span class="hero-badge matte-tag">Current Metadata</span>
+                    <span>Review only</span>
+                </div>
+                <div class="info-stack" style="margin-top:16px; display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px 18px;">
+                    <div class="info-row"><span>Title</span><strong>{{ review_item.title }}</strong></div>
+                    <div class="info-row"><span>Year</span><strong>{{ review_item.year or 'Missing' }}</strong></div>
+                    <div class="info-row"><span>Director</span><strong>{{ review_item.director or 'Missing' }}</strong></div>
+                    <div class="info-row"><span>Category</span><strong>{{ review_item.category or 'Missing' }}</strong></div>
+                    <div class="info-row"><span>Status</span><strong>{{ review_item.status or 'Missing' }}</strong></div>
+                    <div class="info-row"><span>TMDb Rating</span><strong>{{ review_item.tmdb_rating or 'Missing' }}</strong></div>
+                </div>
+            </section>
+
+            <section class="surface-card" style="padding:20px; border-radius:24px;">
+                <div class="hero-meta">
+                    <span class="hero-badge matte-tag">Proposed Data</span>
+                    <span>{{ review_item.proposed_correction.source if review_item.proposed_correction else 'No suggestion available' }}</span>
+                </div>
+                {% if review_item.proposed_correction %}
+                <div class="info-stack" style="margin-top:16px; display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px 18px;">
+                    <div class="info-row"><span>Title</span><strong>{% if review_item.proposed_correction.title and review_item.proposed_correction.title != review_item.title %}{{ review_item.title }} → {{ review_item.proposed_correction.title }}{% else %}{{ review_item.title }}{% endif %}</strong></div>
+                    <div class="info-row"><span>Year</span><strong>{% if review_item.proposed_correction.year and review_item.proposed_correction.year != review_item.year %}{{ review_item.year or 'Missing' }} → {{ review_item.proposed_correction.year }}{% else %}{{ review_item.year or 'Missing' }}{% endif %}</strong></div>
+                    <div class="info-row"><span>Director</span><strong>{% if review_item.proposed_correction.director and review_item.proposed_correction.director != review_item.director %}{{ review_item.director or 'Missing' }} → {{ review_item.proposed_correction.director }}{% else %}{{ review_item.director or 'Missing' }}{% endif %}</strong></div>
+                    <div class="info-row"><span>Confidence</span><strong>{{ review_item.proposed_correction.confidence_level }}{% if review_item.proposed_correction.confidence_score %} · {{ review_item.proposed_correction.confidence_score }}{% endif %}</strong></div>
+                    <div class="info-row"><span>Reason</span><strong>{{ review_item.proposed_correction.reason or 'No reason available' }}</strong></div>
+                </div>
+                {% else %}
+                <p class="subhead" style="margin-top:14px; max-width:none;">No suggestion available.</p>
+                {% endif %}
+            </section>
+
+            <section class="surface-card" style="padding:20px; border-radius:24px;">
+                <div class="hero-meta">
+                    <span class="hero-badge matte-tag">TMDb Match</span>
+                    <span>{{ review_item.tmdb_match_status }}</span>
+                </div>
+                <p class="subhead" style="margin-top:14px; max-width:none;">{{ review_item.tmdb_status }}</p>
+            </section>
+
+            <section class="surface-card" style="padding:20px; border-radius:24px;">
+                <div class="hero-meta">
+                    <span class="hero-badge matte-tag">Why Review</span>
+                    <span>{{ review_item.reasons|length }} flags</span>
+                </div>
+                <div class="info-stack" style="margin-top:16px; display:grid; gap:10px;">
+                    {% for reason in review_item.reasons %}
+                    <div class="info-row"><span>Flag</span><strong>{{ reason }}</strong></div>
+                    {% endfor %}
+                </div>
+            </section>
+
+            {% if review_item.overview %}
+            <p class="subhead" style="margin:0; max-width:none; line-height:1.8;">{{ review_item.overview }}</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <form method="post" style="margin-top:22px;">
+        <input type="hidden" name="index" value="{{ queue_index }}">
+        <div class="detail-controls">
+            {% if review_item.proposed_correction %}
+            <button class="btn" type="submit" name="action" value="apply"><i data-lucide="save"></i>Apply to Notion</button>
+            {% endif %}
+            <button class="btn" type="submit" name="action" value="ok"><i data-lucide="check"></i>Mark as OK</button>
+            <button class="btn" type="submit" name="action" value="skip"><i data-lucide="skip-forward"></i>Skip</button>
+            <button class="btn" type="submit" name="action" value="next"><i data-lucide="chevrons-right"></i>Next</button>
+        </div>
+    </form>
+</section>
+{% else %}
+<section class="surface-card section-card">
+    <div class="empty-state">No movies are currently queued for review.</div>
+</section>
+{% endif %}
+{% endblock %}

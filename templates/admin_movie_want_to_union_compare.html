@@ -1,0 +1,178 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="page-hero">
+    <div class="hero-meta">
+        <span class="hero-badge">Admin Diagnostics</span>
+        <span>Temporary want-to union compare</span>
+    </div>
+    <h2>Movie Want-To Union Compare</h2>
+    <p class="subhead">
+        Tests the production-safe visible want-to strategy without replacing production fetching.
+    </p>
+</section>
+
+<section class="stats-grid">
+    <article class="surface-card stat-card">
+        <div class="stat-label">Current Want-To</div>
+        <div class="stat-value">{{ report.current_production_want_to_count }}</div>
+    </article>
+    <article class="surface-card stat-card">
+        <div class="stat-label">Union Want-To</div>
+        <div class="stat-value">{{ report.union_filtered_want_to_count }}</div>
+    </article>
+    <article class="surface-card stat-card">
+        <div class="stat-label">Raw Union</div>
+        <div class="stat-value">{{ report.union_total_after_dedupe }}</div>
+    </article>
+    <article class="surface-card stat-card">
+        <div class="stat-label">Stable Runs</div>
+        <div class="stat-value">{{ 'Yes' if report.stable_across_repeated_runs else 'No' }}</div>
+    </article>
+</section>
+
+<section class="surface-card section-card">
+    <div class="hero-meta">
+        <span class="hero-badge">Rules</span>
+        <span>{{ report.mode }}</span>
+    </div>
+    <p class="muted" style="margin-top:12px;">Feature flag: {{ report.feature_flag_name }}</p>
+    <p class="muted" style="margin-top:12px;">Feature flag enabled: {{ 'yes' if report.feature_flag_enabled else 'no' }}</p>
+    <p class="muted" style="margin-top:12px;">Dedupe: {{ report.dedupe_rule }}</p>
+    <p class="muted" style="margin-top:12px;">Filter: {{ report.normalized_filter_rule }}</p>
+    <p class="muted" style="margin-top:12px;">Flagged delta when enabled: {{ report.want_to_delta_when_enabled }}</p>
+    <p class="muted" style="margin-top:12px;">Count remains 506: {{ 'yes' if report.count_remains_506 else 'no' }}</p>
+    <p class="muted" style="margin-top:12px;">Saved report: {{ report.saved_report_path or 'Not saved' }}</p>
+    <p class="muted" style="margin-top:12px;">
+        Flagged usage:
+        {% for item in report.flagged_usage %}
+            {{ item }}{% if not loop.last %}, {% endif %}
+        {% endfor %}
+    </p>
+</section>
+
+<section class="surface-card section-card">
+    <div class="hero-meta">
+        <span class="hero-badge">Repeated Runs</span>
+        <span>{{ report.repeated_run_count }} run(s)</span>
+    </div>
+    <table class="admin-table" style="margin-top:18px;">
+        <thead>
+            <tr>
+                <th>Run</th>
+                <th>Raw Union</th>
+                <th>Filtered Want-To</th>
+                <th>Anchors Included</th>
+                <th>Errors</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for run in report.runs %}
+            <tr>
+                <td>{{ run.run_number }}</td>
+                <td>{{ run.union_total_after_dedupe }}</td>
+                <td>{{ run.want_to_total_after_filter }}</td>
+                <td>{{ 'yes' if run.all_anchor_titles_included else 'no' }}</td>
+                <td>{{ run.strategy_errors|length }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</section>
+
+<section class="surface-card section-card">
+    <div class="hero-meta">
+        <span class="hero-badge">Distributions</span>
+        <span>Current vs union-filtered want-to</span>
+    </div>
+    <table class="admin-table" style="margin-top:18px;">
+        <thead>
+            <tr>
+                <th>Set</th>
+                <th>Status</th>
+                <th>Source</th>
+                <th>Category</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>current_production_want_to</td>
+                <td>
+                    {% for key, count in report.current_production_want_to_distributions.status.items() %}
+                    <div class="muted">{{ key }}: {{ count }}</div>
+                    {% endfor %}
+                </td>
+                <td>
+                    {% for key, count in report.current_production_want_to_distributions.source.items() %}
+                    <div class="muted">{{ key }}: {{ count }}</div>
+                    {% endfor %}
+                </td>
+                <td>
+                    {% for key, count in report.current_production_want_to_distributions.category.items() %}
+                    <div class="muted">{{ key }}: {{ count }}</div>
+                    {% endfor %}
+                </td>
+            </tr>
+            <tr>
+                <td>union_filtered_want_to</td>
+                <td>
+                    {% for key, count in report.union_filtered_want_to_distributions.status.items() %}
+                    <div class="muted">{{ key }}: {{ count }}</div>
+                    {% endfor %}
+                </td>
+                <td>
+                    {% for key, count in report.union_filtered_want_to_distributions.source.items() %}
+                    <div class="muted">{{ key }}: {{ count }}</div>
+                    {% endfor %}
+                </td>
+                <td>
+                    {% for key, count in report.union_filtered_want_to_distributions.category.items() %}
+                    <div class="muted">{{ key }}: {{ count }}</div>
+                    {% endfor %}
+                </td>
+            </tr>
+        </tbody>
+    </table>
+</section>
+
+<section class="surface-card section-card">
+    <div class="hero-meta">
+        <span class="hero-badge">Anchor Titles</span>
+        <span>Filtered want-to union</span>
+    </div>
+    <table class="admin-table" style="margin-top:18px;">
+        <thead>
+            <tr>
+                <th>Title</th>
+                <th>Included</th>
+                <th>Status / Source / Category</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in report.anchor_titles %}
+            <tr>
+                <td>{{ item.title }}</td>
+                <td>{{ 'yes' if item.included else 'no' }}</td>
+                <td>
+                    {% if item.included %}
+                    {{ item.match.status or '(blank)' }} /
+                    {{ item.match.source or '(blank)' }} /
+                    {{ item.match.category or '(blank)' }}
+                    {% else %}
+                    <span class="muted">missing</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</section>
+
+<section class="surface-card section-card">
+    <div class="hero-meta">
+        <span class="hero-badge">Promotion Plan</span>
+        <span>Not active globally</span>
+    </div>
+    <p class="muted" style="margin-top:12px;">{{ report.interpretation }}</p>
+    <p class="muted" style="margin-top:12px;">{{ report.recommended_promotion_plan }}</p>
+</section>
+{% endblock %}

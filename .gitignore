@@ -1,0 +1,14 @@
+.env
+youtube_token.json
+client_secret.json
+client_secret.json.json
+client_secrets.json
+chat_history.db
+cache_data.json
+deleted_history.json
+__pycache__/
+*.pyc
+.venv/
+venv/
+backups/
+cache/

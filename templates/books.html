@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+    .books-shell{display:grid;gap:18px}
+    .books-filters{display:grid;gap:14px}
+    .books-filters .filter-form{grid-template-columns:minmax(240px,2fr) minmax(160px,.9fr) auto}
+    .books-filters .filter-submit{padding:13px 16px}
+    .books-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:16px}
+    .books-card{display:flex;flex-direction:column;gap:14px;padding:14px;border-radius:24px;border:1px solid var(--border);background:linear-gradient(180deg,rgba(255,255,255,.025),rgba(255,255,255,.006)),var(--card);text-decoration:none;color:var(--text);transition:border-color .2s ease,transform .2s ease,box-shadow .2s ease}
+    .books-card:hover{border-color:rgba(255,0,0,.24);transform:translateY(-2px);box-shadow:0 14px 30px rgba(0,0,0,.28)}
+    .books-cover{position:relative;overflow:hidden;border-radius:18px;border:1px solid var(--border);background:linear-gradient(180deg,rgba(255,255,255,.04),rgba(255,255,255,.015))}
+    .books-cover:before{content:"";display:block;padding-top:148%}
+    .books-cover img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+    .books-cover-placeholder{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:18px;background:linear-gradient(180deg,rgba(255,255,255,.035),rgba(255,255,255,.01));color:var(--text-2);text-align:center}
+    .books-cover-placeholder i{font-size:1.55rem;color:rgba(255,255,255,.48)}
+    .books-cover-placeholder span{font-size:.72rem;letter-spacing:.14em;text-transform:uppercase}
+    .books-card-body{display:grid;gap:10px}
+    .books-card-title{font-size:1.02rem;line-height:1.45;color:var(--heading);font-weight:700}
+    .books-dir-rtl{direction:rtl;text-align:right}
+    .books-dir-ltr{direction:ltr;text-align:left}
+    .books-card-meta{display:flex;align-items:center;gap:8px 10px;flex-wrap:wrap;color:var(--text-2);font-size:.76rem;letter-spacing:.08em;text-transform:uppercase}
+    .books-card-submeta{display:flex;align-items:center;gap:8px 10px;flex-wrap:wrap;color:var(--text-2);font-size:.72rem;letter-spacing:.08em;text-transform:uppercase}
+    .books-card-rating{color:#f0d38b}
+    .books-card-pill{display:inline-flex;align-items:center;padding:5px 9px;border-radius:999px;border:1px solid var(--border);background:rgba(255,255,255,.03)}
+    .books-card-footer{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+    .books-card-small{color:var(--text-2);font-size:.8rem;line-height:1.6}
+    @media (max-width:700px){
+        .books-filters .filter-form{grid-template-columns:1fr}
+        .books-grid{grid-template-columns:repeat(auto-fill,minmax(160px,1fr))}
+    }
+</style>
+
+<div class="books-shell">
+    <section class="page-hero">
+        <div class="hero-meta">
+            <span class="hero-badge">Books</span>
+            <span>{{ total }} visible</span>
+            <span>{{ all_entries_count }} total</span>
+        </div>
+        <h2>Books</h2>
+        <p class="subhead">A minimal Notion-backed reading archive for books and reading-tracker entries from your Knowledge database.</p>
+    </section>
+
+    <section class="surface-card section-card books-filters">
+        <form method="get" class="filter-form">
+            <input type="text" name="search" placeholder="Search title, author, decision, or history..." value="{{ current_filters.search }}">
+            <select name="status">
+                {% for option in status_options %}
+                <option value="{{ option }}" {% if option == current_filters.status %}selected{% endif %}>
+                    {{ 'All Statuses' if option == 'all' else status_option_labels.get(option, option|replace('_', ' ')|title) }}
+                </option>
+                {% endfor %}
+            </select>
+            <button type="submit" class="filter-submit"><i data-lucide="sliders-horizontal"></i>Apply</button>
+        </form>
+        {% if error_message %}
+        <div class="empty-state">{{ error_message }}</div>
+        {% endif %}
+    </section>
+
+    {% if entries %}
+    <section class="books-grid">
+        {% for entry in entries %}
+        <a class="books-card" href="{{ url_for('books_entry_detail', entry_id=entry.id) }}" data-scroll-top="true">
+            <div class="books-cover">
+                <img src="{{ url_for('books_entry_cover', entry_id=entry.id) }}" alt="{{ entry.title }} cover" loading="lazy" referrerpolicy="no-referrer">
+            </div>
+            <div class="books-card-body">
+                <div class="books-card-title books-dir-{{ books_text_direction(entry.title) }}" dir="{{ books_text_direction(entry.title) }}">{{ entry.title }}</div>
+                <div class="books-card-meta books-dir-{{ books_text_direction(entry.authors_display) }}" dir="{{ books_text_direction(entry.authors_display) }}">
+                    {% if entry.authors_display %}<span>{{ entry.authors_display }}</span>{% endif %}
+                </div>
+                <div class="books-card-submeta">
+                    {% if entry.status_label %}<span class="books-card-pill books-dir-{{ books_text_direction(entry.status_label) }}" dir="{{ books_text_direction(entry.status_label) }}">{{ entry.status_label }}</span>{% endif %}
+                    {% if entry.rating %}<span class="books-card-rating books-dir-{{ books_text_direction(entry.rating) }}" dir="{{ books_text_direction(entry.rating) }}">Rating {{ entry.rating }}</span>{% endif %}
+                </div>
+                <div class="books-card-footer">
+                    {% if entry.date_finished_display %}<span class="books-card-small books-dir-{{ books_text_direction(entry.date_finished_display) }}" dir="{{ books_text_direction(entry.date_finished_display) }}">{{ entry.date_finished_display }}</span>{% endif %}
+                    {% if entry.kinde_display %}<span class="books-card-small books-dir-{{ books_text_direction(entry.kinde_display) }}" dir="{{ books_text_direction(entry.kinde_display) }}">{{ entry.kinde_display }}</span>{% endif %}
+                </div>
+            </div>
+        </a>
+        {% endfor %}
+    </section>
+    {% elif not error_message %}
+    <div class="empty-state">No books matched the current filters.</div>
+    {% endif %}
+</div>
+{% endblock %}

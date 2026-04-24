@@ -1,0 +1,410 @@
+{% extends "base.html" %}
+{% block content %}
+{% macro preview_table(rows, empty_message) %}
+    {% if rows %}
+    <table class="admin-table" style="margin-top:18px;">
+        <thead>
+            <tr>
+                <th>CSV Row</th>
+                <th>Comparison</th>
+                <th>Confidence</th>
+                <th>Matched Current Entry</th>
+                <th>Notes</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in rows %}
+            <tr>
+                <td style="min-width:220px;">
+                    <div style="font-weight:700; color:var(--heading);">{{ item.source_file }}</div>
+                    <div class="muted" style="margin-top:8px;">Row {{ item.row_number }}</div>
+                    {% if item.original_title %}
+                    <div class="muted" style="margin-top:8px;">Original: {{ item.original_title }}</div>
+                    {% endif %}
+                    <div class="muted" style="margin-top:8px;">CSV row metadata</div>
+                </td>
+                <td>
+                    <div><strong>Title:</strong> {{ item.current_title or 'Missing' }} -> {{ item.corrected_title or item.current_title or 'Missing' }}</div>
+                    <div class="muted" style="margin-top:8px;"><strong>Director:</strong> {{ item.current_director or 'Missing' }} -> {{ item.director or item.current_director or 'Missing' }}</div>
+                    <div class="muted" style="margin-top:8px;"><strong>Year:</strong> {{ item.current_year or 'Missing' }} -> {{ item.year or item.current_year or 'Missing' }}</div>
+                </td>
+                <td>
+                    <div style="font-weight:700; color:var(--heading);">{{ (item.confidence_level or item.confidence or 'unknown')|upper }}</div>
+                    <div class="muted" style="margin-top:8px;"><strong>Reason:</strong> {{ item.reason or item.match_rule or 'No explanation provided' }}</div>
+                </td>
+                <td>
+                    {% if item.matched_entry %}
+                    <div style="font-weight:700; color:var(--heading);">{{ item.matched_entry_title }}</div>
+                    {% if item.matched_entry_detail_url %}
+                    <a class="btn" href="{{ item.matched_entry_detail_url }}" style="margin-top:10px;" data-scroll-top="true"><i data-lucide="arrow-up-right"></i>Open Detail</a>
+                    {% endif %}
+                    {% elif item.conflict_titles %}
+                    {% for title in item.conflict_titles %}
+                    <div class="muted" style="margin-bottom:8px;">- {{ title }}</div>
+                    {% endfor %}
+                    {% else %}
+                    <div class="muted">No current movie match.</div>
+                    {% endif %}
+                    <div class="muted" style="margin-top:10px;">{{ item.notes or 'No notes' }}</div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div class="empty-state" style="margin-top:18px;">{{ empty_message }}</div>
+    {% endif %}
+{% endmacro %}
+
+<section class="page-hero">
+    <div class="hero-meta">
+        <span class="hero-badge">CSV Correction Preview</span>
+        <span>Preview only</span>
+    </div>
+    <h2>CSV Corrections Preview</h2>
+    <p class="subhead">
+        This page ingests all uploaded correction CSV files, normalizes their headers into one canonical schema,
+        and compares them against the current <code>movies_export.csv</code> snapshot from Notion.
+        The dry-run below prepares only conservative title/director/year updates. No changes are written back until you use the apply action.
+    </p>
+</section>
+
+{% if success_message %}
+<section class="surface-card section-card" style="padding:16px 20px; border-color:rgba(255,0,0,.18);">
+    <div class="muted" style="color:#ffffff;">{{ success_message }}</div>
+    {% if backup_path %}
+    <div class="muted" style="margin-top:8px;">Backup report: {{ backup_path }}</div>
+    {% endif %}
+    {% if applied_path %}
+    <div class="muted" style="margin-top:8px;">Apply report: {{ applied_path }}</div>
+    {% endif %}
+</section>
+{% endif %}
+{% if error_message %}
+<section class="surface-card section-card" style="padding:16px 20px; border-color:rgba(255,0,0,.32);">
+    <div class="muted" style="color:#ff9a9a;">{{ error_message }}</div>
+</section>
+{% endif %}
+
+<section class="surface-card section-card">
+    <form method="get" action="{{ url_for('movies_corrections_preview') }}">
+        <div class="detail-header" style="align-items:flex-end;">
+            <div style="display:flex; gap:14px; flex-wrap:wrap; align-items:flex-end;">
+                <label class="muted">
+                    Confidence
+                    <select name="confidence" class="btn" style="margin-top:6px;">
+                        <option value="all" {% if filter_confidence == 'all' %}selected{% endif %}>All ({{ preview_counts.all }})</option>
+                        <option value="high" {% if filter_confidence == 'high' %}selected{% endif %}>HIGH ({{ preview_counts.high }})</option>
+                        <option value="medium" {% if filter_confidence == 'medium' %}selected{% endif %}>MEDIUM ({{ preview_counts.medium }})</option>
+                    </select>
+                </label>
+                <label class="muted">
+                    Row Type
+                    <select name="row_type" class="btn" style="margin-top:6px;">
+                        <option value="all" {% if filter_row_type == 'all' %}selected{% endif %}>All ({{ preview_counts.all }})</option>
+                        <option value="real" {% if filter_row_type == 'real' %}selected{% endif %}>Real changes ({{ preview_counts.real }})</option>
+                        <option value="non_movie" {% if filter_row_type == 'non_movie' %}selected{% endif %}>Non-movie items ({{ preview_counts.non_movie }})</option>
+                    </select>
+                </label>
+                <label class="muted">
+                    Result Status
+                    <select name="status" class="btn" style="margin-top:6px;">
+                        <option value="all" {% if filter_status == 'all' %}selected{% endif %}>All ({{ result_counts.all if result_counts else 0 }})</option>
+                        <option value="applied" {% if filter_status == 'applied' %}selected{% endif %}>Applied ({{ result_counts.applied if result_counts else 0 }})</option>
+                        <option value="skipped" {% if filter_status == 'skipped' %}selected{% endif %}>Skipped ({{ result_counts.skipped if result_counts else 0 }})</option>
+                        <option value="failed" {% if filter_status == 'failed' %}selected{% endif %}>Failed ({{ result_counts.failed if result_counts else 0 }})</option>
+                    </select>
+                </label>
+                <div class="muted" style="padding-bottom:8px;">Filters keep the current safe selection behavior intact.</div>
+            </div>
+            <div class="detail-controls">
+                <a class="btn" href="{{ url_for('movies_corrections_preview') }}" data-scroll-top="true"><i data-lucide="x"></i>Reset</a>
+                <button class="btn" type="submit"><i data-lucide="filter"></i>Filter</button>
+            </div>
+        </div>
+    </form>
+</section>
+
+{% if apply_report and apply_report.summary %}
+<section class="stats-grid">
+    <article class="surface-card stat-card">
+        <div class="stat-label">Selected</div>
+        <div class="stat-value">{{ apply_report.summary.selected_items or 0 }}</div>
+    </article>
+    <article class="surface-card stat-card">
+        <div class="stat-label">Applied</div>
+        <div class="stat-value">{{ apply_report.summary.applied or 0 }}</div>
+    </article>
+    <article class="surface-card stat-card">
+        <div class="stat-label">Skipped</div>
+        <div class="stat-value">{{ apply_report.summary.skipped or 0 }}</div>
+    </article>
+    <article class="surface-card stat-card">
+        <div class="stat-label">Failed</div>
+        <div class="stat-value">{{ apply_report.summary.failed or 0 }}</div>
+    </article>
+</section>
+{% endif %}
+
+{% if apply_report and apply_report.summary %}
+<section class="surface-card section-card">
+    <div class="hero-meta">
+        <span class="hero-badge">Apply Results</span>
+        <span>Post-apply verification</span>
+    </div>
+    <h3 style="font-size:2rem; margin-top:12px;">Per-Row Results</h3>
+    <div class="muted" style="margin-top:8px;">Showing {{ apply_result_rows|length }} result rows.</div>
+    <table class="admin-table" style="margin-top:18px;">
+        <thead>
+            <tr>
+                <th>Movie</th>
+                <th>Applied Fields</th>
+                <th>Status</th>
+                <th>Reason</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in apply_result_rows or [] %}
+            <tr>
+                <td>{{ item.current_title or item.corrected_title or item.original_title or 'Unknown title' }}</td>
+                <td>{{ item.applied_fields|join(', ') if item.applied_fields else '-' }}</td>
+                <td>{{ item.status }}</td>
+                <td>{% if item.status == 'applied' %}Applied successfully{% else %}{{ item.reason or 'No reason provided' }}{% endif %}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</section>
+{% endif %}
+
+<section class="stats-grid">
+    <article class="surface-card stat-card">
+        <div class="stat-label">CSV Files</div>
+        <div class="stat-value">{{ summary.csv_files }}</div>
+    </article>
+    <article class="surface-card stat-card">
+        <div class="stat-label">CSV Rows</div>
+        <div class="stat-value">{{ summary.csv_rows }}</div>
+    </article>
+    <article class="surface-card stat-card">
+        <div class="stat-label">Export Rows</div>
+        <div class="stat-value">{{ summary.export_rows }}</div>
+    </article>
+    <article class="surface-card stat-card">
+        <div class="stat-label">Strong Matches</div>
+        <div class="stat-value">{{ summary.strong_matches }}</div>
+    </article>
+    <article class="surface-card stat-card">
+        <div class="stat-label">Possible Matches</div>
+        <div class="stat-value">{{ summary.possible_matches }}</div>
+    </article>
+    <article class="surface-card stat-card">
+        <div class="stat-label">Conflicts</div>
+        <div class="stat-value">{{ summary.conflicts }}</div>
+    </article>
+    <article class="surface-card stat-card">
+        <div class="stat-label">No Match Rows</div>
+        <div class="stat-value">{{ summary.no_match_rows }}</div>
+    </article>
+</section>
+
+{% if apply_plan_summary %}
+<section class="stats-grid">
+    <article class="surface-card stat-card">
+        <div class="stat-label">Dry Run Reviewed</div>
+        <div class="stat-value">{{ apply_plan_summary.total_reviewed }}</div>
+    </article>
+    <article class="surface-card stat-card">
+        <div class="stat-label">Mismatch Rows</div>
+        <div class="stat-value">{{ apply_plan_summary.mismatch_rows }}</div>
+    </article>
+    <article class="surface-card stat-card">
+        <div class="stat-label">Planned Applies</div>
+        <div class="stat-value">{{ apply_plan_summary.planned_updates }}</div>
+    </article>
+    <article class="surface-card stat-card">
+        <div class="stat-label">Default Selected</div>
+        <div class="stat-value">{{ apply_plan_summary.selected_default }}</div>
+    </article>
+    <article class="surface-card stat-card">
+        <div class="stat-label">Filtered Out</div>
+        <div class="stat-value">{{ apply_plan_summary.skipped_by_mismatch_filter }}</div>
+    </article>
+    <article class="surface-card stat-card">
+        <div class="stat-label">Title Updates</div>
+        <div class="stat-value">{{ apply_plan_summary.title_updates }}</div>
+    </article>
+    <article class="surface-card stat-card">
+        <div class="stat-label">Director Updates</div>
+        <div class="stat-value">{{ apply_plan_summary.director_updates }}</div>
+    </article>
+    <article class="surface-card stat-card">
+        <div class="stat-label">Year Updates</div>
+        <div class="stat-value">{{ apply_plan_summary.year_updates }}</div>
+    </article>
+</section>
+{% endif %}
+
+<section class="surface-card section-card">
+    <div class="hero-meta">
+        <span class="hero-badge">Dry Run</span>
+        <span>Selected rows only will be applied</span>
+    </div>
+    <h3 style="font-size:2rem; margin-top:12px;">Title, Director, and Year Update Preview</h3>
+    {% if planned_updates %}
+    <form method="post" action="{{ url_for('movies_corrections_apply') }}" id="csv-apply-form">
+        <input type="hidden" name="confidence" value="{{ filter_confidence }}">
+        <input type="hidden" name="row_type" value="{{ filter_row_type }}">
+        <input type="hidden" name="status" value="{{ filter_status }}">
+        <div class="detail-header" style="margin-top:18px; align-items:flex-end;">
+            <div>
+                <div class="muted" id="csv-selection-summary">{{ selected_default_count }} selected out of {{ planned_updates|length }}</div>
+                <div class="muted" id="csv-selection-confidence" style="margin-top:8px;">{% if selected_high_only %}Selected rows are HIGH confidence only.{% else %}Selected rows include MEDIUM confidence items.{% endif %}</div>
+                <div class="muted" style="margin-top:8px;">Apply writes selected rows only, and only updates title, director, and year.</div>
+            </div>
+            <div class="detail-controls">
+                <button class="btn" type="submit"><i data-lucide="save"></i>Apply Selected</button>
+            </div>
+        </div>
+        <table class="admin-table" style="margin-top:18px;">
+            <thead>
+                <tr>
+                    <th>Select</th>
+                    <th>CSV Row</th>
+                    <th>Comparison</th>
+                    <th>Confidence</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in planned_updates %}
+                <tr>
+                    <td style="min-width:92px;">
+                        <label class="muted" style="display:inline-flex; align-items:center; gap:8px;">
+                            <input type="checkbox" name="selected_rows" value="{{ item.apply_key }}" {% if item.default_selected %}checked{% endif %} data-confidence="{{ item.confidence_level }}">
+                            Select
+                        </label>
+                    </td>
+                    <td style="min-width:220px;">
+                        <div style="font-weight:700; color:var(--heading);">{{ item.current_title }}</div>
+                        <div class="muted" style="margin-top:8px;">{{ item.source_file }} row {{ item.row_number }}</div>
+                        {% if item.mismatch_row_number %}
+                        <div class="muted" style="margin-top:8px;">Mismatch row {{ item.mismatch_row_number }}</div>
+                        {% endif %}
+                        {% if item.mismatch_issue %}
+                        <div class="muted" style="margin-top:8px;">{{ item.mismatch_issue }}</div>
+                        {% endif %}
+                    </td>
+                    <td>
+                        <div><strong>Title:</strong> {{ item.current_title or 'Missing' }} -> {{ item.corrected_title or item.current_title or 'Missing' }}</div>
+                        <div class="muted" style="margin-top:8px;"><strong>Director:</strong> {{ item.current_director or 'Missing' }} -> {{ item.director or item.current_director or 'Missing' }}</div>
+                        <div class="muted" style="margin-top:8px;"><strong>Year:</strong> {{ item.current_year or 'Missing' }} -> {{ item.year or item.current_year or 'Missing' }}</div>
+                    </td>
+                    <td style="min-width:180px;">
+                        <div style="font-weight:700; color:var(--heading);">{{ item.confidence_level|upper }}</div>
+                        <div class="muted" style="margin-top:8px;"><strong>Reason:</strong> {{ item.reason or 'No explanation provided' }}</div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </form>
+    {% else %}
+    <div class="empty-state" style="margin-top:18px;">No safe title/director/year updates are currently planned.</div>
+    {% endif %}
+</section>
+
+<section class="surface-card section-card">
+    <div class="detail-header">
+        <div>
+            <div class="hero-meta">
+                <span class="hero-badge">Strong Matches</span>
+                <span>Preview only until you apply</span>
+            </div>
+            <h3 style="font-size:2rem; margin-top:12px;">High Confidence</h3>
+        </div>
+        <div class="detail-controls">
+            <a class="btn" href="{{ url_for('movies_review') }}" data-scroll-top="true"><i data-lucide="list-filter"></i>Review Queue</a>
+            <a class="btn" href="{{ url_for('refresh', scope='films', next=request.full_path if request.query_string else request.path) }}"><i data-lucide="refresh-cw"></i>Refresh Movie Data</a>
+        </div>
+    </div>
+    {{ preview_table(strong_matches, 'No strong CSV matches were found.') }}
+</section>
+
+<section class="surface-card section-card">
+    <div class="hero-meta">
+        <span class="hero-badge">Possible Matches</span>
+        <span>Title-only fallback</span>
+    </div>
+    <h3 style="font-size:2rem; margin-top:12px;">Lower Confidence</h3>
+    {{ preview_table(possible_matches, 'No possible matches were found.') }}
+</section>
+
+<section class="surface-card section-card">
+    <div class="hero-meta">
+        <span class="hero-badge">Conflicts</span>
+        <span>Ambiguous rows</span>
+    </div>
+    <h3 style="font-size:2rem; margin-top:12px;">Needs Manual Review</h3>
+    {{ preview_table(conflicts, 'No conflicts were found.') }}
+</section>
+
+<section class="surface-card section-card">
+    <div class="hero-meta">
+        <span class="hero-badge">Wrong Section</span>
+        <span>Non-movie rows blocked from apply</span>
+    </div>
+    <h3 style="font-size:2rem; margin-top:12px;">Non-Movie Entries</h3>
+    {{ preview_table(wrong_section_rows, 'No non-movie rows were found.') }}
+</section>
+
+<section class="surface-card section-card">
+    <div class="hero-meta">
+        <span class="hero-badge">No Match</span>
+        <span>Unmatched CSV rows</span>
+    </div>
+    <h3 style="font-size:2rem; margin-top:12px;">Unmatched Corrections</h3>
+    {{ preview_table(no_match_rows, 'Every CSV row found at least one candidate.') }}
+</section>
+<script>
+(function () {
+    var form = document.getElementById('csv-apply-form');
+    if (!form) {
+        return;
+    }
+    var summaryNode = document.getElementById('csv-selection-summary');
+    var confidenceNode = document.getElementById('csv-selection-confidence');
+    var inputs = form.querySelectorAll('input[name="selected_rows"]');
+    function updateSelectionSummary() {
+        var total = inputs.length;
+        var selected = 0;
+        var selectedMedium = 0;
+        var i;
+        for (i = 0; i < inputs.length; i += 1) {
+            if (inputs[i].checked) {
+                selected += 1;
+                if ((inputs[i].getAttribute('data-confidence') || '').toLowerCase() !== 'high') {
+                    selectedMedium += 1;
+                }
+            }
+        }
+        if (summaryNode) {
+            summaryNode.textContent = selected + ' selected out of ' + total;
+        }
+        if (confidenceNode) {
+            if (selected === 0) {
+                confidenceNode.textContent = 'No rows selected yet.';
+            } else if (selectedMedium === 0) {
+                confidenceNode.textContent = 'Selected rows are HIGH confidence only.';
+            } else {
+                confidenceNode.textContent = 'Selected rows include MEDIUM confidence items.';
+            }
+        }
+    }
+    var index;
+    for (index = 0; index < inputs.length; index += 1) {
+        inputs[index].addEventListener('change', updateSelectionSummary);
+    }
+    updateSelectionSummary();
+}());
+</script>
+{% endblock %}

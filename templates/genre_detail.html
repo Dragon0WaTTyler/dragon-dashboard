@@ -1,0 +1,179 @@
+{% extends "base.html" %}
+{% block title %}{{ genre.display_name }} · Cinema Prive{% endblock %}
+{% block content %}
+<section class="page-hero">
+    <div class="hero-meta">
+        <span class="hero-badge">Genre</span>
+        <span>{{ films|length }} linked films</span>
+    </div>
+    <h2>{{ genre.display_name }}</h2>
+    <p class="subhead">
+        Minimal genre view powered by the Notion `Genre Entry` relation, so genre browsing stays linked to your structured movie data.
+    </p>
+</section>
+
+<section class="surface-card section-card" style="padding:24px;">
+    <div class="info-stack" style="display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px 18px;">
+        <div class="info-row"><span>Name</span><strong>{{ genre.display_name }}</strong></div>
+        <div class="info-row"><span>Watched / Finished</span><strong>{{ watched_films|length }}</strong></div>
+        <div class="info-row"><span>I Want To</span><strong>{{ want_films|length }}</strong></div>
+        <div class="info-row"><span>Total Linked</span><strong>{{ all_linked_films|length }}</strong></div>
+        <div class="info-row"><span>Currently Showing</span><strong>{{ films|length }}</strong></div>
+    </div>
+</section>
+
+<section class="surface-card section-card">
+    <div class="detail-header" style="margin-bottom:18px;">
+        <div>
+            <div class="hero-meta">
+                <span class="hero-badge">Genre Filters</span>
+                <span>Relation-backed browsing</span>
+            </div>
+        </div>
+    </div>
+    <form method="get" class="filter-form">
+        <select name="genre_page_id" id="genrePageSelector">
+            {% for option in genre_options %}
+            <option value="{{ option.page_id }}" {% if option.page_id == current_filters.genre_page_id %}selected{% endif %}>{{ option.name }} ({{ option.count }})</option>
+            {% endfor %}
+        </select>
+        <select name="status">
+            {% for option in status_filters %}
+            <option value="{{ option }}" {% if option == current_filters.status %}selected{% endif %}>{{ option }}</option>
+            {% endfor %}
+        </select>
+        <select name="category">
+            {% for option in category_filters %}
+            <option value="{{ option }}" {% if option == current_filters.category %}selected{% endif %}>{{ option }}</option>
+            {% endfor %}
+        </select>
+        <select name="sort">
+            {% for option in sort_filters %}
+            <option value="{{ option }}" {% if option == current_filters.sort %}selected{% endif %}>{{ option }}</option>
+            {% endfor %}
+        </select>
+        <button type="submit"><i data-lucide="sliders-horizontal"></i>Apply Filters</button>
+    </form>
+</section>
+
+{% if filtered_watched_films %}
+<section class="surface-card section-card">
+    <div class="detail-header">
+        <div>
+            <div class="hero-meta">
+                <span class="hero-badge matte-tag">Watched / Finished</span>
+                <span>{{ filtered_watched_films|length }} movies</span>
+            </div>
+            <h3 class="title-scaled" style="margin-top:12px;">Completed In This Genre</h3>
+        </div>
+    </div>
+    <div class="movie-grid" style="margin-top:18px;">
+        {% for film in filtered_watched_films %}
+        <a class="content-card media-card" href="{{ url_for('video_detail', entry_id=film.entry_id) }}" data-scroll-top="true">
+            <div class="media-poster">
+                {% if film.poster %}
+                <img src="{{ film.poster }}" alt="{{ film.name }}">
+                {% else %}
+                <div class="poster-placeholder">◼</div>
+                {% endif %}
+            </div>
+            <div class="card-title">{{ film.name }}</div>
+            <div class="card-meta">{{ film.category }} · {{ film.status }}</div>
+            <div class="score-pill" style="color: {{ score_color.get(film.score, '#777') }};">
+                {{ score_display.get(film.score, '—') }}
+            </div>
+        </a>
+        {% endfor %}
+    </div>
+</section>
+{% endif %}
+
+{% if filtered_want_films %}
+<section class="surface-card section-card">
+    <div class="detail-header">
+        <div>
+            <div class="hero-meta">
+                <span class="hero-badge matte-tag">I Want To</span>
+                <span>{{ filtered_want_films|length }} movies</span>
+            </div>
+            <h3 class="title-scaled" style="margin-top:12px;">Still In Your Queue</h3>
+        </div>
+    </div>
+    <div class="movie-grid" style="margin-top:18px;">
+        {% for film in filtered_want_films %}
+        <a class="content-card media-card" href="{{ url_for('video_detail', entry_id=film.entry_id) }}" data-scroll-top="true">
+            <div class="media-poster">
+                {% if film.poster %}
+                <img src="{{ film.poster }}" alt="{{ film.name }}">
+                {% else %}
+                <div class="poster-placeholder">◼</div>
+                {% endif %}
+            </div>
+            <div class="card-title">{{ film.name }}</div>
+            <div class="card-meta">{{ film.category }} · {{ film.status }}</div>
+            <div class="score-pill" style="color: {{ score_color.get(film.score, '#777') }};">
+                {{ score_display.get(film.score, '—') }}
+            </div>
+        </a>
+        {% endfor %}
+    </div>
+</section>
+{% endif %}
+
+{% if other_films %}
+<section class="surface-card section-card">
+    <div class="detail-header">
+        <div>
+            <div class="hero-meta">
+                <span class="hero-badge matte-tag">Other Linked</span>
+                <span>{{ other_films|length }} movies</span>
+            </div>
+            <h3 class="title-scaled" style="margin-top:12px;">Other Statuses</h3>
+        </div>
+    </div>
+    <div class="movie-grid" style="margin-top:18px;">
+        {% for film in other_films %}
+        <a class="content-card media-card" href="{{ url_for('video_detail', entry_id=film.entry_id) }}" data-scroll-top="true">
+            <div class="media-poster">
+                {% if film.poster %}
+                <img src="{{ film.poster }}" alt="{{ film.name }}">
+                {% else %}
+                <div class="poster-placeholder">◼</div>
+                {% endif %}
+            </div>
+            <div class="card-title">{{ film.name }}</div>
+            <div class="card-meta">{{ film.category }} · {{ film.status }}</div>
+            <div class="score-pill" style="color: {{ score_color.get(film.score, '#777') }};">
+                {{ score_display.get(film.score, '—') }}
+            </div>
+        </a>
+        {% endfor %}
+    </div>
+</section>
+{% endif %}
+
+{% if not films %}
+<section class="surface-card section-card">
+    <div class="empty-state">No movies in this genre match the current filters.</div>
+</section>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function() {
+    var form = document.querySelector('.filter-form');
+    var selector = document.getElementById('genrePageSelector');
+    if (!form || !selector) return;
+    form.addEventListener('submit', function(event) {
+        var genrePageId = selector.value;
+        if (!genrePageId) return;
+        event.preventDefault();
+        var params = new URLSearchParams(new FormData(form));
+        params.delete('genre_page_id');
+        var query = params.toString();
+        window.location.href = '/genre/' + encodeURIComponent(genrePageId) + (query ? ('?' + query) : '');
+    });
+})();
+</script>
+{% endblock %}

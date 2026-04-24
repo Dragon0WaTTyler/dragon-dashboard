@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+    .books-detail-shell{max-width:1180px;margin:0 auto;display:grid;gap:22px}
+    .books-detail-card{padding:0;overflow:hidden}
+    .books-detail-grid{display:grid;grid-template-columns:minmax(240px,340px) minmax(0,1fr);gap:28px;padding:28px}
+    .books-detail-cover-column{display:grid;gap:16px;align-content:start}
+    .books-detail-cover-frame{position:relative;overflow:hidden;border-radius:26px;border:1px solid var(--border);background:linear-gradient(180deg,rgba(255,255,255,.03),rgba(255,255,255,.005)),var(--card)}
+    .books-detail-cover-frame::before{content:"";display:block;padding-top:150%}
+    .books-detail-cover-frame img,.books-detail-cover-placeholder{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+    .books-detail-cover-placeholder{display:flex;align-items:center;justify-content:center;padding:24px;text-align:center;color:var(--text-2);font-size:.78rem;letter-spacing:.16em;text-transform:uppercase}
+    .books-detail-cover-placeholder span{display:block;max-width:12ch;line-height:1.6}
+    .books-detail-facts{padding:18px 18px 16px;border-radius:22px}
+    .books-detail-main{display:grid;gap:18px;align-content:start}
+    .books-detail-title-block{display:grid;gap:14px}
+    .books-detail-title-meta{display:flex;align-items:center;gap:8px 10px;flex-wrap:wrap;color:var(--text-2);font-size:.8rem;letter-spacing:.08em;text-transform:uppercase}
+    .books-detail-chip{display:inline-flex;align-items:center;padding:6px 10px;border-radius:999px;border:1px solid var(--border);background:rgba(255,255,255,.03);color:var(--text-2);font-size:.72rem;letter-spacing:.08em;text-transform:uppercase}
+    .books-detail-subhead{max-width:66ch;color:var(--text-2);font-size:1rem;line-height:1.8}
+    .books-detail-subhead p{margin:0}
+    .books-detail-section{display:grid;gap:12px;padding:22px;border-radius:24px}
+    .books-detail-section-label{font-size:.76rem;letter-spacing:.08em;text-transform:uppercase;color:var(--text-2)}
+    .books-detail-summary{display:grid;gap:14px}
+    .books-detail-summary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px 16px}
+    .books-detail-summary .info-row{min-width:0}
+    .books-quotes-shell{display:grid;gap:14px}
+    .books-quotes-grid{display:grid;gap:14px}
+    .books-quote-card{padding:18px 18px 16px;border-radius:22px;border:1px solid var(--border);background:linear-gradient(180deg,rgba(255,255,255,.02),rgba(255,255,255,.005)),var(--card)}
+    .books-quote-mark{font-size:1.6rem;line-height:1;color:var(--accent);margin-bottom:12px}
+    .books-quote-text{font-size:1rem;line-height:1.9;color:var(--text);white-space:pre-wrap}
+    .books-quote-meta{display:flex;align-items:center;gap:8px 10px;flex-wrap:wrap;margin-top:14px;color:var(--text-2);font-size:.74rem;letter-spacing:.08em;text-transform:uppercase}
+    .books-quote-pill{display:inline-flex;align-items:center;padding:5px 8px;border-radius:999px;border:1px solid var(--border);background:rgba(255,255,255,.02)}
+    .books-quote-card.is-favorite{border-color:rgba(255,93,93,.35);box-shadow:0 0 0 1px rgba(255,93,93,.08) inset}
+    .books-dir-rtl{direction:rtl;text-align:right}
+    .books-dir-ltr{direction:ltr;text-align:left}
+    .books-detail-muted{color:var(--text-2);font-size:.84rem;line-height:1.8}
+    @media (max-width:900px){
+        .books-detail-grid{grid-template-columns:1fr;padding:22px}
+    }
+    @media (max-width:700px){
+        .books-detail-grid{padding:18px}
+        .books-detail-section{padding:18px}
+    }
+</style>
+
+<div class="books-detail-shell">
+    <section class="page-hero">
+        <div class="detail-controls">
+            <a class="btn" href="{{ books_return_url }}" data-scroll-top="true"><i data-lucide="arrow-left"></i>Back to archive</a>
+            {% if entry.url %}
+            <a class="btn" href="{{ entry.url }}" target="_blank" rel="noopener"><i data-lucide="external-link"></i>Open in Notion</a>
+            {% endif %}
+        </div>
+        <div class="hero-meta" style="margin-top:16px;">
+            <span class="hero-badge matte-tag movie-detail">Book Detail</span>
+            <span>{{ entry.status_label or 'Library entry' }}</span>
+            {% if book_quotes_count %}
+            <span>{{ book_quotes_count }} quotes</span>
+            {% endif %}
+        </div>
+        <h2 class="title-scaled books-dir-{{ books_text_direction(entry.title) }}" dir="{{ books_text_direction(entry.title) }}">{{ entry.title }}</h2>
+        <div class="books-detail-subhead">
+            {% if entry.authors_display %}
+            <p class="books-dir-{{ books_text_direction(entry.authors_display) }}" dir="{{ books_text_direction(entry.authors_display) }}">{{ entry.authors_display }}</p>
+            {% endif %}
+        </div>
+    </section>
+
+    <article class="surface-card books-detail-card">
+        <div class="books-detail-grid">
+            <div class="books-detail-cover-column">
+                <div class="books-detail-cover-frame">
+                    {% if entry.cover_url %}
+                    <img src="{{ entry.cover_url }}" alt="{{ entry.title }}" loading="lazy" decoding="async">
+                    {% else %}
+                    <div class="books-detail-cover-placeholder"><span>No cover available</span></div>
+                    {% endif %}
+                </div>
+
+                <section class="surface-card books-detail-facts">
+                    <div class="info-stack">
+                        <div class="info-row"><span>Status</span><strong class="books-dir-{{ books_text_direction(entry.status_label or entry.status or '') }}" dir="{{ books_text_direction(entry.status_label or entry.status or '') }}">{{ entry.status_label or entry.status or 'Unknown' }}</strong></div>
+                        {% if entry.rating %}
+                        <div class="info-row"><span>Rating</span><strong class="books-dir-{{ books_text_direction(entry.rating) }}" dir="{{ books_text_direction(entry.rating) }}">{{ entry.rating }}</strong></div>
+                        {% endif %}
+                        {% if entry.decision %}
+                        <div class="info-row"><span>Decision</span><strong class="books-dir-{{ books_text_direction(entry.decision) }}" dir="{{ books_text_direction(entry.decision) }}">{{ entry.decision }}</strong></div>
+                        {% endif %}
+                        {% if entry.kinde_display %}
+                        <div class="info-row"><span>Format</span><strong class="books-dir-{{ books_text_direction(entry.kinde_display) }}" dir="{{ books_text_direction(entry.kinde_display) }}">{{ entry.kinde_display }}</strong></div>
+                        {% endif %}
+                        {% if entry.date_finished_display %}
+                        <div class="info-row"><span>Date finished</span><strong class="books-dir-{{ books_text_direction(entry.date_finished_display) }}" dir="{{ books_text_direction(entry.date_finished_display) }}">{{ entry.date_finished_display }}</strong></div>
+                        {% endif %}
+                        {% if entry.pinned %}
+                        <div class="info-row"><span>Saved</span><strong>Pinned</strong></div>
+                        {% endif %}
+                        {% if entry.tags_display %}
+                        <div class="info-row"><span>Tags</span><strong class="books-dir-{{ books_text_direction(entry.tags_display) }}" dir="{{ books_text_direction(entry.tags_display) }}">{{ entry.tags_display }}</strong></div>
+                        {% endif %}
+                    </div>
+                </section>
+            </div>
+
+            <div class="books-detail-main">
+                <section class="surface-card books-detail-section">
+                    <div class="books-detail-section-label">Overview</div>
+                    <div class="books-detail-summary">
+                        <div class="books-detail-title-block">
+                            <div class="books-detail-title-meta">
+                                {% if entry.authors_display %}<span class="books-detail-chip books-dir-{{ books_text_direction(entry.authors_display) }}" dir="{{ books_text_direction(entry.authors_display) }}">{{ entry.authors_display }}</span>{% endif %}
+                                {% if entry.status_label %}<span class="books-detail-chip books-dir-{{ books_text_direction(entry.status_label) }}" dir="{{ books_text_direction(entry.status_label) }}">{{ entry.status_label }}</span>{% endif %}
+                                {% if entry.rating %}<span class="books-detail-chip books-dir-{{ books_text_direction(entry.rating) }}" dir="{{ books_text_direction(entry.rating) }}">Rating {{ entry.rating }}</span>{% endif %}
+                                {% if entry.decision %}<span class="books-detail-chip books-dir-{{ books_text_direction(entry.decision) }}" dir="{{ books_text_direction(entry.decision) }}">{{ entry.decision }}</span>{% endif %}
+                                {% if entry.date_finished_display %}<span class="books-detail-chip books-dir-{{ books_text_direction(entry.date_finished_display) }}" dir="{{ books_text_direction(entry.date_finished_display) }}">{{ entry.date_finished_display }}</span>{% endif %}
+                                {% if entry.kinde_display %}<span class="books-detail-chip books-dir-{{ books_text_direction(entry.kinde_display) }}" dir="{{ books_text_direction(entry.kinde_display) }}">{{ entry.kinde_display }}</span>{% endif %}
+                            </div>
+                            <div class="books-detail-muted">
+                                {% if entry.history %}
+                                <p class="books-dir-{{ books_text_direction(entry.history) }}" dir="{{ books_text_direction(entry.history) }}">{{ entry.history }}</p>
+                                {% else %}
+                                <p>A focused detail page for a single book, centered on the cover, its metadata, and the quotes linked to it.</p>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                {% if book_quotes %}
+                <section class="surface-card books-detail-section">
+                    <div class="books-detail-section-label">Book Quotes</div>
+                    <div class="books-quotes-shell">
+                        <div class="books-detail-muted">{{ book_quotes_count }} structured quotes linked to this book.</div>
+                        <div class="books-quotes-grid">
+                            {% for quote in book_quotes %}
+                            <article class="books-quote-card{% if quote.favorite %} is-favorite{% endif %} books-dir-{{ books_text_direction(quote.quote) }}" dir="{{ books_text_direction(quote.quote) }}">
+                                <div class="books-quote-mark">“</div>
+                                <div class="books-quote-text books-dir-{{ books_text_direction(quote.quote) }}" dir="{{ books_text_direction(quote.quote) }}">{{ quote.quote }}</div>
+                                <div class="books-quote-meta">
+                                    {% if quote.page %}<span class="books-quote-pill books-dir-{{ books_text_direction(quote.page) }}" dir="{{ books_text_direction(quote.page) }}">Page {{ quote.page }}</span>{% endif %}
+                                    {% if quote.chapter %}<span class="books-quote-pill books-dir-{{ books_text_direction(quote.chapter) }}" dir="{{ books_text_direction(quote.chapter) }}">{{ quote.chapter }}</span>{% endif %}
+                                    {% if quote.favorite %}<span class="books-quote-pill">Favorite</span>{% endif %}
+                                    {% if quote.tags_display %}<span class="books-quote-pill books-dir-{{ books_text_direction(quote.tags_display) }}" dir="{{ books_text_direction(quote.tags_display) }}">{{ quote.tags_display }}</span>{% endif %}
+                                </div>
+                            </article>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </section>
+                {% endif %}
+
+                {% if book_quotes_error_message %}
+                <div class="empty-state">{{ book_quotes_error_message }}</div>
+                {% endif %}
+
+                {% if books_error_message %}
+                <div class="empty-state">{{ books_error_message }}</div>
+                {% endif %}
+            </div>
+        </div>
+    </article>
+</div>
+{% endblock %}
