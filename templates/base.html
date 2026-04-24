@@ -2,7 +2,7 @@
 <html lang="en" data-theme="dark">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}Cinema Prive{% endblock %}</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -223,6 +223,53 @@
         @media (max-width:820px){.app-shell{display:block}.workspace-pane,body.sidebar-collapsed .workspace-pane{grid-template-columns:1fr}.workspace-sidebar{position:relative;height:auto;border-right:0;border-bottom:1px solid var(--border)}body.sidebar-collapsed .brand-copy,body.sidebar-collapsed .nav-label,body.sidebar-collapsed .sidebar-footer-copy{display:inline}body.sidebar-collapsed .sidebar-nav{justify-items:stretch}body.sidebar-collapsed .nav-link{width:100%;height:auto;justify-content:flex-start;padding:12px 14px}body.sidebar-collapsed .nav-link.active::before{inset:10px auto 10px 0;width:3px;height:auto}.top-tabs,body.sidebar-collapsed .top-tabs{display:flex;left:12px;right:12px;top:12px}.top-tabs .sync-tab{margin-left:0}.mode-toolbar{align-items:flex-start}.mode-toolbar-actions{width:100%}body.theater-view .detail-grid,body.theater-view .player-column{max-width:100%}.ai-sidebar{position:fixed;right:0;top:0;height:100vh;border-left:1px solid #ff0000;border-top:0;z-index:33;background:var(--ai-sidebar-bg)}body.ai-sidebar-open .ai-sidebar{width:min(100vw,380px);min-width:min(100vw,320px);flex-basis:min(100vw,380px);padding:22px 18px 18px}body.ai-sidebar-open .ai-sidebar-toggle{right:22px}body.ai-sidebar-open .top-tabs{right:12px}.field-wide{grid-column:span 1}.video-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
         @media (max-width:820px){.admin-table-form{grid-template-columns:120px minmax(0,1fr)}}
         @media (max-width:640px){.top-tabs .sync-tab{height:44px;padding:0 14px}.admin-playlist-form,.admin-table-form{display:grid;grid-template-columns:1fr}.admin-thumb{width:100%;max-width:160px}.video-grid{grid-template-columns:1fr}}
+        @media (max-width:1024px){
+            .workspace-pane{grid-template-columns:220px minmax(0,1fr)}
+            body.sidebar-collapsed .workspace-pane{grid-template-columns:92px minmax(0,1fr)}
+            .workspace-main{padding:18px 18px 32px}
+            .page-shell,.surface-card,.card,.player-shell,.notebook-card,.playlist-section,.detail-grid,.detail-sidebar,.info-stack,.stats-grid,.movie-grid,.video-grid,.filter-form,.top-rated-grid{min-width:0}
+            .top-tabs{position:sticky;top:12px;left:auto;right:auto;transform:none;opacity:1;pointer-events:auto;width:100%;max-width:100%;margin-bottom:0;overflow:visible;flex-wrap:wrap}
+            .top-tabs .sync-tab{margin-left:0}
+            .movie-grid,.top-rated-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+            .video-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+            body.ai-sidebar-open .ai-sidebar{width:min(100vw,340px);min-width:320px;flex-basis:min(100vw,340px)}
+            body.ai-sidebar-open .ai-sidebar-toggle{right:16px}
+            body.ai-sidebar-open .top-tabs{right:16px}
+        }
+        @media (max-width:900px){
+            .workspace-pane{grid-template-columns:200px minmax(0,1fr)}
+            .workspace-main{padding:18px 16px 30px}
+            .movie-grid,.top-rated-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+            .video-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+            .detail-grid{grid-template-columns:1fr}
+            .top-tabs{padding:8px 14px;gap:8px}
+        }
+        @media (max-width:820px){
+            .app-shell{display:block}
+            .workspace-pane,body.sidebar-collapsed .workspace-pane{grid-template-columns:1fr}
+            .workspace-sidebar{position:relative;height:auto;border-right:0;border-bottom:1px solid var(--border)}
+            body.sidebar-collapsed .brand-copy,body.sidebar-collapsed .nav-label,body.sidebar-collapsed .sidebar-footer-copy{display:inline}
+            body.sidebar-collapsed .sidebar-nav{justify-items:stretch}
+            body.sidebar-collapsed .nav-link{width:100%;height:auto;justify-content:flex-start;padding:12px 14px}
+            body.sidebar-collapsed .nav-link.active::before{inset:10px auto 10px 0;width:3px;height:auto}
+            .top-tabs,body.sidebar-collapsed .top-tabs{display:flex;position:sticky;top:12px;left:12px;right:12px;transform:none;opacity:1;pointer-events:auto;width:calc(100vw - 24px);max-width:none;overflow:visible;flex-wrap:wrap}
+            .top-tabs .sync-tab{margin-left:0}
+            .mode-toolbar{align-items:flex-start}
+            .mode-toolbar-actions{width:100%}
+            body.theater-view .detail-grid,body.theater-view .player-column{max-width:100%}
+            .ai-sidebar{position:fixed;right:0;top:0;height:100vh;border-left:1px solid #ff0000;border-top:0;z-index:33;background:var(--ai-sidebar-bg)}
+            body.ai-sidebar-open .ai-sidebar{width:min(100vw,380px);min-width:min(100vw,320px);flex-basis:min(100vw,380px);padding:22px 18px 18px}
+            body.ai-sidebar-open .ai-sidebar-toggle{right:22px}
+            body.ai-sidebar-open .top-tabs{right:12px}
+            .field-wide{grid-column:span 1}
+            .video-grid,.movie-grid,.top-rated-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+        }
+        @media (max-width:640px){
+            .top-tabs .sync-tab{height:44px;padding:0 14px}
+            .admin-playlist-form,.admin-table-form{display:grid;grid-template-columns:1fr}
+            .admin-thumb{width:100%;max-width:160px}
+            .video-grid,.movie-grid,.top-rated-grid{grid-template-columns:1fr}
+        }
     </style>
 </head>
 <body data-ai-default-mode="{{ ai_default_mode|default('cinematic') }}" data-ai-page-context="{{ ai_page_context|default('general') }}">
