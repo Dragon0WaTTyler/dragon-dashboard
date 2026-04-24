@@ -62,8 +62,8 @@
     <section class="books-grid">
         {% for entry in entries %}
         <a class="books-card" href="{{ url_for('books_entry_detail', entry_id=entry.id) }}" data-scroll-top="true">
-            <div class="books-cover">
-                <img src="{{ url_for('books_entry_cover', entry_id=entry.id) }}" alt="{{ entry.title }} cover" loading="lazy" referrerpolicy="no-referrer">
+            <div class="books-cover book-cover-frame">
+                <img src="{{ url_for('books_entry_cover', entry_id=entry.id) }}" alt="{{ entry.title }} cover" loading="eager" decoding="async" referrerpolicy="no-referrer">
             </div>
             <div class="books-card-body">
                 <div class="books-card-title books-dir-{{ books_text_direction(entry.title) }}" dir="{{ books_text_direction(entry.title) }}">{{ entry.title }}</div>

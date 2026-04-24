@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css">
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css', v='20260424-reading-grid-fit') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css', v='20260425-old-safari-covers') }}">
     <script>
         (function() {
             try {
@@ -122,9 +122,21 @@
         .video-card{width:100%;max-width:none;min-width:0}
         .content-card:hover{transform:translateY(-4px);border-color:rgba(255,0,0,.28);box-shadow:0 18px 40px rgba(0,0,0,.28),0 0 24px rgba(255,0,0,.08)} .content-card::after{content:"";position:absolute;inset:auto 18px 0 18px;height:2px;border-radius:999px;background:linear-gradient(90deg,transparent,var(--accent),transparent);opacity:0;transition:opacity .22s ease} .content-card:hover::after{opacity:1}
         .content-card.removing{opacity:0;transform:scale(.985);pointer-events:none}
-        .media-poster{position:relative;width:100%;aspect-ratio:2/3;border-radius:18px;background:var(--bg-soft);overflow:hidden}
-        .video-frame,.video-poster{position:relative;width:100%;aspect-ratio:16/9;border-radius:18px;background:var(--bg-soft);overflow:hidden}
-        .media-poster img,.video-frame img,.video-thumb{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+         .media-poster{position:relative;width:100%;aspect-ratio:2/3;border-radius:18px;background:var(--bg-soft);overflow:hidden}
+         .video-frame,.video-poster{position:relative;width:100%;aspect-ratio:16/9;border-radius:18px;background:var(--bg-soft);overflow:hidden}
+         .media-poster img,.video-frame img,.video-thumb{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+         .movie-poster-frame,.book-cover-frame{position:relative;display:block;width:100%;overflow:hidden;background:var(--bg-soft)}
+         @supports not (aspect-ratio: 2 / 3){
+             .media-poster.movie-poster-frame{height:0;padding-top:150%}
+             .media-poster.movie-poster-frame img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+             .book-cover-frame,
+             .books-detail-cover-frame.book-cover-frame{height:0;padding-top:150%}
+             .books-cover.book-cover-frame::before,
+             .books-detail-cover-frame.book-cover-frame::before{display:none}
+             .book-cover-frame img,
+             .books-cover.book-cover-frame img,
+             .books-detail-cover-frame.book-cover-frame img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+         }
         .poster-placeholder{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:2.2rem}
         .card-title{font-size:.96rem;font-weight:700;line-height:1.5;text-align:left}.card-meta{font-size:.78rem;line-height:1.6;text-align:left}.channel-meta{color:var(--text-2)}
         .card-quick-action{position:absolute;top:10px;right:10px;width:38px;height:38px;border-radius:999px;border:1px solid var(--border);background:var(--button-bg);color:var(--text);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;z-index:3;opacity:.26;transition:opacity .18s ease,transform .18s ease,border-color .18s ease,background .18s ease,box-shadow .18s ease}

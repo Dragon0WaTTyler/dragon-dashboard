@@ -68,9 +68,9 @@
     <article class="surface-card books-detail-card">
         <div class="books-detail-grid">
             <div class="books-detail-cover-column">
-                <div class="books-detail-cover-frame">
+                <div class="books-detail-cover-frame book-cover-frame">
                     {% if entry.cover_url %}
-                    <img src="{{ entry.cover_url }}" alt="{{ entry.title }}" loading="lazy" decoding="async">
+                    <img src="{{ entry.cover_url }}" alt="{{ entry.title }}" loading="eager" decoding="async">
                     {% else %}
                     <div class="books-detail-cover-placeholder"><span>No cover available</span></div>
                     {% endif %}

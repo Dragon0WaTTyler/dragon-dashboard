@@ -201,9 +201,9 @@
 <section class="movie-grid">
     {% for film in films %}
         <article class="content-card media-card movie-library-card" data-href="{{ url_for('video_detail', entry_id=film.entry_id) }}" data-scroll-top="true" tabindex="0" role="link">
-        <div class="media-poster">
+        <div class="media-poster movie-poster-frame">
             {% if film.poster %}
-            <img src="{{ film.poster }}" alt="{{ film.name }}">
+            <img src="{{ film.poster }}" alt="{{ film.name }}" loading="eager" decoding="async">
             {% else %}
             <div class="poster-placeholder">No Poster</div>
             {% endif %}
@@ -480,7 +480,7 @@
         var poster = item.poster || placeholderPoster;
         return (
             '<a class="content-card media-card" href="' + escapeHtml(item.detail_url || ('/video/' + (item.entry_id || ''))) + '" data-scroll-top="true" style="max-width:' + (isMain ? '260px' : '220px') + ';">' +
-                '<div class="media-poster">' +
+                 '<div class="media-poster movie-poster-frame">' +
                     '<img src="' + escapeHtml(poster) + '" alt="' + escapeHtml(item.name || 'Untitled') + '" onerror="this.onerror=null;this.src=\'' + escapeHtml(placeholderPoster) + '\';">' +
                 '</div>' +
                 '<div class="card-title">' + escapeHtml(item.name || 'Untitled') + '</div>' +
