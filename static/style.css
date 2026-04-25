@@ -259,3 +259,153 @@ h2{font-size:clamp(2.2rem,4vw,3.6rem);margin-top:14px;letter-spacing:-.03em}.det
  }
 }
 
+/* Movie detail mobile fit */
+.movie-detail-shell,
+.movie-detail-grid,
+.movie-detail-poster-column,
+.movie-detail-content,
+.movie-detail-card,
+.movie-detail-fields,
+.movie-detail-cast-grid,
+.movie-cast-card,
+.movie-detail-actions{
+  min-width:0;
+  max-width:100%;
+}
+
+.movie-detail-grid{
+  width:100%;
+}
+
+.movie-detail-content,
+.movie-detail-header,
+.movie-detail-card,
+.movie-cast-copy{
+  min-width:0;
+}
+
+.movie-detail-title,
+.movie-overview-text,
+.movie-detail-fields .info-row,
+.movie-cast-card,
+.movie-detail-actions .btn{
+  min-width:0;
+}
+
+.movie-meta-chips{
+  display:flex;
+  flex-wrap:wrap;
+}
+
+.movie-overview-text{
+  white-space:normal;
+  word-break:normal;
+  overflow-wrap:break-word;
+}
+
+.movie-detail-fields .info-row{
+  min-width:0;
+}
+
+.movie-detail-fields .info-row strong,
+.movie-detail-fields .info-row span,
+.movie-cast-copy,
+.movie-detail-card,
+.movie-detail-header{
+  overflow-wrap:break-word;
+}
+
+.movie-detail-actions{
+  display:flex;
+  flex-wrap:wrap;
+  gap:12px;
+}
+
+@media (max-width:768px){
+  .movie-detail-shell,
+  .movie-detail-grid,
+  .movie-detail-poster-column,
+  .movie-detail-content,
+  .movie-detail-card,
+  .movie-detail-fields,
+  .movie-detail-cast-grid,
+  .movie-cast-card,
+  .movie-detail-actions{
+    width:100% !important;
+    max-width:100% !important;
+    min-width:0 !important;
+  }
+
+  .movie-detail-grid{
+    grid-template-columns:1fr !important;
+    gap:18px !important;
+    overflow-x:hidden !important;
+  }
+
+  .movie-detail-poster-column{
+    justify-items:center;
+  }
+
+  .movie-detail-poster-wrap{
+    width:min(100%,320px) !important;
+    max-width:100% !important;
+    margin:0 auto 18px !important;
+  }
+
+  .movie-detail-poster-wrap img,
+  .movie-detail-poster{
+    display:block !important;
+    width:100% !important;
+    max-width:100% !important;
+    height:auto !important;
+    margin:0 auto !important;
+    object-fit:cover !important;
+  }
+
+  .movie-detail-title{
+    font-size:clamp(2rem,9vw,3rem) !important;
+    line-height:1.05 !important;
+    overflow-wrap:break-word !important;
+    word-break:normal !important;
+  }
+
+  .movie-meta-chips{
+    gap:10px !important;
+  }
+
+  .movie-overview-text{
+    line-height:1.7 !important;
+  }
+
+  .movie-detail-fields{
+    grid-template-columns:1fr !important;
+  }
+
+  .movie-detail-fields .info-row{
+    display:grid !important;
+    grid-template-columns:1fr !important;
+    justify-content:flex-start !important;
+    gap:4px !important;
+  }
+
+  .movie-detail-cast-grid{
+    grid-template-columns:repeat(auto-fit,minmax(140px,1fr)) !important;
+    gap:12px !important;
+  }
+
+  .movie-cast-card{
+    overflow:hidden;
+  }
+
+  .movie-detail-actions{
+    flex-direction:column !important;
+    align-items:stretch !important;
+  }
+
+  .movie-detail-actions .btn{
+    width:100% !important;
+    max-width:100% !important;
+    justify-content:center !important;
+  }
+}
+
