@@ -94,10 +94,18 @@
 
         <section class="chess-overview-grid">
             {% for card in chess_area.cards %}
+            {% if card.href %}
+            <a class="surface-card chess-overview-card chess-overview-link" href="{{ card.href }}">
+            {% else %}
             <article class="surface-card chess-overview-card">
+            {% endif %}
                 <span class="chess-card-label">{{ card.label }}</span>
                 <strong class="chess-card-value">{{ card.value }}</strong>
+            {% if card.href %}
+            </a>
+            {% else %}
             </article>
+            {% endif %}
             {% endfor %}
         </section>
 

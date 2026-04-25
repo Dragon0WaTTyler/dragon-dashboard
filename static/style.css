@@ -352,6 +352,11 @@ h2{font-size:clamp(2.2rem,4vw,3.6rem);margin-top:14px;letter-spacing:-.03em}.det
   border-radius:22px;
 }
 
+.chess-overview-link{
+  color:var(--text);
+  text-decoration:none;
+}
+
 .chess-card-label,.chess-mini-label{
   font-size:.72rem;
   letter-spacing:.14em;
@@ -712,6 +717,106 @@ h2{font-size:clamp(2.2rem,4vw,3.6rem);margin-top:14px;letter-spacing:-.03em}.det
   max-width:100%;
 }
 
+.chess-train-page{
+  display:grid;
+  gap:18px;
+  min-width:0;
+}
+
+.chess-train-overview-grid{
+  margin-top:8px;
+}
+
+.chess-train-note-card,
+.chess-train-section,
+.chess-train-column{
+  display:grid;
+  gap:14px;
+}
+
+.chess-train-cards{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+  gap:14px;
+}
+
+.chess-train-action-card{
+  display:grid;
+  gap:10px;
+  padding:18px;
+  border-radius:22px;
+  border:1px solid var(--border);
+  background:rgba(255,255,255,.03);
+  min-width:0;
+}
+
+.chess-train-action-card h3{
+  margin:0;
+  font-size:1.05rem;
+}
+
+.chess-train-action-card p{
+  margin:0;
+}
+
+.chess-train-pairs{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:14px;
+}
+
+.chess-train-list{
+  display:grid;
+  gap:10px;
+}
+
+.chess-train-row{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  gap:14px;
+  align-items:center;
+  padding:14px 16px;
+  border-radius:18px;
+  border:1px solid var(--border);
+  background:rgba(255,255,255,.02);
+  color:var(--text);
+  text-decoration:none;
+}
+
+.chess-train-row-main{
+  display:grid;
+  gap:4px;
+  min-width:0;
+}
+
+.chess-train-row-main strong{
+  overflow-wrap:anywhere;
+}
+
+.chess-train-row-main span,
+.chess-train-row-meta{
+  color:var(--text-2);
+  font-size:.92rem;
+}
+
+.chess-train-row-meta{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+  justify-content:flex-end;
+}
+
+.chess-train-row-meta span{
+  padding:6px 8px;
+  border-radius:999px;
+  border:1px solid var(--border);
+  background:rgba(0,0,0,.2);
+}
+
+.chess-inline-btn{
+  justify-self:start;
+}
+
 .chess-history-list{
   display:grid;
   gap:12px;
@@ -879,6 +984,18 @@ h2{font-size:clamp(2.2rem,4vw,3.6rem);margin-top:14px;letter-spacing:-.03em}.det
     flex-direction:column;
     align-items:flex-start;
   }
+
+  .chess-train-pairs{
+    grid-template-columns:1fr;
+  }
+
+  .chess-train-row{
+    grid-template-columns:1fr;
+  }
+
+  .chess-train-row-meta{
+    justify-content:flex-start;
+  }
 }
 
 @media (max-width:640px){
@@ -892,6 +1009,10 @@ h2{font-size:clamp(2.2rem,4vw,3.6rem);margin-top:14px;letter-spacing:-.03em}.det
   }
 
   .chess-overview-grid,.chess-section-grid,.chess-import-options{
+    grid-template-columns:1fr;
+  }
+
+  .chess-train-cards{
     grid-template-columns:1fr;
   }
 }

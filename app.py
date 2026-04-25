@@ -1610,7 +1610,109 @@ def sort_openings(summary, mode):
     return items
 
 
-def build_chess_home_cards(data):
+def build_training_recommendations(data):
+    payload = data if isinstance(data, dict) else default_chess_data()
+    games = [dict(item) for item in payload.get("games", []) or [] if isinstance(item, dict)]
+    opening_summary = [dict(item) for item in build_opening_summary(payload) if str(item.get("label", "") or "").strip() and str(item.get("label", "") or "") != "Opening pending"]
+
+    weak_openings = [item for item in opening_summary if int(item.get("total", 0) or 0) >= 3]
+    weak_openings.sort(key=lambda item: (float(item.get("score_percent", 0.0) or 0.0), -int(item.get("total", 0) or 0), item.get("label", "")))
+
+    frequent_openings_to_review = list(opening_summary)
+    frequent_openings_to_review.sort(key=lambda item: (-int(item.get("total", 0) or 0), -float(item.get("score_percent", 0.0) or 0.0), item.get("label", "")))
+
+    recent_losses = []
+    for game in games:
+        result = str(game.get("user_result", "") or "").strip().lower() or "unknown"
+        if result != "loss":
+            continue
+        game_sort_value = parse_timestamp(game.get("end_time", "")) or parse_timestamp(game.get("imported_at", "")) or parse_timestamp(game.get("date", "")) or datetime.min
+        opening_label = get_game_opening_label(game)
+        recent_losses.append({
+            "id": str(game.get("id", "") or "").strip(),
+            "sort_value": game_sort_value,
+            "title": f"{str(game.get('white', '') or '').strip() or 'White'} vs {str(game.get('black', '') or '').strip() or 'Black'}",
+            "subtitle": f"{str(game.get('date', '') or '').strip() or format_timestamp_label(game.get('imported_at', ''), default='Date pending')} · {opening_label}",
+            "reason": f"{chess_user_result_label(game.get('user_result', ''))} as {str(game.get('user_color', '') or '').strip().title() or 'Unknown'}",
+            "action_label": "Open game",
+            "action_url": url_for("chess_game_detail", game_id=chess_game_url_id(game.get("id", ""))),
+            "time_class_label": chess_time_class_label(game.get("time_class", "")),
+            "user_color_label": str(game.get("user_color", "") or "").strip().title() or "Unknown",
+            "opening_label": opening_label,
+        })
+    recent_losses.sort(key=lambda item: item.get("sort_value") or datetime.min, reverse=True)
+    recent_losses = recent_losses[:8]
+
+    weak_cards = []
+    for item in weak_openings:
+        weak_cards.append({
+            "title": item.get("label", ""),
+            "subtitle": f"{int(item.get('total', 0) or 0)} games · {item.get('score_percent', 0.0)}% score",
+            "reason": f"{int(item.get('wins', 0) or 0)} W / {int(item.get('losses', 0) or 0)} L / {int(item.get('draws', 0) or 0)} D",
+            "action_label": "Review opening",
+            "action_url": url_for("chess_games", opening_key=str(item.get("key", "") or "").strip()),
+            "opening_key": str(item.get("key", "") or "").strip(),
+            "score_percent": item.get("score_percent", 0.0),
+            "total": int(item.get("total", 0) or 0),
+        })
+
+    frequent_cards = []
+    for item in frequent_openings_to_review:
+        frequent_cards.append({
+            "title": item.get("label", ""),
+            "subtitle": f"{int(item.get('total', 0) or 0)} games · {item.get('score_percent', 0.0)}% score",
+            "reason": f"Most played opening" if int(item.get("total", 0) or 0) else "Opening overview",
+            "action_label": "Review opening",
+            "action_url": url_for("chess_games", opening_key=str(item.get("key", "") or "").strip()),
+            "opening_key": str(item.get("key", "") or "").strip(),
+            "score_percent": item.get("score_percent", 0.0),
+            "total": int(item.get("total", 0) or 0),
+        })
+
+    train_today = []
+    used_keys = set()
+    if weak_cards:
+        card = dict(weak_cards[0])
+        card["reason"] = "Lowest score opening with 3+ games."
+        train_today.append(card)
+        used_keys.add(str(card.get("opening_key", "") or "").strip())
+    if recent_losses:
+        train_today.append({
+            "title": recent_losses[0]["title"],
+            "subtitle": recent_losses[0]["subtitle"],
+            "reason": f"{recent_losses[0]['reason']} · {recent_losses[0]['time_class_label']}",
+            "action_label": "Open game",
+            "action_url": recent_losses[0]["action_url"],
+            "opening_key": "",
+        })
+    for item in frequent_cards:
+        key = str(item.get("opening_key", "") or "").strip()
+        if not key or key in used_keys:
+            continue
+        card = dict(item)
+        card["reason"] = "Most played opening in your imports."
+        train_today.append(card)
+        used_keys.add(key)
+        break
+
+    games_with_opening = sum(1 for game in games if str((game.get("opening", {}) or {}).get("name", "") or "").strip() or str((game.get("opening", {}) or {}).get("eco", "") or "").strip())
+    games_without_opening = sum(1 for game in games if not str((game.get("opening", {}) or {}).get("name", "") or "").strip() and not str((game.get("opening", {}) or {}).get("eco", "") or "").strip())
+    return {
+        "weak_openings": weak_openings,
+        "weak_opening_cards": weak_cards,
+        "recent_losses": recent_losses,
+        "frequent_openings_to_review": frequent_cards,
+        "train_today": train_today,
+        "train_today_count": len(train_today),
+        "games_count": len(games),
+        "games_with_opening_count": games_with_opening,
+        "games_without_opening_count": games_without_opening,
+        "openings_count": len(opening_summary),
+        "has_games": bool(games),
+    }
+
+
+def build_chess_home_cards(data, train_today_count=0):
     data = data if isinstance(data, dict) else default_chess_data()
     profiles = len(data.get("profiles", []) or [])
     imports = len(data.get("imports", []) or [])
@@ -1620,6 +1722,7 @@ def build_chess_home_cards(data):
         {"label": "Profiles", "value": str(profiles) if profiles else "0"},
         {"label": "Prepared imports", "value": str(imports) if imports else "0"},
         {"label": "Imported games", "value": str(games) if games else "0"},
+        {"label": "Train today", "value": str(train_today_count) if train_today_count else "0", "href": url_for("chess_train")},
         {"label": "Review queue", "value": str(review_queue) if review_queue else "0"},
     ]
 
@@ -18545,6 +18648,7 @@ def build_lotus_chess_context(active_key="home"):
     review_queue = list(chess_data.get("review_queue", []) or [])
     active_profile_id = str((chess_data.get("settings", {}) or {}).get("active_profile_id", "") or "").strip()
     active_profile = next((profile for profile in profiles if str(profile.get("id", "") or "").strip() == active_profile_id), None)
+    training_recommendations = build_training_recommendations(chess_data)
 
     nav_items = [
         {"key": "home", "label": "Home", "href": url_for("chess"), "icon": "layout-dashboard"},
@@ -18562,7 +18666,7 @@ def build_lotus_chess_context(active_key="home"):
             "summary": "A personal chess workspace centered on your games, your opening habits, and the next training action that actually matters.",
             "cta_primary": {"label": "Start with Import", "href": url_for("chess_import")},
             "cta_secondary": {"label": "Browse Games", "href": url_for("chess_games")},
-            "cards": build_chess_home_cards(chess_data),
+            "cards": build_chess_home_cards(chess_data, train_today_count=training_recommendations.get("train_today_count", 0)),
             "sections": [
                 {
                     "title": "Why Lotus Chess",
@@ -18630,22 +18734,22 @@ def build_lotus_chess_context(active_key="home"):
         },
         "train": {
             "eyebrow": "Train",
-            "title": "This will become the core action page.",
-            "summary": "Training should feel direct: review weak lines, drill saved branches, and resume the exact session that matters next.",
+            "title": "Review what actually matters.",
+            "summary": "Result-based training from your imported games. Engine analysis comes later.",
             "cards": [
-                {"label": "Review weak lines", "value": "Coming soon"},
-                {"label": "Drill saved lines", "value": "Coming soon"},
-                {"label": "Train one opening branch", "value": "Coming soon"},
-                {"label": "Resume session", "value": "Coming soon"},
+                {"label": "Train today", "value": str(training_recommendations.get("train_today_count", 0)) if training_recommendations.get("train_today_count", 0) else "0"},
+                {"label": "Weak openings", "value": str(len(training_recommendations.get("weak_openings", []) or [])) if training_recommendations.get("weak_openings") else "0"},
+                {"label": "Recent losses", "value": str(len(training_recommendations.get("recent_losses", []) or [])) if training_recommendations.get("recent_losses") else "0"},
+                {"label": "Openings tracked", "value": str(training_recommendations.get("openings_count", 0)) if training_recommendations.get("openings_count", 0) else "0"},
             ],
             "sections": [
                 {
-                    "title": "Focused sessions",
-                    "description": "No giant platform feeling. Training here is meant to stay tight, personal, and opening-aware.",
+                    "title": "Weak spots V0",
+                    "description": "Result-based only. Engine analysis comes later.",
                 },
                 {
-                    "title": "Future loop",
-                    "description": "Import a game, detect the weak branch, save the line, then come back here and drill it until it stops leaking.",
+                    "title": "Review queue",
+                    "description": "Saved training actions come next. For now, this page turns your imported games into practical next steps.",
                 },
             ],
         },
@@ -18728,6 +18832,7 @@ def build_lotus_chess_context(active_key="home"):
         "title": f"Lotus Chess | {area['title']}",
         "ai_default_mode": "study",
         "ai_page_context": "general",
+        "chess_training_recommendations": training_recommendations,
     }
 
 
@@ -18850,7 +18955,7 @@ def chess_openings():
 
 @app.route("/chess/train", endpoint="chess_train")
 def chess_train():
-    return render_lotus_chess_page("train")
+    return render_template("chess_train.html", **build_lotus_chess_context("train"))
 
 
 @app.route("/chess/progress", endpoint="chess_progress")
