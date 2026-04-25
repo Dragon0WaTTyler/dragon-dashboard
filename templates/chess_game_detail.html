@@ -47,14 +47,18 @@
 
             <article class="surface-card chess-game-detail-card">
                 <h3>Opening</h3>
-                {% if chess_game.opening_name or chess_game.opening_eco or chess_game.opening_side %}
+                {% if chess_game.opening_name or chess_game.opening_eco or chess_game.opening_variation or chess_game.opening_side %}
                 <div class="chess-detail-list">
                     <div><span>Name</span><strong>{{ chess_game.opening_name or 'Opening pending' }}</strong></div>
                     <div><span>ECO</span><strong>{{ chess_game.opening_eco or 'Pending' }}</strong></div>
+                    <div><span>Variation</span><strong>{{ chess_game.opening_variation or 'Pending' }}</strong></div>
                     <div><span>Side</span><strong>{{ chess_game.opening_side or 'Pending' }}</strong></div>
                 </div>
+                {% if chess_game.opening_inferred_from_eco %}
+                <p class="chess-summary-note chess-muted-note">Opening name inferred from ECO code.</p>
+                {% endif %}
                 {% else %}
-                <p class="chess-summary-note">Opening extraction comes next.</p>
+                <p class="chess-summary-note">No opening header found in this PGN.</p>
                 {% endif %}
             </article>
 

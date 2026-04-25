@@ -1265,10 +1265,89 @@ def chess_time_class_label(value):
     return "Other" if normalized else "Unknown"
 
 
+def get_eco_opening_name(eco_code):
+    code = str(eco_code or "").strip().upper()
+    if not code or not re.match(r"^[A-E][0-9]{2}$", code):
+        return ""
+    exact_map = {
+        "A00": "Irregular / Uncommon Opening",
+        "B00": "King's Pawn Game / Uncommon Defense",
+        "B01": "Scandinavian Defense",
+        "B02": "Alekhine Defense",
+        "B06": "Modern Defense",
+        "C20": "King's Pawn Game",
+        "C21": "Center Game / Danish Gambit",
+        "C22": "Center Game / Danish Gambit",
+        "C23": "Bishop's Opening",
+        "C24": "Bishop's Opening",
+        "C26": "Vienna Game",
+        "D06": "Queen's Gambit",
+    }
+    if code in exact_map:
+        return exact_map[code]
+    letter = code[0]
+    number = int(code[1:])
+    rules = [
+        (("B", 3, 5), "Alekhine Defense"),
+        (("B", 7, 9), "Pirc Defense / Modern Defense"),
+        (("B", 10, 19), "Caro-Kann Defense"),
+        (("B", 20, 99), "Sicilian Defense"),
+        (("C", 0, 19), "French Defense"),
+        (("C", 25, 29), "Vienna Game"),
+        (("C", 30, 39), "King's Gambit"),
+        (("C", 40, 44), "King's Knight / Scotch / Ponziani"),
+        (("C", 45, 45), "Scotch Game"),
+        (("C", 46, 49), "Four Knights Game"),
+        (("C", 50, 59), "Italian Game / Two Knights"),
+        (("C", 60, 99), "Ruy Lopez"),
+        (("D", 0, 5), "Queen's Pawn Game / London / Colle"),
+        (("D", 6, 9), "Queen's Gambit"),
+        (("D", 10, 19), "Slav Defense"),
+        (("D", 20, 29), "Queen's Gambit Accepted"),
+        (("D", 30, 69), "Queen's Gambit Declined"),
+        (("D", 70, 99), "Grünfeld / Neo-Grünfeld"),
+        (("E", 0, 9), "Catalan / Queen's Pawn Game"),
+        (("E", 10, 59), "Indian Defense / Nimzo-Indian"),
+        (("E", 60, 99), "King's Indian Defense"),
+    ]
+    for (prefix, start, end), label in rules:
+        if letter == prefix and start <= number <= end:
+            return label
+    return ""
+
+
 def chess_opening_label(opening):
     payload = opening if isinstance(opening, dict) else {}
     name = str(payload.get("name", "") or "").strip()
-    return name or "Opening pending"
+    eco = str(payload.get("eco", "") or "").strip()
+    variation = str(payload.get("variation", "") or "").strip()
+    if name and variation:
+        name = f"{name}: {variation}"
+    if eco and name:
+        return f"{eco} · {name}"
+    if name:
+        return name
+    if eco:
+        return eco
+    return "Opening pending"
+
+
+def normalize_chess_opening_token(value):
+    return re.sub(r"\s+", " ", str(value or "").strip()).lower()
+
+
+def get_game_opening_key(game):
+    payload = game if isinstance(game, dict) else {}
+    opening = payload.get("opening", {}) if isinstance(payload.get("opening", {}), dict) else {}
+    eco = normalize_chess_opening_token(opening.get("eco", ""))
+    name = normalize_chess_opening_token(opening.get("name", ""))
+    if eco and name:
+        return f"{eco}|{name}"
+    if eco:
+        return f"{eco}|"
+    if name:
+        return f"|{name}"
+    return "pending"
 
 
 def chess_game_url_id(game_id):
@@ -1295,6 +1374,11 @@ def find_chess_game(data, game_id):
 
 def build_chess_game_browser_row(game):
     payload = dict(game or {})
+    opening = payload.get("opening", {}) if isinstance(payload.get("opening", {}), dict) else {}
+    opening_name = str(opening.get("name", "") or "").strip()
+    opening_eco = str(opening.get("eco", "") or "").strip()
+    opening_variation = str(opening.get("variation", "") or "").strip()
+    opening_inferred = bool(opening.get("inferred_from_eco", False))
     return {
         "id": str(payload.get("id", "") or "").strip(),
         "href": url_for("chess_game_detail", game_id=chess_game_url_id(payload.get("id", ""))),
@@ -1311,13 +1395,21 @@ def build_chess_game_browser_row(game):
         "time_class_label": chess_time_class_label(payload.get("time_class", "")),
         "rated": bool(payload.get("rated", False)),
         "rated_label": "Rated" if bool(payload.get("rated", False)) else "Unrated",
-        "opening_label": chess_opening_label(payload.get("opening", {})),
+        "opening_label": chess_opening_label(opening),
+        "opening_name": opening_name,
+        "opening_eco": opening_eco,
+        "opening_variation": opening_variation,
+        "opening_inferred_from_eco": opening_inferred,
     }
 
 
 def build_chess_game_detail_payload(game):
     payload = dict(game or {})
     opening = payload.get("opening", {}) if isinstance(payload.get("opening", {}), dict) else {}
+    opening_name = str(opening.get("name", "") or "").strip()
+    opening_eco = str(opening.get("eco", "") or "").strip()
+    opening_variation = str(opening.get("variation", "") or "").strip()
+    opening_inferred = bool(opening.get("inferred_from_eco", False))
     return {
         "id": str(payload.get("id", "") or "").strip(),
         "title": f"{str(payload.get('white', '') or '').strip() or 'White'} vs {str(payload.get('black', '') or '').strip() or 'Black'}",
@@ -1331,9 +1423,12 @@ def build_chess_game_detail_payload(game):
         "rated_label": "Rated" if bool(payload.get("rated", False)) else "Unrated",
         "rules": str(payload.get("rules", "") or "").strip() or "Unknown",
         "url": str(payload.get("url", "") or "").strip(),
-        "opening_name": str(opening.get("name", "") or "").strip(),
-        "opening_eco": str(opening.get("eco", "") or "").strip(),
+        "opening_name": opening_name,
+        "opening_eco": opening_eco,
+        "opening_variation": opening_variation,
         "opening_side": str(opening.get("side", "") or "").strip().title(),
+        "opening_inferred_from_eco": opening_inferred,
+        "opening_display_label": chess_opening_label(opening),
         "pgn": str(payload.get("pgn", "") or "").strip(),
         "moves": list(payload.get("moves", []) or []),
     }
@@ -1341,13 +1436,15 @@ def build_chess_game_detail_payload(game):
 
 def build_chess_games_browser_context():
     chess_data = load_chess_data()
+    games = [dict(item) for item in chess_data.get("games", []) or [] if isinstance(item, dict)]
     filters = {
         "color": str(request.args.get("color", "all") or "all").strip().lower() or "all",
         "result": str(request.args.get("result", "all") or "all").strip().lower() or "all",
         "time_class": str(request.args.get("time_class", "all") or "all").strip().lower() or "all",
         "sort": str(request.args.get("sort", "newest") or "newest").strip().lower() or "newest",
+        "opening_key": normalize_chess_opening_token(request.args.get("opening_key", "")),
+        "opening": normalize_chess_opening_token(request.args.get("opening", "")),
     }
-    games = [dict(item) for item in chess_data.get("games", []) or [] if isinstance(item, dict)]
     filtered_games = []
     for game in games:
         color_value = str(game.get("user_color", "") or "").strip().lower() or "unknown"
@@ -1360,6 +1457,12 @@ def build_chess_games_browser_context():
             continue
         if filters["time_class"] != "all" and effective_time_class != filters["time_class"]:
             continue
+        if filters["opening_key"]:
+            if normalize_chess_opening_token(get_game_opening_key(game)) != filters["opening_key"]:
+                continue
+        elif filters["opening"]:
+            if normalize_chess_opening_token(get_game_opening_label(game)) != filters["opening"]:
+                continue
         filtered_games.append(game)
 
     def sort_key(game):
@@ -1367,6 +1470,21 @@ def build_chess_games_browser_context():
 
     filtered_games.sort(key=sort_key, reverse=(filters["sort"] != "oldest"))
     rows = [build_chess_game_browser_row(game) for game in filtered_games]
+    opening_filter_label = ""
+    if filters["opening_key"]:
+        for game in games:
+            if normalize_chess_opening_token(get_game_opening_key(game)) == filters["opening_key"]:
+                opening_filter_label = get_game_opening_label(game)
+                break
+        if not opening_filter_label:
+            opening_filter_label = filters["opening_key"]
+    elif filters["opening"]:
+        for game in games:
+            if normalize_chess_opening_token(get_game_opening_label(game)) == filters["opening"]:
+                opening_filter_label = get_game_opening_label(game)
+                break
+        if not opening_filter_label:
+            opening_filter_label = filters["opening"]
     nav_items = [
         {"key": "home", "label": "Home", "href": url_for("chess"), "icon": "layout-dashboard"},
         {"key": "import", "label": "Import", "href": url_for("chess_import"), "icon": "download"},
@@ -1383,10 +1501,113 @@ def build_chess_games_browser_context():
         "chess_game_filters": filters,
         "chess_games_count": len(games),
         "chess_filtered_games_count": len(rows),
+        "chess_opening_games_count": sum(1 for game in games if str((game.get("opening", {}) or {}).get("name", "") or "").strip()),
+        "chess_eco_games_count": sum(1 for game in games if str((game.get("opening", {}) or {}).get("eco", "") or "").strip()),
+        "chess_inferred_opening_count": sum(1 for game in games if bool((game.get("opening", {}) or {}).get("inferred_from_eco", False))),
+        "chess_no_opening_count": sum(1 for game in games if not str((game.get("opening", {}) or {}).get("name", "") or "").strip() and not str((game.get("opening", {}) or {}).get("eco", "") or "").strip()),
+        "chess_opening_filter_key": filters["opening_key"],
+        "chess_opening_filter": opening_filter_label,
+        "chess_success_message": str(request.args.get("success", "") or "").strip(),
+        "chess_error_message": str(request.args.get("error", "") or "").strip(),
         "title": "Lotus Chess | Games",
         "ai_default_mode": "study",
         "ai_page_context": "general",
     }
+
+
+def get_game_opening_label(game):
+    payload = game if isinstance(game, dict) else {}
+    opening = payload.get("opening", {}) if isinstance(payload.get("opening", {}), dict) else {}
+    name = str(opening.get("name", "") or "").strip()
+    eco = str(opening.get("eco", "") or "").strip()
+    variation = str(opening.get("variation", "") or "").strip()
+    if name and variation:
+        name = f"{name}: {variation}"
+    if eco and name:
+        return f"{eco} · {name}"
+    if name:
+        return name
+    if eco:
+        return eco
+    return "Opening pending"
+
+
+def build_opening_summary(data):
+    payload = data if isinstance(data, dict) else default_chess_data()
+    summary = {}
+    for game in (payload.get("games", []) or []):
+        if not isinstance(game, dict):
+            continue
+        opening = game.get("opening", {}) if isinstance(game.get("opening", {}), dict) else {}
+        eco = str(opening.get("eco", "") or "").strip()
+        name = str(opening.get("name", "") or "").strip()
+        label = get_game_opening_label(game)
+        key = get_game_opening_key(game)
+        result = str(game.get("user_result", "") or "").strip().lower() or "unknown"
+        color = str(game.get("user_color", "") or "").strip().lower() or "unknown"
+        score = 1 if result == "win" else 0.5 if result == "draw" else 0
+        entry = summary.setdefault(key, {
+            "key": key,
+            "label": label,
+            "eco": eco,
+            "name": name,
+            "total": 0,
+            "wins": 0,
+            "losses": 0,
+            "draws": 0,
+            "unknown": 0,
+            "white_games": 0,
+            "black_games": 0,
+            "score_total": 0.0,
+            "latest_game_date": "",
+            "latest_game_sort": None,
+            "inferred_from_eco": False,
+        })
+        entry["total"] += 1
+        if result == "win":
+            entry["wins"] += 1
+        elif result == "loss":
+            entry["losses"] += 1
+        elif result == "draw":
+            entry["draws"] += 1
+        else:
+            entry["unknown"] += 1
+        if color == "white":
+            entry["white_games"] += 1
+        elif color == "black":
+            entry["black_games"] += 1
+        entry["score_total"] += score
+        if bool(opening.get("inferred_from_eco", False)):
+            entry["inferred_from_eco"] = True
+        game_sort_value = parse_timestamp(game.get("end_time", "")) or parse_timestamp(game.get("imported_at", "")) or parse_timestamp(game.get("date", "")) or datetime.min
+        if entry["latest_game_sort"] is None or game_sort_value > entry["latest_game_sort"]:
+            entry["latest_game_sort"] = game_sort_value
+            entry["latest_game_date"] = str(game.get("date", "") or "").strip() or format_timestamp_label(game.get("imported_at", ""), default="")
+        if not entry["eco"] and eco:
+            entry["eco"] = eco
+        if not entry["name"] and name:
+            entry["name"] = name
+    results = []
+    for entry in summary.values():
+        total = max(1, int(entry.get("total", 0) or 0))
+        score_percent = round((float(entry.get("score_total", 0.0) or 0.0) / total) * 100, 1)
+        entry["score_percent"] = score_percent
+        results.append(entry)
+    return results
+
+
+def sort_openings(summary, mode):
+    mode_value = str(mode or "").strip().lower() or "most_played"
+    items = list(summary or [])
+    if mode_value == "weakest":
+        items.sort(key=lambda item: (float(item.get("score_percent", 0.0) or 0.0), -int(item.get("total", 0) or 0), item.get("label", "")))
+    elif mode_value == "strongest":
+        items.sort(key=lambda item: (-float(item.get("score_percent", 0.0) or 0.0), -int(item.get("total", 0) or 0), item.get("label", "")))
+    elif mode_value == "latest":
+        items.sort(key=lambda item: (item.get("latest_game_sort") or datetime.min, int(item.get("total", 0) or 0)), reverse=True)
+    else:
+        items.sort(key=lambda item: (-int(item.get("total", 0) or 0), -float(item.get("score_percent", 0.0) or 0.0), item.get("label", "")))
+    return items
 
 
 def build_chess_home_cards(data):
@@ -1438,6 +1659,135 @@ def format_timestamp_label(value, default=""):
         return timestamp.astimezone().strftime("%b %d, %Y %H:%M")
     except Exception:
         return default
+
+
+def parse_pgn_headers(pgn):
+    text = str(pgn or "")
+    headers = {}
+    if not text.strip():
+        return headers
+    header_pattern = re.compile(r'^\s*\[([A-Za-z0-9_]+)\s+"((?:[^"\\]|\\.)*)"\]\s*$', re.MULTILINE)
+    for match in header_pattern.finditer(text):
+        key = str(match.group(1) or "").strip()
+        if not key:
+            continue
+        value = str(match.group(2) or "")
+        value = value.replace(r"\"", '"').replace(r"\\", "\\")
+        headers[key] = value.strip()
+    return headers
+
+
+def _maybe_set_chess_opening_field(opening, key, value):
+    if not isinstance(opening, dict):
+        return False
+    normalized_value = str(value or "").strip()
+    if not normalized_value:
+        return False
+    current = str(opening.get(key, "") or "").strip()
+    if current:
+        return False
+    opening[key] = normalized_value
+    return True
+
+
+def enrich_game_from_pgn_headers(game):
+    if not isinstance(game, dict):
+        return False
+    pgn_text = str(game.get("pgn", "") or "")
+    headers = parse_pgn_headers(pgn_text)
+    if not headers:
+        return False
+    changed = False
+    opening = game.setdefault("opening", {})
+    if not isinstance(opening, dict):
+        opening = {}
+        game["opening"] = opening
+    opening_name = str(headers.get("Opening", "") or "").strip()
+    variation = str(headers.get("Variation", "") or "").strip()
+    eco = str(headers.get("ECO", "") or "").strip()
+    if _maybe_set_chess_opening_field(opening, "eco", eco):
+        changed = True
+    if _maybe_set_chess_opening_field(opening, "variation", variation):
+        changed = True
+    if opening_name:
+        if variation:
+            opening_name = f"{opening_name}: {variation}"
+        if _maybe_set_chess_opening_field(opening, "name", opening_name):
+            changed = True
+    if not str(opening.get("name", "") or "").strip() and eco:
+        inferred_name = get_eco_opening_name(eco)
+        if inferred_name:
+            if variation:
+                inferred_name = f"{inferred_name}: {variation}"
+            if _maybe_set_chess_opening_field(opening, "name", inferred_name):
+                changed = True
+                opening["inferred_from_eco"] = True
+            elif not opening.get("inferred_from_eco"):
+                opening["inferred_from_eco"] = True
+                changed = True
+        elif not opening.get("inferred_from_eco"):
+            opening["inferred_from_eco"] = False
+    date_value = str(headers.get("Date", "") or "").strip()
+    if date_value and not str(game.get("date", "") or "").strip():
+        normalized_date = date_value.replace(".", "-").replace("/", "-")
+        game["date"] = normalized_date
+        changed = True
+    result_value = str(headers.get("Result", "") or "").strip()
+    if result_value and not str(game.get("result", "") or "").strip():
+        game["result"] = result_value
+        changed = True
+    site_value = str(headers.get("Site", "") or "").strip()
+    if site_value and not str(game.get("url", "") or "").strip():
+        game["url"] = site_value
+        changed = True
+    event_value = str(headers.get("Event", "") or "").strip()
+    if event_value and not game.get("event"):
+        game["event"] = event_value
+        changed = True
+    return changed
+
+
+def enrich_chess_games_from_pgn_headers(data):
+    payload = data if isinstance(data, dict) else default_chess_data()
+    games = list(payload.get("games", []) or [])
+    games_checked = 0
+    openings_added = 0
+    eco_added = 0
+    inferred_from_eco = 0
+    skipped_no_pgn = 0
+    changed = False
+    for index, game in enumerate(games):
+        if not isinstance(game, dict):
+            continue
+        games_checked += 1
+        pgn_text = str(game.get("pgn", "") or "").strip()
+        if not pgn_text:
+            skipped_no_pgn += 1
+            continue
+        before_opening = dict(game.get("opening", {}) or {})
+        changed_game = enrich_game_from_pgn_headers(game)
+        if changed_game:
+            changed = True
+        opening_after = game.get("opening", {}) if isinstance(game.get("opening", {}), dict) else {}
+        if not str(before_opening.get("name", "") or "").strip() and str(opening_after.get("name", "") or "").strip():
+            openings_added += 1
+            if str(before_opening.get("eco", "") or "").strip() and str(opening_after.get("inferred_from_eco", "") or ""):
+                inferred_from_eco += 1
+        if not str(before_opening.get("eco", "") or "").strip() and str(opening_after.get("eco", "") or "").strip():
+            eco_added += 1
+        games[index] = game
+    if changed:
+        payload["games"] = games
+        payload["updated_at"] = current_timestamp()
+    return {
+        "data": payload,
+        "changed": changed,
+        "games_checked": games_checked,
+        "openings_added": openings_added,
+        "eco_added": eco_added,
+        "inferred_from_eco": inferred_from_eco,
+        "skipped_no_pgn": skipped_no_pgn,
+    }
 
 
 READING_STATUSES = ("unread", "reading", "finished", "archived")
@@ -18259,23 +18609,22 @@ def build_lotus_chess_context(active_key="home"):
             "title": "Opening-first by design.",
             "summary": "Lotus Chess is meant to turn your opening choices, weak branches, and personal tree into the main source of truth for training.",
             "cards": [
-                {"label": "White repertoire", "value": "Coming soon"},
-                {"label": "Black repertoire", "value": "Coming soon"},
-                {"label": "Personal opening tree", "value": "Coming soon"},
-                {"label": "Weak branches", "value": "Coming soon"},
+                {"label": "Games with opening name", "value": str(sum(1 for game in games if str((game.get('opening', {}) or {}).get('name', '') or '').strip()))},
+                {"label": "Games with ECO", "value": str(sum(1 for game in games if str((game.get('opening', {}) or {}).get('eco', '') or '').strip()))},
+                {"label": "Games without headers", "value": str(sum(1 for game in games if not str((game.get('opening', {}) or {}).get('name', '') or '').strip() and not str((game.get('opening', {}) or {}).get('eco', '') or '').strip()))},
             ],
             "sections": [
                 {
-                    "title": "White repertoire",
-                    "description": "Your main White lines will live here as a clean, editable personal repertoire instead of a generic explorer.",
+                    "title": "Header-only extraction",
+                    "description": "This page only reflects what the PGN already says. No manual classification and no tree building yet.",
                 },
                 {
-                    "title": "Black repertoire",
-                    "description": "Black systems will mirror the same structure, so training can branch directly from what you actually play.",
+                    "title": "Next layer",
+                    "description": "After headers, Lotus Chess can start grouping your opening branches more intelligently.",
                 },
                 {
-                    "title": "Weak branches",
-                    "description": "The long-term goal is to surface the exact branches that keep leaking points or confidence.",
+                    "title": "Phase note",
+                    "description": "Opening tree, drills, and review still stay out of this phase.",
                 },
             ],
         },
@@ -18401,6 +18750,29 @@ def chess_games():
     return render_template("chess_games.html", **build_chess_games_browser_context())
 
 
+@app.route("/chess/games/enrich-openings", methods=["POST"], endpoint="chess_games_enrich_openings")
+def chess_games_enrich_openings():
+    chess_data = load_chess_data()
+    result = enrich_chess_games_from_pgn_headers(chess_data)
+    if result.get("changed"):
+        save_chess_data(result["data"])
+        message = (
+            f"Checked {result['games_checked']} games, added {result['openings_added']} openings, "
+            f"added {result['eco_added']} ECO tags."
+        )
+        if result.get("inferred_from_eco"):
+            message += f" Inferred {result['inferred_from_eco']} opening name(s) from ECO."
+        if result.get("skipped_no_pgn"):
+            message += f" Skipped {result['skipped_no_pgn']} without PGN."
+        return redirect(url_for("chess_games", success=message))
+    message = f"Checked {result['games_checked']} games. No new PGN headers were found."
+    if result.get("inferred_from_eco"):
+        message += f" Inferred {result['inferred_from_eco']} opening name(s) from ECO."
+    if result.get("skipped_no_pgn"):
+        message += f" Skipped {result['skipped_no_pgn']} without PGN."
+    return redirect(url_for("chess_games", success=message))
+
+
 @app.route("/chess/game/<path:game_id>", endpoint="chess_game_detail")
 def chess_game_detail(game_id):
     chess_data = load_chess_data()
@@ -18431,7 +18803,49 @@ def chess_game_detail(game_id):
 
 @app.route("/chess/openings", endpoint="chess_openings")
 def chess_openings():
-    return render_lotus_chess_page("openings")
+    chess_data = load_chess_data()
+    games = [dict(item) for item in chess_data.get("games", []) or [] if isinstance(item, dict)]
+    opening_summary = build_opening_summary(chess_data)
+    opening_summary = [item for item in opening_summary if str(item.get("label", "") or "").strip() and str(item.get("label", "") or "") != "Opening pending"]
+    filters = str(request.args.get("sort", "most_played") or "most_played").strip().lower() or "most_played"
+    sorted_summary = sort_openings(opening_summary, filters)
+    top_openings = sorted_summary[:8]
+    white_openings = [item for item in sorted_summary if item.get("white_games", 0) > 0][:8]
+    black_openings = [item for item in sorted_summary if item.get("black_games", 0) > 0][:8]
+    weak_spots = [item for item in sorted_summary if int(item.get("total", 0) or 0) >= 3]
+    weak_spots.sort(key=lambda item: (float(item.get("score_percent", 0.0) or 0.0), -int(item.get("total", 0) or 0), item.get("label", "")))
+    strong_spots = [item for item in sorted_summary if int(item.get("total", 0) or 0) >= 3]
+    strong_spots.sort(key=lambda item: (-float(item.get("score_percent", 0.0) or 0.0), -int(item.get("total", 0) or 0), item.get("label", "")))
+    games_with_opening = sum(1 for game in games if str((game.get("opening", {}) or {}).get("name", "") or "").strip() or str((game.get("opening", {}) or {}).get("eco", "") or "").strip())
+    games_without_opening = sum(1 for game in games if not str((game.get("opening", {}) or {}).get("name", "") or "").strip() and not str((game.get("opening", {}) or {}).get("eco", "") or "").strip())
+    context = build_lotus_chess_context("openings")
+    context["chess_openings_summary"] = sorted_summary
+    context["chess_openings_top"] = top_openings
+    context["chess_openings_white"] = white_openings
+    context["chess_openings_black"] = black_openings
+    context["chess_openings_weak"] = weak_spots[:8]
+    context["chess_openings_strong"] = strong_spots[:8]
+    context["chess_openings_count"] = len(sorted_summary)
+    context["chess_openings_games_with_data"] = games_with_opening
+    context["chess_openings_games_without_data"] = games_without_opening
+    context["chess_openings_sort"] = filters
+    context["chess_area"]["cards"] = [
+        {"label": "Imported games", "value": str(len(games))},
+        {"label": "Openings tracked", "value": str(len(sorted_summary))},
+        {"label": "Games with opening data", "value": str(games_with_opening)},
+        {"label": "Games without opening data", "value": str(games_without_opening)},
+    ]
+    context["chess_area"]["sections"] = [
+        {
+            "title": "Weak spots V0",
+            "description": "Result-based only. Engine analysis comes later.",
+        },
+        {
+            "title": "Next layer",
+            "description": "After summaries, Lotus Chess can start grouping branches more intelligently.",
+        },
+    ]
+    return render_template("chess.html", **context)
 
 
 @app.route("/chess/train", endpoint="chess_train")

@@ -487,9 +487,96 @@ h2{font-size:clamp(2.2rem,4vw,3.6rem);margin-top:14px;letter-spacing:-.03em}.det
   line-height:1.6;
 }
 
+.chess-muted-note{
+  color:var(--muted);
+  font-size:.85rem;
+}
+
 .chess-history-shell{
   display:grid;
   gap:16px;
+}
+
+.chess-openings-list-shell,
+.chess-openings-column{
+  display:grid;
+  gap:14px;
+}
+
+.chess-openings-list{
+  display:grid;
+  gap:10px;
+}
+
+.chess-opening-row{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  gap:14px;
+  align-items:center;
+  padding:14px 16px;
+  border-radius:18px;
+  background:rgba(255,255,255,.03);
+  border:1px solid var(--border);
+  color:var(--text);
+  text-decoration:none;
+}
+
+.chess-opening-main{
+  display:grid;
+  gap:4px;
+  min-width:0;
+}
+
+.chess-opening-main strong,
+.chess-opening-mini-row strong{
+  min-width:0;
+  overflow-wrap:anywhere;
+}
+
+.chess-opening-main span,
+.chess-opening-mini-row span{
+  color:var(--text-2);
+  font-size:.92rem;
+}
+
+.chess-opening-stats{
+  display:flex;
+  align-items:center;
+  flex-wrap:wrap;
+  gap:8px;
+  justify-content:flex-end;
+}
+
+.chess-opening-stats span{
+  padding:6px 8px;
+  border-radius:999px;
+  background:rgba(0,0,0,.28);
+  border:1px solid var(--border);
+  font-size:.82rem;
+}
+
+.chess-openings-pairs{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:14px;
+}
+
+.chess-openings-mini-list{
+  display:grid;
+  gap:10px;
+}
+
+.chess-opening-mini-row{
+  display:flex;
+  align-items:baseline;
+  justify-content:space-between;
+  gap:12px;
+  padding:12px 14px;
+  border-radius:16px;
+  border:1px solid var(--border);
+  background:rgba(255,255,255,.02);
+  color:var(--text);
+  text-decoration:none;
 }
 
 .chess-games-page,
@@ -504,6 +591,12 @@ h2{font-size:clamp(2.2rem,4vw,3.6rem);margin-top:14px;letter-spacing:-.03em}.det
   grid-template-columns:repeat(auto-fit,minmax(160px,1fr));
   gap:12px;
   align-items:end;
+}
+
+.chess-games-actions{
+  display:grid;
+  gap:10px;
+  justify-items:start;
 }
 
 .chess-games-filter-btn{
@@ -768,6 +861,23 @@ h2{font-size:clamp(2.2rem,4vw,3.6rem);margin-top:14px;letter-spacing:-.03em}.det
 
   .chess-game-open-btn{
     width:100%;
+  }
+
+  .chess-openings-pairs{
+    grid-template-columns:1fr;
+  }
+
+  .chess-opening-row{
+    grid-template-columns:1fr;
+  }
+
+  .chess-opening-stats{
+    justify-content:flex-start;
+  }
+
+  .chess-opening-mini-row{
+    flex-direction:column;
+    align-items:flex-start;
   }
 }
 

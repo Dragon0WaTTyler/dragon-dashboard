@@ -146,6 +146,106 @@
             {% endif %}
         </section>
         {% endif %}
+
+        {% if chess_active_key == 'openings' %}
+        <section class="surface-card section-card chess-openings-list-shell">
+            <div class="hero-meta">
+                <span class="hero-badge matte-tag">Top openings</span>
+                <span>Result-based only</span>
+            </div>
+            {% if chess_openings_top %}
+            <div class="chess-openings-list">
+                {% for opening in chess_openings_top %}
+                <a class="chess-opening-row" href="{{ url_for('chess_games', opening_key=opening.key) }}">
+                    <div class="chess-opening-main">
+                        <strong>{{ opening.label }}</strong>
+                        <span>{{ opening.total }} games</span>
+                    </div>
+                    <div class="chess-opening-stats">
+                        <span>W {{ opening.wins }}</span>
+                        <span>L {{ opening.losses }}</span>
+                        <span>D {{ opening.draws }}</span>
+                        <span>{{ opening.score_percent }}%</span>
+                    </div>
+                </a>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="chess-empty-state">No openings yet. Run Extract PGN Openings first.</div>
+            <a class="btn" href="{{ url_for('chess_games') }}"><i data-lucide="library-big"></i><span>Go to Games</span></a>
+            {% endif %}
+        </section>
+
+        <section class="chess-openings-pairs">
+            <article class="surface-card section-card chess-openings-column">
+                <h3>White openings</h3>
+                {% if chess_openings_white %}
+                <div class="chess-openings-mini-list">
+                    {% for opening in chess_openings_white %}
+                    <a class="chess-opening-mini-row" href="{{ url_for('chess_games', opening_key=opening.key) }}">
+                        <strong>{{ opening.label }}</strong>
+                        <span>{{ opening.total }} · {{ opening.score_percent }}%</span>
+                    </a>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="chess-summary-note">No white openings yet.</p>
+                {% endif %}
+            </article>
+
+            <article class="surface-card section-card chess-openings-column">
+                <h3>Black openings</h3>
+                {% if chess_openings_black %}
+                <div class="chess-openings-mini-list">
+                    {% for opening in chess_openings_black %}
+                    <a class="chess-opening-mini-row" href="{{ url_for('chess_games', opening_key=opening.key) }}">
+                        <strong>{{ opening.label }}</strong>
+                        <span>{{ opening.total }} · {{ opening.score_percent }}%</span>
+                    </a>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="chess-summary-note">No black openings yet.</p>
+                {% endif %}
+            </article>
+        </section>
+
+        <section class="chess-openings-pairs">
+            <article class="surface-card section-card chess-openings-column">
+                <h3>Weak spots V0</h3>
+                <p class="chess-summary-note">Result-based only. Engine analysis comes later.</p>
+                {% if chess_openings_weak %}
+                <div class="chess-openings-mini-list">
+                    {% for opening in chess_openings_weak %}
+                    <a class="chess-opening-mini-row" href="{{ url_for('chess_games', opening_key=opening.key) }}">
+                        <strong>{{ opening.label }}</strong>
+                        <span>{{ opening.total }} · {{ opening.score_percent }}%</span>
+                    </a>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="chess-summary-note">No weak spots yet.</p>
+                {% endif %}
+            </article>
+
+            <article class="surface-card section-card chess-openings-column">
+                <h3>Strong spots V0</h3>
+                <p class="chess-summary-note">Result-based only. Engine analysis comes later.</p>
+                {% if chess_openings_strong %}
+                <div class="chess-openings-mini-list">
+                    {% for opening in chess_openings_strong %}
+                    <a class="chess-opening-mini-row" href="{{ url_for('chess_games', opening_key=opening.key) }}">
+                        <strong>{{ opening.label }}</strong>
+                        <span>{{ opening.total }} · {{ opening.score_percent }}%</span>
+                    </a>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <p class="chess-summary-note">No strong spots yet.</p>
+                {% endif %}
+            </article>
+        </section>
+        {% endif %}
     </div>
 
     <aside class="surface-card chess-sidebar-card">

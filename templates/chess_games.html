@@ -28,7 +28,24 @@
             <span class="hero-badge matte-tag">Games</span>
             <span>{{ chess_filtered_games_count }} shown / {{ chess_games_count }} total</span>
         </div>
+        {% if chess_opening_filter %}
+        <div class="chess-banner chess-banner-success">Filtered by opening: {{ chess_opening_filter }}</div>
+        <div class="chess-games-actions">
+            <a class="btn" href="{{ url_for('chess_games', color=chess_game_filters.color, result=chess_game_filters.result, time_class=chess_game_filters.time_class, sort=chess_game_filters.sort) }}"><i data-lucide="x"></i><span>Clear opening filter</span></a>
+        </div>
+        {% endif %}
+        <div class="chess-games-actions">
+            <form method="post" action="{{ url_for('chess_games_enrich_openings') }}">
+                <button type="submit" class="btn"><i data-lucide="sparkles"></i><span>Extract PGN Openings</span></button>
+            </form>
+            <p class="chess-summary-note">Uses PGN headers only. No engine analysis.</p>
+        </div>
         <form method="get" class="chess-games-filters">
+            {% if chess_opening_filter_key %}
+            <input type="hidden" name="opening_key" value="{{ chess_opening_filter_key }}">
+            {% elif chess_opening_filter %}
+            <input type="hidden" name="opening" value="{{ chess_opening_filter }}">
+            {% endif %}
             <label class="chess-field">
                 <span>Color</span>
                 <select name="color">
@@ -71,14 +88,17 @@
         </form>
     </section>
 
-    {% if request.args.get('error') %}
-    <div class="chess-banner chess-banner-error">{{ request.args.get('error') }}</div>
+    {% if chess_success_message %}
+    <div class="chess-banner chess-banner-success">{{ chess_success_message }}</div>
+    {% endif %}
+    {% if chess_error_message %}
+    <div class="chess-banner chess-banner-error">{{ chess_error_message }}</div>
     {% endif %}
 
     {% if chess_games %}
     <section class="chess-games-list">
-        {% for game in chess_games %}
-        <article class="surface-card chess-game-row">
+                {% for game in chess_games %}
+                <article class="surface-card chess-game-row">
             <div class="chess-game-main">
                 <div class="chess-game-title-row">
                     <strong>{{ game.white }} vs {{ game.black }}</strong>
@@ -92,6 +112,9 @@
                     <span>{{ game.rated_label }}</span>
                 </div>
                 <p class="chess-summary-note">{{ game.opening_label }}</p>
+                {% if game.opening_inferred_from_eco %}
+                <p class="chess-summary-note chess-muted-note">Opening inferred from ECO code.</p>
+                {% endif %}
             </div>
             <a class="btn chess-game-open-btn" href="{{ game.href }}"><i data-lucide="arrow-up-right"></i><span>Open game</span></a>
         </article>
