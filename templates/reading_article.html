@@ -78,6 +78,11 @@
     .reading-audio-status{font-size:.84rem;line-height:1.5;color:var(--text-2)}
     .reading-audio-status.is-error{color:#ffb0b0}
     .reading-audio-player{width:100%;height:34px}
+    .reading-audio-fallback-controls{display:none;align-items:center;gap:8px;flex-wrap:wrap}
+    .reading-audio-fallback-controls.is-visible{display:flex}
+    .reading-audio-fallback-controls .btn{padding:8px 12px;min-height:36px}
+    .reading-audio-note{display:none;font-size:.78rem;line-height:1.5;color:var(--muted)}
+    .reading-audio-note.is-visible{display:block}
     .reading-readalong-sentence{border-radius:6px;box-decoration-break:clone;-webkit-box-decoration-break:clone;transition:background-color .16s ease,color .16s ease,box-shadow .16s ease}
     .reading-readalong-sentence.is-active{background:rgba(255,255,255,.12);box-shadow:0 0 0 1px rgba(255,255,255,.09),0 8px 22px rgba(255,255,255,.035);color:var(--heading)}
     @media (max-width:700px){
@@ -145,7 +150,9 @@
                 <div class="reading-audio-shell" data-reading-audio-shell
                      data-audio-url="{{ reading_tts_audio_url }}"
                      data-timings-url="{{ reading_tts_timings_url }}"
-                     data-ready="{{ '1' if reading_tts_available else '0' }}">
+                     data-ready="{{ '1' if reading_tts_available else '0' }}"
+                     data-article-lang="{{ article_lang or '' }}"
+                     data-article-dir="{{ article_dir or '' }}">
                     <div class="reading-audio-head">
                         <button type="button" class="btn" data-reading-audio-button {% if not reading_tts_available %}disabled{% endif %}>
                             <i data-lucide="volume-2"></i>Listen
@@ -164,6 +171,13 @@
                         <span class="reading-audio-pill">{{ reading_tts_lang|upper }}</span>
                     </div>
                     <audio class="reading-audio-player" controls preload="none" hidden data-audio-version="{{ reading_tts_version }}" data-entry-id="{{ entry.id }}"></audio>
+                    <div class="reading-audio-fallback-controls" data-reading-browser-controls hidden>
+                        <button type="button" class="btn" data-reading-browser-play>Browser Voice Play</button>
+                        <button type="button" class="btn" data-reading-browser-pause>Pause</button>
+                        <button type="button" class="btn" data-reading-browser-resume>Resume</button>
+                        <button type="button" class="btn" data-reading-browser-stop>Stop</button>
+                    </div>
+                    <div class="reading-audio-note" data-reading-browser-note hidden></div>
                     <div class="reading-audio-status" data-reading-audio-status>
                         {% if reading_tts_available %}
                         {{ reading_tts_status_message }}
@@ -240,8 +254,16 @@ document.addEventListener('DOMContentLoaded', function () {
         const followState = shell.querySelector('[data-reading-audio-follow-state]');
         const audio = shell.querySelector('audio');
         const status = shell.querySelector('[data-reading-audio-status]');
+        const browserControls = shell.querySelector('[data-reading-browser-controls]');
+        const browserNote = shell.querySelector('[data-reading-browser-note]');
+        const browserPlay = shell.querySelector('[data-reading-browser-play]');
+        const browserPause = shell.querySelector('[data-reading-browser-pause]');
+        const browserResume = shell.querySelector('[data-reading-browser-resume]');
+        const browserStop = shell.querySelector('[data-reading-browser-stop]');
         const audioUrl = shell.dataset.audioUrl || '';
         const timingsUrl = shell.dataset.timingsUrl || '';
+        const articleLang = shell.dataset.articleLang || '';
+        const articleDir = shell.dataset.articleDir || '';
         const entryId = audio && audio.dataset.entryId ? audio.dataset.entryId : '';
         const version = audio && audio.dataset.audioVersion ? audio.dataset.audioVersion : '';
         if (!button || !audio || !status) return;
@@ -259,6 +281,10 @@ document.addEventListener('DOMContentLoaded', function () {
         let isUserSeeking = false;
         let seekSettleTimer = null;
         let syncFrameHandle = 0;
+        let audioObjectUrl = '';
+        let browserFallbackActive = false;
+        let browserSpeechAvailable = !!(window.speechSynthesis && window.SpeechSynthesisUtterance);
+        let browserUtterance = null;
 
         const requestSyncFrame = window.requestAnimationFrame
             ? function (callback) { return window.requestAnimationFrame(callback); }
@@ -270,6 +296,174 @@ document.addEventListener('DOMContentLoaded', function () {
         function setStatus(message, isError) {
             status.textContent = message || '';
             status.classList.toggle('is-error', !!isError);
+        }
+
+        function revokeAudioObjectUrl() {
+            if (!audioObjectUrl) return;
+            try { URL.revokeObjectURL(audioObjectUrl); } catch (err) {}
+            audioObjectUrl = '';
+        }
+
+        function setBrowserNote(message, isError) {
+            if (!browserNote) return;
+            browserNote.hidden = !message;
+            browserNote.classList.toggle('is-visible', !!message);
+            browserNote.textContent = message || '';
+            browserNote.style.color = isError ? '#ffb0b0' : '';
+        }
+
+        function toggleBrowserControls(visible) {
+            if (!browserControls) return;
+            browserControls.hidden = !visible;
+            browserControls.classList.toggle('is-visible', !!visible);
+        }
+
+        function clearServerAudioState() {
+            stopReadAlongLoop();
+            clearActiveSentence();
+            if (!audio.paused) {
+                try { audio.pause(); } catch (err) {}
+            }
+            revokeAudioObjectUrl();
+            audio.removeAttribute('src');
+            try { audio.load(); } catch (err) {}
+            audio.hidden = true;
+            loaded = false;
+        }
+
+        function setFollowAlongAvailability(enabled) {
+            if (!follow) return;
+            follow.disabled = !enabled;
+            if (!enabled) {
+                followAlongEnabled = false;
+                syncFollowButton();
+            }
+        }
+
+        function collectArticleSpeechText() {
+            var parts = [];
+            var title = document.querySelector('.reading-article-header h2');
+            var prose = document.querySelector('.reading-prose');
+            if (title && title.textContent) parts.push(String(title.textContent).trim());
+            if (prose && prose.textContent) parts.push(String(prose.textContent).replace(/\s+/g, ' ').trim());
+            return parts.filter(Boolean).join('. ').trim();
+        }
+
+        function getBrowserSpeechLang() {
+            var normalized = String(articleLang || '').trim().toLowerCase();
+            if (!normalized && articleDir === 'rtl') normalized = 'ar';
+            if (normalized.indexOf('ar') === 0) return 'ar-SA';
+            if (normalized.indexOf('en') === 0) return 'en-US';
+            return normalized || 'en-US';
+        }
+
+        function getAvailableVoices() {
+            if (!browserSpeechAvailable) return [];
+            try { return window.speechSynthesis.getVoices() || []; } catch (err) { return []; }
+        }
+
+        function selectBrowserVoice(lang) {
+            var voices = getAvailableVoices();
+            if (!voices.length) return null;
+            var lowerLang = String(lang || '').toLowerCase();
+            var primary = lowerLang.split('-')[0];
+            return voices.find(function (voice) {
+                return String(voice.lang || '').toLowerCase() === lowerLang;
+            }) || voices.find(function (voice) {
+                return String(voice.lang || '').toLowerCase().indexOf(primary) === 0;
+            }) || voices[0];
+        }
+
+        function stopBrowserSpeech() {
+            if (!browserSpeechAvailable) return;
+            try { window.speechSynthesis.cancel(); } catch (err) {}
+            browserUtterance = null;
+        }
+
+        function startBrowserSpeech() {
+            if (!browserSpeechAvailable) {
+                setStatus('Browser text-to-speech is not supported on this device.', true);
+                setBrowserNote('Browser text-to-speech is not supported on this device.', true);
+                return;
+            }
+            var text = collectArticleSpeechText();
+            if (!text) {
+                setStatus('There is not enough article text for browser voice playback.', true);
+                setBrowserNote('There is not enough article text for browser voice playback.', true);
+                return;
+            }
+            stopBrowserSpeech();
+            var utterance = new SpeechSynthesisUtterance(text);
+            var lang = getBrowserSpeechLang();
+            utterance.lang = lang;
+            utterance.rate = speed ? Math.max(0.5, Math.min(2, Number(speed.value || 1) || 1)) : 1;
+            var voice = selectBrowserVoice(lang);
+            if (voice) utterance.voice = voice;
+            utterance.onstart = function () {
+                setStatus('Server audio is unavailable. Using browser voice instead.', false);
+            };
+            utterance.onend = function () {
+                browserUtterance = null;
+                setStatus('Browser voice finished.', false);
+            };
+            utterance.onerror = function () {
+                browserUtterance = null;
+                setStatus('Browser voice could not start on this device.', true);
+            };
+            browserUtterance = utterance;
+            try {
+                window.speechSynthesis.speak(utterance);
+            } catch (err) {
+                browserUtterance = null;
+                setStatus('Browser voice could not start on this device.', true);
+            }
+        }
+
+        function activateBrowserFallback() {
+            browserFallbackActive = true;
+            clearServerAudioState();
+            toggleBrowserControls(true);
+            setFollowAlongAvailability(false);
+            setBrowserNote('Follow along is available only with prepared server audio.', false);
+            if (button) button.disabled = false;
+            if (speed) speed.disabled = false;
+            setStatus(browserSpeechAvailable ? 'Server audio is unavailable. Using browser voice instead.' : 'Browser text-to-speech is not supported on this device.', !browserSpeechAvailable);
+        }
+
+        function loadServerAudio() {
+            if (!audioUrl || !window.fetch) {
+                activateBrowserFallback();
+                return;
+            }
+            setStatus('Loading audio...', false);
+            fetch(audioUrl, { credentials: 'same-origin' })
+                .then(function (response) {
+                    if (!response.ok) {
+                        return response.text().catch(function () { return ''; }).then(function (message) {
+                            throw new Error(message || 'Audio could not be prepared for this article.');
+                        });
+                    }
+                    return response.blob();
+                })
+                .then(function (blob) {
+                    revokeAudioObjectUrl();
+                    audioObjectUrl = URL.createObjectURL(blob);
+                    audio.src = audioObjectUrl;
+                    audio.hidden = false;
+                    audio.load();
+                    loadTimings();
+                    loaded = true;
+                    browserFallbackActive = false;
+                    toggleBrowserControls(false);
+                    setBrowserNote('', false);
+                    setFollowAlongAvailability(true);
+                })
+                .catch(function (err) {
+                    activateBrowserFallback();
+                    if (err && err.message) {
+                        setBrowserNote('Follow along is available only with prepared server audio. Server error: ' + String(err.message).trim(), false);
+                    }
+                });
         }
 
         function storageKey(kind) {
@@ -676,18 +870,44 @@ document.addEventListener('DOMContentLoaded', function () {
             });
         }
 
+        if (browserPlay) {
+            browserPlay.addEventListener('click', function () {
+                if (!browserFallbackActive) {
+                    activateBrowserFallback();
+                }
+                startBrowserSpeech();
+            });
+        }
+        if (browserPause) {
+            browserPause.addEventListener('click', function () {
+                if (!browserSpeechAvailable) return;
+                try { window.speechSynthesis.pause(); } catch (err) {}
+            });
+        }
+        if (browserResume) {
+            browserResume.addEventListener('click', function () {
+                if (!browserSpeechAvailable) return;
+                try { window.speechSynthesis.resume(); } catch (err) {}
+            });
+        }
+        if (browserStop) {
+            browserStop.addEventListener('click', function () {
+                stopBrowserSpeech();
+                setStatus('Browser voice stopped.', false);
+            });
+        }
+
         button.addEventListener('click', function () {
+            if (browserFallbackActive) {
+                startBrowserSpeech();
+                return;
+            }
             if (!audioUrl) {
-                setStatus('Audio is not available for this article yet.', true);
+                activateBrowserFallback();
                 return;
             }
             if (!loaded) {
-                setStatus('Loading audio...', false);
-                audio.src = audioUrl;
-                audio.hidden = false;
-                audio.load();
-                loadTimings();
-                loaded = true;
+                loadServerAudio();
             } else {
                 audio.hidden = false;
                 loadTimings();
@@ -701,6 +921,11 @@ document.addEventListener('DOMContentLoaded', function () {
             applyPlaybackRate(savedSpeed);
             speed.addEventListener('change', function () {
                 applyPlaybackRate(speed.value);
+                if (browserUtterance) {
+                    stopBrowserSpeech();
+                    startBrowserSpeech();
+                    return;
+                }
                 setStatus('Playback speed saved.', false);
             });
         }
@@ -791,11 +1016,13 @@ document.addEventListener('DOMContentLoaded', function () {
         });
         audio.addEventListener('error', function () {
             stopReadAlongLoop();
-            setStatus('Audio could not be prepared for this article.', true);
+            activateBrowserFallback();
         });
 
         window.addEventListener('beforeunload', function () {
             stopReadAlongLoop();
+            stopBrowserSpeech();
+            revokeAudioObjectUrl();
             if (seekSettleTimer) {
                 window.clearTimeout(seekSettleTimer);
                 seekSettleTimer = null;

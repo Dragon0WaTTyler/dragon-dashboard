@@ -16815,7 +16815,10 @@ def reading_article_audio(entry_id):
     if not tts_payload["available"]:
         return Response(tts_payload["status_message"], status=422, mimetype="text/plain")
     if edge_tts is None:
-        return Response("Audio generation is unavailable right now.", status=503, mimetype="text/plain")
+        app.logger.warning("reading_tts unavailable: edge_tts missing entry_id=%s", entry_id)
+        response = Response("Audio generation is unavailable right now.", status=503, mimetype="text/plain")
+        response.headers["X-Reading-TTS-Error"] = "backend_unavailable"
+        return response
 
     cache_path = Path(tts_payload["cache_path"])
     if not cache_path.exists() or not Path(tts_payload["timings_path"]).exists():
@@ -16824,15 +16827,21 @@ def reading_article_audio(entry_id):
                 try:
                     ensure_reading_tts_cache(tts_payload)
                 except Exception as exc:
+                    app.logger.exception("reading_tts generation failed entry_id=%s reason=%s", entry_id, exc)
                     try:
                         if cache_path.exists() and cache_path.stat().st_size == 0:
                             cache_path.unlink()
                     except Exception:
                         pass
-                    return Response(f"Could not generate reading audio: {exc}", status=503, mimetype="text/plain")
+                    response = Response(f"Could not generate reading audio: {exc}", status=503, mimetype="text/plain")
+                    response.headers["X-Reading-TTS-Error"] = "generation_failed"
+                    return response
 
     if not cache_path.exists():
-        return Response("Audio cache could not be prepared.", status=503, mimetype="text/plain")
+        app.logger.error("reading_tts cache missing after generation entry_id=%s cache_path=%s", entry_id, cache_path)
+        response = Response("Audio cache could not be prepared.", status=503, mimetype="text/plain")
+        response.headers["X-Reading-TTS-Error"] = "cache_missing"
+        return response
 
     response = send_file(
         str(cache_path),
@@ -16864,6 +16873,7 @@ def reading_article_audio_timings(entry_id):
                 try:
                     ensure_reading_tts_cache(tts_payload)
                 except Exception as exc:
+                    app.logger.exception("reading_tts timings failed entry_id=%s reason=%s", entry_id, exc)
                     return jsonify({"ok": False, "error": f"Could not prepare sentence timings: {exc}", "timings": []}), 503
 
     try:
