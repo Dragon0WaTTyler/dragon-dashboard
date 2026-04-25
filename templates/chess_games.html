@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="page-hero chess-hero">
+    <div class="hero-meta">
+        <span class="hero-badge matte-tag">Lotus Chess</span>
+        <span>Imported games browser</span>
+    </div>
+    <h2>Browse your imported games</h2>
+    <p class="subhead">A clean local view of the games already inside Lotus Chess. No extra fetches, no analysis noise, just the raw game lane for now.</p>
+    <div class="chess-hero-actions">
+        <a class="btn" href="{{ url_for('chess_import') }}"><i data-lucide="download"></i><span>Import More Games</span></a>
+        <a class="btn" href="{{ url_for('chess') }}"><i data-lucide="layout-dashboard"></i><span>Back to Chess Home</span></a>
+    </div>
+</section>
+
+<nav class="surface-card chess-subnav" aria-label="Lotus Chess areas">
+    {% for item in chess_nav_items %}
+    <a class="chess-subnav-link {{ 'active' if item.key == chess_active_key else '' }}" href="{{ item.href }}">
+        <i data-lucide="{{ item.icon }}"></i>
+        <span>{{ item.label }}</span>
+    </a>
+    {% endfor %}
+</nav>
+
+<section class="chess-main chess-games-page">
+    <section class="surface-card section-card chess-focus-card">
+        <div class="hero-meta">
+            <span class="hero-badge matte-tag">Games</span>
+            <span>{{ chess_filtered_games_count }} shown / {{ chess_games_count }} total</span>
+        </div>
+        <form method="get" class="chess-games-filters">
+            <label class="chess-field">
+                <span>Color</span>
+                <select name="color">
+                    <option value="all" {{ 'selected' if chess_game_filters.color == 'all' else '' }}>All</option>
+                    <option value="white" {{ 'selected' if chess_game_filters.color == 'white' else '' }}>White</option>
+                    <option value="black" {{ 'selected' if chess_game_filters.color == 'black' else '' }}>Black</option>
+                </select>
+            </label>
+            <label class="chess-field">
+                <span>Result</span>
+                <select name="result">
+                    <option value="all" {{ 'selected' if chess_game_filters.result == 'all' else '' }}>All</option>
+                    <option value="win" {{ 'selected' if chess_game_filters.result == 'win' else '' }}>Win</option>
+                    <option value="loss" {{ 'selected' if chess_game_filters.result == 'loss' else '' }}>Loss</option>
+                    <option value="draw" {{ 'selected' if chess_game_filters.result == 'draw' else '' }}>Draw</option>
+                    <option value="unknown" {{ 'selected' if chess_game_filters.result == 'unknown' else '' }}>Unknown</option>
+                </select>
+            </label>
+            <label class="chess-field">
+                <span>Time class</span>
+                <select name="time_class">
+                    <option value="all" {{ 'selected' if chess_game_filters.time_class == 'all' else '' }}>All</option>
+                    <option value="rapid" {{ 'selected' if chess_game_filters.time_class == 'rapid' else '' }}>Rapid</option>
+                    <option value="blitz" {{ 'selected' if chess_game_filters.time_class == 'blitz' else '' }}>Blitz</option>
+                    <option value="bullet" {{ 'selected' if chess_game_filters.time_class == 'bullet' else '' }}>Bullet</option>
+                    <option value="daily" {{ 'selected' if chess_game_filters.time_class == 'daily' else '' }}>Daily</option>
+                    <option value="other" {{ 'selected' if chess_game_filters.time_class == 'other' else '' }}>Other</option>
+                </select>
+            </label>
+            <label class="chess-field">
+                <span>Sort</span>
+                <select name="sort">
+                    <option value="newest" {{ 'selected' if chess_game_filters.sort == 'newest' else '' }}>Newest first</option>
+                    <option value="oldest" {{ 'selected' if chess_game_filters.sort == 'oldest' else '' }}>Oldest first</option>
+                </select>
+            </label>
+            <button type="submit" class="btn chess-games-filter-btn">
+                <i data-lucide="sliders-horizontal"></i><span>Apply</span>
+            </button>
+        </form>
+    </section>
+
+    {% if request.args.get('error') %}
+    <div class="chess-banner chess-banner-error">{{ request.args.get('error') }}</div>
+    {% endif %}
+
+    {% if chess_games %}
+    <section class="chess-games-list">
+        {% for game in chess_games %}
+        <article class="surface-card chess-game-row">
+            <div class="chess-game-main">
+                <div class="chess-game-title-row">
+                    <strong>{{ game.white }} vs {{ game.black }}</strong>
+                    <span class="chess-status-pill">{{ game.user_result_label }}</span>
+                </div>
+                <div class="chess-game-meta">
+                    <span>{{ game.date }}</span>
+                    <span>{{ game.source_label }}</span>
+                    <span>{{ game.user_color_label }}</span>
+                    <span>{{ game.time_class_label }}</span>
+                    <span>{{ game.rated_label }}</span>
+                </div>
+                <p class="chess-summary-note">{{ game.opening_label }}</p>
+            </div>
+            <a class="btn chess-game-open-btn" href="{{ game.href }}"><i data-lucide="arrow-up-right"></i><span>Open game</span></a>
+        </article>
+        {% endfor %}
+    </section>
+    {% else %}
+    <section class="surface-card section-card chess-empty-state chess-games-empty">
+        <div class="hero-meta">
+            <span class="hero-badge matte-tag">No games yet</span>
+            <span>Start from import</span>
+        </div>
+        <p class="chess-summary-note">No imported games match the current filters yet. Import public Chess.com games first, then come back here to browse them.</p>
+        <a class="btn" href="{{ url_for('chess_import') }}"><i data-lucide="download"></i><span>Go to Import</span></a>
+    </section>
+    {% endif %}
+</section>
+{% endblock %}

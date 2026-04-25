@@ -1239,6 +1239,156 @@ def import_chess_com_games(username, requested_limit, scope, time_control, color
     }
 
 
+def chess_source_label(value):
+    source = normalize_chess_source(value)
+    if source == "chess.com":
+        return "Chess.com"
+    if source == "lichess":
+        return "Lichess"
+    return str(value or "").strip() or "Unknown"
+
+
+def chess_user_result_label(value):
+    mapping = {
+        "win": "Win",
+        "loss": "Loss",
+        "draw": "Draw",
+        "unknown": "Unknown",
+    }
+    return mapping.get(str(value or "").strip().lower(), "Unknown")
+
+
+def chess_time_class_label(value):
+    normalized = str(value or "").strip().lower()
+    if normalized in {"rapid", "blitz", "bullet", "daily"}:
+        return normalized.title()
+    return "Other" if normalized else "Unknown"
+
+
+def chess_opening_label(opening):
+    payload = opening if isinstance(opening, dict) else {}
+    name = str(payload.get("name", "") or "").strip()
+    return name or "Opening pending"
+
+
+def chess_game_url_id(game_id):
+    return urllib.parse.quote(str(game_id or "").strip(), safe="")
+
+
+def decode_chess_game_url_id(value):
+    return urllib.parse.unquote(str(value or "").strip())
+
+
+def find_chess_game(data, game_id):
+    target = str(game_id or "").strip()
+    if not target:
+        return None
+    for game in (data or {}).get("games", []):
+        if not isinstance(game, dict):
+            continue
+        game_value = str(game.get("id", "") or "").strip()
+        source_game_value = str(game.get("source_game_id", "") or "").strip()
+        if game_value == target or source_game_value == target:
+            return dict(game)
+    return None
+
+
+def build_chess_game_browser_row(game):
+    payload = dict(game or {})
+    return {
+        "id": str(payload.get("id", "") or "").strip(),
+        "href": url_for("chess_game_detail", game_id=chess_game_url_id(payload.get("id", ""))),
+        "date": str(payload.get("date", "") or "").strip() or "Date pending",
+        "source": str(payload.get("source", "") or "").strip(),
+        "source_label": chess_source_label(payload.get("source", "")),
+        "white": str(payload.get("white", "") or "").strip() or "White pending",
+        "black": str(payload.get("black", "") or "").strip() or "Black pending",
+        "user_color": str(payload.get("user_color", "") or "").strip() or "unknown",
+        "user_color_label": str(payload.get("user_color", "") or "").strip().title() or "Unknown",
+        "user_result": str(payload.get("user_result", "") or "").strip() or "unknown",
+        "user_result_label": chess_user_result_label(payload.get("user_result", "")),
+        "time_class": str(payload.get("time_class", "") or "").strip() or "other",
+        "time_class_label": chess_time_class_label(payload.get("time_class", "")),
+        "rated": bool(payload.get("rated", False)),
+        "rated_label": "Rated" if bool(payload.get("rated", False)) else "Unrated",
+        "opening_label": chess_opening_label(payload.get("opening", {})),
+    }
+
+
+def build_chess_game_detail_payload(game):
+    payload = dict(game or {})
+    opening = payload.get("opening", {}) if isinstance(payload.get("opening", {}), dict) else {}
+    return {
+        "id": str(payload.get("id", "") or "").strip(),
+        "title": f"{str(payload.get('white', '') or '').strip() or 'White'} vs {str(payload.get('black', '') or '').strip() or 'Black'}",
+        "source_label": chess_source_label(payload.get("source", "")),
+        "date": str(payload.get("date", "") or "").strip() or "Date pending",
+        "result": str(payload.get("result", "") or "").strip() or "Unknown",
+        "user_color_label": str(payload.get("user_color", "") or "").strip().title() or "Unknown",
+        "user_result_label": chess_user_result_label(payload.get("user_result", "")),
+        "time_class_label": chess_time_class_label(payload.get("time_class", "")),
+        "time_control": str(payload.get("time_control", "") or "").strip() or "Unknown",
+        "rated_label": "Rated" if bool(payload.get("rated", False)) else "Unrated",
+        "rules": str(payload.get("rules", "") or "").strip() or "Unknown",
+        "url": str(payload.get("url", "") or "").strip(),
+        "opening_name": str(opening.get("name", "") or "").strip(),
+        "opening_eco": str(opening.get("eco", "") or "").strip(),
+        "opening_side": str(opening.get("side", "") or "").strip().title(),
+        "pgn": str(payload.get("pgn", "") or "").strip(),
+        "moves": list(payload.get("moves", []) or []),
+    }
+
+
+def build_chess_games_browser_context():
+    chess_data = load_chess_data()
+    filters = {
+        "color": str(request.args.get("color", "all") or "all").strip().lower() or "all",
+        "result": str(request.args.get("result", "all") or "all").strip().lower() or "all",
+        "time_class": str(request.args.get("time_class", "all") or "all").strip().lower() or "all",
+        "sort": str(request.args.get("sort", "newest") or "newest").strip().lower() or "newest",
+    }
+    games = [dict(item) for item in chess_data.get("games", []) or [] if isinstance(item, dict)]
+    filtered_games = []
+    for game in games:
+        color_value = str(game.get("user_color", "") or "").strip().lower() or "unknown"
+        result_value = str(game.get("user_result", "") or "").strip().lower() or "unknown"
+        time_class_value = str(game.get("time_class", "") or "").strip().lower()
+        effective_time_class = time_class_value if time_class_value in {"rapid", "blitz", "bullet", "daily"} else "other"
+        if filters["color"] in {"white", "black"} and color_value != filters["color"]:
+            continue
+        if filters["result"] in {"win", "loss", "draw", "unknown"} and result_value != filters["result"]:
+            continue
+        if filters["time_class"] != "all" and effective_time_class != filters["time_class"]:
+            continue
+        filtered_games.append(game)
+
+    def sort_key(game):
+        return parse_timestamp(game.get("end_time", "")) or parse_timestamp(game.get("imported_at", "")) or parse_timestamp(game.get("date", "")) or datetime.min
+
+    filtered_games.sort(key=sort_key, reverse=(filters["sort"] != "oldest"))
+    rows = [build_chess_game_browser_row(game) for game in filtered_games]
+    nav_items = [
+        {"key": "home", "label": "Home", "href": url_for("chess"), "icon": "layout-dashboard"},
+        {"key": "import", "label": "Import", "href": url_for("chess_import"), "icon": "download"},
+        {"key": "games", "label": "Games", "href": url_for("chess_games"), "icon": "library-big"},
+        {"key": "openings", "label": "Openings", "href": url_for("chess_openings"), "icon": "waypoints"},
+        {"key": "train", "label": "Train", "href": url_for("chess_train"), "icon": "target"},
+        {"key": "progress", "label": "Progress", "href": url_for("chess_progress"), "icon": "activity"},
+        {"key": "courses", "label": "Courses", "href": url_for("chess_courses"), "icon": "graduation-cap"},
+    ]
+    return {
+        "chess_nav_items": nav_items,
+        "chess_active_key": "games",
+        "chess_games": rows,
+        "chess_game_filters": filters,
+        "chess_games_count": len(games),
+        "chess_filtered_games_count": len(rows),
+        "title": "Lotus Chess | Games",
+        "ai_default_mode": "study",
+        "ai_page_context": "general",
+    }
+
+
 def build_chess_home_cards(data):
     data = data if isinstance(data, dict) else default_chess_data()
     profiles = len(data.get("profiles", []) or [])
@@ -6988,10 +7138,12 @@ def get_navigation_items():
             active_paths.append(url_for("chess"))
             active_paths.extend([
                 url_for("chess_import"),
+                url_for("chess_games"),
                 url_for("chess_openings"),
                 url_for("chess_train"),
                 url_for("chess_progress"),
                 url_for("chess_courses"),
+                "/chess/game/",
             ])
         elif normalize_section_name(section.get("name", "")) == normalize_section_name("Library"):
             active_paths.append(url_for("library_yt"))
@@ -18047,6 +18199,7 @@ def build_lotus_chess_context(active_key="home"):
     nav_items = [
         {"key": "home", "label": "Home", "href": url_for("chess"), "icon": "layout-dashboard"},
         {"key": "import", "label": "Import", "href": url_for("chess_import"), "icon": "download"},
+        {"key": "games", "label": "Games", "href": url_for("chess_games"), "icon": "library-big"},
         {"key": "openings", "label": "Openings", "href": url_for("chess_openings"), "icon": "waypoints"},
         {"key": "train", "label": "Train", "href": url_for("chess_train"), "icon": "target"},
         {"key": "progress", "label": "Progress", "href": url_for("chess_progress"), "icon": "activity"},
@@ -18058,7 +18211,7 @@ def build_lotus_chess_context(active_key="home"):
             "title": "Simple outside. Deep inside.",
             "summary": "A personal chess workspace centered on your games, your opening habits, and the next training action that actually matters.",
             "cta_primary": {"label": "Start with Import", "href": url_for("chess_import")},
-            "cta_secondary": {"label": "Explore Openings", "href": url_for("chess_openings")},
+            "cta_secondary": {"label": "Browse Games", "href": url_for("chess_games")},
             "cards": build_chess_home_cards(chess_data),
             "sections": [
                 {
@@ -18068,6 +18221,12 @@ def build_lotus_chess_context(active_key="home"):
                 {
                     "title": "Phase 1",
                     "description": "Shell only for now: Home, Import, Openings, Train, Progress, and Courses. Real import comes next.",
+                },
+                {
+                    "title": "Imported games",
+                    "description": f"{len(games)} local games ready to browse. Open the games browser to inspect results, time classes, and raw PGNs.",
+                    "href": url_for("chess_games"),
+                    "link_label": "Open games browser",
                 },
             ],
         },
@@ -18216,6 +18375,7 @@ def build_lotus_chess_context(active_key="home"):
         "chess_import_history": history_items,
         "chess_success_message": str(request.args.get("success", "") or "").strip(),
         "chess_error_message": str(request.args.get("error", "") or "").strip(),
+        "chess_games_href": url_for("chess_games"),
         "title": f"Lotus Chess | {area['title']}",
         "ai_default_mode": "study",
         "ai_page_context": "general",
@@ -18234,6 +18394,39 @@ def chess():
 @app.route("/chess/import", endpoint="chess_import")
 def chess_import():
     return render_lotus_chess_page("import")
+
+
+@app.route("/chess/games", endpoint="chess_games")
+def chess_games():
+    return render_template("chess_games.html", **build_chess_games_browser_context())
+
+
+@app.route("/chess/game/<path:game_id>", endpoint="chess_game_detail")
+def chess_game_detail(game_id):
+    chess_data = load_chess_data()
+    decoded_game_id = decode_chess_game_url_id(game_id)
+    game = find_chess_game(chess_data, decoded_game_id)
+    if not game:
+        return redirect(url_for("chess_games", error="That game could not be found in local Lotus Chess data."))
+    nav_items = [
+        {"key": "home", "label": "Home", "href": url_for("chess"), "icon": "layout-dashboard"},
+        {"key": "import", "label": "Import", "href": url_for("chess_import"), "icon": "download"},
+        {"key": "games", "label": "Games", "href": url_for("chess_games"), "icon": "library-big"},
+        {"key": "openings", "label": "Openings", "href": url_for("chess_openings"), "icon": "waypoints"},
+        {"key": "train", "label": "Train", "href": url_for("chess_train"), "icon": "target"},
+        {"key": "progress", "label": "Progress", "href": url_for("chess_progress"), "icon": "activity"},
+        {"key": "courses", "label": "Courses", "href": url_for("chess_courses"), "icon": "graduation-cap"},
+    ]
+    detail = build_chess_game_detail_payload(game)
+    return render_template(
+        "chess_game_detail.html",
+        chess_nav_items=nav_items,
+        chess_active_key="games",
+        chess_game=detail,
+        title=f"Lotus Chess | {detail['title']}",
+        ai_default_mode="study",
+        ai_page_context="general",
+    )
 
 
 @app.route("/chess/openings", endpoint="chess_openings")

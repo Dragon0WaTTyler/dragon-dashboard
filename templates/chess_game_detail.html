@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="page-hero chess-hero">
+    <div class="hero-meta">
+        <span class="hero-badge matte-tag">Lotus Chess</span>
+        <span>Imported game detail</span>
+    </div>
+    <h2>{{ chess_game.title }}</h2>
+    <p class="subhead">A quiet detail view for the imported game itself: metadata, opening header if available, raw PGN, and the next phase note.</p>
+    <div class="chess-hero-actions">
+        <a class="btn" href="{{ url_for('chess_games') }}"><i data-lucide="arrow-left"></i><span>Back to Games</span></a>
+        {% if chess_game.url %}
+        <a class="btn" href="{{ chess_game.url }}" target="_blank" rel="noopener noreferrer"><i data-lucide="arrow-up-right"></i><span>Original game</span></a>
+        {% endif %}
+    </div>
+</section>
+
+<nav class="surface-card chess-subnav" aria-label="Lotus Chess areas">
+    {% for item in chess_nav_items %}
+    <a class="chess-subnav-link {{ 'active' if item.key == chess_active_key else '' }}" href="{{ item.href }}">
+        <i data-lucide="{{ item.icon }}"></i>
+        <span>{{ item.label }}</span>
+    </a>
+    {% endfor %}
+</nav>
+
+<section class="chess-main chess-game-detail-page">
+    <section class="surface-card section-card chess-focus-card">
+        <div class="hero-meta">
+            <span class="hero-badge matte-tag">{{ chess_game.source_label }}</span>
+            <span>{{ chess_game.date }}</span>
+        </div>
+        <div class="chess-game-detail-grid">
+            <article class="surface-card chess-game-detail-card">
+                <h3>Metadata</h3>
+                <div class="chess-detail-list">
+                    <div><span>Result</span><strong>{{ chess_game.result }}</strong></div>
+                    <div><span>User color</span><strong>{{ chess_game.user_color_label }}</strong></div>
+                    <div><span>User result</span><strong>{{ chess_game.user_result_label }}</strong></div>
+                    <div><span>Time class</span><strong>{{ chess_game.time_class_label }}</strong></div>
+                    <div><span>Time control</span><strong>{{ chess_game.time_control }}</strong></div>
+                    <div><span>Rated</span><strong>{{ chess_game.rated_label }}</strong></div>
+                    <div><span>Rules</span><strong>{{ chess_game.rules }}</strong></div>
+                    <div><span>Source</span><strong>{{ chess_game.source_label }}</strong></div>
+                </div>
+            </article>
+
+            <article class="surface-card chess-game-detail-card">
+                <h3>Opening</h3>
+                {% if chess_game.opening_name or chess_game.opening_eco or chess_game.opening_side %}
+                <div class="chess-detail-list">
+                    <div><span>Name</span><strong>{{ chess_game.opening_name or 'Opening pending' }}</strong></div>
+                    <div><span>ECO</span><strong>{{ chess_game.opening_eco or 'Pending' }}</strong></div>
+                    <div><span>Side</span><strong>{{ chess_game.opening_side or 'Pending' }}</strong></div>
+                </div>
+                {% else %}
+                <p class="chess-summary-note">Opening extraction comes next.</p>
+                {% endif %}
+            </article>
+
+            <article class="surface-card chess-game-detail-card">
+                <h3>Moves</h3>
+                {% if chess_game.moves %}
+                <pre class="chess-pgn-block">{{ chess_game.moves|join(' ') }}</pre>
+                {% else %}
+                <p class="chess-summary-note">Move parsing comes next.</p>
+                {% endif %}
+            </article>
+
+            <article class="surface-card chess-game-detail-card">
+                <h3>Next phase</h3>
+                <p class="chess-summary-note">Next phase: extract openings from PGN headers.</p>
+            </article>
+        </div>
+    </section>
+
+    <section class="surface-card section-card chess-game-pgn-card">
+        <details open>
+            <summary>Raw PGN</summary>
+            <pre class="chess-pgn-block">{{ chess_game.pgn or 'PGN unavailable for this game.' }}</pre>
+        </details>
+    </section>
+</section>
+{% endblock %}

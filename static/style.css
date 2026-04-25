@@ -377,6 +377,10 @@ h2{font-size:clamp(2.2rem,4vw,3.6rem);margin-top:14px;letter-spacing:-.03em}.det
   border-radius:24px;
 }
 
+.chess-inline-btn{
+  justify-self:start;
+}
+
 .chess-section-card h3,.chess-sidebar-card h3{
   margin:0;
   font-size:1.1rem;
@@ -486,6 +490,133 @@ h2{font-size:clamp(2.2rem,4vw,3.6rem);margin-top:14px;letter-spacing:-.03em}.det
 .chess-history-shell{
   display:grid;
   gap:16px;
+}
+
+.chess-games-page,
+.chess-game-detail-page{
+  display:grid;
+  gap:18px;
+  min-width:0;
+}
+
+.chess-games-filters{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(160px,1fr));
+  gap:12px;
+  align-items:end;
+}
+
+.chess-games-filter-btn{
+  min-height:44px;
+  justify-content:center;
+}
+
+.chess-games-list{
+  display:grid;
+  gap:12px;
+}
+
+.chess-game-row{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  gap:16px;
+  align-items:center;
+  padding:18px;
+  border-radius:22px;
+}
+
+.chess-game-main{
+  display:grid;
+  gap:10px;
+  min-width:0;
+}
+
+.chess-game-title-row{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  min-width:0;
+}
+
+.chess-game-title-row strong{
+  min-width:0;
+  overflow-wrap:anywhere;
+}
+
+.chess-game-open-btn{
+  justify-content:center;
+  white-space:nowrap;
+}
+
+.chess-game-detail-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+  gap:14px;
+}
+
+.chess-game-detail-card{
+  display:grid;
+  gap:12px;
+  padding:18px;
+  border-radius:22px;
+}
+
+.chess-game-detail-card h3{
+  margin:0;
+}
+
+.chess-detail-list{
+  display:grid;
+  gap:10px;
+}
+
+.chess-detail-list div{
+  display:grid;
+  gap:6px;
+  padding:12px;
+  border-radius:16px;
+  border:1px solid var(--border);
+  background:rgba(255,255,255,.02);
+  min-width:0;
+}
+
+.chess-detail-list span{
+  font-size:.75rem;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+  color:var(--muted);
+}
+
+.chess-detail-list strong{
+  color:var(--text);
+  overflow-wrap:anywhere;
+}
+
+.chess-game-pgn-card{
+  padding:18px;
+}
+
+.chess-game-pgn-card details{
+  display:grid;
+  gap:14px;
+}
+
+.chess-game-pgn-card summary{
+  cursor:pointer;
+  font-weight:700;
+}
+
+.chess-pgn-block{
+  margin:0;
+  padding:16px;
+  border-radius:18px;
+  border:1px solid var(--border);
+  background:rgba(0,0,0,.28);
+  color:var(--text-2);
+  white-space:pre-wrap;
+  overflow-wrap:anywhere;
+  max-width:100%;
 }
 
 .chess-history-list{
@@ -619,6 +750,24 @@ h2{font-size:clamp(2.2rem,4vw,3.6rem);margin-top:14px;letter-spacing:-.03em}.det
   .chess-history-head{
     flex-direction:column;
     align-items:flex-start;
+  }
+
+  .chess-games-filters,
+  .chess-game-detail-grid{
+    grid-template-columns:1fr;
+  }
+
+  .chess-game-row{
+    grid-template-columns:1fr;
+  }
+
+  .chess-game-title-row{
+    flex-direction:column;
+    align-items:flex-start;
+  }
+
+  .chess-game-open-btn{
+    width:100%;
   }
 }
 
