@@ -179,6 +179,7 @@ DELETED_HISTORY_PATH = BASE_DIR / "deleted_history.json"
 READING_DATA_PATH    = BASE_DIR / "reading_data.json"
 READING_BACKUPS_DIR  = BASE_DIR / "backups" / "reading"
 READING_TTS_CACHE_DIR = BASE_DIR / "cache" / "reading_tts"
+CHESS_DATA_PATH      = BASE_DIR / "chess_data.json"  # local personal chess state; keep out of commits
 YOUTUBE_TOKEN_PATH   = BASE_DIR / "youtube_token.json"
 CACHE_DATA_PATH      = BASE_DIR / "cache_data.json"
 CHAT_HISTORY_DB_PATH = BASE_DIR / "chat_history.db"
@@ -779,6 +780,197 @@ init_db()
 
 def current_timestamp():
     return datetime.now().astimezone().isoformat(timespec="seconds")
+
+
+def default_chess_data():
+    return {
+        "profiles": [],
+        "imports": [],
+        "games": [],
+        "openings": [],
+        "review_queue": [],
+        "settings": {
+            "active_profile_id": None,
+        },
+        "updated_at": "",
+    }
+
+
+def load_chess_data():
+    raw = load_json_file(CHESS_DATA_PATH, default_chess_data())
+    if not isinstance(raw, dict):
+        raw = {}
+    data = default_chess_data()
+    for key in ("profiles", "imports", "games", "openings", "review_queue"):
+        value = raw.get(key, [])
+        data[key] = [dict(item) for item in value if isinstance(item, dict)] if isinstance(value, list) else []
+    settings = raw.get("settings", {})
+    if not isinstance(settings, dict):
+        settings = {}
+    active_profile_id = str(settings.get("active_profile_id", "") or "").strip() or None
+    data["settings"]["active_profile_id"] = active_profile_id
+    data["updated_at"] = str(raw.get("updated_at", "") or "").strip()
+    if CHESS_DATA_PATH.exists() and data != raw:
+        save_json_file(CHESS_DATA_PATH, data)
+    return data
+
+
+def save_chess_data(data):
+    payload = default_chess_data()
+    incoming = data if isinstance(data, dict) else {}
+    for key in ("profiles", "imports", "games", "openings", "review_queue"):
+        value = incoming.get(key, [])
+        payload[key] = [dict(item) for item in value if isinstance(item, dict)] if isinstance(value, list) else []
+    settings = incoming.get("settings", {})
+    if not isinstance(settings, dict):
+        settings = {}
+    payload["settings"]["active_profile_id"] = str(settings.get("active_profile_id", "") or "").strip() or None
+    payload["updated_at"] = current_timestamp()
+    save_json_file(CHESS_DATA_PATH, payload)
+    return payload
+
+
+def normalize_chess_source(value):
+    normalized = str(value or "").strip().lower()
+    if normalized in {"chess", "chess.com", "chesscom"}:
+        return "chess.com"
+    if normalized == "lichess":
+        return "lichess"
+    return ""
+
+
+def normalize_chess_username(value):
+    return normalize_reading_space(value)
+
+
+def normalize_chess_scope_label(scope_key):
+    key = str(scope_key or "").strip().lower()
+    if key == "500":
+        return "recent 500 games"
+    if key in {"90", "90d", "3m", "3months", "last3months", "last 3 months"}:
+        return "last 3 months"
+    return "recent 100 games"
+
+
+def normalize_chess_limit(scope_key):
+    key = str(scope_key or "").strip().lower()
+    if key == "500":
+        return 500
+    if key in {"90", "90d", "3m", "3months", "last3months", "last 3 months"}:
+        return 0
+    return 100
+
+
+def normalize_chess_profile(profile):
+    if not isinstance(profile, dict):
+        return None
+    source = normalize_chess_source(profile.get("source", ""))
+    username = normalize_chess_username(profile.get("username", ""))
+    if not source or not username:
+        return None
+    safe_username = re.sub(r"[^a-z0-9]+", "-", username.lower()).strip("-") or "player"
+    profile_id = str(profile.get("id", "") or "").strip() or f"chess-{source.replace('.', '-')}-{safe_username}"
+    display_name = normalize_chess_username(profile.get("display_name", "")) or username
+    created_at = str(profile.get("created_at", "") or "").strip() or current_timestamp()
+    last_import_at = profile.get("last_import_at", None)
+    if last_import_at in {"", "null", "None"}:
+        last_import_at = None
+    return {
+        "id": profile_id,
+        "source": source,
+        "username": username,
+        "display_name": display_name,
+        "created_at": created_at,
+        "last_import_at": last_import_at,
+    }
+
+
+def find_chess_profile(data, source, username):
+    source_key = normalize_chess_source(source)
+    username_key = normalize_chess_username(username).lower()
+    for profile in (data or {}).get("profiles", []):
+        normalized = normalize_chess_profile(profile)
+        if not normalized:
+            continue
+        if normalized["source"] == source_key and normalized["username"].lower() == username_key:
+            return normalized
+    return None
+
+
+def upsert_chess_profile(data, source, username):
+    source_key = normalize_chess_source(source)
+    username_value = normalize_chess_username(username)
+    if not source_key or not username_value:
+        return None
+    payload = data if isinstance(data, dict) else default_chess_data()
+    profiles = list(payload.get("profiles", []) or [])
+    existing_index = None
+    existing_profile = None
+    for index, profile in enumerate(profiles):
+        normalized = normalize_chess_profile(profile)
+        if not normalized:
+            continue
+        if normalized["source"] == source_key and normalized["username"].lower() == username_value.lower():
+            existing_index = index
+            existing_profile = normalized
+            break
+    if existing_profile is not None and existing_index is not None:
+        profiles[existing_index] = existing_profile
+        payload["profiles"] = profiles
+        return existing_profile
+    safe_username = re.sub(r"[^a-z0-9]+", "-", username_value.lower()).strip("-") or "player"
+    profile = {
+        "id": f"chess-{source_key.replace('.', '-')}-{safe_username}-{secrets.token_hex(4)}",
+        "source": source_key,
+        "username": username_value,
+        "display_name": username_value,
+        "created_at": current_timestamp(),
+        "last_import_at": None,
+    }
+    profiles.append(profile)
+    payload["profiles"] = profiles
+    if not payload.get("settings", {}).get("active_profile_id"):
+        payload.setdefault("settings", {})["active_profile_id"] = profile["id"]
+    return profile
+
+
+def create_chess_import_job(data, profile, source, username, requested_limit, time_control, color, requested_scope):
+    job = {
+        "id": f"chess-import-{secrets.token_hex(6)}",
+        "profile_id": profile.get("id", "") if isinstance(profile, dict) else "",
+        "source": normalize_chess_source(source),
+        "username": normalize_chess_username(username),
+        "status": "draft",
+        "requested_limit": int(requested_limit or 0),
+        "requested_scope": str(requested_scope or "").strip() or normalize_chess_scope_label(requested_scope),
+        "time_control": str(time_control or "all").strip().lower() or "all",
+        "color": str(color or "both").strip().lower() or "both",
+        "created_at": current_timestamp(),
+        "summary": {
+            "message": "Real import comes in Phase 2B.",
+        },
+    }
+    payload = data if isinstance(data, dict) else default_chess_data()
+    imports = list(payload.get("imports", []) or [])
+    imports.insert(0, job)
+    payload["imports"] = imports
+    if isinstance(profile, dict) and profile.get("id"):
+        payload.setdefault("settings", {})["active_profile_id"] = payload.get("settings", {}).get("active_profile_id") or profile["id"]
+    return job
+
+
+def build_chess_home_cards(data):
+    data = data if isinstance(data, dict) else default_chess_data()
+    profiles = len(data.get("profiles", []) or [])
+    imports = len(data.get("imports", []) or [])
+    games = len(data.get("games", []) or [])
+    review_queue = len(data.get("review_queue", []) or [])
+    return [
+        {"label": "Profiles", "value": str(profiles) if profiles else "0"},
+        {"label": "Prepared imports", "value": str(imports) if imports else "0"},
+        {"label": "Imported games", "value": str(games) if games else "0"},
+        {"label": "Review queue", "value": str(review_queue) if review_queue else "0"},
+    ]
 
 
 def parse_timestamp(value):
@@ -6514,6 +6706,13 @@ def get_navigation_items():
             active_paths.append(url_for("german"))
         elif normalize_section_name(section.get("name", "")) == normalize_section_name("Chess"):
             active_paths.append(url_for("chess"))
+            active_paths.extend([
+                url_for("chess_import"),
+                url_for("chess_openings"),
+                url_for("chess_train"),
+                url_for("chess_progress"),
+                url_for("chess_courses"),
+            ])
         elif normalize_section_name(section.get("name", "")) == normalize_section_name("Library"):
             active_paths.append(url_for("library_yt"))
         elif normalize_section_name(section.get("name", "")) == normalize_section_name("YouTube Watch Later"):
@@ -17555,9 +17754,261 @@ def delete_from_youtube(playlist_item_id):
 def german():
     return render_section_page("German", title="🇩🇪 German Study", quick_delete_enabled=False)
 
-@app.route("/chess")
+def build_lotus_chess_context(active_key="home"):
+    active_key = str(active_key or "home").strip().lower() or "home"
+    chess_data = load_chess_data()
+    profiles = list(chess_data.get("profiles", []) or [])
+    imports = list(chess_data.get("imports", []) or [])
+    games = list(chess_data.get("games", []) or [])
+    review_queue = list(chess_data.get("review_queue", []) or [])
+    active_profile_id = str((chess_data.get("settings", {}) or {}).get("active_profile_id", "") or "").strip()
+    active_profile = next((profile for profile in profiles if str(profile.get("id", "") or "").strip() == active_profile_id), None)
+
+    nav_items = [
+        {"key": "home", "label": "Home", "href": url_for("chess"), "icon": "layout-dashboard"},
+        {"key": "import", "label": "Import", "href": url_for("chess_import"), "icon": "download"},
+        {"key": "openings", "label": "Openings", "href": url_for("chess_openings"), "icon": "waypoints"},
+        {"key": "train", "label": "Train", "href": url_for("chess_train"), "icon": "target"},
+        {"key": "progress", "label": "Progress", "href": url_for("chess_progress"), "icon": "activity"},
+        {"key": "courses", "label": "Courses", "href": url_for("chess_courses"), "icon": "graduation-cap"},
+    ]
+    area_content = {
+        "home": {
+            "eyebrow": "Lotus Chess",
+            "title": "Simple outside. Deep inside.",
+            "summary": "A personal chess workspace centered on your games, your opening habits, and the next training action that actually matters.",
+            "cta_primary": {"label": "Start with Import", "href": url_for("chess_import")},
+            "cta_secondary": {"label": "Explore Openings", "href": url_for("chess_openings")},
+            "cards": build_chess_home_cards(chess_data),
+            "sections": [
+                {
+                    "title": "Why Lotus Chess",
+                    "description": "Built to turn your real games into opening awareness, weak-line review, and focused training.",
+                },
+                {
+                    "title": "Phase 1",
+                    "description": "Shell only for now: Home, Import, Openings, Train, Progress, and Courses. Real import comes next.",
+                },
+            ],
+        },
+        "import": {
+            "eyebrow": "Import",
+            "title": "Bring your games in first.",
+            "summary": "Phase 2 will connect real sources. For now, this page defines the entry points and keeps the future import flow grounded in your own games.",
+            "cta_primary": {"label": "Chess.com", "href": "#"},
+            "cta_secondary": {"label": "Lichess", "href": "#"},
+            "cards": [
+                {"label": "Profiles", "value": str(len(profiles)) if profiles else "0"},
+                {"label": "Prepared imports", "value": str(len(imports)) if imports else "0"},
+                {"label": "Imported games", "value": str(len(games)) if games else "0"},
+            ],
+            "sections": [
+                {
+                    "title": "Import sources",
+                    "description": "Chess.com and Lichess come first. PGN file upload follows after the initial source pipeline is stable.",
+                },
+                {
+                    "title": "Phase 2 note",
+                    "description": "Real import, game normalization, and source syncing are intentionally deferred so this phase stays local, small, and reliable.",
+                },
+            ],
+            "input_placeholder": "Username placeholder",
+            "button_label": "Prepare Import",
+        },
+        "openings": {
+            "eyebrow": "Openings",
+            "title": "Opening-first by design.",
+            "summary": "Lotus Chess is meant to turn your opening choices, weak branches, and personal tree into the main source of truth for training.",
+            "cards": [
+                {"label": "White repertoire", "value": "Coming soon"},
+                {"label": "Black repertoire", "value": "Coming soon"},
+                {"label": "Personal opening tree", "value": "Coming soon"},
+                {"label": "Weak branches", "value": "Coming soon"},
+            ],
+            "sections": [
+                {
+                    "title": "White repertoire",
+                    "description": "Your main White lines will live here as a clean, editable personal repertoire instead of a generic explorer.",
+                },
+                {
+                    "title": "Black repertoire",
+                    "description": "Black systems will mirror the same structure, so training can branch directly from what you actually play.",
+                },
+                {
+                    "title": "Weak branches",
+                    "description": "The long-term goal is to surface the exact branches that keep leaking points or confidence.",
+                },
+            ],
+        },
+        "train": {
+            "eyebrow": "Train",
+            "title": "This will become the core action page.",
+            "summary": "Training should feel direct: review weak lines, drill saved branches, and resume the exact session that matters next.",
+            "cards": [
+                {"label": "Review weak lines", "value": "Coming soon"},
+                {"label": "Drill saved lines", "value": "Coming soon"},
+                {"label": "Train one opening branch", "value": "Coming soon"},
+                {"label": "Resume session", "value": "Coming soon"},
+            ],
+            "sections": [
+                {
+                    "title": "Focused sessions",
+                    "description": "No giant platform feeling. Training here is meant to stay tight, personal, and opening-aware.",
+                },
+                {
+                    "title": "Future loop",
+                    "description": "Import a game, detect the weak branch, save the line, then come back here and drill it until it stops leaking.",
+                },
+            ],
+        },
+        "progress": {
+            "eyebrow": "Progress",
+            "title": "Minimal progress, not dashboard noise.",
+            "summary": "This page will track only the signals that help you improve, without turning Lotus Chess into a chart-heavy analytics wall.",
+            "cards": [
+                {"label": "Imported games", "value": str(len(games)) if games else "0"},
+                {"label": "Openings tracked", "value": "Coming soon"},
+                {"label": "Active weak lines", "value": "Coming soon"},
+                {"label": "Reviewed this week", "value": "Coming soon"},
+                {"label": "Mastered lines", "value": "Coming soon"},
+            ],
+            "sections": [
+                {
+                    "title": "Useful metrics only",
+                    "description": "Imported games, active weaknesses, and review volume are enough to tell whether the system is helping.",
+                },
+            ],
+        },
+        "courses": {
+            "eyebrow": "Courses",
+            "title": "Curated support, not the center of the system.",
+            "summary": "Courses can support your training, but they do not replace the Train workflow or the opening-first structure.",
+            "cards": [
+                {"label": "Opening courses", "value": "Curated later"},
+                {"label": "Tactical / calculation", "value": "Curated later"},
+                {"label": "Endgame / strategy", "value": "Later"},
+            ],
+            "sections": [
+                {
+                    "title": "Support layer",
+                    "description": "Courses support training; they do not replace Train.",
+                },
+                {
+                    "title": "Future curation",
+                    "description": "When courses arrive, they should connect back to your repertoire, weak lines, and training backlog instead of behaving like a separate media shelf.",
+                },
+            ],
+        },
+    }
+    area = area_content.get(active_key, area_content["home"])
+    history_items = []
+    for item in imports[:5]:
+        if not isinstance(item, dict):
+            continue
+        history_items.append({
+            "id": item.get("id", ""),
+            "profile_id": item.get("profile_id", ""),
+            "source": item.get("source", ""),
+            "username": item.get("username", ""),
+            "status": item.get("status", "draft"),
+            "requested_limit": item.get("requested_limit", 0),
+            "requested_scope": item.get("requested_scope", ""),
+            "time_control": item.get("time_control", "all"),
+            "color": item.get("color", "both"),
+            "created_at": item.get("created_at", ""),
+            "summary": (item.get("summary", {}) or {}).get("message", ""),
+        })
+    return {
+        "chess_nav_items": nav_items,
+        "chess_active_key": active_key,
+        "chess_area": area,
+        "chess_data": chess_data,
+        "chess_profiles_count": len(profiles),
+        "chess_imports_count": len(imports),
+        "chess_games_count": len(games),
+        "chess_review_queue_count": len(review_queue),
+        "chess_active_profile": active_profile,
+        "chess_import_history": history_items,
+        "chess_success_message": str(request.args.get("success", "") or "").strip(),
+        "chess_error_message": str(request.args.get("error", "") or "").strip(),
+        "title": f"Lotus Chess | {area['title']}",
+        "ai_default_mode": "study",
+        "ai_page_context": "general",
+    }
+
+
+def render_lotus_chess_page(active_key="home"):
+    return render_template("chess.html", **build_lotus_chess_context(active_key))
+
+
+@app.route("/chess", endpoint="chess")
 def chess():
-    return render_section_page("Chess", title="Chess", quick_delete_enabled=False)
+    return render_lotus_chess_page("home")
+
+
+@app.route("/chess/import", endpoint="chess_import")
+def chess_import():
+    return render_lotus_chess_page("import")
+
+
+@app.route("/chess/openings", endpoint="chess_openings")
+def chess_openings():
+    return render_lotus_chess_page("openings")
+
+
+@app.route("/chess/train", endpoint="chess_train")
+def chess_train():
+    return render_lotus_chess_page("train")
+
+
+@app.route("/chess/progress", endpoint="chess_progress")
+def chess_progress():
+    return render_lotus_chess_page("progress")
+
+
+@app.route("/chess/courses", endpoint="chess_courses")
+def chess_courses():
+    return render_lotus_chess_page("courses")
+
+
+@app.route("/chess/import/prepare", methods=["POST"], endpoint="chess_import_prepare")
+def chess_import_prepare():
+    source = normalize_chess_source(request.form.get("source", ""))
+    username = normalize_chess_username(request.form.get("username", ""))
+    scope_key = str(request.form.get("scope", "") or "").strip()
+    time_control = str(request.form.get("time_control", "all") or "all").strip().lower() or "all"
+    color = str(request.form.get("color", "both") or "both").strip().lower() or "both"
+
+    if not source:
+        return redirect(url_for("chess_import", error="Choose a valid source before preparing an import."))
+    if not username:
+        return redirect(url_for("chess_import", error="Enter a username before preparing an import."))
+
+    chess_data = load_chess_data()
+    profile = upsert_chess_profile(chess_data, source, username)
+    if not profile:
+        return redirect(url_for("chess_import", error="Unable to prepare a local chess profile."))
+
+    requested_limit = normalize_chess_limit(scope_key)
+    requested_scope = normalize_chess_scope_label(scope_key)
+    create_chess_import_job(
+        chess_data,
+        profile,
+        source,
+        username,
+        requested_limit=requested_limit,
+        time_control=time_control,
+        color=color,
+        requested_scope=requested_scope,
+    )
+    if isinstance(profile, dict):
+        profile["last_import_at"] = current_timestamp()
+        profile_id = str(profile.get("id", "") or "").strip()
+        if profile_id:
+            chess_data.setdefault("settings", {})["active_profile_id"] = profile_id
+    save_chess_data(chess_data)
+    message = "Import prepared locally. Real fetching comes in Phase 2B."
+    return redirect(url_for("chess_import", success=message))
 
 @app.route("/library_yt")
 def library_yt():

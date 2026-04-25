@@ -1,2 +1,167 @@
-{# templates/chess.html #}
-{% extends "youtube_section.html" %}
+{% extends "base.html" %}
+{% block content %}
+<section class="page-hero chess-hero">
+    <div class="hero-meta">
+        <span class="hero-badge matte-tag">Lotus Chess</span>
+        <span>Local development only</span>
+    </div>
+    <h2>{{ chess_area.title }}</h2>
+    <p class="subhead">{{ chess_area.summary }}</p>
+    <div class="chess-hero-actions">
+        {% if chess_area.cta_primary %}
+        <a class="btn" href="{{ chess_area.cta_primary.href }}"><i data-lucide="sparkles"></i><span>{{ chess_area.cta_primary.label }}</span></a>
+        {% endif %}
+        {% if chess_area.cta_secondary %}
+        <a class="btn" href="{{ chess_area.cta_secondary.href }}"><i data-lucide="arrow-up-right"></i><span>{{ chess_area.cta_secondary.label }}</span></a>
+        {% endif %}
+    </div>
+</section>
+
+<nav class="surface-card chess-subnav" aria-label="Lotus Chess areas">
+    {% for item in chess_nav_items %}
+    <a class="chess-subnav-link {{ 'active' if item.key == chess_active_key else '' }}" href="{{ item.href }}">
+        <i data-lucide="{{ item.icon }}"></i>
+        <span>{{ item.label }}</span>
+    </a>
+    {% endfor %}
+</nav>
+
+<section class="chess-shell">
+    <div class="chess-main">
+        <section class="surface-card section-card chess-focus-card">
+            <div class="hero-meta">
+                <span class="hero-badge matte-tag">{{ chess_area.eyebrow }}</span>
+                <span>Phase 1 shell</span>
+            </div>
+            <h3 class="title-scaled chess-section-title">{{ chess_area.title }}</h3>
+            <p class="subhead chess-section-copy">{{ chess_area.summary }}</p>
+
+            {% if chess_active_key == 'import' %}
+            <section class="surface-card chess-import-panel">
+                {% if chess_success_message %}
+                <div class="chess-banner chess-banner-success">{{ chess_success_message }}</div>
+                {% endif %}
+                {% if chess_error_message %}
+                <div class="chess-banner chess-banner-error">{{ chess_error_message }}</div>
+                {% endif %}
+                <form class="chess-import-form" method="post" action="{{ url_for('chess_import_prepare') }}">
+                    <div class="chess-import-grid">
+                        <label class="chess-field">
+                            <span>Source</span>
+                            <select name="source" required>
+                                <option value="chess.com">Chess.com</option>
+                                <option value="lichess">Lichess</option>
+                            </select>
+                        </label>
+                        <label class="chess-field">
+                            <span>Username</span>
+                            <input type="text" name="username" placeholder="{{ chess_area.input_placeholder }}" autocomplete="off" required>
+                        </label>
+                        <label class="chess-field">
+                            <span>Import scope</span>
+                            <select name="scope">
+                                <option value="100">Recent 100 games</option>
+                                <option value="500">Recent 500 games</option>
+                                <option value="90d">Last 3 months</option>
+                            </select>
+                        </label>
+                        <label class="chess-field">
+                            <span>Time control</span>
+                            <select name="time_control">
+                                <option value="all">All</option>
+                                <option value="rapid">Rapid</option>
+                                <option value="blitz">Blitz</option>
+                                <option value="bullet">Bullet</option>
+                            </select>
+                        </label>
+                        <label class="chess-field">
+                            <span>Color</span>
+                            <select name="color">
+                                <option value="both">Both</option>
+                                <option value="white">White</option>
+                                <option value="black">Black</option>
+                            </select>
+                        </label>
+                    </div>
+                    <button type="submit" class="btn">
+                        <i data-lucide="download"></i><span>Prepare Import</span>
+                    </button>
+                    <p class="chess-summary-note">Import prepared locally. Real fetching comes in Phase 2B.</p>
+                </form>
+            </section>
+            {% endif %}
+        </section>
+
+        <section class="chess-overview-grid">
+            {% for card in chess_area.cards %}
+            <article class="surface-card chess-overview-card">
+                <span class="chess-card-label">{{ card.label }}</span>
+                <strong class="chess-card-value">{{ card.value }}</strong>
+            </article>
+            {% endfor %}
+        </section>
+
+        <section class="chess-section-grid">
+            {% for section in chess_area.sections %}
+            <article class="surface-card chess-section-card">
+                <h3>{{ section.title }}</h3>
+                <p>{{ section.description }}</p>
+            </article>
+            {% endfor %}
+        </section>
+
+        {% if chess_active_key == 'import' %}
+        <section class="surface-card section-card chess-history-shell">
+            <div class="hero-meta">
+                <span class="hero-badge matte-tag">Recent Imports</span>
+                <span>{{ chess_import_history|length }} prepared</span>
+            </div>
+            {% if chess_import_history %}
+            <div class="chess-history-list">
+                {% for job in chess_import_history %}
+                <article class="chess-history-card">
+                    <div class="chess-history-head">
+                        <strong>{{ job.source|title }}</strong>
+                        <span class="chess-status-pill">{{ job.status|title }}</span>
+                    </div>
+                    <div class="chess-history-meta">
+                        <span>{{ job.username }}</span>
+                        <span>{{ job.requested_scope }}</span>
+                        <span>{{ job.time_control|title }}</span>
+                        <span>{{ job.color|title }}</span>
+                        <span>{{ job.created_at }}</span>
+                    </div>
+                    <p class="chess-summary-note">No games fetched yet.</p>
+                    <p class="chess-summary-note">{{ job.summary }}</p>
+                </article>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="chess-empty-state">No prepared imports yet. Use Prepare Import to create the first local draft.</div>
+            {% endif %}
+        </section>
+        {% endif %}
+    </div>
+
+    <aside class="surface-card chess-sidebar-card">
+        <div class="hero-meta">
+            <span class="hero-badge matte-tag">Lotus Shape</span>
+            <span>Personal workflow</span>
+        </div>
+        <div class="chess-sidebar-list">
+            <div class="chess-sidebar-item">
+                <span class="chess-mini-label">Core</span>
+                <strong>Games → Openings → Train</strong>
+            </div>
+            <div class="chess-sidebar-item">
+                <span class="chess-mini-label">Courses</span>
+                <strong>Support layer only</strong>
+            </div>
+            <div class="chess-sidebar-item">
+                <span class="chess-mini-label">Scope</span>
+                <strong>No APIs, engines, or PGN parsing yet</strong>
+            </div>
+        </div>
+    </aside>
+</section>
+{% endblock %}
