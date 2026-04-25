@@ -48,7 +48,7 @@
                     <div class="chess-import-grid">
                         <label class="chess-field">
                             <span>Source</span>
-                            <select name="source" required>
+                            <select name="source" data-chess-import-source required>
                                 <option value="chess.com">Chess.com</option>
                                 <option value="lichess">Lichess</option>
                             </select>
@@ -83,10 +83,10 @@
                             </select>
                         </label>
                     </div>
-                    <button type="submit" class="btn">
-                        <i data-lucide="download"></i><span>Prepare Import</span>
+                    <button type="submit" class="btn" data-chess-import-button>
+                        <i data-lucide="download"></i><span>{{ chess_area.button_label }}</span>
                     </button>
-                    <p class="chess-summary-note">Import prepared locally. Real fetching comes in Phase 2B.</p>
+                    <p class="chess-summary-note" data-chess-import-note>Chess.com imports public games now. Lichess import comes next.</p>
                 </form>
             </section>
             {% endif %}
@@ -121,7 +121,7 @@
                 {% for job in chess_import_history %}
                 <article class="chess-history-card">
                     <div class="chess-history-head">
-                        <strong>{{ job.source|title }}</strong>
+                        <strong>{{ job.source_label }}</strong>
                         <span class="chess-status-pill">{{ job.status|title }}</span>
                     </div>
                     <div class="chess-history-meta">
@@ -131,7 +131,7 @@
                         <span>{{ job.color|title }}</span>
                         <span>{{ job.created_at }}</span>
                     </div>
-                    <p class="chess-summary-note">No games fetched yet.</p>
+                    <p class="chess-summary-note">Imported new: {{ job.imported_new }} | Skipped duplicates: {{ job.skipped_duplicates }} | Fetched: {{ job.fetched }}</p>
                     <p class="chess-summary-note">{{ job.summary }}</p>
                 </article>
                 {% endfor %}
@@ -151,7 +151,7 @@
         <div class="chess-sidebar-list">
             <div class="chess-sidebar-item">
                 <span class="chess-mini-label">Core</span>
-                <strong>Games → Openings → Train</strong>
+                <strong>Games -> Openings -> Train</strong>
             </div>
             <div class="chess-sidebar-item">
                 <span class="chess-mini-label">Courses</span>
@@ -164,4 +164,28 @@
         </div>
     </aside>
 </section>
+{% if chess_active_key == 'import' %}
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    var sourceSelect = document.querySelector('[data-chess-import-source]');
+    var button = document.querySelector('[data-chess-import-button] span');
+    var note = document.querySelector('[data-chess-import-note]');
+    if (!sourceSelect || !button || !note) {
+        return;
+    }
+    function updateChessImportState() {
+        var value = (sourceSelect.value || '').toLowerCase();
+        if (value === 'chess.com') {
+            button.textContent = 'Import Chess.com Games';
+            note.textContent = 'Imports public Chess.com games into local Lotus Chess data.';
+            return;
+        }
+        button.textContent = 'Prepare Import';
+        note.textContent = 'Lichess import comes next. This path still prepares a local draft only.';
+    }
+    sourceSelect.addEventListener('change', updateChessImportState);
+    updateChessImportState();
+});
+</script>
+{% endif %}
 {% endblock %}

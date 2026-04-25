@@ -959,6 +959,286 @@ def create_chess_import_job(data, profile, source, username, requested_limit, ti
     return job
 
 
+def chess_game_exists(data, source, source_game_id):
+    source_key = normalize_chess_source(source)
+    game_id = str(source_game_id or "").strip()
+    if not source_key or not game_id:
+        return False
+    for game in (data or {}).get("games", []):
+        if not isinstance(game, dict):
+            continue
+        if normalize_chess_source(game.get("source", "")) != source_key:
+            continue
+        if str(game.get("source_game_id", "") or "").strip() == game_id:
+            return True
+    return False
+
+
+def chess_com_request(url):
+    try:
+        response = requests.get(
+            url,
+            headers={
+                "User-Agent": "DragonLotusChess/0.1 (+local import foundation)",
+                "Accept": "application/json",
+            },
+            timeout=20,
+        )
+        return response
+    except requests.RequestException as exc:
+        raise RuntimeError(f"Network error while reaching Chess.com: {exc}") from exc
+
+
+def fetch_chess_com_archives(username):
+    username_value = normalize_chess_username(username)
+    if not username_value:
+        raise ValueError("Username is required.")
+    archive_url = f"https://api.chess.com/pub/player/{urllib.parse.quote(username_value)}/games/archives"
+    response = chess_com_request(archive_url)
+    if response.status_code == 404:
+        raise ValueError("Chess.com username not found.")
+    if response.status_code >= 400:
+        raise RuntimeError(f"Chess.com archives request failed with status {response.status_code}.")
+    payload = response.json() if response.content else {}
+    archives = payload.get("archives", [])
+    if not isinstance(archives, list):
+        return []
+    return [str(item or "").strip() for item in archives if str(item or "").strip()]
+
+
+def _archive_month_key(archive_url):
+    match = re.search(r"/(\d{4})/(\d{2})/?$", str(archive_url or "").strip())
+    if not match:
+        return None
+    return int(match.group(1)), int(match.group(2))
+
+
+def _recent_archive_urls(archives, months=3):
+    archive_list = [item for item in archives if _archive_month_key(item)]
+    archive_list.sort(key=lambda item: _archive_month_key(item), reverse=True)
+    return archive_list[: max(1, int(months or 3))]
+
+
+def _game_matches_color(raw_game, username):
+    username_key = normalize_chess_username(username).lower()
+    white_username = normalize_chess_username(((raw_game or {}).get("white", {}) or {}).get("username", "")).lower()
+    black_username = normalize_chess_username(((raw_game or {}).get("black", {}) or {}).get("username", "")).lower()
+    if white_username == username_key:
+        return "white"
+    if black_username == username_key:
+        return "black"
+    return ""
+
+
+def _game_matches_time_control(raw_game, time_control):
+    requested = str(time_control or "all").strip().lower() or "all"
+    if requested == "all":
+        return True
+    time_class = str((raw_game or {}).get("time_class", "") or "").strip().lower()
+    return time_class == requested if time_class else True
+
+
+def _extract_pgn_tag(pgn_text, tag_name):
+    text = str(pgn_text or "")
+    if not text:
+        return ""
+    pattern = r'\[' + re.escape(str(tag_name or "").strip()) + r'\s+"([^"]*)"\]'
+    match = re.search(pattern, text)
+    return str(match.group(1) or "").strip() if match else ""
+
+
+def normalize_chess_com_game(raw_game, username):
+    if not isinstance(raw_game, dict):
+        return None
+    username_value = normalize_chess_username(username)
+    user_color = _game_matches_color(raw_game, username_value)
+    white = normalize_chess_username(((raw_game.get("white", {}) or {}).get("username", "")))
+    black = normalize_chess_username(((raw_game.get("black", {}) or {}).get("username", "")))
+    url_value = str(raw_game.get("url", "") or "").strip()
+    source_game_id = str(raw_game.get("uuid", "") or "").strip()
+    if not source_game_id and url_value:
+        source_game_id = hashlib.sha1(url_value.encode("utf-8")).hexdigest()
+    if not source_game_id:
+        source_game_id = hashlib.sha1(str(raw_game).encode("utf-8")).hexdigest()
+    pgn_text = str(raw_game.get("pgn", "") or "")
+    eco_code = _extract_pgn_tag(pgn_text, "ECO")
+    opening_name = _extract_pgn_tag(pgn_text, "Opening")
+    end_time = raw_game.get("end_time")
+    date_value = ""
+    if end_time not in (None, ""):
+        try:
+            end_datetime = datetime.fromtimestamp(int(end_time)).astimezone()
+            date_value = end_datetime.strftime("%Y-%m-%d")
+            end_time_value = end_datetime.isoformat(timespec="seconds")
+        except Exception:
+            end_time_value = str(end_time)
+    else:
+        end_time_value = ""
+    white_result = str(((raw_game.get("white", {}) or {}).get("result", "") or "")).strip().lower()
+    black_result = str(((raw_game.get("black", {}) or {}).get("result", "") or "")).strip().lower()
+    user_result = "unknown"
+    result = ""
+    if white_result == "win":
+        result = "1-0"
+    elif black_result == "win":
+        result = "0-1"
+    elif white_result or black_result:
+        result = "1/2-1/2"
+    if user_color == "white":
+        if white_result == "win":
+            user_result = "win"
+        elif black_result == "win":
+            user_result = "loss"
+        elif white_result or black_result:
+            user_result = "draw"
+    elif user_color == "black":
+        if black_result == "win":
+            user_result = "win"
+        elif white_result == "win":
+            user_result = "loss"
+        elif white_result or black_result:
+            user_result = "draw"
+
+    return {
+        "id": f"chesscom:{source_game_id}",
+        "source": "chess.com",
+        "source_game_id": source_game_id,
+        "url": url_value,
+        "white": white,
+        "black": black,
+        "user_color": user_color,
+        "result": result,
+        "user_result": user_result,
+        "date": date_value,
+        "end_time": end_time_value,
+        "time_class": str(raw_game.get("time_class", "") or "").strip().lower(),
+        "time_control": str(raw_game.get("time_control", "") or "").strip(),
+        "rules": str(raw_game.get("rules", "") or "").strip(),
+        "rated": bool(raw_game.get("rated", False)),
+        "pgn": pgn_text,
+        "moves": [],
+        "opening": {
+            "name": opening_name,
+            "eco": eco_code,
+            "side": user_color,
+        },
+        "imported_at": current_timestamp(),
+        "raw_source": "chess.com",
+    }
+
+
+def fetch_chess_com_games(username, limit=100, scope="recent_100", time_control="all", color="both"):
+    username_value = normalize_chess_username(username)
+    requested_limit = max(0, int(limit or 0))
+    scope_value = str(scope or "").strip().lower()
+    archives = fetch_chess_com_archives(username_value)
+    if scope_value in {"90d", "3m", "last_3_months", "last 3 months"}:
+        archive_urls = _recent_archive_urls(archives, months=3)
+    else:
+        archive_urls = list(archives)
+    games = []
+    fetched_raw = 0
+    failed_archives = []
+    requested_color = str(color or "both").strip().lower() or "both"
+    archive_urls = list(archive_urls)
+    archive_urls.sort(key=lambda item: _archive_month_key(item) or (0, 0), reverse=True)
+    for archive_url in archive_urls:
+        if requested_limit and len(games) >= requested_limit:
+            break
+        try:
+            response = chess_com_request(archive_url)
+            if response.status_code >= 400:
+                failed_archives.append({"archive": archive_url, "error": f"status {response.status_code}"})
+                continue
+            payload = response.json() if response.content else {}
+            archive_games = payload.get("games", [])
+            if not isinstance(archive_games, list):
+                continue
+            fetched_raw += len(archive_games)
+            for raw_game in archive_games:
+                user_color = _game_matches_color(raw_game, username_value)
+                if requested_color in {"white", "black"} and user_color != requested_color:
+                    continue
+                if not _game_matches_time_control(raw_game, time_control):
+                    continue
+                games.append(raw_game)
+                if requested_limit and len(games) >= requested_limit:
+                    break
+        except Exception as exc:
+            failed_archives.append({"archive": archive_url, "error": str(exc)})
+    return {
+        "games": games[:requested_limit] if requested_limit else games,
+        "fetched_raw": fetched_raw,
+        "failed_archives": failed_archives,
+        "archives_checked": len(archive_urls),
+    }
+
+
+def import_chess_com_games(username, requested_limit, scope, time_control, color):
+    chess_data = load_chess_data()
+    profile = upsert_chess_profile(chess_data, "chess.com", username)
+    if not profile:
+        raise ValueError("Unable to create a local Chess.com profile.")
+    requested_scope = normalize_chess_scope_label(scope)
+    requested_limit_value = int(requested_limit or 0)
+    job = create_chess_import_job(
+        chess_data,
+        profile,
+        "chess.com",
+        username,
+        requested_limit=requested_limit_value,
+        time_control=time_control,
+        color=color,
+        requested_scope=requested_scope,
+    )
+    fetch_result = fetch_chess_com_games(
+        username=username,
+        limit=requested_limit_value,
+        scope=scope,
+        time_control=time_control,
+        color=color,
+    )
+    normalized_games = []
+    imported_new = 0
+    skipped_duplicates = 0
+    games_store = list(chess_data.get("games", []) or [])
+    for raw_game in fetch_result.get("games", []):
+        normalized = normalize_chess_com_game(raw_game, username)
+        if not normalized:
+            continue
+        normalized_games.append(normalized)
+        if chess_game_exists(chess_data, "chess.com", normalized.get("source_game_id", "")):
+            skipped_duplicates += 1
+            continue
+        games_store.append(normalized)
+        imported_new += 1
+    chess_data["games"] = games_store
+    profile["last_import_at"] = current_timestamp()
+    profile_id = str(profile.get("id", "") or "").strip()
+    if profile_id:
+        chess_data.setdefault("settings", {})["active_profile_id"] = profile_id
+    failed_archives = list(fetch_result.get("failed_archives", []) or [])
+    job["status"] = "completed" if imported_new or normalized_games or not failed_archives else "failed"
+    job["summary"] = {
+        "source": "chess.com",
+        "username": normalize_chess_username(username),
+        "fetched": len(normalized_games),
+        "imported_new": imported_new,
+        "skipped_duplicates": skipped_duplicates,
+        "failed_archives": len(failed_archives),
+        "message": "Imported public Chess.com games." if job["status"] == "completed" else "Unable to fetch public Chess.com games.",
+    }
+    save_chess_data(chess_data)
+    return {
+        "profile": profile,
+        "job": job,
+        "fetched": len(normalized_games),
+        "imported_new": imported_new,
+        "skipped_duplicates": skipped_duplicates,
+        "failed_archives": failed_archives,
+    }
+
+
 def build_chess_home_cards(data):
     data = data if isinstance(data, dict) else default_chess_data()
     profiles = len(data.get("profiles", []) or [])
@@ -17794,7 +18074,7 @@ def build_lotus_chess_context(active_key="home"):
         "import": {
             "eyebrow": "Import",
             "title": "Bring your games in first.",
-            "summary": "Phase 2 will connect real sources. For now, this page defines the entry points and keeps the future import flow grounded in your own games.",
+            "summary": "Chess.com can now import public games into your local Lotus Chess data. Lichess stays in placeholder mode until the next phase.",
             "cta_primary": {"label": "Chess.com", "href": "#"},
             "cta_secondary": {"label": "Lichess", "href": "#"},
             "cards": [
@@ -17812,8 +18092,8 @@ def build_lotus_chess_context(active_key="home"):
                     "description": "Real import, game normalization, and source syncing are intentionally deferred so this phase stays local, small, and reliable.",
                 },
             ],
-            "input_placeholder": "Username placeholder",
-            "button_label": "Prepare Import",
+            "input_placeholder": "Enter a public username",
+            "button_label": "Import Chess.com Games",
         },
         "openings": {
             "eyebrow": "Openings",
@@ -17905,10 +18185,12 @@ def build_lotus_chess_context(active_key="home"):
     for item in imports[:5]:
         if not isinstance(item, dict):
             continue
+        summary_payload = item.get("summary", {}) or {}
         history_items.append({
             "id": item.get("id", ""),
             "profile_id": item.get("profile_id", ""),
             "source": item.get("source", ""),
+            "source_label": "Chess.com" if item.get("source", "") == "chess.com" else "Lichess",
             "username": item.get("username", ""),
             "status": item.get("status", "draft"),
             "requested_limit": item.get("requested_limit", 0),
@@ -17916,7 +18198,10 @@ def build_lotus_chess_context(active_key="home"):
             "time_control": item.get("time_control", "all"),
             "color": item.get("color", "both"),
             "created_at": item.get("created_at", ""),
-            "summary": (item.get("summary", {}) or {}).get("message", ""),
+            "imported_new": int(summary_payload.get("imported_new", 0) or 0),
+            "skipped_duplicates": int(summary_payload.get("skipped_duplicates", 0) or 0),
+            "fetched": int(summary_payload.get("fetched", 0) or 0),
+            "summary": str(summary_payload.get("message", "") or ""),
         })
     return {
         "chess_nav_items": nav_items,
@@ -17984,13 +18269,32 @@ def chess_import_prepare():
     if not username:
         return redirect(url_for("chess_import", error="Enter a username before preparing an import."))
 
+    requested_limit = normalize_chess_limit(scope_key)
+    requested_scope = normalize_chess_scope_label(scope_key)
+    if source == "chess.com":
+        try:
+            result = import_chess_com_games(
+                username=username,
+                requested_limit=requested_limit,
+                scope=scope_key,
+                time_control=time_control,
+                color=color,
+            )
+            message = (
+                f"Imported {result['imported_new']} new Chess.com games, "
+                f"skipped {result['skipped_duplicates']} duplicates."
+            )
+            if result.get("failed_archives"):
+                message += f" {len(result['failed_archives'])} archive request(s) were skipped."
+            return redirect(url_for("chess_import", success=message))
+        except Exception as exc:
+            return redirect(url_for("chess_import", error=f"Chess.com import failed: {exc}"))
+
     chess_data = load_chess_data()
     profile = upsert_chess_profile(chess_data, source, username)
     if not profile:
         return redirect(url_for("chess_import", error="Unable to prepare a local chess profile."))
 
-    requested_limit = normalize_chess_limit(scope_key)
-    requested_scope = normalize_chess_scope_label(scope_key)
     create_chess_import_job(
         chess_data,
         profile,
@@ -18007,8 +18311,7 @@ def chess_import_prepare():
         if profile_id:
             chess_data.setdefault("settings", {})["active_profile_id"] = profile_id
     save_chess_data(chess_data)
-    message = "Import prepared locally. Real fetching comes in Phase 2B."
-    return redirect(url_for("chess_import", success=message))
+    return redirect(url_for("chess_import", success="Import prepared locally. Real fetching comes in Phase 2B."))
 
 @app.route("/library_yt")
 def library_yt():
