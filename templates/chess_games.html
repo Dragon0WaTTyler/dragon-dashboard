@@ -116,7 +116,18 @@
                 <p class="chess-summary-note chess-muted-note">Opening inferred from ECO code.</p>
                 {% endif %}
             </div>
-            <a class="btn chess-game-open-btn" href="{{ game.href }}"><i data-lucide="arrow-up-right"></i><span>Open game</span></a>
+            <div class="chess-game-actions">
+                <a class="btn chess-game-open-btn" href="{{ game.href }}"><i data-lucide="arrow-up-right"></i><span>Open game</span></a>
+                {% if game.review_queue_active %}
+                <span class="chess-status-pill">Already in review queue</span>
+                {% else %}
+                <form method="post" action="{{ url_for('chess_review_add_game') }}">
+                    <input type="hidden" name="game_id" value="{{ game.id }}">
+                    <input type="hidden" name="reason" value="Saved from game browser.">
+                    <button type="submit" class="btn chess-mini-action-btn"><i data-lucide="bookmark-plus"></i><span>Add to review</span></button>
+                </form>
+                {% endif %}
+            </div>
         </article>
         {% endfor %}
     </section>

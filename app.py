@@ -1372,15 +1372,18 @@ def find_chess_game(data, game_id):
     return None
 
 
-def build_chess_game_browser_row(game):
+def build_chess_game_browser_row(game, review_snapshot=None):
     payload = dict(game or {})
     opening = payload.get("opening", {}) if isinstance(payload.get("opening", {}), dict) else {}
     opening_name = str(opening.get("name", "") or "").strip()
     opening_eco = str(opening.get("eco", "") or "").strip()
     opening_variation = str(opening.get("variation", "") or "").strip()
     opening_inferred = bool(opening.get("inferred_from_eco", False))
+    review_snapshot = review_snapshot or {}
+    game_id_value = str(payload.get("id", "") or "").strip()
+    review_item = (review_snapshot.get("active_game_map", {}) or {}).get(normalize_chess_opening_token(game_id_value))
     return {
-        "id": str(payload.get("id", "") or "").strip(),
+        "id": game_id_value,
         "href": url_for("chess_game_detail", game_id=chess_game_url_id(payload.get("id", ""))),
         "date": str(payload.get("date", "") or "").strip() or "Date pending",
         "source": str(payload.get("source", "") or "").strip(),
@@ -1400,18 +1403,23 @@ def build_chess_game_browser_row(game):
         "opening_eco": opening_eco,
         "opening_variation": opening_variation,
         "opening_inferred_from_eco": opening_inferred,
+        "review_queue_active": bool(review_item),
+        "review_queue_item_id": str((review_item or {}).get("id", "") or "").strip(),
     }
 
 
-def build_chess_game_detail_payload(game):
+def build_chess_game_detail_payload(game, review_snapshot=None):
     payload = dict(game or {})
     opening = payload.get("opening", {}) if isinstance(payload.get("opening", {}), dict) else {}
     opening_name = str(opening.get("name", "") or "").strip()
     opening_eco = str(opening.get("eco", "") or "").strip()
     opening_variation = str(opening.get("variation", "") or "").strip()
     opening_inferred = bool(opening.get("inferred_from_eco", False))
+    review_snapshot = review_snapshot or {}
+    game_id_value = str(payload.get("id", "") or "").strip()
+    review_item = (review_snapshot.get("active_game_map", {}) or {}).get(normalize_chess_opening_token(game_id_value))
     return {
-        "id": str(payload.get("id", "") or "").strip(),
+        "id": game_id_value,
         "title": f"{str(payload.get('white', '') or '').strip() or 'White'} vs {str(payload.get('black', '') or '').strip() or 'Black'}",
         "source_label": chess_source_label(payload.get("source", "")),
         "date": str(payload.get("date", "") or "").strip() or "Date pending",
@@ -1431,12 +1439,15 @@ def build_chess_game_detail_payload(game):
         "opening_display_label": chess_opening_label(opening),
         "pgn": str(payload.get("pgn", "") or "").strip(),
         "moves": list(payload.get("moves", []) or []),
+        "review_queue_active": bool(review_item),
+        "review_queue_item_id": str((review_item or {}).get("id", "") or "").strip(),
     }
 
 
 def build_chess_games_browser_context():
     chess_data = load_chess_data()
     games = [dict(item) for item in chess_data.get("games", []) or [] if isinstance(item, dict)]
+    review_snapshot = build_chess_review_queue_snapshot(chess_data)
     filters = {
         "color": str(request.args.get("color", "all") or "all").strip().lower() or "all",
         "result": str(request.args.get("result", "all") or "all").strip().lower() or "all",
@@ -1469,7 +1480,7 @@ def build_chess_games_browser_context():
         return parse_timestamp(game.get("end_time", "")) or parse_timestamp(game.get("imported_at", "")) or parse_timestamp(game.get("date", "")) or datetime.min
 
     filtered_games.sort(key=sort_key, reverse=(filters["sort"] != "oldest"))
-    rows = [build_chess_game_browser_row(game) for game in filtered_games]
+    rows = [build_chess_game_browser_row(game, review_snapshot=review_snapshot) for game in filtered_games]
     opening_filter_label = ""
     if filters["opening_key"]:
         for game in games:
@@ -1507,6 +1518,7 @@ def build_chess_games_browser_context():
         "chess_no_opening_count": sum(1 for game in games if not str((game.get("opening", {}) or {}).get("name", "") or "").strip() and not str((game.get("opening", {}) or {}).get("eco", "") or "").strip()),
         "chess_opening_filter_key": filters["opening_key"],
         "chess_opening_filter": opening_filter_label,
+        "chess_review_queue_snapshot": review_snapshot,
         "chess_success_message": str(request.args.get("success", "") or "").strip(),
         "chess_error_message": str(request.args.get("error", "") or "").strip(),
         "title": "Lotus Chess | Games",
@@ -1712,19 +1724,177 @@ def build_training_recommendations(data):
     }
 
 
-def build_chess_home_cards(data, train_today_count=0):
+def normalize_chess_review_item_type(value):
+    normalized = str(value or "").strip().lower()
+    if normalized == "opening":
+        return "opening"
+    return "game"
+
+
+def get_chess_review_queue_item_key(item_type, game_id="", opening_key=""):
+    item_type_value = normalize_chess_review_item_type(item_type)
+    if item_type_value == "opening":
+        return f"opening:{normalize_chess_opening_token(opening_key)}"
+    return f"game:{normalize_chess_opening_token(game_id)}"
+
+
+def build_chess_review_queue_snapshot(data):
+    payload = data if isinstance(data, dict) else default_chess_data()
+    raw_items = list(payload.get("review_queue", []) or [])
+    items = []
+    active_items = []
+    completed_items = []
+    active_game_ids = set()
+    active_opening_keys = set()
+    active_game_map = {}
+    active_opening_map = {}
+    completed_count = 0
+    for raw_item in raw_items:
+        if not isinstance(raw_item, dict):
+            continue
+        item = dict(raw_item)
+        item_type = normalize_chess_review_item_type(item.get("type", "game"))
+        status = str(item.get("status", "active") or "active").strip().lower() or "active"
+        if status not in {"active", "done"}:
+            status = "active"
+        item["type"] = item_type
+        item["status"] = status
+        item["title"] = str(item.get("title", "") or "").strip()
+        item["reason"] = str(item.get("reason", "") or "").strip()
+        item["game_id"] = str(item.get("game_id", "") or "").strip()
+        item["opening_key"] = str(item.get("opening_key", "") or "").strip()
+        item["opening_label"] = str(item.get("opening_label", "") or "").strip()
+        item["created_at"] = str(item.get("created_at", "") or "").strip()
+        item["completed_at"] = str(item.get("completed_at", "") or "").strip() or None
+        item["type_label"] = "Opening" if item_type == "opening" else "Game"
+        if item_type == "opening" and item["opening_key"]:
+            item["action_url"] = f"/chess/games?opening_key={urllib.parse.quote(item['opening_key'], safe='')}"
+        elif item["game_id"]:
+            item["action_url"] = f"/chess/game/{chess_game_url_id(item['game_id'])}"
+        else:
+            item["action_url"] = "/chess/train"
+        if status == "done":
+            completed_items.append(item)
+            completed_count += 1
+            continue
+        active_items.append(item)
+        if item_type == "opening" and item["opening_key"]:
+            normalized_opening_key = normalize_chess_opening_token(item["opening_key"])
+            active_opening_keys.add(item["opening_key"])
+            active_opening_map[normalized_opening_key] = item
+        if item_type == "game" and item["game_id"]:
+            normalized_game_id = normalize_chess_opening_token(item["game_id"])
+            active_game_ids.add(item["game_id"])
+            active_game_map[normalized_game_id] = item
+        items.append(item)
+    return {
+        "items": items,
+        "active_items": active_items,
+        "completed_items": completed_items,
+        "active_count": len(active_items),
+        "completed_count": completed_count,
+        "active_game_ids": active_game_ids,
+        "active_opening_keys": active_opening_keys,
+        "active_game_map": active_game_map,
+        "active_opening_map": active_opening_map,
+    }
+
+
+def find_active_chess_review_item(data, item_type, game_id="", opening_key=""):
+    snapshot = build_chess_review_queue_snapshot(data)
+    item_type_value = normalize_chess_review_item_type(item_type)
+    if item_type_value == "opening":
+        normalized_key = normalize_chess_opening_token(opening_key)
+        if not normalized_key:
+            return None
+        return snapshot["active_opening_map"].get(normalized_key)
+    normalized_game_id = normalize_chess_opening_token(game_id)
+    if not normalized_game_id:
+        return None
+    return snapshot["active_game_map"].get(normalized_game_id)
+
+
+def add_chess_review_queue_item(data, item_type, title, reason="", game_id="", opening_key="", opening_label=""):
+    payload = data if isinstance(data, dict) else default_chess_data()
+    item_type_value = normalize_chess_review_item_type(item_type)
+    if item_type_value == "opening":
+        normalized_key = normalize_chess_opening_token(opening_key)
+        if not normalized_key:
+            return {"created": False, "duplicate": False, "item": None, "error": "Missing opening key."}
+        existing = find_active_chess_review_item(payload, "opening", opening_key=normalized_key)
+        if existing:
+            return {"created": False, "duplicate": True, "item": existing, "error": ""}
+    else:
+        normalized_game_id = normalize_chess_opening_token(game_id)
+        if not normalized_game_id:
+            return {"created": False, "duplicate": False, "item": None, "error": "Missing game id."}
+        existing = find_active_chess_review_item(payload, "game", game_id=normalized_game_id)
+        if existing:
+            return {"created": False, "duplicate": True, "item": existing, "error": ""}
+
+    item = {
+        "id": f"review-{item_type_value}-{secrets.token_hex(6)}",
+        "type": item_type_value,
+        "title": str(title or "").strip(),
+        "game_id": str(game_id or "").strip() if item_type_value == "game" else "",
+        "opening_key": str(opening_key or "").strip() if item_type_value == "opening" else "",
+        "opening_label": str(opening_label or "").strip() if item_type_value == "opening" else "",
+        "reason": str(reason or "").strip(),
+        "status": "active",
+        "created_at": current_timestamp(),
+        "completed_at": None,
+    }
+    payload.setdefault("review_queue", []).append(item)
+    return {"created": True, "duplicate": False, "item": item, "error": ""}
+
+
+def complete_chess_review_queue_item(data, queue_id):
+    payload = data if isinstance(data, dict) else default_chess_data()
+    target_id = str(queue_id or "").strip()
+    if not target_id:
+        return {"changed": False, "item": None, "error": "Missing review queue id."}
+    for item in payload.get("review_queue", []) or []:
+        if not isinstance(item, dict):
+            continue
+        if str(item.get("id", "") or "").strip() != target_id:
+            continue
+        if str(item.get("status", "active") or "active").strip().lower() == "done":
+            return {"changed": False, "item": dict(item), "error": "That review item is already done."}
+        item["status"] = "done"
+        item["completed_at"] = current_timestamp()
+        return {"changed": True, "item": dict(item), "error": ""}
+    return {"changed": False, "item": None, "error": "Review item not found."}
+
+
+def build_chess_home_cards(data, train_today_count=0, review_queue_count=0):
     data = data if isinstance(data, dict) else default_chess_data()
     profiles = len(data.get("profiles", []) or [])
     imports = len(data.get("imports", []) or [])
     games = len(data.get("games", []) or [])
-    review_queue = len(data.get("review_queue", []) or [])
     return [
         {"label": "Profiles", "value": str(profiles) if profiles else "0"},
         {"label": "Prepared imports", "value": str(imports) if imports else "0"},
         {"label": "Imported games", "value": str(games) if games else "0"},
         {"label": "Train today", "value": str(train_today_count) if train_today_count else "0", "href": url_for("chess_train")},
-        {"label": "Review queue", "value": str(review_queue) if review_queue else "0"},
+        {"label": "Review queue", "value": str(review_queue_count) if review_queue_count else "0"},
     ]
+
+
+def build_chess_redirect_with_message(default_path, success=None, error=None):
+    target = str(request.referrer or "").strip() or str(default_path or "").strip() or url_for("chess_train")
+    parsed = urllib.parse.urlsplit(target)
+    query = dict(urllib.parse.parse_qsl(parsed.query, keep_blank_values=True))
+    if success:
+        query["success"] = str(success).strip()
+    if error:
+        query["error"] = str(error).strip()
+    return urllib.parse.urlunsplit((
+        parsed.scheme,
+        parsed.netloc,
+        parsed.path,
+        urllib.parse.urlencode(query, doseq=True),
+        parsed.fragment,
+    ))
 
 
 def parse_timestamp(value):
@@ -18649,6 +18819,7 @@ def build_lotus_chess_context(active_key="home"):
     active_profile_id = str((chess_data.get("settings", {}) or {}).get("active_profile_id", "") or "").strip()
     active_profile = next((profile for profile in profiles if str(profile.get("id", "") or "").strip() == active_profile_id), None)
     training_recommendations = build_training_recommendations(chess_data)
+    review_snapshot = build_chess_review_queue_snapshot(chess_data)
 
     nav_items = [
         {"key": "home", "label": "Home", "href": url_for("chess"), "icon": "layout-dashboard"},
@@ -18666,7 +18837,7 @@ def build_lotus_chess_context(active_key="home"):
             "summary": "A personal chess workspace centered on your games, your opening habits, and the next training action that actually matters.",
             "cta_primary": {"label": "Start with Import", "href": url_for("chess_import")},
             "cta_secondary": {"label": "Browse Games", "href": url_for("chess_games")},
-            "cards": build_chess_home_cards(chess_data, train_today_count=training_recommendations.get("train_today_count", 0)),
+            "cards": build_chess_home_cards(chess_data, train_today_count=training_recommendations.get("train_today_count", 0), review_queue_count=review_snapshot.get("active_count", 0)),
             "sections": [
                 {
                     "title": "Why Lotus Chess",
@@ -18759,15 +18930,15 @@ def build_lotus_chess_context(active_key="home"):
             "summary": "This page will track only the signals that help you improve, without turning Lotus Chess into a chart-heavy analytics wall.",
             "cards": [
                 {"label": "Imported games", "value": str(len(games)) if games else "0"},
+                {"label": "Active review queue", "value": str(review_snapshot.get("active_count", 0)) if review_snapshot.get("active_count", 0) else "0"},
+                {"label": "Completed reviews", "value": str(review_snapshot.get("completed_count", 0)) if review_snapshot.get("completed_count", 0) else "0"},
                 {"label": "Openings tracked", "value": "Coming soon"},
-                {"label": "Active weak lines", "value": "Coming soon"},
-                {"label": "Reviewed this week", "value": "Coming soon"},
                 {"label": "Mastered lines", "value": "Coming soon"},
             ],
             "sections": [
                 {
                     "title": "Useful metrics only",
-                    "description": "Imported games, active weaknesses, and review volume are enough to tell whether the system is helping.",
+                    "description": "Imported games, active review items, and completion volume are enough to tell whether the system is helping.",
                 },
             ],
         },
@@ -18823,7 +18994,8 @@ def build_lotus_chess_context(active_key="home"):
         "chess_profiles_count": len(profiles),
         "chess_imports_count": len(imports),
         "chess_games_count": len(games),
-        "chess_review_queue_count": len(review_queue),
+        "chess_review_queue_count": review_snapshot.get("active_count", 0),
+        "chess_review_queue_completed_count": review_snapshot.get("completed_count", 0),
         "chess_active_profile": active_profile,
         "chess_import_history": history_items,
         "chess_success_message": str(request.args.get("success", "") or "").strip(),
@@ -18833,6 +19005,9 @@ def build_lotus_chess_context(active_key="home"):
         "ai_default_mode": "study",
         "ai_page_context": "general",
         "chess_training_recommendations": training_recommendations,
+        "chess_review_queue_snapshot": review_snapshot,
+        "chess_review_queue_active_count": review_snapshot.get("active_count", 0),
+        "chess_review_queue_completed_count": review_snapshot.get("completed_count", 0),
     }
 
 
@@ -18885,6 +19060,7 @@ def chess_game_detail(game_id):
     game = find_chess_game(chess_data, decoded_game_id)
     if not game:
         return redirect(url_for("chess_games", error="That game could not be found in local Lotus Chess data."))
+    review_snapshot = build_chess_review_queue_snapshot(chess_data)
     nav_items = [
         {"key": "home", "label": "Home", "href": url_for("chess"), "icon": "layout-dashboard"},
         {"key": "import", "label": "Import", "href": url_for("chess_import"), "icon": "download"},
@@ -18894,12 +19070,15 @@ def chess_game_detail(game_id):
         {"key": "progress", "label": "Progress", "href": url_for("chess_progress"), "icon": "activity"},
         {"key": "courses", "label": "Courses", "href": url_for("chess_courses"), "icon": "graduation-cap"},
     ]
-    detail = build_chess_game_detail_payload(game)
+    detail = build_chess_game_detail_payload(game, review_snapshot=review_snapshot)
+    detail["review_queue_active"] = bool(detail.get("review_queue_active", False))
+    detail["review_queue_item_id"] = str(detail.get("review_queue_item_id", "") or "").strip()
     return render_template(
         "chess_game_detail.html",
         chess_nav_items=nav_items,
         chess_active_key="games",
         chess_game=detail,
+        chess_review_queue_snapshot=review_snapshot,
         title=f"Lotus Chess | {detail['title']}",
         ai_default_mode="study",
         ai_page_context="general",
@@ -18966,6 +19145,68 @@ def chess_progress():
 @app.route("/chess/courses", endpoint="chess_courses")
 def chess_courses():
     return render_lotus_chess_page("courses")
+
+
+@app.route("/chess/review/add-game", methods=["POST"], endpoint="chess_review_add_game")
+def chess_review_add_game():
+    chess_data = load_chess_data()
+    game_id = decode_chess_game_url_id(request.form.get("game_id", ""))
+    reason = str(request.form.get("reason", "") or "").strip()
+    game = find_chess_game(chess_data, game_id)
+    if not game:
+        return redirect(build_chess_redirect_with_message(url_for("chess_train"), error="That game could not be found in local Lotus Chess data."))
+    title = f"{str(game.get('white', '') or '').strip() or 'White'} vs {str(game.get('black', '') or '').strip() or 'Black'}"
+    result = add_chess_review_queue_item(
+        chess_data,
+        "game",
+        title=title,
+        reason=reason or f"Review {chess_user_result_label(game.get('user_result', ''))} game.",
+        game_id=game_id,
+    )
+    if result.get("duplicate"):
+        return redirect(build_chess_redirect_with_message(url_for("chess_train"), success="Already in review queue."))
+    if not result.get("created"):
+        return redirect(build_chess_redirect_with_message(url_for("chess_train"), error=result.get("error") or "Could not add game to review queue."))
+    save_chess_data(chess_data)
+    return redirect(build_chess_redirect_with_message(url_for("chess_train"), success="Added to review queue."))
+
+
+@app.route("/chess/review/add-opening", methods=["POST"], endpoint="chess_review_add_opening")
+def chess_review_add_opening():
+    chess_data = load_chess_data()
+    opening_key = normalize_chess_opening_token(request.form.get("opening_key", ""))
+    opening_label = str(request.form.get("opening_label", "") or "").strip()
+    reason = str(request.form.get("reason", "") or "").strip()
+    if not opening_key:
+        return redirect(build_chess_redirect_with_message(url_for("chess_train"), error="Missing opening key."))
+    if not opening_label:
+        match = next((game for game in (chess_data.get("games", []) or []) if isinstance(game, dict) and normalize_chess_opening_token(get_game_opening_key(game)) == opening_key), None)
+        opening_label = get_game_opening_label(match) if match else opening_key
+    result = add_chess_review_queue_item(
+        chess_data,
+        "opening",
+        title=opening_label,
+        reason=reason or "Review this opening later.",
+        opening_key=opening_key,
+        opening_label=opening_label,
+    )
+    if result.get("duplicate"):
+        return redirect(build_chess_redirect_with_message(url_for("chess_train"), success="Already in review queue."))
+    if not result.get("created"):
+        return redirect(build_chess_redirect_with_message(url_for("chess_train"), error=result.get("error") or "Could not add opening to review queue."))
+    save_chess_data(chess_data)
+    return redirect(build_chess_redirect_with_message(url_for("chess_train"), success="Added to review queue."))
+
+
+@app.route("/chess/review/complete", methods=["POST"], endpoint="chess_review_complete")
+def chess_review_complete():
+    chess_data = load_chess_data()
+    queue_id = str(request.form.get("queue_id", "") or "").strip()
+    result = complete_chess_review_queue_item(chess_data, queue_id)
+    if not result.get("changed"):
+        return redirect(build_chess_redirect_with_message(url_for("chess_train"), error=result.get("error") or "Could not mark review item done."))
+    save_chess_data(chess_data)
+    return redirect(build_chess_redirect_with_message(url_for("chess_train"), success="Marked as done."))
 
 
 @app.route("/chess/import/prepare", methods=["POST"], endpoint="chess_import_prepare")

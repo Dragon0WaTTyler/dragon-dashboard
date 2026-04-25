@@ -647,6 +647,20 @@ h2{font-size:clamp(2.2rem,4vw,3.6rem);margin-top:14px;letter-spacing:-.03em}.det
   white-space:nowrap;
 }
 
+.chess-game-actions,
+.chess-train-row-actions,
+.chess-review-queue-actions{
+  display:grid;
+  gap:8px;
+  justify-items:start;
+}
+
+.chess-mini-action-btn{
+  min-height:40px;
+  padding:10px 14px;
+  font-size:.9rem;
+}
+
 .chess-game-detail-grid{
   display:grid;
   grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
@@ -759,6 +773,12 @@ h2{font-size:clamp(2.2rem,4vw,3.6rem);margin-top:14px;letter-spacing:-.03em}.det
   margin:0;
 }
 
+.chess-train-card-actions{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+}
+
 .chess-train-pairs{
   display:grid;
   grid-template-columns:repeat(2,minmax(0,1fr));
@@ -815,6 +835,46 @@ h2{font-size:clamp(2.2rem,4vw,3.6rem);margin-top:14px;letter-spacing:-.03em}.det
 
 .chess-inline-btn{
   justify-self:start;
+}
+
+.chess-review-queue-list{
+  display:grid;
+  gap:12px;
+}
+
+.chess-review-queue-item{
+  display:grid;
+  gap:10px;
+  padding:16px;
+  border-radius:18px;
+  border:1px solid var(--border);
+  background:rgba(255,255,255,.03);
+}
+
+.chess-review-queue-head{
+  display:flex;
+  gap:10px;
+  align-items:flex-start;
+  justify-content:space-between;
+}
+
+.chess-review-queue-head strong{
+  min-width:0;
+  overflow-wrap:anywhere;
+}
+
+.chess-review-queue-meta{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  color:var(--text-2);
+  font-size:.85rem;
+}
+
+.chess-review-queue-actions{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
 }
 
 .chess-history-list{
@@ -968,6 +1028,19 @@ h2{font-size:clamp(2.2rem,4vw,3.6rem);margin-top:14px;letter-spacing:-.03em}.det
     width:100%;
   }
 
+  .chess-game-actions,
+  .chess-train-row-actions,
+  .chess-review-queue-actions{
+    width:100%;
+    justify-items:stretch;
+  }
+
+  .chess-game-actions .btn,
+  .chess-train-row-actions .btn,
+  .chess-review-queue-actions .btn{
+    width:100%;
+  }
+
   .chess-openings-pairs{
     grid-template-columns:1fr;
   }
@@ -996,6 +1069,10 @@ h2{font-size:clamp(2.2rem,4vw,3.6rem);margin-top:14px;letter-spacing:-.03em}.det
   .chess-train-row-meta{
     justify-content:flex-start;
   }
+
+  .chess-review-queue-head{
+    flex-direction:column;
+  }
 }
 
 @media (max-width:640px){
@@ -1014,6 +1091,11 @@ h2{font-size:clamp(2.2rem,4vw,3.6rem);margin-top:14px;letter-spacing:-.03em}.det
 
   .chess-train-cards{
     grid-template-columns:1fr;
+  }
+
+  .chess-review-queue-actions{
+    flex-direction:column;
+    align-items:stretch;
   }
 }
 

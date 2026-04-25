@@ -12,6 +12,15 @@
         {% if chess_game.url %}
         <a class="btn" href="{{ chess_game.url }}" target="_blank" rel="noopener noreferrer"><i data-lucide="arrow-up-right"></i><span>Original game</span></a>
         {% endif %}
+        {% if chess_game.review_queue_active %}
+        <span class="chess-status-pill">Already in review queue</span>
+        {% else %}
+        <form method="post" action="{{ url_for('chess_review_add_game') }}">
+            <input type="hidden" name="game_id" value="{{ chess_game.id }}">
+            <input type="hidden" name="reason" value="Saved from game detail.">
+            <button type="submit" class="btn"><i data-lucide="bookmark-plus"></i><span>Add this game to review queue</span></button>
+        </form>
+        {% endif %}
     </div>
 </section>
 

@@ -1,0 +1,227 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="page-hero chess-hero">
+    <div class="hero-meta">
+        <span class="hero-badge matte-tag">Lotus Chess</span>
+        <span>Training dashboard</span>
+    </div>
+    <h2>{{ chess_area.title }}</h2>
+    <p class="subhead">{{ chess_area.summary }}</p>
+    <div class="chess-hero-actions">
+        <a class="btn" href="{{ url_for('chess_games') }}"><i data-lucide="library-big"></i><span>Browse Games</span></a>
+        <a class="btn" href="{{ url_for('chess_openings') }}"><i data-lucide="waypoints"></i><span>Browse Openings</span></a>
+    </div>
+</section>
+
+<nav class="surface-card chess-subnav" aria-label="Lotus Chess areas">
+    {% for item in chess_nav_items %}
+    <a class="chess-subnav-link {{ 'active' if item.key == chess_active_key else '' }}" href="{{ item.href }}">
+        <i data-lucide="{{ item.icon }}"></i>
+        <span>{{ item.label }}</span>
+    </a>
+    {% endfor %}
+</nav>
+
+<section class="chess-main chess-train-page">
+    <section class="surface-card section-card chess-focus-card">
+        <div class="hero-meta">
+            <span class="hero-badge matte-tag">{{ chess_area.eyebrow }}</span>
+            <span>Phase 2F V0</span>
+        </div>
+        <h3 class="title-scaled chess-section-title">{{ chess_area.title }}</h3>
+        <p class="subhead chess-section-copy">{{ chess_area.summary }}</p>
+        <section class="chess-overview-grid chess-train-overview-grid">
+            {% for card in chess_area.cards %}
+            <article class="surface-card chess-overview-card">
+                <span class="chess-card-label">{{ card.label }}</span>
+                <strong class="chess-card-value">{{ card.value }}</strong>
+            </article>
+            {% endfor %}
+        </section>
+    </section>
+
+    {% if not chess_training_recommendations.has_games %}
+    <section class="surface-card section-card chess-empty-state chess-train-empty">
+        <div class="hero-meta">
+            <span class="hero-badge matte-tag">No games yet</span>
+            <span>Start from import</span>
+        </div>
+        <p class="chess-summary-note">Import games first so Lotus Chess can turn them into training signals.</p>
+        <a class="btn" href="{{ url_for('chess_import') }}"><i data-lucide="download"></i><span>Go to Import</span></a>
+    </section>
+    {% else %}
+    {% if chess_training_recommendations.games_with_opening_count == 0 %}
+    <section class="surface-card section-card chess-train-note-card">
+        <div class="hero-meta">
+            <span class="hero-badge matte-tag">Opening data missing</span>
+            <span>Train still works</span>
+        </div>
+        <p class="chess-summary-note">Run Extract PGN Openings first.</p>
+        <a class="btn" href="{{ url_for('chess_games') }}"><i data-lucide="library-big"></i><span>Go to Games</span></a>
+    </section>
+    {% endif %}
+
+    <section class="surface-card section-card chess-train-section">
+        <div class="hero-meta">
+            <span class="hero-badge matte-tag">Train today</span>
+            <span>{{ chess_training_recommendations.train_today_count }} cards</span>
+        </div>
+        {% if chess_training_recommendations.train_today %}
+        <div class="chess-train-cards">
+            {% for card in chess_training_recommendations.train_today %}
+            <article class="surface-card chess-train-action-card">
+                <h3>{{ card.title }}</h3>
+                <p class="chess-summary-note">{{ card.subtitle }}</p>
+                <p class="chess-summary-note">{{ card.reason }}</p>
+                <div class="chess-train-card-actions">
+                    <a class="btn chess-inline-btn" href="{{ card.action_url }}">
+                        <i data-lucide="arrow-up-right"></i><span>{{ card.action_label }}</span>
+                    </a>
+                </div>
+            </article>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="chess-summary-note">No training cards yet. Extract PGN openings, then check back here.</p>
+        {% endif %}
+    </section>
+
+    <section class="chess-train-pairs">
+        <article class="surface-card section-card chess-train-column">
+            <div class="hero-meta">
+                <span class="hero-badge matte-tag">Weak spots V0</span>
+                <span>Result-based only. Engine analysis comes later.</span>
+            </div>
+            {% if chess_training_recommendations.weak_openings %}
+            <div class="chess-train-list">
+                {% for opening in chess_training_recommendations.weak_openings %}
+                <a class="chess-train-row" href="{{ url_for('chess_games', opening_key=opening.key) }}">
+                    <div class="chess-train-row-main">
+                        <strong>{{ opening.label }}</strong>
+                        <span>{{ opening.total }} games</span>
+                    </div>
+                    <div class="chess-train-row-meta">
+                        <span>W {{ opening.wins }}</span>
+                        <span>L {{ opening.losses }}</span>
+                        <span>D {{ opening.draws }}</span>
+                        <span>{{ opening.score_percent }}%</span>
+                    </div>
+                </a>
+                <div class="chess-train-row-actions">
+                    {% if opening.key in chess_review_queue_snapshot.active_opening_keys %}
+                    <span class="chess-status-pill">Already in review queue</span>
+                    {% else %}
+                    <form method="post" action="{{ url_for('chess_review_add_opening') }}">
+                        <input type="hidden" name="opening_key" value="{{ opening.key }}">
+                        <input type="hidden" name="opening_label" value="{{ opening.label }}">
+                        <input type="hidden" name="reason" value="Result-based weak spot with {{ opening.total }} games.">
+                        <button type="submit" class="btn chess-mini-action-btn"><i data-lucide="bookmark-plus"></i><span>Add to review queue</span></button>
+                    </form>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p class="chess-summary-note">No weak openings yet.</p>
+            {% endif %}
+        </article>
+
+        <article class="surface-card section-card chess-train-column">
+            <div class="hero-meta">
+                <span class="hero-badge matte-tag">Recent losses</span>
+                <span>Latest 8</span>
+            </div>
+            {% if chess_training_recommendations.recent_losses %}
+            <div class="chess-train-list">
+                {% for game in chess_training_recommendations.recent_losses %}
+                <a class="chess-train-row" href="{{ game.action_url }}">
+                    <div class="chess-train-row-main">
+                        <strong>{{ game.title }}</strong>
+                        <span>{{ game.subtitle }}</span>
+                    </div>
+                    <div class="chess-train-row-meta">
+                        <span>{{ game.user_color_label }}</span>
+                        <span>{{ game.time_class_label }}</span>
+                    </div>
+                </a>
+                <div class="chess-train-row-actions">
+                    {% if game.id in chess_review_queue_snapshot.active_game_ids %}
+                    <span class="chess-status-pill">Already in review queue</span>
+                    {% else %}
+                    <form method="post" action="{{ url_for('chess_review_add_game') }}">
+                        <input type="hidden" name="game_id" value="{{ game.id }}">
+                        <input type="hidden" name="reason" value="Recent loss in {{ game.time_class_label }}.">
+                        <button type="submit" class="btn chess-mini-action-btn"><i data-lucide="bookmark-plus"></i><span>Add to review queue</span></button>
+                    </form>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p class="chess-summary-note">No recent losses found in the imported games.</p>
+            {% endif %}
+        </article>
+    </section>
+
+    <section class="chess-train-pairs">
+        <article class="surface-card section-card chess-train-column">
+            <div class="hero-meta">
+                <span class="hero-badge matte-tag">Frequent openings</span>
+                <span>Most played</span>
+            </div>
+            {% if chess_training_recommendations.frequent_openings_to_review %}
+            <div class="chess-train-list">
+                {% for opening in chess_training_recommendations.frequent_openings_to_review[:6] %}
+                <a class="chess-train-row" href="{{ url_for('chess_games', opening_key=opening.key) }}">
+                    <div class="chess-train-row-main">
+                        <strong>{{ opening.label }}</strong>
+                        <span>{{ opening.total }} games</span>
+                    </div>
+                    <div class="chess-train-row-meta">
+                        <span>{{ opening.score_percent }}%</span>
+                    </div>
+                </a>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p class="chess-summary-note">No frequent openings yet.</p>
+            {% endif %}
+        </article>
+
+        <article class="surface-card section-card chess-train-column">
+            <div class="hero-meta">
+                <span class="hero-badge matte-tag">Review queue</span>
+                <span>{{ chess_review_queue_snapshot.active_count }} active</span>
+            </div>
+            <h3>Review Queue V0</h3>
+            {% if chess_review_queue_snapshot.active_items %}
+            <div class="chess-review-queue-list">
+                {% for item in chess_review_queue_snapshot.active_items %}
+                <article class="surface-card chess-review-queue-item">
+                    <div class="chess-review-queue-head">
+                        <strong>{{ item.title }}</strong>
+                        <span class="chess-status-pill">{{ item.type_label }}</span>
+                    </div>
+                    <p class="chess-summary-note">{{ item.reason or 'Saved for later review.' }}</p>
+                    <div class="chess-review-queue-meta">
+                        <span>{{ item.created_at }}</span>
+                        <span>{{ item.type_label }}</span>
+                    </div>
+                    <div class="chess-review-queue-actions">
+                        <a class="btn chess-mini-action-btn" href="{{ item.action_url }}"><i data-lucide="arrow-up-right"></i><span>{% if item.type == 'game' %}Open game{% else %}Open games{% endif %}</span></a>
+                        <form method="post" action="{{ url_for('chess_review_complete') }}">
+                            <input type="hidden" name="queue_id" value="{{ item.id }}">
+                            <button type="submit" class="btn chess-mini-action-btn"><i data-lucide="check"></i><span>Mark done</span></button>
+                        </form>
+                    </div>
+                </article>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p class="chess-summary-note">Review queue comes next.</p>
+            {% endif %}
+        </article>
+    </section>
+    {% endif %}
+</section>
+{% endblock %}
