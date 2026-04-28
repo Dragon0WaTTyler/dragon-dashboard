@@ -1,0 +1,266 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="page-hero chess-hero">
+    <div class="hero-meta">
+        <span class="hero-badge matte-tag">Lotus Chess</span>
+        <span>Progress dashboard</span>
+    </div>
+    <h2>{{ chess_area.title }}</h2>
+    <p class="subhead">{{ chess_area.summary }}</p>
+    <div class="chess-hero-actions">
+        <a class="btn" href="{{ url_for('chess_train') }}"><i data-lucide="target"></i><span>Go to Train</span></a>
+        <a class="btn" href="{{ url_for('chess_openings') }}"><i data-lucide="waypoints"></i><span>Browse Openings</span></a>
+        <a class="btn" href="{{ url_for('chess_games') }}"><i data-lucide="library-big"></i><span>Browse Games</span></a>
+    </div>
+</section>
+
+<nav class="surface-card chess-subnav" aria-label="Lotus Chess areas">
+    {% for item in chess_nav_items %}
+    <a class="chess-subnav-link {{ 'active' if item.key == chess_active_key else '' }}" href="{{ item.href }}">
+        <i data-lucide="{{ item.icon }}"></i>
+        <span>{{ item.label }}</span>
+    </a>
+    {% endfor %}
+</nav>
+
+<section class="chess-main chess-progress-page">
+    <section class="surface-card section-card chess-focus-card">
+        <div class="hero-meta">
+            <span class="hero-badge matte-tag">{{ chess_area.eyebrow }}</span>
+            <span>Phase 2F V0</span>
+        </div>
+        <h3 class="title-scaled chess-section-title">{{ chess_area.title }}</h3>
+        <p class="subhead chess-section-copy">{{ chess_area.summary }}</p>
+
+        <section class="chess-overview-grid chess-progress-overview-grid">
+            {% for card in chess_area.cards %}
+            <article class="surface-card chess-overview-card">
+                <span class="chess-card-label">{{ card.label }}</span>
+                <strong class="chess-card-value">{{ card.value }}</strong>
+            </article>
+            {% endfor %}
+        </section>
+    </section>
+
+    {% if not chess_progress.has_games %}
+    <section class="surface-card section-card chess-empty-state chess-progress-empty">
+        <div class="hero-meta">
+            <span class="hero-badge matte-tag">No games yet</span>
+            <span>Start from import</span>
+        </div>
+        <p class="chess-summary-note">Import games first so Lotus Chess can start showing useful progress signals.</p>
+        <a class="btn" href="{{ url_for('chess_import') }}"><i data-lucide="download"></i><span>Go to Import</span></a>
+    </section>
+    {% else %}
+    <section class="chess-progress-grid">
+        <article class="surface-card section-card chess-progress-panel">
+            <div class="hero-meta">
+                <span class="hero-badge matte-tag">Overall record</span>
+                <span>Result-based only</span>
+            </div>
+            <div class="chess-progress-chip-row">
+                <span class="chess-progress-chip"><strong>{{ chess_progress.overall.wins }}</strong> Wins</span>
+                <span class="chess-progress-chip"><strong>{{ chess_progress.overall.losses }}</strong> Losses</span>
+                <span class="chess-progress-chip"><strong>{{ chess_progress.overall.draws }}</strong> Draws</span>
+                <span class="chess-progress-chip"><strong>{{ chess_progress.overall.unknown }}</strong> Unknown</span>
+            </div>
+            <div class="chess-progress-chip-row">
+                <span class="chess-progress-chip"><strong>{{ chess_progress.overall.score_percent_label }}</strong> Score</span>
+                <span class="chess-progress-chip"><strong>{{ chess_progress.overall.rated_games }}</strong> Rated</span>
+                <span class="chess-progress-chip"><strong>{{ chess_progress.overall.unrated_games }}</strong> Unrated</span>
+            </div>
+        </article>
+
+        <article class="surface-card section-card chess-progress-panel">
+            <div class="hero-meta">
+                <span class="hero-badge matte-tag">White performance</span>
+                <span>{{ chess_progress.white.total }} games</span>
+            </div>
+            <div class="chess-progress-chip-row">
+                <span class="chess-progress-chip"><strong>{{ chess_progress.white.wins }}</strong> W</span>
+                <span class="chess-progress-chip"><strong>{{ chess_progress.white.losses }}</strong> L</span>
+                <span class="chess-progress-chip"><strong>{{ chess_progress.white.draws }}</strong> D</span>
+                <span class="chess-progress-chip"><strong>{{ chess_progress.white.score_percent_label }}</strong> Score</span>
+            </div>
+        </article>
+
+        <article class="surface-card section-card chess-progress-panel">
+            <div class="hero-meta">
+                <span class="hero-badge matte-tag">Black performance</span>
+                <span>{{ chess_progress.black.total }} games</span>
+            </div>
+            <div class="chess-progress-chip-row">
+                <span class="chess-progress-chip"><strong>{{ chess_progress.black.wins }}</strong> W</span>
+                <span class="chess-progress-chip"><strong>{{ chess_progress.black.losses }}</strong> L</span>
+                <span class="chess-progress-chip"><strong>{{ chess_progress.black.draws }}</strong> D</span>
+                <span class="chess-progress-chip"><strong>{{ chess_progress.black.score_percent_label }}</strong> Score</span>
+            </div>
+        </article>
+    </section>
+
+    <section class="surface-card section-card chess-progress-time-card">
+        <div class="hero-meta">
+            <span class="hero-badge matte-tag">Time class split</span>
+            <span>Rapid / Blitz / Bullet / Daily / Other</span>
+        </div>
+        {% if chess_progress.time_classes %}
+        <div class="chess-progress-time-list">
+            {% for row in chess_progress.time_classes %}
+            <div class="chess-progress-time-row">
+                <div class="chess-progress-time-label">
+                    <strong>{{ row.label }}</strong>
+                    <span>{{ row.total }} games</span>
+                </div>
+                <div class="chess-progress-time-stats">
+                    <span>W {{ row.wins }}</span>
+                    <span>L {{ row.losses }}</span>
+                    <span>D {{ row.draws }}</span>
+                    <span>{{ row.score_percent_label }}</span>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="chess-progress-empty">No time-class data yet.</div>
+        {% endif %}
+    </section>
+
+    <section class="chess-progress-grid">
+        <article class="surface-card section-card chess-progress-panel">
+            <div class="hero-meta">
+                <span class="hero-badge matte-tag">Opening signals V0</span>
+                <span>Result-based only. Engine analysis comes later.</span>
+            </div>
+            {% if chess_progress.openings.tracked %}
+            <div class="chess-progress-opening-list">
+                {% if chess_progress.openings.most_played %}
+                <a class="chess-progress-opening-row" href="{{ chess_progress.openings.most_played.href }}">
+                    <div class="chess-progress-opening-main">
+                        <span>Most played</span>
+                        <strong>{{ chess_progress.openings.most_played.label }}</strong>
+                        <span>{{ chess_progress.openings.most_played.total }} games</span>
+                    </div>
+                    <div class="chess-progress-opening-stats">
+                        <span>{{ chess_progress.openings.most_played.score_percent_label }}</span>
+                    </div>
+                </a>
+                {% endif %}
+                {% if chess_progress.openings.weakest %}
+                <a class="chess-progress-opening-row" href="{{ chess_progress.openings.weakest.href }}">
+                    <div class="chess-progress-opening-main">
+                        <span>Weakest V0</span>
+                        <strong>{{ chess_progress.openings.weakest.label }}</strong>
+                        <span>{{ chess_progress.openings.weakest.total }} games</span>
+                    </div>
+                    <div class="chess-progress-opening-stats">
+                        <span>{{ chess_progress.openings.weakest.score_percent_label }}</span>
+                    </div>
+                </a>
+                {% else %}
+                <div class="chess-progress-empty">Need 3+ games in an opening to rank the weak spot signal.</div>
+                {% endif %}
+                {% if chess_progress.openings.strongest %}
+                <a class="chess-progress-opening-row" href="{{ chess_progress.openings.strongest.href }}">
+                    <div class="chess-progress-opening-main">
+                        <span>Strongest V0</span>
+                        <strong>{{ chess_progress.openings.strongest.label }}</strong>
+                        <span>{{ chess_progress.openings.strongest.total }} games</span>
+                    </div>
+                    <div class="chess-progress-opening-stats">
+                        <span>{{ chess_progress.openings.strongest.score_percent_label }}</span>
+                    </div>
+                </a>
+                {% endif %}
+            </div>
+            {% else %}
+            <div class="chess-progress-empty">Run Extract PGN Openings first.</div>
+            <a class="btn" href="{{ url_for('chess_games') }}"><i data-lucide="library-big"></i><span>Go to Games</span></a>
+            {% endif %}
+        </article>
+
+        <article class="surface-card section-card chess-progress-panel">
+            <div class="hero-meta">
+                <span class="hero-badge matte-tag">Review queue progress</span>
+                <span>{{ chess_progress.review_queue.active_count }} active</span>
+            </div>
+            <div class="chess-progress-chip-row">
+                <span class="chess-progress-chip"><strong>{{ chess_progress.review_queue.active_count }}</strong> Active items</span>
+                <span class="chess-progress-chip"><strong>{{ chess_progress.review_queue.completed_count }}</strong> Completed items</span>
+                <span class="chess-progress-chip"><strong>{{ chess_progress.review_queue.active_game_count }}</strong> Games</span>
+                <span class="chess-progress-chip"><strong>{{ chess_progress.review_queue.active_opening_count }}</strong> Openings</span>
+            </div>
+            <p class="chess-summary-note">Saved review items live in local chess_data.json.</p>
+            <a class="btn chess-inline-btn" href="{{ url_for('chess_train') }}"><i data-lucide="target"></i><span>Go to Train</span></a>
+        </article>
+    </section>
+
+    <section class="chess-progress-activity-grid">
+        <article class="surface-card section-card chess-progress-activity-card">
+            <div class="hero-meta">
+                <span class="hero-badge matte-tag">Latest import</span>
+                <span>Local only</span>
+            </div>
+            {% if chess_progress.recent_activity.latest_import_job %}
+            <div class="chess-progress-activity-head">
+                <strong>{{ chess_progress.recent_activity.latest_import_job.source_label }} · {{ chess_progress.recent_activity.latest_import_job.username }}</strong>
+                <span class="chess-status-pill">{{ chess_progress.recent_activity.latest_import_job.status|title }}</span>
+            </div>
+            <p class="chess-summary-note">{{ chess_progress.recent_activity.latest_import_job.summary or 'Imported public Chess.com games.' }}</p>
+            <div class="chess-progress-activity-meta">
+                <span>{{ chess_progress.recent_activity.latest_import_job.created_at }}</span>
+                <span>{{ chess_progress.recent_activity.latest_import_job.requested_scope }}</span>
+                <span>{{ chess_progress.recent_activity.latest_import_job.time_control|title }}</span>
+                <span>{{ chess_progress.recent_activity.latest_import_job.color|title }}</span>
+                <span>{{ chess_progress.recent_activity.latest_import_job.imported_new }} new</span>
+            </div>
+            {% else %}
+            <div class="chess-progress-empty">No import activity yet.</div>
+            {% endif %}
+        </article>
+
+        <article class="surface-card section-card chess-progress-activity-card">
+            <div class="hero-meta">
+                <span class="hero-badge matte-tag">Latest review</span>
+                <span>Active queue</span>
+            </div>
+            {% if chess_progress.recent_activity.latest_active_review_item %}
+            <div class="chess-progress-activity-head">
+                <strong>{{ chess_progress.recent_activity.latest_active_review_item.title }}</strong>
+                <span class="chess-status-pill">{{ chess_progress.recent_activity.latest_active_review_item.type_label }}</span>
+            </div>
+            <p class="chess-summary-note">{{ chess_progress.recent_activity.latest_active_review_item.reason or 'Saved for later review.' }}</p>
+            <div class="chess-progress-activity-meta">
+                <span>{{ chess_progress.recent_activity.latest_active_review_item.created_at_label }}</span>
+                <span>{{ chess_progress.recent_activity.latest_active_review_item.type_label }}</span>
+            </div>
+            {% if chess_progress.recent_activity.latest_active_review_item.action_url %}
+            <a class="btn chess-inline-btn" href="{{ chess_progress.recent_activity.latest_active_review_item.action_url }}"><i data-lucide="arrow-up-right"></i><span>Open item</span></a>
+            {% endif %}
+            {% else %}
+            <div class="chess-progress-empty">No active review items yet.</div>
+            {% endif %}
+        </article>
+
+        <article class="surface-card section-card chess-progress-activity-card">
+            <div class="hero-meta">
+                <span class="hero-badge matte-tag">Latest completion</span>
+                <span>Finished queue item</span>
+            </div>
+            {% if chess_progress.recent_activity.latest_completed_review_item %}
+            <div class="chess-progress-activity-head">
+                <strong>{{ chess_progress.recent_activity.latest_completed_review_item.title }}</strong>
+                <span class="chess-status-pill">{{ chess_progress.recent_activity.latest_completed_review_item.type_label }}</span>
+            </div>
+            <p class="chess-summary-note">{{ chess_progress.recent_activity.latest_completed_review_item.reason or 'Marked done.' }}</p>
+            <div class="chess-progress-activity-meta">
+                <span>{{ chess_progress.recent_activity.latest_completed_review_item.completed_at_label }}</span>
+                <span>{{ chess_progress.recent_activity.latest_completed_review_item.type_label }}</span>
+            </div>
+            {% else %}
+            <div class="chess-progress-empty">No completed review items yet.</div>
+            {% endif %}
+        </article>
+    </section>
+    {% endif %}
+</section>
+{% endblock %}

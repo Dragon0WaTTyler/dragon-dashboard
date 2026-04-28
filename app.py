@@ -1724,6 +1724,190 @@ def build_training_recommendations(data):
     }
 
 
+def format_chess_percent(value):
+    try:
+        number = round(float(value or 0.0), 1)
+    except Exception:
+        number = 0.0
+    if abs(number - int(number)) < 1e-9:
+        return f"{int(number)}%"
+    return f"{number:.1f}%"
+
+
+def build_chess_result_summary(games):
+    items = [dict(item) for item in games or [] if isinstance(item, dict)]
+    total = len(items)
+    wins = 0
+    losses = 0
+    draws = 0
+    unknown = 0
+    rated_games = 0
+    score_total = 0.0
+    for game in items:
+        result = str(game.get("user_result", "") or "").strip().lower() or "unknown"
+        if bool(game.get("rated", False)):
+            rated_games += 1
+        if result == "win":
+            wins += 1
+            score_total += 1
+        elif result == "loss":
+            losses += 1
+        elif result == "draw":
+            draws += 1
+            score_total += 0.5
+        else:
+            unknown += 1
+    score_percent = round((score_total / total) * 100, 1) if total else 0.0
+    return {
+        "total": total,
+        "wins": wins,
+        "losses": losses,
+        "draws": draws,
+        "unknown": unknown,
+        "score_total": score_total,
+        "score_percent": score_percent,
+        "score_percent_label": format_chess_percent(score_percent),
+        "rated_games": rated_games,
+        "unrated_games": max(0, total - rated_games),
+    }
+
+
+def build_chess_progress(data):
+    payload = data if isinstance(data, dict) else default_chess_data()
+    games = [dict(item) for item in payload.get("games", []) or [] if isinstance(item, dict)]
+    imports = [dict(item) for item in payload.get("imports", []) or [] if isinstance(item, dict)]
+    review_snapshot = build_chess_review_queue_snapshot(payload)
+    opening_summary = [dict(item) for item in build_opening_summary(payload) if str(item.get("label", "") or "").strip() and str(item.get("label", "") or "") != "Opening pending"]
+    tracked_openings = list(opening_summary)
+    openings_with_data = sum(1 for game in games if str((game.get("opening", {}) or {}).get("name", "") or "").strip() or str((game.get("opening", {}) or {}).get("eco", "") or "").strip())
+    openings_without_data = max(0, len(games) - openings_with_data)
+    timestamp_floor = datetime.min.replace(tzinfo=datetime.now().astimezone().tzinfo)
+
+    def _sort_timestamp(value):
+        timestamp = parse_timestamp(value)
+        if not timestamp:
+            return timestamp_floor
+        if timestamp.tzinfo is None:
+            return timestamp.replace(tzinfo=timestamp_floor.tzinfo)
+        return timestamp
+
+    overall = build_chess_result_summary(games)
+    white_games = [game for game in games if str(game.get("user_color", "") or "").strip().lower() == "white"]
+    black_games = [game for game in games if str(game.get("user_color", "") or "").strip().lower() == "black"]
+    white = build_chess_result_summary(white_games)
+    black = build_chess_result_summary(black_games)
+
+    time_class_order = [
+        ("rapid", "Rapid"),
+        ("blitz", "Blitz"),
+        ("bullet", "Bullet"),
+        ("daily", "Daily"),
+        ("other", "Other / Unknown"),
+    ]
+    time_class_buckets = {key: [] for key, _label in time_class_order}
+    for game in games:
+        raw_time_class = str(game.get("time_class", "") or "").strip().lower()
+        bucket_key = raw_time_class if raw_time_class in time_class_buckets else "other"
+        time_class_buckets[bucket_key].append(game)
+    time_classes = []
+    for key, label in time_class_order:
+        stats = build_chess_result_summary(time_class_buckets.get(key, []))
+        if not stats["total"]:
+            continue
+        stats["key"] = key
+        stats["label"] = label
+        time_classes.append(stats)
+
+    most_played_opening = None
+    weakest_opening = None
+    strongest_opening = None
+    if tracked_openings:
+        most_played = sort_openings(tracked_openings, "most_played")
+        if most_played:
+            most_played_opening = dict(most_played[0])
+        weak_candidates = [item for item in tracked_openings if int(item.get("total", 0) or 0) >= 3]
+        if weak_candidates:
+            weakest_opening = dict(sort_openings(weak_candidates, "weakest")[0])
+            strongest_opening = dict(sort_openings(weak_candidates, "strongest")[0])
+
+    def _opening_signal_payload(item):
+        if not item:
+            return None
+        key = str(item.get("key", "") or "").strip()
+        payload_item = dict(item)
+        payload_item["score_percent_label"] = format_chess_percent(payload_item.get("score_percent", 0.0))
+        payload_item["href"] = url_for("chess_games", opening_key=key) if key else ""
+        return payload_item
+
+    latest_import_job = None
+    if imports:
+        latest_import_source = sorted(imports, key=lambda item: _sort_timestamp(item.get("created_at", "")), reverse=True)[0]
+        latest_import_job = {
+            "id": str(latest_import_source.get("id", "") or "").strip(),
+            "source": str(latest_import_source.get("source", "") or "").strip(),
+            "source_label": chess_source_label(latest_import_source.get("source", "")),
+            "username": str(latest_import_source.get("username", "") or "").strip(),
+            "status": str(latest_import_source.get("status", "") or "").strip() or "draft",
+            "requested_scope": str(latest_import_source.get("requested_scope", "") or "").strip(),
+            "time_control": str(latest_import_source.get("time_control", "") or "").strip() or "all",
+            "color": str(latest_import_source.get("color", "") or "").strip() or "both",
+            "created_at": format_timestamp_label(latest_import_source.get("created_at", ""), default=""),
+            "imported_new": int(((latest_import_source.get("summary", {}) or {}).get("imported_new", 0) or 0)),
+            "skipped_duplicates": int(((latest_import_source.get("summary", {}) or {}).get("skipped_duplicates", 0) or 0)),
+            "fetched": int(((latest_import_source.get("summary", {}) or {}).get("fetched", 0) or 0)),
+            "summary": str(((latest_import_source.get("summary", {}) or {}).get("message", "") or "")).strip(),
+        }
+
+    latest_active_review_item = None
+    if review_snapshot.get("active_items"):
+        latest_active_review_item = max(
+            [dict(item) for item in review_snapshot.get("active_items", []) or []],
+            key=lambda item: _sort_timestamp(item.get("created_at", "")),
+        )
+    if latest_active_review_item:
+        latest_active_review_item = dict(latest_active_review_item)
+        latest_active_review_item["created_at_label"] = format_timestamp_label(latest_active_review_item.get("created_at", ""), default="")
+
+    latest_completed_review_item = None
+    if review_snapshot.get("completed_items"):
+        latest_completed_review_item = max(
+            [dict(item) for item in review_snapshot.get("completed_items", []) or []],
+            key=lambda item: _sort_timestamp(item.get("completed_at", "")),
+        )
+    if latest_completed_review_item:
+        latest_completed_review_item = dict(latest_completed_review_item)
+        latest_completed_review_item["completed_at_label"] = format_timestamp_label(latest_completed_review_item.get("completed_at", ""), default="")
+
+    return {
+        "has_games": bool(games),
+        "games_count": len(games),
+        "overall": overall,
+        "white": white,
+        "black": black,
+        "time_classes": time_classes,
+        "openings": {
+            "tracked": len(tracked_openings),
+            "games_with_data": openings_with_data,
+            "games_without_data": openings_without_data,
+            "most_played": _opening_signal_payload(most_played_opening),
+            "weakest": _opening_signal_payload(weakest_opening),
+            "strongest": _opening_signal_payload(strongest_opening),
+        },
+        "review_queue": {
+            "active_count": review_snapshot.get("active_count", 0),
+            "completed_count": review_snapshot.get("completed_count", 0),
+            "active_game_count": len(review_snapshot.get("active_game_ids", []) or []),
+            "active_opening_count": len(review_snapshot.get("active_opening_keys", []) or []),
+        },
+        "recent_activity": {
+            "latest_import_job": latest_import_job,
+            "latest_active_review_item": latest_active_review_item,
+            "latest_completed_review_item": latest_completed_review_item,
+        },
+        "review_snapshot": review_snapshot,
+    }
+
+
 def normalize_chess_review_item_type(value):
     normalized = str(value or "").strip().lower()
     if normalized == "opening":
@@ -1866,7 +2050,7 @@ def complete_chess_review_queue_item(data, queue_id):
     return {"changed": False, "item": None, "error": "Review item not found."}
 
 
-def build_chess_home_cards(data, train_today_count=0, review_queue_count=0):
+def build_chess_home_cards(data, train_today_count=0, review_queue_count=0, progress_score_percent=0.0):
     data = data if isinstance(data, dict) else default_chess_data()
     profiles = len(data.get("profiles", []) or [])
     imports = len(data.get("imports", []) or [])
@@ -1875,6 +2059,7 @@ def build_chess_home_cards(data, train_today_count=0, review_queue_count=0):
         {"label": "Profiles", "value": str(profiles) if profiles else "0"},
         {"label": "Prepared imports", "value": str(imports) if imports else "0"},
         {"label": "Imported games", "value": str(games) if games else "0"},
+        {"label": "Progress", "value": format_chess_percent(progress_score_percent), "href": url_for("chess_progress")},
         {"label": "Train today", "value": str(train_today_count) if train_today_count else "0", "href": url_for("chess_train")},
         {"label": "Review queue", "value": str(review_queue_count) if review_queue_count else "0"},
     ]
@@ -18820,6 +19005,7 @@ def build_lotus_chess_context(active_key="home"):
     active_profile = next((profile for profile in profiles if str(profile.get("id", "") or "").strip() == active_profile_id), None)
     training_recommendations = build_training_recommendations(chess_data)
     review_snapshot = build_chess_review_queue_snapshot(chess_data)
+    progress_summary = build_chess_progress(chess_data)
 
     nav_items = [
         {"key": "home", "label": "Home", "href": url_for("chess"), "icon": "layout-dashboard"},
@@ -18837,7 +19023,12 @@ def build_lotus_chess_context(active_key="home"):
             "summary": "A personal chess workspace centered on your games, your opening habits, and the next training action that actually matters.",
             "cta_primary": {"label": "Start with Import", "href": url_for("chess_import")},
             "cta_secondary": {"label": "Browse Games", "href": url_for("chess_games")},
-            "cards": build_chess_home_cards(chess_data, train_today_count=training_recommendations.get("train_today_count", 0), review_queue_count=review_snapshot.get("active_count", 0)),
+            "cards": build_chess_home_cards(
+                chess_data,
+                train_today_count=training_recommendations.get("train_today_count", 0),
+                review_queue_count=review_snapshot.get("active_count", 0),
+                progress_score_percent=progress_summary.get("overall", {}).get("score_percent", 0.0),
+            ),
             "sections": [
                 {
                     "title": "Why Lotus Chess",
@@ -18926,19 +19117,23 @@ def build_lotus_chess_context(active_key="home"):
         },
         "progress": {
             "eyebrow": "Progress",
-            "title": "Minimal progress, not dashboard noise.",
-            "summary": "This page will track only the signals that help you improve, without turning Lotus Chess into a chart-heavy analytics wall.",
+            "title": "See what is getting stronger.",
+            "summary": "Local progress from your imported games and review queue. No engine analysis yet.",
             "cards": [
-                {"label": "Imported games", "value": str(len(games)) if games else "0"},
-                {"label": "Active review queue", "value": str(review_snapshot.get("active_count", 0)) if review_snapshot.get("active_count", 0) else "0"},
-                {"label": "Completed reviews", "value": str(review_snapshot.get("completed_count", 0)) if review_snapshot.get("completed_count", 0) else "0"},
-                {"label": "Openings tracked", "value": "Coming soon"},
-                {"label": "Mastered lines", "value": "Coming soon"},
+                {"label": "Imported games", "value": str(progress_summary.get("games_count", 0)) if progress_summary.get("games_count", 0) else "0"},
+                {"label": "Overall score", "value": format_chess_percent(progress_summary.get("overall", {}).get("score_percent", 0.0))},
+                {"label": "Openings tracked", "value": str(progress_summary.get("openings", {}).get("tracked", 0)) if progress_summary.get("openings", {}).get("tracked", 0) else "0"},
+                {"label": "Active review queue", "value": str(progress_summary.get("review_queue", {}).get("active_count", 0)) if progress_summary.get("review_queue", {}).get("active_count", 0) else "0"},
+                {"label": "Completed reviews", "value": str(progress_summary.get("review_queue", {}).get("completed_count", 0)) if progress_summary.get("review_queue", {}).get("completed_count", 0) else "0"},
             ],
             "sections": [
                 {
-                    "title": "Useful metrics only",
-                    "description": "Imported games, active review items, and completion volume are enough to tell whether the system is helping.",
+                    "title": "Result-based only",
+                    "description": "Imported games, color split, time class split, and review queue state are enough for V0. Engine analysis comes later.",
+                },
+                {
+                    "title": "Recent activity",
+                    "description": "Latest imports, active review items, and completions stay local in chess_data.json.",
                 },
             ],
         },
@@ -18996,6 +19191,7 @@ def build_lotus_chess_context(active_key="home"):
         "chess_games_count": len(games),
         "chess_review_queue_count": review_snapshot.get("active_count", 0),
         "chess_review_queue_completed_count": review_snapshot.get("completed_count", 0),
+        "chess_progress": progress_summary,
         "chess_active_profile": active_profile,
         "chess_import_history": history_items,
         "chess_success_message": str(request.args.get("success", "") or "").strip(),
@@ -19008,6 +19204,7 @@ def build_lotus_chess_context(active_key="home"):
         "chess_review_queue_snapshot": review_snapshot,
         "chess_review_queue_active_count": review_snapshot.get("active_count", 0),
         "chess_review_queue_completed_count": review_snapshot.get("completed_count", 0),
+        "chess_progress_summary": progress_summary,
     }
 
 
@@ -19139,7 +19336,7 @@ def chess_train():
 
 @app.route("/chess/progress", endpoint="chess_progress")
 def chess_progress():
-    return render_lotus_chess_page("progress")
+    return render_template("chess_progress.html", **build_lotus_chess_context("progress"))
 
 
 @app.route("/chess/courses", endpoint="chess_courses")
