@@ -117,6 +117,7 @@
                         <input type="hidden" name="reason" value="Result-based weak spot with {{ opening.total }} games.">
                         <button type="submit" class="btn chess-mini-action-btn"><i data-lucide="bookmark-plus"></i><span>Add to review queue</span></button>
                     </form>
+                    <a class="btn chess-mini-action-btn" href="{{ url_for('chess_courses', opening_key=opening.key) }}"><i data-lucide="book-open"></i><span>Find/Add course</span></a>
                     {% endif %}
                 </div>
                 {% endfor %}

@@ -180,6 +180,7 @@ READING_DATA_PATH    = BASE_DIR / "reading_data.json"
 READING_BACKUPS_DIR  = BASE_DIR / "backups" / "reading"
 READING_TTS_CACHE_DIR = BASE_DIR / "cache" / "reading_tts"
 CHESS_DATA_PATH      = BASE_DIR / "chess_data.json"  # local personal chess state; keep out of commits
+CHESS_COURSES_PATH   = BASE_DIR / "chess_courses.json"  # local curated chess courses; keep out of commits
 YOUTUBE_TOKEN_PATH   = BASE_DIR / "youtube_token.json"
 CACHE_DATA_PATH      = BASE_DIR / "cache_data.json"
 CHAT_HISTORY_DB_PATH = BASE_DIR / "chat_history.db"
@@ -828,6 +829,141 @@ def save_chess_data(data):
     payload["updated_at"] = current_timestamp()
     save_json_file(CHESS_DATA_PATH, payload)
     return payload
+
+
+def default_chess_courses():
+    return {
+        "courses": [],
+        "updated_at": "",
+    }
+
+
+def load_chess_courses():
+    raw = load_json_file(CHESS_COURSES_PATH, default_chess_courses())
+    if not isinstance(raw, dict):
+        raw = {}
+    data = default_chess_courses()
+    courses = raw.get("courses", [])
+    data["courses"] = [dict(item) for item in courses if isinstance(item, dict)] if isinstance(courses, list) else []
+    data["updated_at"] = str(raw.get("updated_at", "") or "").strip()
+    if CHESS_COURSES_PATH.exists() and data != raw:
+        save_json_file(CHESS_COURSES_PATH, data)
+    return data
+
+
+def save_chess_courses(data):
+    payload = default_chess_courses()
+    incoming = data if isinstance(data, dict) else {}
+    courses = incoming.get("courses", [])
+    payload["courses"] = [dict(item) for item in courses if isinstance(item, dict)] if isinstance(courses, list) else []
+    payload["updated_at"] = current_timestamp()
+    save_json_file(CHESS_COURSES_PATH, payload)
+    return payload
+
+
+def normalize_chess_course_category(value):
+    normalized = str(value or "").strip().lower()
+    if normalized in {"opening", "calculation", "endgame", "strategy", "other"}:
+        return normalized
+    return "other"
+
+
+def normalize_chess_course_source(value):
+    normalized = str(value or "").strip().lower()
+    if normalized in {"youtube", "website", "book", "manual"}:
+        return normalized
+    return "manual"
+
+
+def normalize_chess_course_status(value):
+    normalized = str(value or "").strip().lower()
+    if normalized in {"planned", "active", "finished"}:
+        return normalized
+    return "planned"
+
+
+def normalize_chess_course_level(value):
+    normalized = str(value or "").strip().lower()
+    if normalized in {"beginner", "intermediate", "advanced"}:
+        return normalized
+    return ""
+
+
+def normalize_chess_course_title(value):
+    return re.sub(r"\s+", " ", str(value or "").strip())
+
+
+def normalize_chess_course_url(value):
+    return str(value or "").strip()
+
+
+def build_chess_course_label(course):
+    payload = course if isinstance(course, dict) else {}
+    title = normalize_chess_course_title(payload.get("title", "")) or "Untitled course"
+    category = normalize_chess_course_category(payload.get("category", ""))
+    source = normalize_chess_course_source(payload.get("source", ""))
+    level = normalize_chess_course_level(payload.get("level", ""))
+    status = normalize_chess_course_status(payload.get("status", ""))
+    parts = [title]
+    meta = [category.title(), source.title()]
+    if level:
+        meta.append(level.title())
+    meta.append(status.title())
+    return title, meta
+
+
+def get_course_category_counts(data):
+    payload = data if isinstance(data, dict) else default_chess_courses()
+    courses = [dict(item) for item in payload.get("courses", []) or [] if isinstance(item, dict)]
+    counts = {
+        "total": len(courses),
+        "opening": 0,
+        "calculation": 0,
+        "endgame": 0,
+        "strategy": 0,
+        "other": 0,
+        "planned": 0,
+        "active": 0,
+        "finished": 0,
+    }
+    for course in courses:
+        category = normalize_chess_course_category(course.get("category", ""))
+        status = normalize_chess_course_status(course.get("status", ""))
+        counts[category] = counts.get(category, 0) + 1
+        counts[status] = counts.get(status, 0) + 1
+    return counts
+
+
+def get_courses_for_opening(data, opening_key):
+    payload = data if isinstance(data, dict) else default_chess_courses()
+    normalized_key = normalize_chess_opening_token(opening_key)
+    if not normalized_key:
+        return []
+    return [
+        dict(course)
+        for course in payload.get("courses", []) or []
+        if isinstance(course, dict) and normalize_chess_opening_token(course.get("related_opening_key", "")) == normalized_key
+    ]
+
+
+def normalize_chess_course_item(course):
+    payload = course if isinstance(course, dict) else {}
+    item = dict(payload)
+    item["id"] = str(item.get("id", "") or "").strip()
+    item["title"] = normalize_chess_course_title(item.get("title", ""))
+    item["category"] = normalize_chess_course_category(item.get("category", ""))
+    item["source"] = normalize_chess_course_source(item.get("source", ""))
+    item["url"] = normalize_chess_course_url(item.get("url", ""))
+    item["related_opening_key"] = normalize_chess_opening_token(item.get("related_opening_key", ""))
+    item["related_opening_label"] = str(item.get("related_opening_label", "") or "").strip()
+    item["level"] = normalize_chess_course_level(item.get("level", ""))
+    item["status"] = normalize_chess_course_status(item.get("status", ""))
+    item["notes"] = str(item.get("notes", "") or "").strip()
+    item["created_at"] = str(item.get("created_at", "") or "").strip()
+    item["updated_at"] = str(item.get("updated_at", "") or "").strip()
+    if not item["related_opening_label"] and item["related_opening_key"]:
+        item["related_opening_label"] = item["related_opening_key"]
+    return item
 
 
 def normalize_chess_source(value):
@@ -19341,7 +19477,147 @@ def chess_progress():
 
 @app.route("/chess/courses", endpoint="chess_courses")
 def chess_courses():
-    return render_lotus_chess_page("courses")
+    chess_data = load_chess_data()
+    chess_courses_data = load_chess_courses()
+    all_courses = [normalize_chess_course_item(course) for course in chess_courses_data.get("courses", []) or [] if isinstance(course, dict)]
+    opening_filter_key = normalize_chess_opening_token(request.args.get("opening_key", ""))
+    category_filter = normalize_chess_course_category(request.args.get("category", ""))
+    status_filter = normalize_chess_course_status(request.args.get("status", ""))
+    source_filter = str(request.args.get("source", "") or "").strip().lower()
+    level_filter = str(request.args.get("level", "") or "").strip().lower()
+    courses_for_opening = get_courses_for_opening(chess_courses_data, opening_filter_key) if opening_filter_key else []
+    opening_summary = [dict(item) for item in build_opening_summary(chess_data) if str(item.get("label", "") or "").strip() and str(item.get("label", "") or "") != "Opening pending"]
+    opening_lookup = {str(item.get("key", "") or "").strip(): item for item in opening_summary if str(item.get("key", "") or "").strip()}
+    opening_filter_label = ""
+    if opening_filter_key:
+        opening_match = opening_lookup.get(opening_filter_key)
+        if opening_match:
+            opening_filter_label = str(opening_match.get("label", "") or "").strip()
+        else:
+            course_match = next((course for course in all_courses if normalize_chess_opening_token(course.get("related_opening_key", "")) == opening_filter_key), None)
+            if course_match:
+                opening_filter_label = str(course_match.get("related_opening_label", "") or "").strip() or opening_filter_key
+            else:
+                opening_filter_label = opening_filter_key
+    courses = list(all_courses)
+    if opening_filter_key:
+        courses = [course for course in courses if normalize_chess_opening_token(course.get("related_opening_key", "")) == opening_filter_key]
+    if category_filter != "other" or request.args.get("category") not in (None, ""):
+        courses = [course for course in courses if normalize_chess_course_category(course.get("category", "")) == category_filter]
+    if status_filter != "planned" or request.args.get("status") not in (None, ""):
+        courses = [course for course in courses if normalize_chess_course_status(course.get("status", "")) == status_filter]
+    if source_filter:
+        courses = [course for course in courses if normalize_chess_course_source(course.get("source", "")) == source_filter]
+    if level_filter:
+        courses = [course for course in courses if normalize_chess_course_level(course.get("level", "")) == level_filter]
+    courses.sort(key=lambda item: (str(item.get("status", "") or ""), str(item.get("category", "") or ""), str(item.get("title", "") or "").lower()))
+    category_counts = get_course_category_counts(chess_courses_data)
+    opening_counts = build_opening_summary(chess_data)
+    opening_counts = [item for item in opening_counts if str(item.get("label", "") or "").strip() and str(item.get("label", "") or "") != "Opening pending"]
+    top_weak_openings = [item for item in sort_openings(opening_counts, "weakest") if int(item.get("total", 0) or 0) >= 3][:3]
+    filtered_opening_courses = courses_for_opening[:6] if courses_for_opening else []
+    base_context = build_lotus_chess_context("courses")
+    base_context["chess_area"] = {
+        "eyebrow": "Courses",
+        "title": "Learn only what supports training.",
+        "summary": "Curated chess resources connected to your games and openings. Courses support the loop; they do not replace it.",
+        "cards": [
+            {"label": "Total courses", "value": str(category_counts.get("total", 0)) if category_counts.get("total", 0) else "0"},
+            {"label": "Opening courses", "value": str(category_counts.get("opening", 0)) if category_counts.get("opening", 0) else "0"},
+            {"label": "Calculation courses", "value": str(category_counts.get("calculation", 0)) if category_counts.get("calculation", 0) else "0"},
+            {"label": "Active courses", "value": str(category_counts.get("active", 0)) if category_counts.get("active", 0) else "0"},
+            {"label": "Finished courses", "value": str(category_counts.get("finished", 0)) if category_counts.get("finished", 0) else "0"},
+        ],
+    }
+    base_context["chess_courses_data"] = chess_courses_data
+    base_context["chess_courses"] = courses
+    base_context["chess_courses_all"] = all_courses
+    base_context["chess_courses_counts"] = category_counts
+    base_context["chess_courses_opening_filter_key"] = opening_filter_key
+    base_context["chess_courses_opening_filter"] = opening_filter_label
+    base_context["chess_courses_category_filter"] = category_filter if request.args.get("category") else ""
+    base_context["chess_courses_status_filter"] = status_filter if request.args.get("status") else ""
+    base_context["chess_courses_source_filter"] = source_filter
+    base_context["chess_courses_level_filter"] = level_filter
+    base_context["chess_courses_opening_courses"] = filtered_opening_courses
+    base_context["chess_courses_suggestions"] = top_weak_openings
+    base_context["chess_courses_summary_note"] = "Courses support training; they do not replace Train."
+    base_context["chess_success_message"] = str(request.args.get("success", "") or "").strip()
+    base_context["chess_error_message"] = str(request.args.get("error", "") or "").strip()
+    base_context["title"] = "Lotus Chess | Courses"
+    return render_template("chess_courses.html", **base_context)
+
+
+@app.route("/chess/courses/add", methods=["POST"], endpoint="chess_courses_add")
+def chess_courses_add():
+    title = normalize_chess_course_title(request.form.get("title", ""))
+    if not title:
+        return redirect(url_for("chess_courses", error="Enter a course title before saving."))
+    category = normalize_chess_course_category(request.form.get("category", ""))
+    source = normalize_chess_course_source(request.form.get("source", ""))
+    url_value = normalize_chess_course_url(request.form.get("url", ""))
+    opening_key = normalize_chess_opening_token(request.form.get("related_opening_key", ""))
+    opening_label = str(request.form.get("related_opening_label", "") or "").strip()
+    level = normalize_chess_course_level(request.form.get("level", ""))
+    status = normalize_chess_course_status(request.form.get("status", ""))
+    notes = str(request.form.get("notes", "") or "").strip()
+    courses_data = load_chess_courses()
+    if opening_key and not opening_label:
+        chess_data = load_chess_data()
+        opening_summary = [dict(item) for item in build_opening_summary(chess_data) if str(item.get("label", "") or "").strip() and str(item.get("label", "") or "") != "Opening pending"]
+        match = next((item for item in opening_summary if normalize_chess_opening_token(item.get("key", "")) == opening_key), None)
+        if match:
+            opening_label = str(match.get("label", "") or "").strip()
+    course = {
+        "id": f"course-{secrets.token_hex(6)}",
+        "title": title,
+        "category": category,
+        "source": source,
+        "url": url_value,
+        "related_opening_key": opening_key,
+        "related_opening_label": opening_label,
+        "level": level,
+        "status": status,
+        "notes": notes,
+        "created_at": current_timestamp(),
+        "updated_at": current_timestamp(),
+    }
+    courses = [dict(item) for item in courses_data.get("courses", []) or [] if isinstance(item, dict)]
+    courses.insert(0, course)
+    courses_data["courses"] = courses
+    save_chess_courses(courses_data)
+    return redirect(build_chess_redirect_with_message(url_for("chess_courses"), success="Course saved locally."))
+
+
+@app.route("/chess/courses/status", methods=["POST"], endpoint="chess_courses_status")
+def chess_courses_status():
+    course_id = str(request.form.get("course_id", "") or "").strip()
+    status = normalize_chess_course_status(request.form.get("status", ""))
+    if not course_id:
+        return redirect(build_chess_redirect_with_message(url_for("chess_courses"), error="Missing course id."))
+    if status not in {"planned", "active", "finished"}:
+        return redirect(build_chess_redirect_with_message(url_for("chess_courses"), error="Choose a valid status."))
+    courses_data = load_chess_courses()
+    changed = False
+    updated_course = None
+    for course in courses_data.get("courses", []) or []:
+        if not isinstance(course, dict):
+            continue
+        if str(course.get("id", "") or "").strip() != course_id:
+            continue
+        if normalize_chess_course_status(course.get("status", "")) == status:
+            updated_course = dict(course)
+            break
+        course["status"] = status
+        course["updated_at"] = current_timestamp()
+        updated_course = dict(course)
+        changed = True
+        break
+    if not updated_course:
+        return redirect(build_chess_redirect_with_message(url_for("chess_courses"), error="Course not found."))
+    if changed:
+        save_chess_courses(courses_data)
+    return redirect(build_chess_redirect_with_message(url_for("chess_courses"), success=f"Marked {status}."))
 
 
 @app.route("/chess/review/add-game", methods=["POST"], endpoint="chess_review_add_game")

@@ -1,0 +1,308 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="page-hero chess-hero">
+    <div class="hero-meta">
+        <span class="hero-badge matte-tag">Lotus Chess</span>
+        <span>Support layer</span>
+    </div>
+    <h2>{{ chess_area.title }}</h2>
+    <p class="subhead">{{ chess_area.summary }}</p>
+    <div class="chess-hero-actions">
+        <a class="btn" href="{{ url_for('chess_train') }}"><i data-lucide="target"></i><span>Back to Train</span></a>
+        <a class="btn" href="{{ url_for('chess_openings') }}"><i data-lucide="waypoints"></i><span>Browse Openings</span></a>
+        <a class="btn" href="{{ url_for('chess_games') }}"><i data-lucide="library-big"></i><span>Browse Games</span></a>
+    </div>
+</section>
+
+<nav class="surface-card chess-subnav" aria-label="Lotus Chess areas">
+    {% for item in chess_nav_items %}
+    <a class="chess-subnav-link {{ 'active' if item.key == chess_active_key else '' }}" href="{{ item.href }}">
+        <i data-lucide="{{ item.icon }}"></i>
+        <span>{{ item.label }}</span>
+    </a>
+    {% endfor %}
+</nav>
+
+<section class="chess-main chess-courses-page">
+    <section class="surface-card section-card chess-focus-card">
+        <div class="hero-meta">
+            <span class="hero-badge matte-tag">{{ chess_area.eyebrow }}</span>
+            <span>Phase 2F V0</span>
+        </div>
+        <h3 class="title-scaled chess-section-title">{{ chess_area.title }}</h3>
+        <p class="subhead chess-section-copy">{{ chess_area.summary }}</p>
+        <section class="chess-overview-grid">
+            {% for card in chess_area.cards %}
+            <article class="surface-card chess-overview-card">
+                <span class="chess-card-label">{{ card.label }}</span>
+                <strong class="chess-card-value">{{ card.value }}</strong>
+            </article>
+            {% endfor %}
+        </section>
+    </section>
+
+    {% if chess_courses_opening_filter %}
+    <section class="surface-card section-card chess-courses-focus-card">
+        <div class="hero-meta">
+            <span class="hero-badge matte-tag">Opening focus</span>
+            <span>{{ chess_courses_opening_filter }}</span>
+        </div>
+        <p class="chess-summary-note">This view is focused on courses tied to the selected opening.</p>
+        <div class="chess-courses-focus-actions">
+            <a class="btn" href="{{ url_for('chess_courses', category=chess_courses_category_filter, status=chess_courses_status_filter, source=chess_courses_source_filter, level=chess_courses_level_filter) }}"><i data-lucide="x"></i><span>Clear opening filter</span></a>
+        </div>
+    </section>
+    {% endif %}
+
+    <section class="chess-courses-grid">
+        <article class="surface-card section-card chess-courses-form-card">
+            <div class="hero-meta">
+                <span class="hero-badge matte-tag">Add course</span>
+                <span>Manual resource only</span>
+            </div>
+            {% if chess_success_message %}
+            <div class="chess-banner chess-banner-success">{{ chess_success_message }}</div>
+            {% endif %}
+            {% if chess_error_message %}
+            <div class="chess-banner chess-banner-error">{{ chess_error_message }}</div>
+            {% endif %}
+            <form class="chess-courses-form" method="post" action="{{ url_for('chess_courses_add') }}">
+                <div class="chess-courses-form-grid">
+                    <label class="chess-field">
+                        <span>Title</span>
+                        <input type="text" name="title" placeholder="Example: Vienna Game model course" required>
+                    </label>
+                    <label class="chess-field">
+                        <span>Category</span>
+                        <select name="category">
+                            <option value="opening">Opening</option>
+                            <option value="calculation">Calculation</option>
+                            <option value="endgame">Endgame</option>
+                            <option value="strategy">Strategy</option>
+                            <option value="other">Other</option>
+                        </select>
+                    </label>
+                    <label class="chess-field">
+                        <span>Source</span>
+                        <select name="source">
+                            <option value="website">Website</option>
+                            <option value="youtube">YouTube</option>
+                            <option value="book">Book</option>
+                            <option value="manual">Manual</option>
+                        </select>
+                    </label>
+                    <label class="chess-field">
+                        <span>URL</span>
+                        <input type="url" name="url" placeholder="Optional resource URL">
+                    </label>
+                    <label class="chess-field">
+                        <span>Level</span>
+                        <select name="level">
+                            <option value="">Any</option>
+                            <option value="beginner">Beginner</option>
+                            <option value="intermediate">Intermediate</option>
+                            <option value="advanced">Advanced</option>
+                        </select>
+                    </label>
+                    <label class="chess-field">
+                        <span>Status</span>
+                        <select name="status">
+                            <option value="planned">Planned</option>
+                            <option value="active">Active</option>
+                            <option value="finished">Finished</option>
+                        </select>
+                    </label>
+                    <label class="chess-field">
+                        <span>Related opening key</span>
+                        <input type="text" name="related_opening_key" value="{{ chess_courses_opening_filter_key }}" placeholder="Optional opening key">
+                    </label>
+                    <label class="chess-field">
+                        <span>Related opening label</span>
+                        <input type="text" name="related_opening_label" value="{{ chess_courses_opening_filter }}" placeholder="Optional opening label">
+                    </label>
+                    <label class="chess-field chess-courses-notes-field">
+                        <span>Notes</span>
+                        <textarea name="notes" rows="4" placeholder="Optional notes about why this course matters"></textarea>
+                    </label>
+                </div>
+                <button type="submit" class="btn"><i data-lucide="plus"></i><span>Add course</span></button>
+            </form>
+        </article>
+
+        <article class="surface-card section-card chess-courses-suggestions-card">
+            <div class="hero-meta">
+                <span class="hero-badge matte-tag">Suggested course focus</span>
+                <span>Top weak openings</span>
+            </div>
+            <p class="chess-summary-note">Add one course/resource for each opening you want to support.</p>
+            {% if chess_courses_suggestions %}
+            <div class="chess-courses-suggestion-list">
+                {% for opening in chess_courses_suggestions %}
+                <a class="chess-courses-suggestion-row" href="{{ url_for('chess_courses', opening_key=opening.key) }}">
+                    <div class="chess-courses-suggestion-main">
+                        <strong>{{ opening.label }}</strong>
+                        <span>{{ opening.total }} games · {{ opening.score_percent_label }} score</span>
+                    </div>
+                    <span class="chess-status-pill">Weak V0</span>
+                </a>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="chess-progress-empty">No opening suggestions yet. Import games and extract openings first.</div>
+            {% endif %}
+        </article>
+    </section>
+
+    {% if chess_courses_opening_filter and chess_courses_opening_courses %}
+    <section class="surface-card section-card chess-courses-opening-card">
+        <div class="hero-meta">
+            <span class="hero-badge matte-tag">Opening-related courses</span>
+            <span>{{ chess_courses_opening_courses|length }} found</span>
+        </div>
+        <div class="chess-courses-list">
+            {% for course in chess_courses_opening_courses %}
+            <article class="surface-card chess-course-card">
+                <div class="chess-course-head">
+                    <strong>{{ course.title }}</strong>
+                    <span class="chess-status-pill">{{ course.status|title }}</span>
+                </div>
+                <div class="chess-course-meta">
+                    <span>{{ course.category|title }}</span>
+                    <span>{{ course.source|title }}</span>
+                    {% if course.level %}<span>{{ course.level|title }}</span>{% endif %}
+                </div>
+                {% if course.related_opening_label %}
+                <p class="chess-summary-note">{{ course.related_opening_label }}</p>
+                {% endif %}
+                {% if course.notes %}
+                <p class="chess-summary-note">{{ course.notes }}</p>
+                {% endif %}
+                <div class="chess-course-actions">
+                    {% if course.url %}
+                    <a class="btn chess-mini-action-btn" href="{{ course.url }}" target="_blank" rel="noopener noreferrer"><i data-lucide="arrow-up-right"></i><span>Open resource</span></a>
+                    {% endif %}
+                    <form method="post" action="{{ url_for('chess_courses_status') }}">
+                        <input type="hidden" name="course_id" value="{{ course.id }}">
+                        <input type="hidden" name="status" value="planned">
+                        <button type="submit" class="btn chess-mini-action-btn"><i data-lucide="circle"></i><span>Planned</span></button>
+                    </form>
+                    <form method="post" action="{{ url_for('chess_courses_status') }}">
+                        <input type="hidden" name="course_id" value="{{ course.id }}">
+                        <input type="hidden" name="status" value="active">
+                        <button type="submit" class="btn chess-mini-action-btn"><i data-lucide="play"></i><span>Active</span></button>
+                    </form>
+                    <form method="post" action="{{ url_for('chess_courses_status') }}">
+                        <input type="hidden" name="course_id" value="{{ course.id }}">
+                        <input type="hidden" name="status" value="finished">
+                        <button type="submit" class="btn chess-mini-action-btn"><i data-lucide="check"></i><span>Finished</span></button>
+                    </form>
+                </div>
+            </article>
+            {% endfor %}
+        </div>
+    </section>
+    {% endif %}
+
+    <section class="surface-card section-card chess-courses-list-card">
+        <div class="hero-meta">
+            <span class="hero-badge matte-tag">Saved courses</span>
+            <span>{{ chess_courses|length }} shown / {{ chess_courses_data.courses|length }} total</span>
+        </div>
+        {% if chess_courses %}
+        <form class="chess-courses-filters" method="get">
+            {% if chess_courses_opening_filter_key %}
+            <input type="hidden" name="opening_key" value="{{ chess_courses_opening_filter_key }}">
+            {% endif %}
+            <label class="chess-field">
+                <span>Category</span>
+                <select name="category">
+                    <option value="" {{ 'selected' if not chess_courses_category_filter else '' }}>All</option>
+                    <option value="opening" {{ 'selected' if chess_courses_category_filter == 'opening' else '' }}>Opening</option>
+                    <option value="calculation" {{ 'selected' if chess_courses_category_filter == 'calculation' else '' }}>Calculation</option>
+                    <option value="endgame" {{ 'selected' if chess_courses_category_filter == 'endgame' else '' }}>Endgame</option>
+                    <option value="strategy" {{ 'selected' if chess_courses_category_filter == 'strategy' else '' }}>Strategy</option>
+                    <option value="other" {{ 'selected' if chess_courses_category_filter == 'other' else '' }}>Other</option>
+                </select>
+            </label>
+            <label class="chess-field">
+                <span>Status</span>
+                <select name="status">
+                    <option value="" {{ 'selected' if not chess_courses_status_filter else '' }}>All</option>
+                    <option value="planned" {{ 'selected' if chess_courses_status_filter == 'planned' else '' }}>Planned</option>
+                    <option value="active" {{ 'selected' if chess_courses_status_filter == 'active' else '' }}>Active</option>
+                    <option value="finished" {{ 'selected' if chess_courses_status_filter == 'finished' else '' }}>Finished</option>
+                </select>
+            </label>
+            <label class="chess-field">
+                <span>Source</span>
+                <select name="source">
+                    <option value="" {{ 'selected' if not chess_courses_source_filter else '' }}>All</option>
+                    <option value="website" {{ 'selected' if chess_courses_source_filter == 'website' else '' }}>Website</option>
+                    <option value="youtube" {{ 'selected' if chess_courses_source_filter == 'youtube' else '' }}>YouTube</option>
+                    <option value="book" {{ 'selected' if chess_courses_source_filter == 'book' else '' }}>Book</option>
+                    <option value="manual" {{ 'selected' if chess_courses_source_filter == 'manual' else '' }}>Manual</option>
+                </select>
+            </label>
+            <label class="chess-field">
+                <span>Level</span>
+                <select name="level">
+                    <option value="" {{ 'selected' if not chess_courses_level_filter else '' }}>All</option>
+                    <option value="beginner" {{ 'selected' if chess_courses_level_filter == 'beginner' else '' }}>Beginner</option>
+                    <option value="intermediate" {{ 'selected' if chess_courses_level_filter == 'intermediate' else '' }}>Intermediate</option>
+                    <option value="advanced" {{ 'selected' if chess_courses_level_filter == 'advanced' else '' }}>Advanced</option>
+                </select>
+            </label>
+            <button type="submit" class="btn chess-games-filter-btn"><i data-lucide="sliders-horizontal"></i><span>Apply</span></button>
+        </form>
+        {% if chess_courses_opening_filter %}
+        <div class="chess-banner chess-banner-success">Focused on opening: {{ chess_courses_opening_filter }}</div>
+        {% endif %}
+        <div class="chess-courses-list">
+            {% for course in chess_courses %}
+            <article class="surface-card chess-course-card">
+                <div class="chess-course-head">
+                    <strong>{{ course.title }}</strong>
+                    <span class="chess-status-pill">{{ course.status|title }}</span>
+                </div>
+                <div class="chess-course-meta">
+                    <span>{{ course.category|title }}</span>
+                    <span>{{ course.source|title }}</span>
+                    {% if course.level %}<span>{{ course.level|title }}</span>{% endif %}
+                    {% if course.related_opening_label %}<span>{{ course.related_opening_label }}</span>{% endif %}
+                </div>
+                {% if course.notes %}
+                <p class="chess-summary-note">{{ course.notes }}</p>
+                {% endif %}
+                <div class="chess-course-actions">
+                    {% if course.url %}
+                    <a class="btn chess-mini-action-btn" href="{{ course.url }}" target="_blank" rel="noopener noreferrer"><i data-lucide="arrow-up-right"></i><span>Open resource</span></a>
+                    {% endif %}
+                    <form method="post" action="{{ url_for('chess_courses_status') }}">
+                        <input type="hidden" name="course_id" value="{{ course.id }}">
+                        <input type="hidden" name="status" value="planned">
+                        <button type="submit" class="btn chess-mini-action-btn"><i data-lucide="circle"></i><span>Planned</span></button>
+                    </form>
+                    <form method="post" action="{{ url_for('chess_courses_status') }}">
+                        <input type="hidden" name="course_id" value="{{ course.id }}">
+                        <input type="hidden" name="status" value="active">
+                        <button type="submit" class="btn chess-mini-action-btn"><i data-lucide="play"></i><span>Active</span></button>
+                    </form>
+                    <form method="post" action="{{ url_for('chess_courses_status') }}">
+                        <input type="hidden" name="course_id" value="{{ course.id }}">
+                        <input type="hidden" name="status" value="finished">
+                        <button type="submit" class="btn chess-mini-action-btn"><i data-lucide="check"></i><span>Finished</span></button>
+                    </form>
+                </div>
+            </article>
+            {% endfor %}
+        </div>
+        {% else %}
+        {% if chess_courses_data.courses %}
+        <div class="chess-empty-state">No courses match the current filters.</div>
+        {% else %}
+        <div class="chess-empty-state">No courses saved yet. Start by adding one resource for your weakest opening.</div>
+        {% endif %}
+        {% endif %}
+    </section>
+</section>
+{% endblock %}
