@@ -6,7 +6,7 @@
         <span>Imported game detail</span>
     </div>
     <h2>{{ chess_game.title }}</h2>
-    <p class="subhead">A quiet detail view for the imported game itself: metadata, opening header if available, raw PGN, and the next phase note.</p>
+    <p class="subhead">A quiet detail view for the imported game itself: metadata, opening header if available, parsed moves, raw PGN, and the next phase note.</p>
     <div class="chess-hero-actions">
         <a class="btn" href="{{ url_for('chess_games') }}"><i data-lucide="arrow-left"></i><span>Back to Games</span></a>
         {% if chess_game.url %}
@@ -39,6 +39,68 @@
             <span class="hero-badge matte-tag">{{ chess_game.source_label }}</span>
             <span>{{ chess_game.date }}</span>
         </div>
+        <article class="surface-card chess-game-detail-card chess-board-replay-card">
+            <div class="hero-meta">
+                <span class="hero-badge matte-tag">Board replay V0</span>
+                <span>Replay only. No engine analysis.</span>
+            </div>
+            {% if chess_game.replay.available %}
+            <div class="chess-board-replay-layout" data-default-flipped="{{ 'true' if chess_game.replay_default_flipped else 'false' }}">
+                <div class="chess-board-panel">
+                    <div class="chess-board-stage">
+                        <div class="chess-board" id="chess-board-viewer" aria-label="Chess board replay"></div>
+                    </div>
+                    <div class="chess-board-status">
+                        <strong id="chess-board-move-label">Start position</strong>
+                        <span id="chess-board-move-counter">0 / {{ chess_game.replay.positions|length - 1 }}</span>
+                        <span id="chess-board-turn-label">White to move</span>
+                    </div>
+                    <p class="chess-summary-note chess-muted-note">Replay only. No engine analysis.</p>
+                    <div class="chess-board-controls">
+                        <button type="button" class="btn chess-inline-btn" data-board-action="start"><i data-lucide="skip-back"></i><span>Start</span></button>
+                        <button type="button" class="btn chess-inline-btn" data-board-action="prev"><i data-lucide="chevron-left"></i><span>Prev</span></button>
+                        <button type="button" class="btn chess-inline-btn" data-board-action="next"><i data-lucide="chevron-right"></i><span>Next</span></button>
+                        <button type="button" class="btn chess-inline-btn" data-board-action="end"><i data-lucide="skip-forward"></i><span>End</span></button>
+                        <button type="button" class="btn chess-inline-btn" data-board-action="flip"><i data-lucide="refresh-cw"></i><span>Flip board</span></button>
+                    </div>
+                </div>
+                <div class="chess-board-moves-panel">
+                    <div class="chess-board-moves-head">
+                        <strong>Replay moves</strong>
+                        <span>{{ chess_game.replay.positions|length - 1 }} half-moves</span>
+                    </div>
+                    <div class="chess-board-moves-list" id="chess-board-moves-list">
+                        {% for pair in chess_game.move_pairs %}
+                        <div class="chess-board-move-row">
+                            <span class="chess-board-move-number">{{ pair.move_number }}.</span>
+                            <button type="button" class="chess-board-move-jump" data-ply="{{ pair.white_ply }}">
+                                <span class="chess-board-move-side">W</span>
+                                <span class="chess-board-move-san">{{ pair.white }}</span>
+                            </button>
+                            {% if pair.black %}
+                            <button type="button" class="chess-board-move-jump" data-ply="{{ pair.black_ply }}">
+                                <span class="chess-board-move-side">B</span>
+                                <span class="chess-board-move-san">{{ pair.black }}</span>
+                            </button>
+                            {% else %}
+                            <div class="chess-board-move-empty">
+                                <span class="chess-board-move-side">B</span>
+                                <span class="chess-board-move-san">...</span>
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+            <script id="chess-board-replay-data" type="application/json">{{ chess_game.replay.positions|tojson }}</script>
+            {% else %}
+            <p class="chess-summary-note">Board replay could not be prepared from this PGN.</p>
+            {% if chess_game.replay.error %}
+            <p class="chess-summary-note chess-muted-note">{{ chess_game.replay.error }}</p>
+            {% endif %}
+            {% endif %}
+        </article>
         <div class="chess-game-detail-grid">
             <article class="surface-card chess-game-detail-card">
                 <h3>Metadata</h3>
@@ -74,16 +136,42 @@
             <article class="surface-card chess-game-detail-card">
                 <h3>Moves</h3>
                 {% if chess_game.moves %}
-                <pre class="chess-pgn-block">{{ chess_game.moves|join(' ') }}</pre>
+                <p class="chess-summary-note">{{ chess_game.moves_count }} half-moves parsed from stored PGN.</p>
+                <div class="chess-move-list">
+                    {% for pair in chess_game.move_pairs %}
+                    <div class="chess-move-row">
+                        <span class="chess-move-number">{{ pair.move_number }}.</span>
+                        <span class="chess-move-white">{{ pair.white }}</span>
+                        <span class="chess-move-black">{{ pair.black or '...' }}</span>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% if chess_game.opening_preview %}
+                <p class="chess-summary-note chess-muted-note">First moves: {{ chess_game.opening_preview }}</p>
+                {% endif %}
                 {% else %}
-                <p class="chess-summary-note">Move parsing comes next.</p>
+                <p class="chess-summary-note">Move extraction not run yet.</p>
+                <form method="post" action="{{ url_for('chess_games_extract_moves') }}">
+                    <button type="submit" class="btn chess-inline-btn"><i data-lucide="list-tree"></i><span>Extract PGN Moves</span></button>
+                </form>
                 {% endif %}
             </article>
 
             <article class="surface-card chess-game-detail-card">
                 <h3>Next phase</h3>
-                <p class="chess-summary-note">Next phase: extract openings from PGN headers.</p>
+                <p class="chess-summary-note">Next phase: use parsed moves to support training.</p>
             </article>
+
+            {% if chess_game.opening_line_label %}
+            <article class="surface-card chess-game-detail-card">
+                <h3>Opening line</h3>
+                <p class="chess-summary-note">First line</p>
+                <div class="chess-detail-list">
+                    <div><span>Line</span><strong>{{ chess_game.opening_line_label }}</strong></div>
+                    <div><span>Moves</span><strong>{{ chess_game.moves_count }} half-moves</strong></div>
+                </div>
+            </article>
+            {% endif %}
         </div>
     </section>
 
@@ -94,4 +182,205 @@
         </details>
     </section>
 </section>
+
+{% if chess_game.replay.available %}
+<script>
+(() => {
+  const dataNode = document.getElementById("chess-board-replay-data");
+  const boardNode = document.getElementById("chess-board-viewer");
+  const movesNode = document.getElementById("chess-board-moves-list");
+  const labelNode = document.getElementById("chess-board-move-label");
+  const counterNode = document.getElementById("chess-board-move-counter");
+  const turnNode = document.getElementById("chess-board-turn-label");
+  const layoutNode = document.querySelector(".chess-board-replay-layout");
+  if (!dataNode || !boardNode || !movesNode || !labelNode || !counterNode || !turnNode || !layoutNode) {
+    return;
+  }
+
+  let positions = [];
+  try {
+    positions = JSON.parse(dataNode.textContent || "[]");
+  } catch (error) {
+    return;
+  }
+  if (!Array.isArray(positions) || !positions.length) {
+    return;
+  }
+
+  const files = ["a", "b", "c", "d", "e", "f", "g", "h"];
+  const ranks = ["8", "7", "6", "5", "4", "3", "2", "1"];
+  const pieceAssetMap = {
+    P: "{{ url_for('static', filename='chess/pieces/cburnett/wP.svg') }}",
+    N: "{{ url_for('static', filename='chess/pieces/cburnett/wN.svg') }}",
+    B: "{{ url_for('static', filename='chess/pieces/cburnett/wB.svg') }}",
+    R: "{{ url_for('static', filename='chess/pieces/cburnett/wR.svg') }}",
+    Q: "{{ url_for('static', filename='chess/pieces/cburnett/wQ.svg') }}",
+    K: "{{ url_for('static', filename='chess/pieces/cburnett/wK.svg') }}",
+    p: "{{ url_for('static', filename='chess/pieces/cburnett/bP.svg') }}",
+    n: "{{ url_for('static', filename='chess/pieces/cburnett/bN.svg') }}",
+    b: "{{ url_for('static', filename='chess/pieces/cburnett/bB.svg') }}",
+    r: "{{ url_for('static', filename='chess/pieces/cburnett/bR.svg') }}",
+    q: "{{ url_for('static', filename='chess/pieces/cburnett/bQ.svg') }}",
+    k: "{{ url_for('static', filename='chess/pieces/cburnett/bK.svg') }}",
+  };
+
+  let currentPly = 0;
+  let flipped = layoutNode.dataset.defaultFlipped === "true";
+
+  function boardMapFromFen(fen) {
+    const boardPart = String(fen || "").split(" ")[0] || "";
+    const rows = boardPart.split("/");
+    const map = {};
+    rows.forEach((row, rowIndex) => {
+      let fileIndex = 0;
+      for (const char of row) {
+        if (/^[1-8]$/.test(char)) {
+          fileIndex += Number(char);
+          continue;
+        }
+        const square = files[fileIndex] + ranks[rowIndex];
+        map[square] = char;
+        fileIndex += 1;
+      }
+    });
+    return map;
+  }
+
+  function orderedSquares() {
+    const orderedRanks = flipped ? [...ranks].reverse() : ranks;
+    const orderedFiles = flipped ? [...files].reverse() : files;
+    const squares = [];
+    orderedRanks.forEach((rank) => {
+      orderedFiles.forEach((file) => {
+        squares.push(file + rank);
+      });
+    });
+    return squares;
+  }
+
+  function lastMoveSquares(uci) {
+    const text = String(uci || "").trim();
+    if (text.length < 4) {
+      return [];
+    }
+    return [text.slice(0, 2), text.slice(2, 4)];
+  }
+
+  function renderBoard() {
+    const position = positions[currentPly] || positions[0];
+    const boardMap = boardMapFromFen(position.fen);
+    const activeSquares = new Set(lastMoveSquares(position.last_move));
+    boardNode.innerHTML = "";
+    orderedSquares().forEach((square, index) => {
+      const squareNode = document.createElement("div");
+      const fileIndex = index % 8;
+      const rankIndex = Math.floor(index / 8);
+      const isLight = (fileIndex + rankIndex) % 2 === 0;
+      squareNode.className = "chess-board-square " + (isLight ? "light" : "dark");
+      if (activeSquares.has(square)) {
+        squareNode.classList.add("last-move");
+      }
+      squareNode.setAttribute("data-square", square);
+
+      if (fileIndex === 0 || rankIndex === 7) {
+        const coord = document.createElement("span");
+        coord.className = "chess-board-coordinate";
+        coord.textContent = square;
+        squareNode.appendChild(coord);
+      }
+
+      const piece = boardMap[square];
+        if (piece) {
+          const pieceNode = document.createElement("span");
+          pieceNode.className = "chess-board-piece " + (String(piece) === String(piece).toUpperCase() ? "white" : "black");
+          const img = document.createElement("img");
+          img.className = "chess-board-piece-img";
+          img.src = pieceAssetMap[piece] || "";
+          img.alt = piece;
+          img.loading = "eager";
+          img.decoding = "async";
+        img.draggable = false;
+        pieceNode.appendChild(img);
+        squareNode.appendChild(pieceNode);
+      }
+      boardNode.appendChild(squareNode);
+    });
+
+    labelNode.textContent = currentPly === 0 ? "Start position" : positions[currentPly].move;
+    counterNode.textContent = currentPly + " / " + (positions.length - 1);
+    turnNode.textContent = position.turn === "black" ? "Black to move" : "White to move";
+
+    movesNode.querySelectorAll(".chess-board-move-jump").forEach((button) => {
+      const buttonPly = Number(button.dataset.ply || "0");
+      button.classList.toggle("active", buttonPly === currentPly);
+      const row = button.closest(".chess-board-move-row");
+      if (row) {
+        row.classList.toggle("active", buttonPly === currentPly);
+      }
+    });
+    const activeButton = movesNode.querySelector(`.chess-board-move-jump[data-ply="${currentPly}"]`);
+    if (activeButton) {
+      const activeRow = activeButton.closest(".chess-board-move-row") || activeButton;
+      activeRow.scrollIntoView({ block: "nearest", inline: "nearest" });
+    }
+  }
+
+  function setPly(nextPly) {
+    const bounded = Math.max(0, Math.min(positions.length - 1, Number(nextPly || 0)));
+    currentPly = bounded;
+    renderBoard();
+  }
+
+  document.querySelectorAll("[data-board-action]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const action = button.dataset.boardAction;
+      if (action === "start") {
+        setPly(0);
+      } else if (action === "prev") {
+        setPly(currentPly - 1);
+      } else if (action === "next") {
+        setPly(currentPly + 1);
+      } else if (action === "end") {
+        setPly(positions.length - 1);
+      } else if (action === "flip") {
+        flipped = !flipped;
+        renderBoard();
+      }
+    });
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) {
+      return;
+    }
+    const target = event.target;
+    const tagName = target && target.tagName ? target.tagName.toLowerCase() : "";
+    if (tagName === "input" || tagName === "textarea" || tagName === "select" || tagName === "button") {
+      return;
+    }
+    if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      setPly(currentPly - 1);
+    } else if (event.key === "ArrowRight") {
+      event.preventDefault();
+      setPly(currentPly + 1);
+    } else if (event.key === "Home") {
+      event.preventDefault();
+      setPly(0);
+    } else if (event.key === "End") {
+      event.preventDefault();
+      setPly(positions.length - 1);
+    }
+  });
+
+  movesNode.querySelectorAll(".chess-board-move-jump").forEach((button) => {
+    button.addEventListener("click", () => {
+      setPly(Number(button.dataset.ply || "0"));
+    });
+  });
+
+  renderBoard();
+})();
+</script>
+{% endif %}
 {% endblock %}

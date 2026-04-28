@@ -3,6 +3,7 @@ import json
 import csv
 import asyncio
 import hashlib
+import io
 import shutil
 import requests
 import urllib.parse
@@ -34,6 +35,13 @@ try:
     from dotenv import load_dotenv
 except ImportError:
     load_dotenv = None
+
+try:
+    import chess as chesslib
+    import chess.pgn as chess_pgn
+except ImportError:
+    chesslib = None
+    chess_pgn = None
 
 try:
     from google.auth.transport.requests import Request as GoogleAuthRequest
@@ -1558,8 +1566,67 @@ def build_chess_move_pairs(moves):
             "move_number": move_number,
             "white": items[index],
             "black": items[index + 1] if index + 1 < len(items) else "",
+            "white_ply": index + 1,
+            "black_ply": index + 2 if index + 1 < len(items) else 0,
         })
     return pairs
+
+
+def build_chess_game_replay(game):
+    payload = game if isinstance(game, dict) else {}
+    pgn_text = str(payload.get("pgn", "") or "").strip()
+    fallback_moves = [str(move or "").strip() for move in (payload.get("moves", []) or []) if str(move or "").strip()]
+    replay = {
+        "available": False,
+        "error": "",
+        "positions": [],
+        "move_pairs": build_chess_move_pairs(fallback_moves),
+    }
+    if not pgn_text:
+        replay["error"] = "PGN unavailable for this game."
+        return replay
+    if chesslib is None or chess_pgn is None:
+        replay["error"] = "python-chess is not installed locally."
+        return replay
+    try:
+        parsed_game = chess_pgn.read_game(io.StringIO(pgn_text))
+    except Exception as exc:
+        replay["error"] = f"PGN parse failed: {exc}"
+        return replay
+    if parsed_game is None:
+        replay["error"] = "PGN could not be parsed."
+        return replay
+    try:
+        board = parsed_game.board()
+        positions = [{
+            "ply": 0,
+            "move": "start",
+            "fen": board.fen(),
+            "last_move": "",
+            "turn": "white" if board.turn else "black",
+        }]
+        san_moves = []
+        for ply_index, move in enumerate(parsed_game.mainline_moves(), start=1):
+            san_value = board.san(move)
+            last_move = move.uci()
+            board.push(move)
+            san_moves.append(san_value)
+            positions.append({
+                "ply": ply_index,
+                "move": san_value,
+                "fen": board.fen(),
+                "last_move": last_move,
+                "turn": "white" if board.turn else "black",
+            })
+    except Exception as exc:
+        replay["error"] = f"Replay positions could not be prepared: {exc}"
+        return replay
+    replay["available"] = len(positions) > 1
+    replay["positions"] = positions
+    replay["move_pairs"] = build_chess_move_pairs(san_moves)
+    if not replay["available"]:
+        replay["error"] = "No replayable moves were found in this PGN."
+    return replay
 
 
 def enrich_game_moves_from_pgn(game):
@@ -2024,6 +2091,7 @@ def build_chess_game_detail_payload(game, review_snapshot=None):
     review_item = (review_snapshot.get("active_game_map", {}) or {}).get(normalize_chess_opening_token(game_id_value))
     move_pairs = build_chess_move_pairs(moves)
     line_key = get_game_line_key(payload)
+    replay = build_chess_game_replay(payload)
     return {
         "id": game_id_value,
         "title": f"{str(payload.get('white', '') or '').strip() or 'White'} vs {str(payload.get('black', '') or '').strip() or 'Black'}",
@@ -2051,6 +2119,8 @@ def build_chess_game_detail_payload(game, review_snapshot=None):
         "opening_line_label": get_game_line_label(payload) if line_key else "",
         "opening_preview": " ".join(moves[:10]),
         "opening_preview_label": "First moves",
+        "replay": replay,
+        "replay_default_flipped": str(payload.get("user_color", "") or "").strip().lower() == "black",
         "review_queue_active": bool(review_item),
         "review_queue_item_id": str((review_item or {}).get("id", "") or "").strip(),
     }
