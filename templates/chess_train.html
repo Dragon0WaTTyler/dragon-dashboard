@@ -10,6 +10,7 @@
     <div class="chess-hero-actions">
         <a class="btn" href="{{ url_for('chess_games') }}"><i data-lucide="library-big"></i><span>Browse Games</span></a>
         <a class="btn" href="{{ url_for('chess_openings') }}"><i data-lucide="waypoints"></i><span>Browse Openings</span></a>
+        <a class="btn" href="{{ url_for('chess_branches') }}"><i data-lucide="git-branch"></i><span>Branch Map</span></a>
     </div>
 </section>
 
@@ -26,7 +27,7 @@
     <section class="surface-card section-card chess-focus-card">
         <div class="hero-meta">
             <span class="hero-badge matte-tag">{{ chess_area.eyebrow }}</span>
-            <span>Phase 2F V0</span>
+            <span>Lotus Chess V0</span>
         </div>
         <h3 class="title-scaled chess-section-title">{{ chess_area.title }}</h3>
         <p class="subhead chess-section-copy">{{ chess_area.summary }}</p>
@@ -209,7 +210,7 @@
                         <span>{{ item.type_label }}</span>
                     </div>
                     <div class="chess-review-queue-actions">
-                        <a class="btn chess-mini-action-btn" href="{{ item.action_url }}"><i data-lucide="arrow-up-right"></i><span>{% if item.type == 'game' %}Open game{% else %}Open games{% endif %}</span></a>
+                        <a class="btn chess-mini-action-btn" href="{{ item.action_url }}"><i data-lucide="arrow-up-right"></i><span>{% if item.type == 'game' %}Review on board{% elif item.type == 'line' %}Review line{% else %}Review opening games{% endif %}</span></a>
                         <form method="post" action="{{ url_for('chess_review_complete') }}">
                             <input type="hidden" name="queue_id" value="{{ item.id }}">
                             <button type="submit" class="btn chess-mini-action-btn"><i data-lucide="check"></i><span>Mark done</span></button>
@@ -222,6 +223,39 @@
             <p class="chess-summary-note">Review queue comes next.</p>
             {% endif %}
         </article>
+    </section>
+
+    <section class="surface-card section-card chess-lines-shell">
+        <div class="hero-meta">
+            <span class="hero-badge matte-tag">Lines to review V0</span>
+            <span>Result-based recurring line.</span>
+        </div>
+        {% if chess_opening_lines_weak %}
+        <div class="chess-lines-list">
+            {% for line in chess_opening_lines_weak %}
+            <article class="surface-card chess-line-card">
+                <div class="chess-line-main">
+                    <strong>{{ line.opening_label }}</strong>
+                    <span>{{ line.line_label }}</span>
+                </div>
+                <div class="chess-line-stats">
+                    <span>{{ line.total }} games</span>
+                    <span>W {{ line.wins }}</span>
+                    <span>L {{ line.losses }}</span>
+                    <span>D {{ line.draws }}</span>
+                    <span>{{ line.score_percent_label }}</span>
+                </div>
+                <p class="chess-summary-note">Result-based recurring line.</p>
+                <div class="chess-review-queue-actions">
+                    <a class="btn chess-inline-btn" href="{{ line.href }}"><i data-lucide="arrow-up-right"></i><span>Review line</span></a>
+                    <a class="btn chess-inline-btn" href="{{ url_for('chess_branches', opening_key=line.opening_key) }}"><i data-lucide="git-branch"></i><span>Branch map</span></a>
+                </div>
+            </article>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="chess-summary-note">No weak recurring lines yet. Extract PGN Moves first.</p>
+        {% endif %}
     </section>
     {% endif %}
 </section>

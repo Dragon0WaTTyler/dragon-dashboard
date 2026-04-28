@@ -1,0 +1,241 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="page-hero chess-hero">
+    <div class="hero-meta">
+        <span class="hero-badge matte-tag">Lotus Chess</span>
+        <span>Branch map</span>
+    </div>
+    <h2>{{ chess_area.title }}</h2>
+    <p class="subhead">{{ chess_area.summary }}</p>
+    <div class="chess-hero-actions">
+        <a class="btn" href="{{ url_for('chess_openings') }}"><i data-lucide="waypoints"></i><span>Browse Openings</span></a>
+        <a class="btn" href="{{ url_for('chess_games') }}"><i data-lucide="library-big"></i><span>Browse Games</span></a>
+    </div>
+</section>
+
+<nav class="surface-card chess-subnav" aria-label="Lotus Chess areas">
+    {% for item in chess_nav_items %}
+    <a class="chess-subnav-link {{ 'active' if item.key == chess_active_key else '' }}" href="{{ item.href }}">
+        <i data-lucide="{{ item.icon }}"></i>
+        <span>{{ item.label }}</span>
+    </a>
+    {% endfor %}
+</nav>
+
+<section class="chess-main chess-branches-page">
+    {% if chess_success_message %}
+    <div class="chess-banner chess-banner-success">{{ chess_success_message }}</div>
+    {% endif %}
+    {% if chess_error_message %}
+    <div class="chess-banner chess-banner-error">{{ chess_error_message }}</div>
+    {% endif %}
+
+    <section class="surface-card section-card chess-focus-card">
+        <div class="hero-meta">
+            <span class="hero-badge matte-tag">{{ chess_area.eyebrow }}</span>
+            <span>Result-based only</span>
+        </div>
+        <h3 class="title-scaled chess-section-title">{{ chess_area.title }}</h3>
+        <p class="subhead chess-section-copy">{{ chess_area.summary }}</p>
+        <section class="chess-overview-grid">
+            {% for card in chess_area.cards %}
+            <article class="surface-card chess-overview-card">
+                <span class="chess-card-label">{{ card.label }}</span>
+                <strong class="chess-card-value">{{ card.value }}</strong>
+            </article>
+            {% endfor %}
+        </section>
+    </section>
+
+    {% if not chess_games_count %}
+    <section class="surface-card section-card chess-empty-state">
+        <div class="hero-meta">
+            <span class="hero-badge matte-tag">No games yet</span>
+            <span>Import first</span>
+        </div>
+        <p class="chess-summary-note">Import games first so Lotus Chess can discover your recurring branches.</p>
+        <a class="btn" href="{{ url_for('chess_import') }}"><i data-lucide="download"></i><span>Import games</span></a>
+    </section>
+    {% elif chess_branch_map.games_with_moves_count == 0 %}
+    <section class="surface-card section-card chess-empty-state">
+        <div class="hero-meta">
+            <span class="hero-badge matte-tag">No parsed moves yet</span>
+            <span>Moves required</span>
+        </div>
+        <p class="chess-summary-note">Run Extract PGN Moves first.</p>
+        <a class="btn" href="{{ url_for('chess_games') }}"><i data-lucide="library-big"></i><span>Go to Games</span></a>
+    </section>
+    {% else %}
+    <section class="surface-card section-card chess-branches-toolbar">
+        <div class="hero-meta">
+            <span class="hero-badge matte-tag">Filters</span>
+            <span>{{ chess_branch_map.ply_count }} half-moves per branch</span>
+        </div>
+        <div class="chess-branches-toolbar-actions">
+            <form class="chess-branches-filter-form" method="get" action="{{ url_for('chess_branches') }}">
+                {% if chess_branch_opening_filter_key %}
+                <input type="hidden" name="opening_key" value="{{ chess_branch_opening_filter_key }}">
+                {% endif %}
+                <label class="chess-field">
+                    <span>Sort</span>
+                    <select name="sort" onchange="this.form.submit()">
+                        <option value="most_played" {{ 'selected' if chess_branch_sort == 'most_played' else '' }}>Most played</option>
+                        <option value="weakest" {{ 'selected' if chess_branch_sort == 'weakest' else '' }}>Weakest</option>
+                        <option value="strongest" {{ 'selected' if chess_branch_sort == 'strongest' else '' }}>Strongest</option>
+                        <option value="latest" {{ 'selected' if chess_branch_sort == 'latest' else '' }}>Latest</option>
+                    </select>
+                </label>
+            </form>
+            <div class="chess-branches-filter-links">
+                <a class="btn chess-inline-btn" href="{{ url_for('chess_branches', sort=chess_branch_sort) }}"><i data-lucide="layers-3"></i><span>All openings</span></a>
+                {% for opening in chess_branch_map.openings[:6] %}
+                <a class="btn chess-inline-btn" href="{{ url_for('chess_branches', opening_key=opening.key, sort=chess_branch_sort) }}"><i data-lucide="git-branch"></i><span>{{ opening.label }}</span></a>
+                {% endfor %}
+            </div>
+            {% if chess_branch_opening_filter %}
+            <div class="chess-branch-filter-note">
+                <span>Filtered by opening: {{ chess_branch_opening_filter }}</span>
+                <a class="btn chess-inline-btn" href="{{ url_for('chess_branches', sort=chess_branch_sort) }}"><i data-lucide="x"></i><span>Clear filter</span></a>
+            </div>
+            {% endif %}
+        </div>
+    </section>
+
+    <section class="surface-card section-card chess-lines-shell">
+        <div class="hero-meta">
+            <span class="hero-badge matte-tag">Top branches</span>
+            <span>{{ chess_branch_rows|length }} shown</span>
+        </div>
+        {% if chess_branch_rows %}
+        <div class="chess-lines-list">
+            {% for branch in chess_branch_rows %}
+            <article class="surface-card chess-branch-row">
+                <div class="chess-line-main">
+                    <strong>{{ branch.opening_label }}</strong>
+                    <span>{{ branch.line_label }}</span>
+                </div>
+                <div class="chess-line-stats">
+                    <span>{{ branch.total }} games</span>
+                    <span>W {{ branch.wins }}</span>
+                    <span>L {{ branch.losses }}</span>
+                    <span>D {{ branch.draws }}</span>
+                    <span>{{ branch.score_percent_label }}</span>
+                    <span>{{ branch.latest_game_date or 'Date pending' }}</span>
+                </div>
+                <div class="chess-branch-row-actions">
+                    <a class="btn chess-inline-btn" href="{{ branch.review_href }}"><i data-lucide="play-circle"></i><span>Review line</span></a>
+                    <a class="btn chess-inline-btn" href="{{ branch.games_href }}"><i data-lucide="library-big"></i><span>View games</span></a>
+                </div>
+            </article>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="chess-empty-state">No recurring branches matched this filter yet.</div>
+        {% endif %}
+    </section>
+
+    <section class="chess-openings-pairs">
+        <article class="surface-card section-card chess-openings-column">
+            <div class="hero-meta">
+                <span class="hero-badge matte-tag">Weak branches V0</span>
+                <span>Result-based only. Engine analysis comes later.</span>
+            </div>
+            {% if chess_branch_map.weak_branches %}
+            <div class="chess-openings-mini-list">
+                {% for branch in chess_branch_map.weak_branches %}
+                <article class="chess-branch-mini-row">
+                    <div class="chess-line-main">
+                        <strong>{{ branch.opening_label }}</strong>
+                        <span>{{ branch.line_label }}</span>
+                    </div>
+                    <div class="chess-line-stats">
+                        <span>{{ branch.total }} games</span>
+                        <span>{{ branch.score_percent_label }}</span>
+                    </div>
+                    <div class="chess-branch-row-actions">
+                        <a class="btn chess-inline-btn" href="{{ branch.review_href }}"><i data-lucide="play-circle"></i><span>Review line</span></a>
+                    </div>
+                </article>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p class="chess-summary-note">No weak branches yet.</p>
+            {% endif %}
+        </article>
+
+        <article class="surface-card section-card chess-openings-column">
+            <div class="hero-meta">
+                <span class="hero-badge matte-tag">Strong branches V0</span>
+                <span>Result-based only</span>
+            </div>
+            {% if chess_branch_map.strong_branches %}
+            <div class="chess-openings-mini-list">
+                {% for branch in chess_branch_map.strong_branches %}
+                <article class="chess-branch-mini-row">
+                    <div class="chess-line-main">
+                        <strong>{{ branch.opening_label }}</strong>
+                        <span>{{ branch.line_label }}</span>
+                    </div>
+                    <div class="chess-line-stats">
+                        <span>{{ branch.total }} games</span>
+                        <span>{{ branch.score_percent_label }}</span>
+                    </div>
+                    <div class="chess-branch-row-actions">
+                        <a class="btn chess-inline-btn" href="{{ branch.review_href }}"><i data-lucide="play-circle"></i><span>Review line</span></a>
+                    </div>
+                </article>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p class="chess-summary-note">No strong branches yet.</p>
+            {% endif %}
+        </article>
+    </section>
+
+    <section class="surface-card section-card chess-branch-groups-shell">
+        <div class="hero-meta">
+            <span class="hero-badge matte-tag">Branches by opening</span>
+            <span>Top 5 per opening</span>
+        </div>
+        {% if chess_branch_map.branches_by_opening_list %}
+        <div class="chess-branch-groups">
+            {% for opening in chess_branch_map.branches_by_opening_list %}
+            <article class="surface-card chess-branch-group">
+                <div class="chess-branch-group-head">
+                    <div class="chess-line-main">
+                        <strong>{{ opening.opening_label }}</strong>
+                        <span>{{ opening.total_games }} games · {{ opening.score_percent_label }}</span>
+                    </div>
+                    <a class="btn chess-inline-btn" href="{{ opening.href }}"><i data-lucide="git-branch"></i><span>View all branches for this opening</span></a>
+                </div>
+                <div class="chess-openings-mini-list">
+                    {% for branch in opening.top_branches %}
+                    <article class="chess-branch-mini-row">
+                        <div class="chess-line-main">
+                            <strong>{{ branch.line_label }}</strong>
+                            <span>Latest: {{ branch.latest_game_date or 'Date pending' }}</span>
+                        </div>
+                        <div class="chess-line-stats">
+                            <span>{{ branch.total }} games</span>
+                            <span>W {{ branch.wins }}</span>
+                            <span>L {{ branch.losses }}</span>
+                            <span>D {{ branch.draws }}</span>
+                            <span>{{ branch.score_percent_label }}</span>
+                        </div>
+                        <div class="chess-branch-row-actions">
+                            <a class="btn chess-inline-btn" href="{{ branch.review_href }}"><i data-lucide="play-circle"></i><span>Review line</span></a>
+                            <a class="btn chess-inline-btn" href="{{ branch.games_href }}"><i data-lucide="library-big"></i><span>View games</span></a>
+                        </div>
+                    </article>
+                    {% endfor %}
+                </div>
+            </article>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="chess-empty-state">No branch groups are ready yet.</div>
+        {% endif %}
+    </section>
+    {% endif %}
+</section>
+{% endblock %}

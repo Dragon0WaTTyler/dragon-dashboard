@@ -2126,6 +2126,120 @@ def build_chess_game_detail_payload(game, review_snapshot=None):
     }
 
 
+def build_chess_line_review_payload(data, line_key, opening_key=""):
+    payload = data if isinstance(data, dict) else default_chess_data()
+    normalized_line_key = normalize_chess_opening_token(line_key)
+    normalized_opening_key = normalize_chess_opening_token(opening_key)
+    games = [dict(item) for item in payload.get("games", []) or [] if isinstance(item, dict)]
+    review_snapshot = build_chess_review_queue_snapshot(payload)
+    matching_games = []
+    representative_game = None
+    representative_sort = None
+    opening_labels = []
+    source_counts = {}
+    wins = losses = draws = unknown = white_games = black_games = 0
+    latest_date = ""
+    latest_sort = None
+    score_total = 0.0
+    line_label = ""
+    ply_count = 0
+    for game in games:
+        game_line_key = normalize_chess_opening_token(get_game_line_key(game))
+        if not game_line_key or game_line_key != normalized_line_key:
+            continue
+        game_opening_key = normalize_chess_opening_token(get_game_opening_key(game))
+        if normalized_opening_key and game_opening_key != normalized_opening_key:
+            continue
+        if not line_label:
+            line_label = get_game_line_label(game)
+        if not ply_count:
+            ply_count = len([move for move in (game.get("moves", []) or []) if str(move or "").strip()][:8])
+        opening_label = get_game_opening_label(game)
+        if opening_label and opening_label not in opening_labels and opening_label != "Opening pending":
+            opening_labels.append(opening_label)
+        source_label = chess_source_label(game.get("source", ""))
+        source_counts[source_label] = int(source_counts.get(source_label, 0) or 0) + 1
+        result = str(game.get("user_result", "") or "").strip().lower() or "unknown"
+        color = str(game.get("user_color", "") or "").strip().lower() or "unknown"
+        if result == "win":
+            wins += 1
+            score_total += 1
+        elif result == "loss":
+            losses += 1
+        elif result == "draw":
+            draws += 1
+            score_total += 0.5
+        else:
+            unknown += 1
+        if color == "white":
+            white_games += 1
+        elif color == "black":
+            black_games += 1
+        sort_value = parse_timestamp(game.get("end_time", "")) or parse_timestamp(game.get("imported_at", "")) or parse_timestamp(game.get("date", "")) or datetime.min
+        if latest_sort is None or sort_value > latest_sort:
+            latest_sort = sort_value
+            latest_date = str(game.get("date", "") or "").strip() or format_timestamp_label(game.get("imported_at", ""), default="")
+        replay_candidate = build_chess_game_replay(game)
+        if replay_candidate.get("available") and replay_candidate.get("positions"):
+            if representative_sort is None or sort_value > representative_sort:
+                representative_sort = sort_value
+                representative_game = dict(game)
+                representative_game["_replay"] = replay_candidate
+        matching_games.append(build_chess_game_browser_row(game, review_snapshot=review_snapshot))
+    total = len(matching_games)
+    score_percent = round((score_total / total) * 100, 1) if total else 0.0
+    sources = [{"label": label, "count": count} for label, count in sorted(source_counts.items(), key=lambda item: (-int(item[1]), item[0]))]
+    opening_labels = opening_labels or (["Opening pending"] if total else [])
+    if representative_game:
+        full_replay = representative_game.get("_replay", {}) or {}
+        replay_positions = list(full_replay.get("positions", []) or [])
+        line_ply_count = min(max(0, ply_count), max(0, len(replay_positions) - 1))
+        line_positions = replay_positions[: line_ply_count + 1] if replay_positions and line_ply_count else replay_positions[:1]
+        replay_payload = {
+            "available": bool(line_positions),
+            "error": str(full_replay.get("error", "") or "").strip(),
+            "positions": line_positions,
+            "move_pairs": build_chess_move_pairs((representative_game.get("moves", []) or [])[:line_ply_count]),
+        }
+        representative_payload = build_chess_game_detail_payload(representative_game, review_snapshot=review_snapshot)
+        representative_payload["replay"] = replay_payload
+        representative_payload["line_ply_count"] = line_ply_count
+    else:
+        representative_payload = {
+            "id": "",
+            "title": "",
+            "replay": {"available": False, "error": "Board replay could not be prepared from this line.", "positions": [], "move_pairs": []},
+            "replay_default_flipped": False,
+            "line_ply_count": ply_count,
+        }
+    review_item = (review_snapshot.get("active_line_map", {}) or {}).get(normalized_line_key)
+    return {
+        "line_key": normalized_line_key,
+        "opening_key": normalized_opening_key,
+        "line_label": line_label or "Line pending",
+        "opening_labels": opening_labels,
+        "opening_labels_text": ", ".join(opening_labels),
+        "total": total,
+        "wins": wins,
+        "losses": losses,
+        "draws": draws,
+        "unknown": unknown,
+        "white_games": white_games,
+        "black_games": black_games,
+        "score_percent": score_percent,
+        "score_percent_label": format_chess_percent(score_percent),
+        "latest_date": latest_date or "Date pending",
+        "sources": sources,
+        "source_breakdown": " | ".join(f"{item['label']}: {item['count']}" for item in sources),
+        "matching_games": matching_games,
+        "representative_game": representative_payload,
+        "ply_count": representative_payload.get("line_ply_count", ply_count),
+        "review_queue_active": bool(review_item),
+        "review_queue_item_id": str((review_item or {}).get("id", "") or "").strip(),
+        "review_queue_item": review_item,
+    }
+
+
 def build_chess_games_browser_context():
     chess_data = load_chess_data()
     games = [dict(item) for item in chess_data.get("games", []) or [] if isinstance(item, dict)]
@@ -2195,6 +2309,7 @@ def build_chess_games_browser_context():
         {"key": "import", "label": "Import", "href": url_for("chess_import"), "icon": "download"},
         {"key": "games", "label": "Games", "href": url_for("chess_games"), "icon": "library-big"},
         {"key": "openings", "label": "Openings", "href": url_for("chess_openings"), "icon": "waypoints"},
+        {"key": "branches", "label": "Branches", "href": url_for("chess_branches"), "icon": "git-branch"},
         {"key": "train", "label": "Train", "href": url_for("chess_train"), "icon": "target"},
         {"key": "progress", "label": "Progress", "href": url_for("chess_progress"), "icon": "activity"},
         {"key": "courses", "label": "Courses", "href": url_for("chess_courses"), "icon": "graduation-cap"},
@@ -2333,6 +2448,7 @@ def build_opening_line_summary(data, ply_count=8):
             "line_label": line_label,
             "opening_key": opening_key,
             "opening_label": opening_label,
+            "sample_game_id": "",
             "total": 0,
             "wins": 0,
             "losses": 0,
@@ -2362,6 +2478,7 @@ def build_opening_line_summary(data, ply_count=8):
         if entry["latest_game_sort"] is None or game_sort_value > entry["latest_game_sort"]:
             entry["latest_game_sort"] = game_sort_value
             entry["latest_game_date"] = str(game.get("date", "") or "").strip() or format_timestamp_label(game.get("imported_at", ""), default="")
+            entry["sample_game_id"] = str(game.get("id", "") or "").strip()
     items = []
     for entry in summary.values():
         total = max(1, int(entry.get("total", 0) or 0))
@@ -2369,10 +2486,15 @@ def build_opening_line_summary(data, ply_count=8):
         entry["score_percent"] = score_percent
         entry["score_percent_label"] = format_chess_percent(score_percent)
         entry["opening_href"] = url_for("chess_games", opening_key=str(entry.get("opening_key", "") or "").strip()) if str(entry.get("opening_key", "") or "").strip() else ""
-        entry["href"] = url_for(
+        entry["games_href"] = url_for(
             "chess_games",
             opening_key=str(entry.get("opening_key", "") or "").strip(),
             line_key=str(entry.get("line_key", "") or "").strip(),
+        ) if str(entry.get("line_key", "") or "").strip() else ""
+        entry["href"] = url_for(
+            "chess_line_detail",
+            line_key=str(entry.get("line_key", "") or "").strip(),
+            opening_key=str(entry.get("opening_key", "") or "").strip(),
         ) if str(entry.get("line_key", "") or "").strip() else ""
         items.append(entry)
     by_opening_payload = {}
@@ -2405,6 +2527,106 @@ def build_opening_line_summary(data, ply_count=8):
         "by_opening": by_opening_payload,
         "by_opening_list": by_opening_list,
         "ply_count": line_limit,
+    }
+
+
+def build_opening_branch_map(data, opening_key=None):
+    payload = data if isinstance(data, dict) else default_chess_data()
+    normalized_opening_key = normalize_chess_opening_token(opening_key)
+    opening_summary = [dict(item) for item in build_opening_summary(payload) if str(item.get("label", "") or "").strip() and str(item.get("label", "") or "").strip() != "Opening pending"]
+    opening_lookup = {
+        str(item.get("key", "") or "").strip(): dict(item)
+        for item in opening_summary
+        if str(item.get("key", "") or "").strip()
+    }
+    line_summary = build_opening_line_summary(payload, ply_count=8)
+    branch_items = []
+    for item in line_summary.get("items", []) or []:
+        if not isinstance(item, dict):
+            continue
+        branch = dict(item)
+        branch["label"] = f"{str(branch.get('opening_label', '') or '').strip()} {str(branch.get('line_label', '') or '').strip()}".strip()
+        branch["review_href"] = str(branch.get("href", "") or "").strip()
+        branch["games_href"] = str(branch.get("games_href", "") or "").strip()
+        branch_items.append(branch)
+    if normalized_opening_key:
+        branch_items = [
+            item for item in branch_items
+            if normalize_chess_opening_token(item.get("opening_key", "")) == normalized_opening_key
+        ]
+
+    filtered_opening_summary = []
+    for item in opening_summary:
+        item_key = str(item.get("key", "") or "").strip()
+        if normalized_opening_key and normalize_chess_opening_token(item_key) != normalized_opening_key:
+            continue
+        filtered_opening_summary.append(dict(item))
+
+    games = [dict(item) for item in payload.get("games", []) or [] if isinstance(item, dict)]
+    filtered_games = []
+    for game in games:
+        if normalized_opening_key and normalize_chess_opening_token(get_game_opening_key(game)) != normalized_opening_key:
+            continue
+        filtered_games.append(game)
+    games_with_moves = sum(1 for game in filtered_games if any(str(move or "").strip() for move in (game.get("moves", []) or [])))
+
+    branches_by_opening = {}
+    for item in branch_items:
+        item_opening_key = str(item.get("opening_key", "") or "").strip()
+        if not item_opening_key:
+            continue
+        branches_by_opening.setdefault(item_opening_key, []).append(dict(item))
+
+    by_opening_list = []
+    for item_opening_key, line_items in branches_by_opening.items():
+        sorted_lines = sort_openings([dict(line) for line in line_items], "most_played")
+        opening_meta = opening_lookup.get(item_opening_key, {})
+        branch_total = sum(int(line.get("total", 0) or 0) for line in sorted_lines)
+        branch_score = round(
+            (
+                sum(
+                    float(line.get("wins", 0) or 0) + (float(line.get("draws", 0) or 0) * 0.5)
+                    for line in sorted_lines
+                ) / branch_total
+            ) * 100,
+            1,
+        ) if branch_total else 0.0
+        by_opening_list.append({
+            "opening_key": item_opening_key,
+            "opening_label": str(opening_meta.get("label", "") or "").strip() or str(sorted_lines[0].get("opening_label", "") or "").strip() or "Opening pending",
+            "total_games": int(opening_meta.get("total", branch_total) or branch_total),
+            "score_percent": float(opening_meta.get("score_percent", branch_score) or branch_score),
+            "score_percent_label": format_chess_percent(opening_meta.get("score_percent", branch_score)),
+            "branches_count": len(sorted_lines),
+            "top_branches": sorted_lines[:5],
+            "href": url_for("chess_branches", opening_key=item_opening_key),
+        })
+    by_opening_list.sort(key=lambda item: (-int(item.get("total_games", 0) or 0), -int(item.get("branches_count", 0) or 0), str(item.get("opening_label", "") or "")))
+
+    weak_branches = [dict(item) for item in sort_openings(branch_items, "weakest") if int(item.get("total", 0) or 0) >= 2]
+    strong_branches = [dict(item) for item in sort_openings(branch_items, "strongest") if int(item.get("total", 0) or 0) >= 2]
+    opening_filter_label = ""
+    if normalized_opening_key:
+        opening_match = opening_lookup.get(normalized_opening_key)
+        if opening_match:
+            opening_filter_label = str(opening_match.get("label", "") or "").strip()
+        else:
+            opening_filter_label = normalized_opening_key
+    return {
+        "opening_filter_key": normalized_opening_key,
+        "opening_filter_label": opening_filter_label,
+        "openings": filtered_opening_summary,
+        "openings_tracked": len(filtered_opening_summary) if normalized_opening_key else len(opening_summary),
+        "branches_by_opening": branches_by_opening,
+        "branches_by_opening_list": by_opening_list,
+        "top_branches": sort_openings(branch_items, "most_played")[:12],
+        "weak_branches": weak_branches[:8],
+        "strong_branches": strong_branches[:8],
+        "all_branches": branch_items,
+        "branches_count": len(branch_items),
+        "games_with_moves_count": games_with_moves,
+        "weak_branches_count": len(weak_branches),
+        "ply_count": int(line_summary.get("ply_count", 8) or 8),
     }
 
 
@@ -2712,13 +2934,17 @@ def build_chess_progress(data):
 
 def normalize_chess_review_item_type(value):
     normalized = str(value or "").strip().lower()
+    if normalized == "line":
+        return "line"
     if normalized == "opening":
         return "opening"
     return "game"
 
 
-def get_chess_review_queue_item_key(item_type, game_id="", opening_key=""):
+def get_chess_review_queue_item_key(item_type, game_id="", opening_key="", line_key=""):
     item_type_value = normalize_chess_review_item_type(item_type)
+    if item_type_value == "line":
+        return f"line:{normalize_chess_opening_token(line_key)}"
     if item_type_value == "opening":
         return f"opening:{normalize_chess_opening_token(opening_key)}"
     return f"game:{normalize_chess_opening_token(game_id)}"
@@ -2732,8 +2958,10 @@ def build_chess_review_queue_snapshot(data):
     completed_items = []
     active_game_ids = set()
     active_opening_keys = set()
+    active_line_keys = set()
     active_game_map = {}
     active_opening_map = {}
+    active_line_map = {}
     completed_count = 0
     for raw_item in raw_items:
         if not isinstance(raw_item, dict):
@@ -2750,10 +2978,14 @@ def build_chess_review_queue_snapshot(data):
         item["game_id"] = str(item.get("game_id", "") or "").strip()
         item["opening_key"] = str(item.get("opening_key", "") or "").strip()
         item["opening_label"] = str(item.get("opening_label", "") or "").strip()
+        item["line_key"] = str(item.get("line_key", "") or "").strip()
+        item["line_label"] = str(item.get("line_label", "") or "").strip()
         item["created_at"] = str(item.get("created_at", "") or "").strip()
         item["completed_at"] = str(item.get("completed_at", "") or "").strip() or None
-        item["type_label"] = "Opening" if item_type == "opening" else "Game"
-        if item_type == "opening" and item["opening_key"]:
+        item["type_label"] = "Line" if item_type == "line" else ("Opening" if item_type == "opening" else "Game")
+        if item_type == "line" and item["line_key"]:
+            item["action_url"] = url_for("chess_line_detail", line_key=item["line_key"], opening_key=item["opening_key"]) if item["opening_key"] else url_for("chess_line_detail", line_key=item["line_key"])
+        elif item_type == "opening" and item["opening_key"]:
             item["action_url"] = f"/chess/games?opening_key={urllib.parse.quote(item['opening_key'], safe='')}"
         elif item["game_id"]:
             item["action_url"] = f"/chess/game/{chess_game_url_id(item['game_id'])}"
@@ -2764,6 +2996,10 @@ def build_chess_review_queue_snapshot(data):
             completed_count += 1
             continue
         active_items.append(item)
+        if item_type == "line" and item["line_key"]:
+            normalized_line_key = normalize_chess_opening_token(item["line_key"])
+            active_line_keys.add(item["line_key"])
+            active_line_map[normalized_line_key] = item
         if item_type == "opening" and item["opening_key"]:
             normalized_opening_key = normalize_chess_opening_token(item["opening_key"])
             active_opening_keys.add(item["opening_key"])
@@ -2772,6 +3008,7 @@ def build_chess_review_queue_snapshot(data):
             normalized_game_id = normalize_chess_opening_token(item["game_id"])
             active_game_ids.add(item["game_id"])
             active_game_map[normalized_game_id] = item
+            item["action_url"] = f"/chess/game/{chess_game_url_id(item['game_id'])}?review_id={urllib.parse.quote(item['id'], safe='')}"
         items.append(item)
     return {
         "items": items,
@@ -2781,14 +3018,34 @@ def build_chess_review_queue_snapshot(data):
         "completed_count": completed_count,
         "active_game_ids": active_game_ids,
         "active_opening_keys": active_opening_keys,
+        "active_line_keys": active_line_keys,
         "active_game_map": active_game_map,
         "active_opening_map": active_opening_map,
+        "active_line_map": active_line_map,
     }
+
+
+def get_chess_review_queue_item_by_id(review_snapshot, queue_id):
+    snapshot = review_snapshot if isinstance(review_snapshot, dict) else {}
+    target_id = str(queue_id or "").strip()
+    if not target_id:
+        return None
+    for item in snapshot.get("active_items", []) or []:
+        if not isinstance(item, dict):
+            continue
+        if str(item.get("id", "") or "").strip() == target_id:
+            return dict(item)
+    return None
 
 
 def find_active_chess_review_item(data, item_type, game_id="", opening_key=""):
     snapshot = build_chess_review_queue_snapshot(data)
     item_type_value = normalize_chess_review_item_type(item_type)
+    if item_type_value == "line":
+        normalized_key = normalize_chess_opening_token(opening_key)
+        if not normalized_key:
+            return None
+        return snapshot["active_line_map"].get(normalized_key)
     if item_type_value == "opening":
         normalized_key = normalize_chess_opening_token(opening_key)
         if not normalized_key:
@@ -2800,10 +3057,17 @@ def find_active_chess_review_item(data, item_type, game_id="", opening_key=""):
     return snapshot["active_game_map"].get(normalized_game_id)
 
 
-def add_chess_review_queue_item(data, item_type, title, reason="", game_id="", opening_key="", opening_label=""):
+def add_chess_review_queue_item(data, item_type, title, reason="", game_id="", opening_key="", opening_label="", line_key="", line_label=""):
     payload = data if isinstance(data, dict) else default_chess_data()
     item_type_value = normalize_chess_review_item_type(item_type)
-    if item_type_value == "opening":
+    if item_type_value == "line":
+        normalized_line_key = normalize_chess_opening_token(line_key or opening_key)
+        if not normalized_line_key:
+            return {"created": False, "duplicate": False, "item": None, "error": "Missing line key."}
+        existing = find_active_chess_review_item(payload, "line", opening_key=normalized_line_key)
+        if existing:
+            return {"created": False, "duplicate": True, "item": existing, "error": ""}
+    elif item_type_value == "opening":
         normalized_key = normalize_chess_opening_token(opening_key)
         if not normalized_key:
             return {"created": False, "duplicate": False, "item": None, "error": "Missing opening key."}
@@ -2823,8 +3087,10 @@ def add_chess_review_queue_item(data, item_type, title, reason="", game_id="", o
         "type": item_type_value,
         "title": str(title or "").strip(),
         "game_id": str(game_id or "").strip() if item_type_value == "game" else "",
-        "opening_key": str(opening_key or "").strip() if item_type_value == "opening" else "",
-        "opening_label": str(opening_label or "").strip() if item_type_value == "opening" else "",
+        "opening_key": str(opening_key or "").strip() if item_type_value in {"opening", "line"} else "",
+        "opening_label": str(opening_label or "").strip() if item_type_value in {"opening", "line"} else "",
+        "line_key": str(line_key or opening_key or "").strip() if item_type_value == "line" else "",
+        "line_label": str(line_label or title or "").strip() if item_type_value == "line" else "",
         "reason": str(reason or "").strip(),
         "status": "active",
         "created_at": current_timestamp(),
@@ -19818,6 +20084,7 @@ def build_lotus_chess_context(active_key="home"):
         {"key": "import", "label": "Import", "href": url_for("chess_import"), "icon": "download"},
         {"key": "games", "label": "Games", "href": url_for("chess_games"), "icon": "library-big"},
         {"key": "openings", "label": "Openings", "href": url_for("chess_openings"), "icon": "waypoints"},
+        {"key": "branches", "label": "Branches", "href": url_for("chess_branches"), "icon": "git-branch"},
         {"key": "train", "label": "Train", "href": url_for("chess_train"), "icon": "target"},
         {"key": "progress", "label": "Progress", "href": url_for("chess_progress"), "icon": "activity"},
         {"key": "courses", "label": "Courses", "href": url_for("chess_courses"), "icon": "graduation-cap"},
@@ -19851,6 +20118,12 @@ def build_lotus_chess_context(active_key="home"):
                     "href": url_for("chess_games"),
                     "link_label": "Open games browser",
                 },
+                {
+                    "title": "Branch Map",
+                    "description": f"{opening_line_summary.get('tracked', 0)} recurring branches grouped from your own first moves.",
+                    "href": url_for("chess_branches"),
+                    "link_label": "Open branch map",
+                },
             ],
         },
         "import": {
@@ -19881,6 +20154,8 @@ def build_lotus_chess_context(active_key="home"):
             "eyebrow": "Openings",
             "title": "Opening-first by design.",
             "summary": "Lotus Chess is meant to turn your opening choices, weak branches, and personal tree into the main source of truth for training.",
+            "cta_primary": {"label": "Branch Map", "href": url_for("chess_branches")},
+            "cta_secondary": {"label": "Browse Games", "href": url_for("chess_games")},
             "cards": [
                 {"label": "Games with opening name", "value": str(sum(1 for game in games if str((game.get('opening', {}) or {}).get('name', '') or '').strip()))},
                 {"label": "Games with ECO", "value": str(sum(1 for game in games if str((game.get('opening', {}) or {}).get('eco', '') or '').strip()))},
@@ -19898,6 +20173,29 @@ def build_lotus_chess_context(active_key="home"):
                 {
                     "title": "Phase note",
                     "description": "Opening tree, drills, and review still stay out of this phase.",
+                },
+            ],
+        },
+        "branches": {
+            "eyebrow": "Branches",
+            "title": "Map your recurring branches.",
+            "summary": "Built from your own games. Result-based only. Engine analysis comes later.",
+            "cta_primary": {"label": "Browse Openings", "href": url_for("chess_openings")},
+            "cta_secondary": {"label": "Browse Games", "href": url_for("chess_games")},
+            "cards": [
+                {"label": "Openings tracked", "value": str(len([item for item in build_opening_summary(chess_data) if str(item.get('label', '') or '').strip() and str(item.get('label', '') or '').strip() != 'Opening pending'])) if games else "0"},
+                {"label": "Recurring branches", "value": str(opening_line_summary.get("tracked", 0)) if opening_line_summary.get("tracked", 0) else "0"},
+                {"label": "Games with moves", "value": str(sum(1 for game in games if any(str(move or '').strip() for move in (game.get('moves', []) or [])))) if games else "0"},
+                {"label": "Weak branches V0", "value": str(len([item for item in opening_line_summary.get('items', []) or [] if int(item.get('total', 0) or 0) >= 2])) if opening_line_summary.get("items") else "0"},
+            ],
+            "sections": [
+                {
+                    "title": "Branch map V0",
+                    "description": "Grouped by opening first, then by recurring first moves. No tree engine, just your own games.",
+                },
+                {
+                    "title": "Result-based only",
+                    "description": "Weak and strong branches reflect your results only. Engine analysis comes later.",
                 },
             ],
         },
@@ -20098,11 +20396,20 @@ def chess_game_detail(game_id):
     if not game:
         return redirect(url_for("chess_games", error="That game could not be found in local Lotus Chess data."))
     review_snapshot = build_chess_review_queue_snapshot(chess_data)
+    review_queue_item = None
+    review_id = str(request.args.get("review_id", "") or "").strip()
+    if review_id:
+        candidate = get_chess_review_queue_item_by_id(review_snapshot, review_id)
+        if candidate and normalize_chess_review_item_type(candidate.get("type", "game")) == "game" and normalize_chess_opening_token(candidate.get("game_id", "")) == normalize_chess_opening_token(decoded_game_id):
+            review_queue_item = candidate
+    if not review_queue_item:
+        review_queue_item = (review_snapshot.get("active_game_map", {}) or {}).get(normalize_chess_opening_token(decoded_game_id))
     nav_items = [
         {"key": "home", "label": "Home", "href": url_for("chess"), "icon": "layout-dashboard"},
         {"key": "import", "label": "Import", "href": url_for("chess_import"), "icon": "download"},
         {"key": "games", "label": "Games", "href": url_for("chess_games"), "icon": "library-big"},
         {"key": "openings", "label": "Openings", "href": url_for("chess_openings"), "icon": "waypoints"},
+        {"key": "branches", "label": "Branches", "href": url_for("chess_branches"), "icon": "git-branch"},
         {"key": "train", "label": "Train", "href": url_for("chess_train"), "icon": "target"},
         {"key": "progress", "label": "Progress", "href": url_for("chess_progress"), "icon": "activity"},
         {"key": "courses", "label": "Courses", "href": url_for("chess_courses"), "icon": "graduation-cap"},
@@ -20110,6 +20417,10 @@ def chess_game_detail(game_id):
     detail = build_chess_game_detail_payload(game, review_snapshot=review_snapshot)
     detail["review_queue_active"] = bool(detail.get("review_queue_active", False))
     detail["review_queue_item_id"] = str(detail.get("review_queue_item_id", "") or "").strip()
+    detail["review_queue_context"] = review_queue_item if review_id and review_queue_item and review_queue_item.get("id") == review_id else None
+    detail["review_queue_review_url"] = f"/chess/game/{chess_game_url_id(detail['id'])}?review_id={urllib.parse.quote(detail['review_queue_item_id'], safe='')}" if detail["review_queue_item_id"] else ""
+    detail["review_queue_back_to_train_url"] = url_for("chess_train")
+    detail["review_queue_back_to_games_url"] = url_for("chess_games")
     return render_template(
         "chess_game_detail.html",
         chess_nav_items=nav_items,
@@ -20120,6 +20431,65 @@ def chess_game_detail(game_id):
         ai_default_mode="study",
         ai_page_context="general",
     )
+
+
+@app.route("/chess/line/<path:line_key>", endpoint="chess_line_detail")
+def chess_line_detail(line_key):
+    chess_data = load_chess_data()
+    decoded_line_key = urllib.parse.unquote(str(line_key or "").strip())
+    opening_key = str(request.args.get("opening_key", "") or "").strip()
+    line_payload = build_chess_line_review_payload(chess_data, decoded_line_key, opening_key=opening_key)
+    if not line_payload.get("total", 0):
+        return redirect(url_for("chess_openings", error="That recurring line could not be found in local Lotus Chess data."))
+    nav_items = [
+        {"key": "home", "label": "Home", "href": url_for("chess"), "icon": "layout-dashboard"},
+        {"key": "import", "label": "Import", "href": url_for("chess_import"), "icon": "download"},
+        {"key": "games", "label": "Games", "href": url_for("chess_games"), "icon": "library-big"},
+        {"key": "openings", "label": "Openings", "href": url_for("chess_openings"), "icon": "waypoints"},
+        {"key": "branches", "label": "Branches", "href": url_for("chess_branches"), "icon": "git-branch"},
+        {"key": "train", "label": "Train", "href": url_for("chess_train"), "icon": "target"},
+        {"key": "progress", "label": "Progress", "href": url_for("chess_progress"), "icon": "activity"},
+        {"key": "courses", "label": "Courses", "href": url_for("chess_courses"), "icon": "graduation-cap"},
+    ]
+    return render_template(
+        "chess_line_detail.html",
+        chess_nav_items=nav_items,
+        chess_active_key="openings",
+        chess_line=line_payload,
+        title=f"Lotus Chess | {line_payload['line_label']}",
+        ai_default_mode="study",
+        ai_page_context="general",
+    )
+
+
+@app.route("/chess/branches", endpoint="chess_branches")
+def chess_branches():
+    chess_data = load_chess_data()
+    opening_key = normalize_chess_opening_token(request.args.get("opening_key", ""))
+    sort_mode = str(request.args.get("sort", "most_played") or "most_played").strip().lower() or "most_played"
+    if sort_mode not in {"most_played", "weakest", "strongest", "latest"}:
+        sort_mode = "most_played"
+    branch_map = build_opening_branch_map(chess_data, opening_key=opening_key)
+    sorted_branches = sort_openings(branch_map.get("all_branches", []), sort_mode)
+    base_context = build_lotus_chess_context("branches")
+    base_context["chess_area"] = {
+        "eyebrow": "Branches",
+        "title": "Map your recurring branches.",
+        "summary": "Built from your own games. Result-based only. Engine analysis comes later.",
+        "cards": [
+            {"label": "Openings tracked", "value": str(branch_map.get("openings_tracked", 0)) if branch_map.get("openings_tracked", 0) else "0"},
+            {"label": "Recurring branches", "value": str(branch_map.get("branches_count", 0)) if branch_map.get("branches_count", 0) else "0"},
+            {"label": "Games with parsed moves", "value": str(branch_map.get("games_with_moves_count", 0)) if branch_map.get("games_with_moves_count", 0) else "0"},
+            {"label": "Weak branches V0", "value": str(branch_map.get("weak_branches_count", 0)) if branch_map.get("weak_branches_count", 0) else "0"},
+        ],
+    }
+    base_context["chess_branch_map"] = branch_map
+    base_context["chess_branch_sort"] = sort_mode
+    base_context["chess_branch_rows"] = sorted_branches[:12]
+    base_context["chess_branch_opening_filter_key"] = branch_map.get("opening_filter_key", "")
+    base_context["chess_branch_opening_filter"] = branch_map.get("opening_filter_label", "")
+    base_context["title"] = "Lotus Chess | Branches"
+    return render_template("chess_branches.html", **base_context)
 
 
 @app.route("/chess/openings", endpoint="chess_openings")
@@ -20329,9 +20699,12 @@ def chess_review_add_game():
     chess_data = load_chess_data()
     game_id = decode_chess_game_url_id(request.form.get("game_id", ""))
     reason = str(request.form.get("reason", "") or "").strip()
+    next_url = str(request.form.get("next", "") or "").strip()
+    if not next_url.startswith("/"):
+        next_url = url_for("chess_train")
     game = find_chess_game(chess_data, game_id)
     if not game:
-        return redirect(build_chess_redirect_with_message(url_for("chess_train"), error="That game could not be found in local Lotus Chess data."))
+        return redirect(build_chess_redirect_with_message(next_url, error="That game could not be found in local Lotus Chess data."))
     title = f"{str(game.get('white', '') or '').strip() or 'White'} vs {str(game.get('black', '') or '').strip() or 'Black'}"
     result = add_chess_review_queue_item(
         chess_data,
@@ -20341,11 +20714,11 @@ def chess_review_add_game():
         game_id=game_id,
     )
     if result.get("duplicate"):
-        return redirect(build_chess_redirect_with_message(url_for("chess_train"), success="Already in review queue."))
+        return redirect(build_chess_redirect_with_message(next_url, success="Already in review queue."))
     if not result.get("created"):
-        return redirect(build_chess_redirect_with_message(url_for("chess_train"), error=result.get("error") or "Could not add game to review queue."))
+        return redirect(build_chess_redirect_with_message(next_url, error=result.get("error") or "Could not add game to review queue."))
     save_chess_data(chess_data)
-    return redirect(build_chess_redirect_with_message(url_for("chess_train"), success="Added to review queue."))
+    return redirect(build_chess_redirect_with_message(next_url, success="Added to review queue."))
 
 
 @app.route("/chess/review/add-opening", methods=["POST"], endpoint="chess_review_add_opening")
@@ -20375,15 +20748,48 @@ def chess_review_add_opening():
     return redirect(build_chess_redirect_with_message(url_for("chess_train"), success="Added to review queue."))
 
 
+@app.route("/chess/review/add-line", methods=["POST"], endpoint="chess_review_add_line")
+def chess_review_add_line():
+    chess_data = load_chess_data()
+    line_key = normalize_chess_opening_token(request.form.get("line_key", ""))
+    line_label = str(request.form.get("line_label", "") or "").strip()
+    opening_key = normalize_chess_opening_token(request.form.get("opening_key", ""))
+    reason = str(request.form.get("reason", "") or "").strip()
+    if not line_key:
+        return redirect(build_chess_redirect_with_message(url_for("chess_openings"), error="Missing line key."))
+    if not line_label:
+        line_payload = build_chess_line_review_payload(chess_data, line_key, opening_key=opening_key)
+        line_label = str(line_payload.get("line_label", "") or "").strip() or "Recurring line"
+    result = add_chess_review_queue_item(
+        chess_data,
+        "line",
+        title=line_label,
+        reason=reason or "Recurring line review",
+        opening_key=opening_key,
+        line_key=line_key,
+        line_label=line_label,
+    )
+    redirect_url = url_for("chess_line_detail", line_key=line_key, opening_key=opening_key) if opening_key else url_for("chess_line_detail", line_key=line_key)
+    if result.get("duplicate"):
+        return redirect(build_chess_redirect_with_message(redirect_url, success="Already in review queue."))
+    if not result.get("created"):
+        return redirect(build_chess_redirect_with_message(redirect_url, error=result.get("error") or "Could not add line to review queue."))
+    save_chess_data(chess_data)
+    return redirect(build_chess_redirect_with_message(redirect_url, success="Added to review queue."))
+
+
 @app.route("/chess/review/complete", methods=["POST"], endpoint="chess_review_complete")
 def chess_review_complete():
     chess_data = load_chess_data()
     queue_id = str(request.form.get("queue_id", "") or "").strip()
+    next_url = str(request.form.get("next", "") or "").strip()
+    if not next_url.startswith("/"):
+        next_url = url_for("chess_train")
     result = complete_chess_review_queue_item(chess_data, queue_id)
     if not result.get("changed"):
-        return redirect(build_chess_redirect_with_message(url_for("chess_train"), error=result.get("error") or "Could not mark review item done."))
+        return redirect(build_chess_redirect_with_message(next_url, error=result.get("error") or "Could not mark review item done."))
     save_chess_data(chess_data)
-    return redirect(build_chess_redirect_with_message(url_for("chess_train"), success="Marked as done."))
+    return redirect(build_chess_redirect_with_message(next_url, success="Marked as done."))
 
 
 @app.route("/chess/import/prepare", methods=["POST"], endpoint="chess_import_prepare")

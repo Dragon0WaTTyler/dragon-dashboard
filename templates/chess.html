@@ -161,6 +161,9 @@
                 <span class="hero-badge matte-tag">Top openings</span>
                 <span>Result-based only</span>
             </div>
+            <div class="chess-branch-row-actions">
+                <a class="btn chess-inline-btn" href="{{ url_for('chess_branches') }}"><i data-lucide="git-branch"></i><span>Branch Map</span></a>
+            </div>
             {% if chess_openings_top %}
             <div class="chess-openings-list">
                 {% for opening in chess_openings_top %}
@@ -258,6 +261,9 @@
             <div class="hero-meta">
                 <span class="hero-badge matte-tag">Recurring lines V0</span>
                 <span>Grouped by first moves only. Engine analysis comes later.</span>
+            </div>
+            <div class="chess-branch-row-actions">
+                <a class="btn chess-inline-btn" href="{{ url_for('chess_branches') }}"><i data-lucide="git-branch"></i><span>Branch Map</span></a>
             </div>
             {% if chess_opening_lines_top %}
             <div class="chess-lines-list">
