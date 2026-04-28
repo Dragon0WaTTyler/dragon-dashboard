@@ -731,6 +731,42 @@ h2{font-size:clamp(2.2rem,4vw,3.6rem);margin-top:14px;letter-spacing:-.03em}.det
   max-width:100%;
 }
 
+.chess-move-list{
+  display:grid;
+  gap:8px;
+  max-height:360px;
+  overflow:auto;
+  padding-right:4px;
+}
+
+.chess-move-row{
+  display:grid;
+  grid-template-columns:auto minmax(0,1fr) minmax(0,1fr);
+  gap:10px;
+  align-items:start;
+  padding:10px 12px;
+  border-radius:16px;
+  border:1px solid var(--border);
+  background:rgba(255,255,255,.02);
+  min-width:0;
+}
+
+.chess-move-number{
+  color:var(--accent-2);
+  font-weight:700;
+}
+
+.chess-move-white,
+.chess-move-black{
+  min-width:0;
+  overflow-wrap:anywhere;
+  word-break:break-word;
+}
+
+.chess-move-black{
+  color:var(--text-2);
+}
+
 .chess-train-page{
   display:grid;
   gap:18px;
@@ -1129,6 +1165,101 @@ h2{font-size:clamp(2.2rem,4vw,3.6rem);margin-top:14px;letter-spacing:-.03em}.det
   justify-self:start;
 }
 
+.chess-lines-shell{
+  display:grid;
+  gap:14px;
+}
+
+.chess-lines-list{
+  display:grid;
+  gap:10px;
+}
+
+.chess-line-row{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  gap:12px;
+  align-items:center;
+  padding:14px 16px;
+  border-radius:18px;
+  border:1px solid var(--border);
+  background:rgba(255,255,255,.02);
+  color:var(--text);
+  text-decoration:none;
+  min-width:0;
+}
+
+.chess-line-main{
+  display:grid;
+  gap:4px;
+  min-width:0;
+}
+
+.chess-line-main strong,
+.chess-line-main span{
+  overflow-wrap:anywhere;
+}
+
+.chess-line-main span{
+  color:var(--text-2);
+}
+
+.chess-line-stats{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  justify-content:flex-end;
+}
+
+.chess-line-stats span{
+  padding:6px 8px;
+  border-radius:999px;
+  border:1px solid var(--border);
+  background:rgba(0,0,0,.2);
+  color:var(--text-2);
+  font-size:.88rem;
+}
+
+.chess-openings-pairs{
+  display:grid;
+  gap:14px;
+  grid-template-columns:1fr;
+}
+
+.chess-openings-column{
+  display:grid;
+  gap:12px;
+}
+
+.chess-openings-mini-list{
+  display:grid;
+  gap:10px;
+}
+
+.chess-opening-mini-row{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px 10px;
+  align-items:center;
+  justify-content:space-between;
+  padding:12px 14px;
+  border-radius:16px;
+  border:1px solid var(--border);
+  background:rgba(255,255,255,.02);
+  color:var(--text);
+  text-decoration:none;
+  min-width:0;
+}
+
+.chess-opening-mini-row strong{
+  min-width:0;
+  overflow-wrap:anywhere;
+}
+
+.chess-opening-mini-row span{
+  color:var(--text-2);
+}
+
 .chess-courses-page{
   display:grid;
   gap:18px;
@@ -1351,6 +1482,14 @@ h2{font-size:clamp(2.2rem,4vw,3.6rem);margin-top:14px;letter-spacing:-.03em}.det
     width:100%;
   }
 
+  .chess-move-row{
+    grid-template-columns:auto minmax(0,1fr);
+  }
+
+  .chess-move-black{
+    grid-column:2;
+  }
+
   .chess-courses-grid,
   .chess-courses-filters{
     grid-template-columns:1fr;
@@ -1398,6 +1537,14 @@ h2{font-size:clamp(2.2rem,4vw,3.6rem);margin-top:14px;letter-spacing:-.03em}.det
 
   .chess-openings-pairs{
     grid-template-columns:1fr;
+  }
+
+  .chess-line-row{
+    grid-template-columns:1fr;
+  }
+
+  .chess-line-stats{
+    justify-content:flex-start;
   }
 
   .chess-opening-row{

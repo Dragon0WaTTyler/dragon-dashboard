@@ -31,7 +31,7 @@
         <section class="surface-card section-card chess-focus-card">
             <div class="hero-meta">
                 <span class="hero-badge matte-tag">{{ chess_area.eyebrow }}</span>
-                <span>Phase 1 shell</span>
+                <span>Lotus Chess V0</span>
             </div>
             <h3 class="title-scaled chess-section-title">{{ chess_area.title }}</h3>
             <p class="subhead chess-section-copy">{{ chess_area.summary }}</p>
@@ -86,7 +86,7 @@
                     <button type="submit" class="btn" data-chess-import-button>
                         <i data-lucide="download"></i><span>{{ chess_area.button_label }}</span>
                     </button>
-                    <p class="chess-summary-note" data-chess-import-note>Chess.com imports public games now. Lichess import comes next.</p>
+                    <p class="chess-summary-note" data-chess-import-note>Chess.com imports public games into local Lotus Chess data.</p>
                 </form>
             </section>
             {% endif %}
@@ -253,6 +253,51 @@
                 {% endif %}
             </article>
         </section>
+
+        <section class="surface-card section-card chess-lines-shell">
+            <div class="hero-meta">
+                <span class="hero-badge matte-tag">Recurring lines V0</span>
+                <span>Grouped by first moves only. Engine analysis comes later.</span>
+            </div>
+            {% if chess_opening_lines_top %}
+            <div class="chess-lines-list">
+                {% for line in chess_opening_lines_top %}
+                <a class="chess-line-row" href="{{ line.href }}">
+                    <div class="chess-line-main">
+                        <strong>{{ line.opening_label }}</strong>
+                        <span>{{ line.line_label }}</span>
+                    </div>
+                    <div class="chess-line-stats">
+                        <span>{{ line.total }} games</span>
+                        <span>W {{ line.wins }}</span>
+                        <span>L {{ line.losses }}</span>
+                        <span>D {{ line.draws }}</span>
+                        <span>{{ line.score_percent_label }}</span>
+                    </div>
+                </a>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="chess-empty-state">No recurring lines yet. Extract PGN Moves first.</div>
+            {% endif %}
+        </section>
+
+        {% if chess_opening_lines_by_opening_list %}
+        <section class="chess-openings-pairs">
+            <article class="surface-card section-card chess-openings-column">
+                <h3>Lines by opening</h3>
+                <p class="chess-summary-note">One opening can have several recurring lines.</p>
+                <div class="chess-openings-mini-list">
+                    {% for item in chess_opening_lines_by_opening_list[:3] %}
+                    <a class="chess-opening-mini-row" href="{{ item.top_line.href }}">
+                        <strong>{{ item.opening_label or 'Opening pending' }}</strong>
+                        <span>{{ item.total_games }} games · {{ item.top_line.score_percent_label }}</span>
+                    </a>
+                    {% endfor %}
+                </div>
+            </article>
+        </section>
+        {% endif %}
         {% endif %}
     </div>
 
@@ -293,8 +338,13 @@ document.addEventListener('DOMContentLoaded', function () {
             note.textContent = 'Imports public Chess.com games into local Lotus Chess data.';
             return;
         }
+        if (value === 'lichess') {
+            button.textContent = 'Import Lichess Games';
+            note.textContent = 'Imports public Lichess games into local Lotus Chess data.';
+            return;
+        }
         button.textContent = 'Prepare Import';
-        note.textContent = 'Lichess import comes next. This path still prepares a local draft only.';
+        note.textContent = 'Choose a source to start a local import.';
     }
     sourceSelect.addEventListener('change', updateChessImportState);
     updateChessImportState();

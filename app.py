@@ -15,7 +15,7 @@ import time
 import threading
 import xml.etree.ElementTree as ET
 from email.utils import parsedate_to_datetime
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from html import escape, unescape
 from html.parser import HTMLParser
 from pathlib import Path
@@ -1125,6 +1125,318 @@ def chess_com_request(url):
         raise RuntimeError(f"Network error while reaching Chess.com: {exc}") from exc
 
 
+def lichess_request(username, params):
+    username_value = normalize_chess_username(username)
+    if not username_value:
+        raise ValueError("Username is required.")
+    request_url = f"https://lichess.org/api/games/user/{urllib.parse.quote(username_value)}"
+    try:
+        response = requests.get(
+            request_url,
+            headers={
+                "User-Agent": "DragonLotusChess/0.1 (+local import foundation)",
+                "Accept": "application/x-ndjson",
+            },
+            params=params or {},
+            timeout=30,
+        )
+        return response
+    except requests.RequestException as exc:
+        raise RuntimeError(f"Network error while reaching Lichess: {exc}") from exc
+
+
+def _lichess_since_timestamp(scope):
+    scope_value = str(scope or "").strip().lower()
+    if scope_value not in {"90", "90d", "3m", "3months", "last3months", "last 3 months"}:
+        return None
+    return int((datetime.now(timezone.utc) - timedelta(days=90)).timestamp() * 1000)
+
+
+def _extract_lichess_player_name(player):
+    payload = player if isinstance(player, dict) else {}
+    user_payload = payload.get("user", {}) if isinstance(payload.get("user", {}), dict) else {}
+    for candidate in (
+        user_payload.get("name", ""),
+        payload.get("name", ""),
+        payload.get("username", ""),
+    ):
+        value = normalize_chess_username(candidate)
+        if value:
+            return value
+    ai_level = payload.get("aiLevel", None)
+    if ai_level not in (None, ""):
+        return f"AI level {ai_level}"
+    return ""
+
+
+def _lichess_user_color(raw_game, username):
+    username_key = normalize_chess_username(username).lower()
+    players = (raw_game or {}).get("players", {}) if isinstance((raw_game or {}).get("players", {}), dict) else {}
+    white_name = _extract_lichess_player_name(players.get("white", {})).lower()
+    black_name = _extract_lichess_player_name(players.get("black", {})).lower()
+    if white_name == username_key:
+        return "white"
+    if black_name == username_key:
+        return "black"
+    return ""
+
+
+def _lichess_time_class(raw_game):
+    payload = raw_game if isinstance(raw_game, dict) else {}
+    for candidate in (
+        payload.get("speed", ""),
+        payload.get("perf", ""),
+    ):
+        value = str(candidate or "").strip().lower()
+        if value in {"rapid", "blitz", "bullet"}:
+            return value
+        if value in {"classical"}:
+            return "classical"
+        if value in {"correspondence"}:
+            return "daily"
+    return "other"
+
+
+def _lichess_time_control(raw_game):
+    payload = raw_game if isinstance(raw_game, dict) else {}
+    clock = payload.get("clock", {}) if isinstance(payload.get("clock", {}), dict) else {}
+    initial = clock.get("initial", None)
+    increment = clock.get("increment", None)
+    if initial not in (None, ""):
+        try:
+            initial_seconds = int(initial)
+            increment_seconds = int(increment or 0)
+            return f"{initial_seconds}+{increment_seconds}"
+        except Exception:
+            pass
+    days_per_turn = clock.get("daysPerTurn", None)
+    if days_per_turn not in (None, ""):
+        try:
+            return f"{int(days_per_turn)}d"
+        except Exception:
+            return str(days_per_turn)
+    return str(payload.get("speed", "") or payload.get("perf", "") or "").strip()
+
+
+def _lichess_result_fields(raw_game, username):
+    payload = raw_game if isinstance(raw_game, dict) else {}
+    user_color = _lichess_user_color(payload, username)
+    winner = str(payload.get("winner", "") or "").strip().lower()
+    status = str(payload.get("status", "") or "").strip().lower()
+    if winner == "white":
+        result = "1-0"
+    elif winner == "black":
+        result = "0-1"
+    elif status in {"draw", "stalemate", "mate", "resign", "timeout", "outoftime", "cheat", "nostart", "aborted"}:
+        result = "1/2-1/2" if status == "draw" else ""
+    else:
+        result = ""
+
+    user_result = "unknown"
+    if user_color == "white":
+        if winner == "white":
+            user_result = "win"
+        elif winner == "black":
+            user_result = "loss"
+        elif status == "draw":
+            user_result = "draw"
+    elif user_color == "black":
+        if winner == "black":
+            user_result = "win"
+        elif winner == "white":
+            user_result = "loss"
+        elif status == "draw":
+            user_result = "draw"
+    return result, user_result, user_color
+
+
+def _normalize_lichess_timestamp(value):
+    if value in (None, ""):
+        return "", ""
+    try:
+        timestamp = datetime.fromtimestamp(int(value) / 1000, tz=timezone.utc).astimezone()
+        return timestamp.strftime("%Y-%m-%d"), timestamp.isoformat(timespec="seconds")
+    except Exception:
+        raw = str(value or "").strip()
+        return raw[:10] if len(raw) >= 10 else "", raw
+
+
+def normalize_lichess_game(raw_game, username):
+    if not isinstance(raw_game, dict):
+        return None
+    source_game_id = str(raw_game.get("id", "") or "").strip()
+    url_value = str(raw_game.get("url", "") or "").strip()
+    if not url_value and source_game_id:
+        url_value = f"https://lichess.org/{source_game_id}"
+    if not source_game_id and url_value:
+        source_game_id = hashlib.sha1(url_value.encode("utf-8")).hexdigest()
+    if not source_game_id:
+        source_game_id = hashlib.sha1(str(raw_game).encode("utf-8")).hexdigest()
+    players = raw_game.get("players", {}) if isinstance(raw_game.get("players", {}), dict) else {}
+    white = _extract_lichess_player_name(players.get("white", {}))
+    black = _extract_lichess_player_name(players.get("black", {}))
+    result, user_result, user_color = _lichess_result_fields(raw_game, username)
+    date_value, end_time_value = _normalize_lichess_timestamp(raw_game.get("lastMoveAt") or raw_game.get("createdAt"))
+    opening_payload = raw_game.get("opening", {}) if isinstance(raw_game.get("opening", {}), dict) else {}
+    pgn_text = str(raw_game.get("pgn", "") or "").strip()
+    opening_name = str(opening_payload.get("name", "") or "").strip() or _extract_pgn_tag(pgn_text, "Opening")
+    opening_eco = str(opening_payload.get("eco", "") or "").strip() or _extract_pgn_tag(pgn_text, "ECO")
+    opening_variation = _extract_pgn_tag(pgn_text, "Variation")
+    return {
+        "id": f"lichess:{source_game_id}",
+        "source": "lichess",
+        "source_game_id": source_game_id,
+        "url": url_value,
+        "white": white,
+        "black": black,
+        "user_color": user_color,
+        "result": result,
+        "user_result": user_result,
+        "date": date_value,
+        "end_time": end_time_value,
+        "time_class": _lichess_time_class(raw_game),
+        "time_control": _lichess_time_control(raw_game),
+        "rules": str(raw_game.get("variant", "") or "").strip(),
+        "rated": bool(raw_game.get("rated", False)),
+        "pgn": pgn_text,
+        "moves": [],
+        "opening": {
+            "name": opening_name,
+            "eco": opening_eco,
+            "variation": opening_variation,
+            "side": user_color,
+        },
+        "imported_at": current_timestamp(),
+        "raw_source": "lichess",
+    }
+
+
+def fetch_lichess_games(username, limit=100, scope="recent_100", time_control="all", color="both"):
+    username_value = normalize_chess_username(username)
+    requested_limit = max(0, int(limit or 0))
+    params = {
+        "opening": "true",
+        "pgnInJson": "true",
+        "moves": "false",
+        "clocks": "false",
+        "evals": "false",
+        "literate": "false",
+        "finished": "true",
+    }
+    since_value = _lichess_since_timestamp(scope)
+    if since_value:
+        params["since"] = str(since_value)
+    elif requested_limit:
+        params["max"] = str(requested_limit)
+    else:
+        params["max"] = "100"
+    requested_color = str(color or "both").strip().lower() or "both"
+    if requested_color in {"white", "black"}:
+        params["color"] = requested_color
+    requested_time = str(time_control or "all").strip().lower() or "all"
+    if requested_time in {"rapid", "blitz", "bullet"}:
+        params["perfType"] = requested_time
+
+    response = lichess_request(username_value, params)
+    if response.status_code == 404:
+        raise ValueError("Lichess username not found.")
+    if response.status_code == 429:
+        raise RuntimeError("Lichess rate limit reached. Try again in a moment.")
+    if response.status_code >= 400:
+        raise RuntimeError(f"Lichess request failed with status {response.status_code}.")
+
+    games = []
+    malformed_lines = 0
+    for raw_line in str(response.text or "").splitlines():
+        line = str(raw_line or "").strip()
+        if not line:
+            continue
+        try:
+            raw_game = json.loads(line)
+        except json.JSONDecodeError:
+            malformed_lines += 1
+            continue
+        if not isinstance(raw_game, dict):
+            continue
+        if requested_time in {"rapid", "blitz", "bullet"} and _lichess_time_class(raw_game) != requested_time:
+            continue
+        if requested_color in {"white", "black"} and _lichess_user_color(raw_game, username_value) != requested_color:
+            continue
+        games.append(raw_game)
+        if requested_limit and len(games) >= requested_limit:
+            break
+    return {
+        "games": games,
+        "fetched_raw": len(games),
+        "malformed_lines": malformed_lines,
+    }
+
+
+def import_lichess_games(username, requested_limit, scope, time_control, color):
+    chess_data = load_chess_data()
+    profile = upsert_chess_profile(chess_data, "lichess", username)
+    if not profile:
+        raise ValueError("Unable to create a local Lichess profile.")
+    requested_scope = normalize_chess_scope_label(scope)
+    requested_limit_value = int(requested_limit or 0)
+    job = create_chess_import_job(
+        chess_data,
+        profile,
+        "lichess",
+        username,
+        requested_limit=requested_limit_value,
+        time_control=time_control,
+        color=color,
+        requested_scope=requested_scope,
+    )
+    fetch_result = fetch_lichess_games(
+        username=username,
+        limit=requested_limit_value,
+        scope=scope,
+        time_control=time_control,
+        color=color,
+    )
+    normalized_games = []
+    imported_new = 0
+    skipped_duplicates = 0
+    games_store = list(chess_data.get("games", []) or [])
+    for raw_game in fetch_result.get("games", []):
+        normalized = normalize_lichess_game(raw_game, username)
+        if not normalized:
+            continue
+        normalized_games.append(normalized)
+        if chess_game_exists(chess_data, "lichess", normalized.get("source_game_id", "")):
+            skipped_duplicates += 1
+            continue
+        games_store.append(normalized)
+        imported_new += 1
+    chess_data["games"] = games_store
+    profile["last_import_at"] = current_timestamp()
+    profile_id = str(profile.get("id", "") or "").strip()
+    if profile_id:
+        chess_data.setdefault("settings", {})["active_profile_id"] = profile_id
+    malformed_lines = int(fetch_result.get("malformed_lines", 0) or 0)
+    job["status"] = "completed"
+    job["summary"] = {
+        "source": "lichess",
+        "username": normalize_chess_username(username),
+        "fetched": len(normalized_games),
+        "imported_new": imported_new,
+        "skipped_duplicates": skipped_duplicates,
+        "malformed_lines": malformed_lines,
+        "message": "Imported public Lichess games." if normalized_games else "No public Lichess games matched the selected filters.",
+    }
+    save_chess_data(chess_data)
+    return {
+        "profile": profile,
+        "job": job,
+        "fetched": len(normalized_games),
+        "imported_new": imported_new,
+        "skipped_duplicates": skipped_duplicates,
+        "malformed_lines": malformed_lines,
+    }
+
+
 def fetch_chess_com_archives(username):
     username_value = normalize_chess_username(username)
     if not username_value:
@@ -1181,6 +1493,127 @@ def _extract_pgn_tag(pgn_text, tag_name):
     pattern = r'\[' + re.escape(str(tag_name or "").strip()) + r'\s+"([^"]*)"\]'
     match = re.search(pattern, text)
     return str(match.group(1) or "").strip() if match else ""
+
+
+def parse_pgn_moves(pgn):
+    text = str(pgn or "").strip()
+    if not text:
+        return []
+
+    cleaned_lines = []
+    for line in text.splitlines():
+        stripped = str(line or "").strip()
+        if not stripped:
+            continue
+        if stripped.startswith("["):
+            continue
+        if ";" in stripped:
+            stripped = stripped.split(";", 1)[0].strip()
+        if stripped:
+            cleaned_lines.append(stripped)
+    body = " ".join(cleaned_lines)
+    if not body:
+        return []
+
+    body = re.sub(r"\{[^{}]*\}", " ", body)
+    previous_body = None
+    while previous_body != body:
+        previous_body = body
+        body = re.sub(r"\([^()]*\)", " ", body)
+    body = re.sub(r"\$\d+", " ", body)
+    body = re.sub(r"\s+", " ", body).strip()
+    if not body:
+        return []
+
+    moves = []
+    result_tokens = {"1-0", "0-1", "1/2-1/2", "*"}
+    for token in body.split(" "):
+        item = str(token or "").strip()
+        if not item:
+            continue
+        if item in result_tokens:
+            continue
+        if re.fullmatch(r"\d+\.(\.\.)?", item) or re.fullmatch(r"\d+\.\.\.", item):
+            continue
+        item = re.sub(r"^\d+\.(?:\.\.)?", "", item)
+        item = item.strip()
+        if not item or item in result_tokens:
+            continue
+        if item == "...":
+            continue
+        item = re.sub(r"[!?]+$", "", item)
+        item = item.strip()
+        if not item or item in result_tokens:
+            continue
+        moves.append(item)
+    return moves
+
+
+def build_chess_move_pairs(moves):
+    items = [str(move or "").strip() for move in (moves or []) if str(move or "").strip()]
+    pairs = []
+    for index in range(0, len(items), 2):
+        move_number = (index // 2) + 1
+        pairs.append({
+            "move_number": move_number,
+            "white": items[index],
+            "black": items[index + 1] if index + 1 < len(items) else "",
+        })
+    return pairs
+
+
+def enrich_game_moves_from_pgn(game):
+    payload = game if isinstance(game, dict) else {}
+    existing_moves = list(payload.get("moves", []) or [])
+    if existing_moves:
+        return {"changed": False, "moves_count": len(existing_moves), "parsed_count": 0, "error": ""}
+    pgn_text = str(payload.get("pgn", "") or "").strip()
+    if not pgn_text:
+        return {"changed": False, "moves_count": 0, "parsed_count": 0, "error": "Missing PGN."}
+    parsed_moves = parse_pgn_moves(pgn_text)
+    if not parsed_moves:
+        return {"changed": False, "moves_count": 0, "parsed_count": 0, "error": "No moves found in PGN."}
+    payload["moves"] = parsed_moves
+    return {"changed": True, "moves_count": len(parsed_moves), "parsed_count": len(parsed_moves), "error": ""}
+
+
+def enrich_chess_games_moves(data):
+    payload = data if isinstance(data, dict) else default_chess_data()
+    games = payload.get("games", []) or []
+    games_checked = 0
+    games_with_pgn = 0
+    moves_added_games = 0
+    skipped_existing_moves = 0
+    skipped_no_pgn = 0
+    changed = False
+    for game in games:
+        if not isinstance(game, dict):
+            continue
+        games_checked += 1
+        existing_moves = list(game.get("moves", []) or [])
+        if existing_moves:
+            skipped_existing_moves += 1
+            continue
+        pgn_text = str(game.get("pgn", "") or "").strip()
+        if not pgn_text:
+            skipped_no_pgn += 1
+            continue
+        games_with_pgn += 1
+        result = enrich_game_moves_from_pgn(game)
+        if result.get("changed"):
+            moves_added_games += 1
+            changed = True
+    if changed:
+        payload["updated_at"] = current_timestamp()
+    return {
+        "changed": changed,
+        "data": payload,
+        "games_checked": games_checked,
+        "games_with_pgn": games_with_pgn,
+        "moves_added_games": moves_added_games,
+        "skipped_existing_moves": skipped_existing_moves,
+        "skipped_no_pgn": skipped_no_pgn,
+    }
 
 
 def normalize_chess_com_game(raw_game, username):
@@ -1486,6 +1919,40 @@ def get_game_opening_key(game):
     return "pending"
 
 
+def get_game_line_key(game, ply_count=8):
+    payload = game if isinstance(game, dict) else {}
+    moves = [str(move or "").strip().lower() for move in (payload.get("moves", []) or []) if str(move or "").strip()]
+    if not moves:
+        return ""
+    try:
+        limit = max(1, int(ply_count or 8))
+    except Exception:
+        limit = 8
+    line = " ".join(moves[:limit]).strip()
+    return normalize_chess_opening_token(line)
+
+
+def get_game_line_label(game, ply_count=8):
+    payload = game if isinstance(game, dict) else {}
+    moves = [str(move or "").strip() for move in (payload.get("moves", []) or []) if str(move or "").strip()]
+    if not moves:
+        return ""
+    try:
+        limit = max(1, int(ply_count or 8))
+    except Exception:
+        limit = 8
+    paired = build_chess_move_pairs(moves[:limit])
+    parts = []
+    for pair in paired:
+        white = str(pair.get("white", "") or "").strip()
+        black = str(pair.get("black", "") or "").strip()
+        if black:
+            parts.append(f"{pair['move_number']}. {white} {black}")
+        else:
+            parts.append(f"{pair['move_number']}. {white}")
+    return " ".join(parts).strip()
+
+
 def chess_game_url_id(game_id):
     return urllib.parse.quote(str(game_id or "").strip(), safe="")
 
@@ -1551,9 +2018,12 @@ def build_chess_game_detail_payload(game, review_snapshot=None):
     opening_eco = str(opening.get("eco", "") or "").strip()
     opening_variation = str(opening.get("variation", "") or "").strip()
     opening_inferred = bool(opening.get("inferred_from_eco", False))
+    moves = [str(move or "").strip() for move in (payload.get("moves", []) or []) if str(move or "").strip()]
     review_snapshot = review_snapshot or {}
     game_id_value = str(payload.get("id", "") or "").strip()
     review_item = (review_snapshot.get("active_game_map", {}) or {}).get(normalize_chess_opening_token(game_id_value))
+    move_pairs = build_chess_move_pairs(moves)
+    line_key = get_game_line_key(payload)
     return {
         "id": game_id_value,
         "title": f"{str(payload.get('white', '') or '').strip() or 'White'} vs {str(payload.get('black', '') or '').strip() or 'Black'}",
@@ -1574,7 +2044,13 @@ def build_chess_game_detail_payload(game, review_snapshot=None):
         "opening_inferred_from_eco": opening_inferred,
         "opening_display_label": chess_opening_label(opening),
         "pgn": str(payload.get("pgn", "") or "").strip(),
-        "moves": list(payload.get("moves", []) or []),
+        "moves": moves,
+        "moves_count": len(moves),
+        "move_pairs": move_pairs,
+        "opening_line_key": line_key,
+        "opening_line_label": get_game_line_label(payload) if line_key else "",
+        "opening_preview": " ".join(moves[:10]),
+        "opening_preview_label": "First moves",
         "review_queue_active": bool(review_item),
         "review_queue_item_id": str((review_item or {}).get("id", "") or "").strip(),
     }
@@ -1591,6 +2067,7 @@ def build_chess_games_browser_context():
         "sort": str(request.args.get("sort", "newest") or "newest").strip().lower() or "newest",
         "opening_key": normalize_chess_opening_token(request.args.get("opening_key", "")),
         "opening": normalize_chess_opening_token(request.args.get("opening", "")),
+        "line_key": normalize_chess_opening_token(request.args.get("line_key", "")),
     }
     filtered_games = []
     for game in games:
@@ -1609,6 +2086,9 @@ def build_chess_games_browser_context():
                 continue
         elif filters["opening"]:
             if normalize_chess_opening_token(get_game_opening_label(game)) != filters["opening"]:
+                continue
+        if filters["line_key"]:
+            if normalize_chess_opening_token(get_game_line_key(game)) != filters["line_key"]:
                 continue
         filtered_games.append(game)
 
@@ -1632,6 +2112,14 @@ def build_chess_games_browser_context():
                 break
         if not opening_filter_label:
             opening_filter_label = filters["opening"]
+    line_filter_label = ""
+    if filters["line_key"]:
+        for game in games:
+            if normalize_chess_opening_token(get_game_line_key(game)) == filters["line_key"]:
+                line_filter_label = get_game_line_label(game)
+                break
+        if not line_filter_label:
+            line_filter_label = filters["line_key"]
     nav_items = [
         {"key": "home", "label": "Home", "href": url_for("chess"), "icon": "layout-dashboard"},
         {"key": "import", "label": "Import", "href": url_for("chess_import"), "icon": "download"},
@@ -1654,6 +2142,8 @@ def build_chess_games_browser_context():
         "chess_no_opening_count": sum(1 for game in games if not str((game.get("opening", {}) or {}).get("name", "") or "").strip() and not str((game.get("opening", {}) or {}).get("eco", "") or "").strip()),
         "chess_opening_filter_key": filters["opening_key"],
         "chess_opening_filter": opening_filter_label,
+        "chess_line_filter_key": filters["line_key"],
+        "chess_line_filter": line_filter_label,
         "chess_review_queue_snapshot": review_snapshot,
         "chess_success_message": str(request.args.get("success", "") or "").strip(),
         "chess_error_message": str(request.args.get("error", "") or "").strip(),
@@ -1742,6 +2232,110 @@ def build_opening_summary(data):
         entry["score_percent"] = score_percent
         results.append(entry)
     return results
+
+
+def build_opening_line_summary(data, ply_count=8):
+    payload = data if isinstance(data, dict) else default_chess_data()
+    try:
+        line_limit = max(1, int(ply_count or 8))
+    except Exception:
+        line_limit = 8
+    summary = {}
+    for game in (payload.get("games", []) or []):
+        if not isinstance(game, dict):
+            continue
+        moves = [str(move or "").strip() for move in (game.get("moves", []) or []) if str(move or "").strip()]
+        if not moves:
+            continue
+        opening_label = get_game_opening_label(game)
+        opening_key = get_game_opening_key(game)
+        line_key = get_game_line_key(game, ply_count=line_limit)
+        if not line_key:
+            continue
+        line_label = get_game_line_label(game, ply_count=line_limit)
+        result = str(game.get("user_result", "") or "").strip().lower() or "unknown"
+        color = str(game.get("user_color", "") or "").strip().lower() or "unknown"
+        score = 1 if result == "win" else 0.5 if result == "draw" else 0
+        combined_key = f"{opening_key}||{line_key}"
+        entry = summary.setdefault(combined_key, {
+            "key": combined_key,
+            "line_key": line_key,
+            "line_label": line_label,
+            "opening_key": opening_key,
+            "opening_label": opening_label,
+            "total": 0,
+            "wins": 0,
+            "losses": 0,
+            "draws": 0,
+            "unknown": 0,
+            "white_games": 0,
+            "black_games": 0,
+            "score_total": 0.0,
+            "latest_game_date": "",
+            "latest_game_sort": None,
+        })
+        entry["total"] += 1
+        if result == "win":
+            entry["wins"] += 1
+        elif result == "loss":
+            entry["losses"] += 1
+        elif result == "draw":
+            entry["draws"] += 1
+        else:
+            entry["unknown"] += 1
+        if color == "white":
+            entry["white_games"] += 1
+        elif color == "black":
+            entry["black_games"] += 1
+        entry["score_total"] += score
+        game_sort_value = parse_timestamp(game.get("end_time", "")) or parse_timestamp(game.get("imported_at", "")) or parse_timestamp(game.get("date", "")) or datetime.min
+        if entry["latest_game_sort"] is None or game_sort_value > entry["latest_game_sort"]:
+            entry["latest_game_sort"] = game_sort_value
+            entry["latest_game_date"] = str(game.get("date", "") or "").strip() or format_timestamp_label(game.get("imported_at", ""), default="")
+    items = []
+    for entry in summary.values():
+        total = max(1, int(entry.get("total", 0) or 0))
+        score_percent = round((float(entry.get("score_total", 0.0) or 0.0) / total) * 100, 1)
+        entry["score_percent"] = score_percent
+        entry["score_percent_label"] = format_chess_percent(score_percent)
+        entry["opening_href"] = url_for("chess_games", opening_key=str(entry.get("opening_key", "") or "").strip()) if str(entry.get("opening_key", "") or "").strip() else ""
+        entry["href"] = url_for(
+            "chess_games",
+            opening_key=str(entry.get("opening_key", "") or "").strip(),
+            line_key=str(entry.get("line_key", "") or "").strip(),
+        ) if str(entry.get("line_key", "") or "").strip() else ""
+        items.append(entry)
+    by_opening_payload = {}
+    for entry in items:
+        opening_key = str(entry.get("opening_key", "") or "").strip()
+        if not opening_key:
+            continue
+        by_opening_payload.setdefault(opening_key, []).append(dict(entry))
+    for opening_key, line_items in list(by_opening_payload.items()):
+        by_opening_payload[opening_key] = sort_openings([dict(item) for item in line_items], "most_played")
+    by_opening_list = []
+    for opening_key, line_items in by_opening_payload.items():
+        if not line_items:
+            continue
+        first_item = dict(line_items[0])
+        by_opening_list.append({
+            "opening_key": opening_key,
+            "opening_label": str(first_item.get("opening_label", "") or "").strip(),
+            "total_games": sum(int(item.get("total", 0) or 0) for item in line_items),
+            "top_line": first_item,
+            "lines": [dict(item) for item in line_items[:3]],
+        })
+    by_opening_list.sort(key=lambda item: (-int(item.get("total_games", 0) or 0), str(item.get("opening_label", "") or "")))
+    return {
+        "items": items,
+        "tracked": len(items),
+        "top": sort_openings(items, "most_played")[:8],
+        "weak": [item for item in sort_openings(items, "weakest") if int(item.get("total", 0) or 0) >= 3][:8],
+        "strong": [item for item in sort_openings(items, "strongest") if int(item.get("total", 0) or 0) >= 3][:8],
+        "by_opening": by_opening_payload,
+        "by_opening_list": by_opening_list,
+        "ply_count": line_limit,
+    }
 
 
 def sort_openings(summary, mode):
@@ -1913,6 +2507,7 @@ def build_chess_progress(data):
     games = [dict(item) for item in payload.get("games", []) or [] if isinstance(item, dict)]
     imports = [dict(item) for item in payload.get("imports", []) or [] if isinstance(item, dict)]
     review_snapshot = build_chess_review_queue_snapshot(payload)
+    games_with_moves = sum(1 for game in games if list(game.get("moves", []) or []))
     opening_summary = [dict(item) for item in build_opening_summary(payload) if str(item.get("label", "") or "").strip() and str(item.get("label", "") or "") != "Opening pending"]
     tracked_openings = list(opening_summary)
     openings_with_data = sum(1 for game in games if str((game.get("opening", {}) or {}).get("name", "") or "").strip() or str((game.get("opening", {}) or {}).get("eco", "") or "").strip())
@@ -2017,6 +2612,7 @@ def build_chess_progress(data):
     return {
         "has_games": bool(games),
         "games_count": len(games),
+        "games_with_moves_count": games_with_moves,
         "overall": overall,
         "white": white,
         "black": black,
@@ -2186,7 +2782,7 @@ def complete_chess_review_queue_item(data, queue_id):
     return {"changed": False, "item": None, "error": "Review item not found."}
 
 
-def build_chess_home_cards(data, train_today_count=0, review_queue_count=0, progress_score_percent=0.0):
+def build_chess_home_cards(data, train_today_count=0, review_queue_count=0, progress_score_percent=0.0, courses_saved_count=0):
     data = data if isinstance(data, dict) else default_chess_data()
     profiles = len(data.get("profiles", []) or [])
     imports = len(data.get("imports", []) or [])
@@ -2198,6 +2794,7 @@ def build_chess_home_cards(data, train_today_count=0, review_queue_count=0, prog
         {"label": "Progress", "value": format_chess_percent(progress_score_percent), "href": url_for("chess_progress")},
         {"label": "Train today", "value": str(train_today_count) if train_today_count else "0", "href": url_for("chess_train")},
         {"label": "Review queue", "value": str(review_queue_count) if review_queue_count else "0"},
+        {"label": "Courses saved", "value": str(courses_saved_count) if courses_saved_count else "0", "href": url_for("chess_courses")},
     ]
 
 
@@ -19133,15 +19730,18 @@ def german():
 def build_lotus_chess_context(active_key="home"):
     active_key = str(active_key or "home").strip().lower() or "home"
     chess_data = load_chess_data()
+    chess_courses_data = load_chess_courses()
     profiles = list(chess_data.get("profiles", []) or [])
     imports = list(chess_data.get("imports", []) or [])
     games = list(chess_data.get("games", []) or [])
     review_queue = list(chess_data.get("review_queue", []) or [])
+    courses = list((chess_courses_data.get("courses", []) or []) if isinstance(chess_courses_data, dict) else [])
     active_profile_id = str((chess_data.get("settings", {}) or {}).get("active_profile_id", "") or "").strip()
     active_profile = next((profile for profile in profiles if str(profile.get("id", "") or "").strip() == active_profile_id), None)
     training_recommendations = build_training_recommendations(chess_data)
     review_snapshot = build_chess_review_queue_snapshot(chess_data)
     progress_summary = build_chess_progress(chess_data)
+    opening_line_summary = build_opening_line_summary(chess_data)
 
     nav_items = [
         {"key": "home", "label": "Home", "href": url_for("chess"), "icon": "layout-dashboard"},
@@ -19164,6 +19764,7 @@ def build_lotus_chess_context(active_key="home"):
                 train_today_count=training_recommendations.get("train_today_count", 0),
                 review_queue_count=review_snapshot.get("active_count", 0),
                 progress_score_percent=progress_summary.get("overall", {}).get("score_percent", 0.0),
+                courses_saved_count=len(courses),
             ),
             "sections": [
                 {
@@ -19171,8 +19772,8 @@ def build_lotus_chess_context(active_key="home"):
                     "description": "Built to turn your real games into opening awareness, weak-line review, and focused training.",
                 },
                 {
-                    "title": "Phase 1",
-                    "description": "Shell only for now: Home, Import, Openings, Train, Progress, and Courses. Real import comes next.",
+                    "title": "Lotus Chess V0",
+                    "description": "Home, Import, Games, Openings, Train, Progress, and Courses. Local only. Result-based. Engine analysis comes later.",
                 },
                 {
                     "title": "Imported games",
@@ -19185,7 +19786,7 @@ def build_lotus_chess_context(active_key="home"):
         "import": {
             "eyebrow": "Import",
             "title": "Bring your games in first.",
-            "summary": "Chess.com can now import public games into your local Lotus Chess data. Lichess stays in placeholder mode until the next phase.",
+            "summary": "Chess.com and Lichess can import public games into your local Lotus Chess data. This stays local, simple, and source-first.",
             "cta_primary": {"label": "Chess.com", "href": "#"},
             "cta_secondary": {"label": "Lichess", "href": "#"},
             "cards": [
@@ -19196,11 +19797,11 @@ def build_lotus_chess_context(active_key="home"):
             "sections": [
                 {
                     "title": "Import sources",
-                    "description": "Chess.com and Lichess come first. PGN file upload follows after the initial source pipeline is stable.",
+                    "description": "Chess.com and Lichess public imports come first. PGN file upload follows after the source pipeline is stable.",
                 },
                 {
-                    "title": "Phase 2 note",
-                    "description": "Real import, game normalization, and source syncing are intentionally deferred so this phase stays local, small, and reliable.",
+                    "title": "Local V0 note",
+                    "description": "Public-game import, normalization, and opening extraction stay local so this loop remains small and reliable.",
                 },
             ],
             "input_placeholder": "Enter a public username",
@@ -19237,6 +19838,7 @@ def build_lotus_chess_context(active_key="home"):
             "cards": [
                 {"label": "Train today", "value": str(training_recommendations.get("train_today_count", 0)) if training_recommendations.get("train_today_count", 0) else "0"},
                 {"label": "Weak openings", "value": str(len(training_recommendations.get("weak_openings", []) or [])) if training_recommendations.get("weak_openings") else "0"},
+                {"label": "Recurring lines", "value": str(opening_line_summary.get("tracked", 0)) if opening_line_summary.get("tracked", 0) else "0"},
                 {"label": "Recent losses", "value": str(len(training_recommendations.get("recent_losses", []) or [])) if training_recommendations.get("recent_losses") else "0"},
                 {"label": "Openings tracked", "value": str(training_recommendations.get("openings_count", 0)) if training_recommendations.get("openings_count", 0) else "0"},
             ],
@@ -19257,6 +19859,8 @@ def build_lotus_chess_context(active_key="home"):
             "summary": "Local progress from your imported games and review queue. No engine analysis yet.",
             "cards": [
                 {"label": "Imported games", "value": str(progress_summary.get("games_count", 0)) if progress_summary.get("games_count", 0) else "0"},
+                {"label": "Games with moves", "value": str(progress_summary.get("games_with_moves_count", 0)) if progress_summary.get("games_with_moves_count", 0) else "0"},
+                {"label": "Recurring lines", "value": str(opening_line_summary.get("tracked", 0)) if opening_line_summary.get("tracked", 0) else "0"},
                 {"label": "Overall score", "value": format_chess_percent(progress_summary.get("overall", {}).get("score_percent", 0.0))},
                 {"label": "Openings tracked", "value": str(progress_summary.get("openings", {}).get("tracked", 0)) if progress_summary.get("openings", {}).get("tracked", 0) else "0"},
                 {"label": "Active review queue", "value": str(progress_summary.get("review_queue", {}).get("active_count", 0)) if progress_summary.get("review_queue", {}).get("active_count", 0) else "0"},
@@ -19328,6 +19932,12 @@ def build_lotus_chess_context(active_key="home"):
         "chess_review_queue_count": review_snapshot.get("active_count", 0),
         "chess_review_queue_completed_count": review_snapshot.get("completed_count", 0),
         "chess_progress": progress_summary,
+        "chess_opening_lines_summary": opening_line_summary,
+        "chess_opening_lines_top": opening_line_summary.get("top", []) if isinstance(opening_line_summary, dict) else [],
+        "chess_opening_lines_weak": opening_line_summary.get("weak", []) if isinstance(opening_line_summary, dict) else [],
+        "chess_opening_lines_strong": opening_line_summary.get("strong", []) if isinstance(opening_line_summary, dict) else [],
+        "chess_opening_lines_by_opening": opening_line_summary.get("by_opening", {}) if isinstance(opening_line_summary, dict) else {},
+        "chess_opening_lines_by_opening_list": opening_line_summary.get("by_opening_list", []) if isinstance(opening_line_summary, dict) else [],
         "chess_active_profile": active_profile,
         "chess_import_history": history_items,
         "chess_success_message": str(request.args.get("success", "") or "").strip(),
@@ -19381,6 +19991,30 @@ def chess_games_enrich_openings():
     message = f"Checked {result['games_checked']} games. No new PGN headers were found."
     if result.get("inferred_from_eco"):
         message += f" Inferred {result['inferred_from_eco']} opening name(s) from ECO."
+    if result.get("skipped_no_pgn"):
+        message += f" Skipped {result['skipped_no_pgn']} without PGN."
+    return redirect(url_for("chess_games", success=message))
+
+
+@app.route("/chess/games/extract-moves", methods=["POST"], endpoint="chess_games_extract_moves")
+def chess_games_extract_moves():
+    chess_data = load_chess_data()
+    result = enrich_chess_games_moves(chess_data)
+    if result.get("changed"):
+        save_chess_data(result["data"])
+        message = (
+            f"Checked {result['games_checked']} games, parsed moves for {result['moves_added_games']} games."
+        )
+        if result.get("games_with_pgn"):
+            message += f" Parsed from {result['games_with_pgn']} games with PGN."
+        if result.get("skipped_existing_moves"):
+            message += f" Skipped {result['skipped_existing_moves']} with existing moves."
+        if result.get("skipped_no_pgn"):
+            message += f" Skipped {result['skipped_no_pgn']} without PGN."
+        return redirect(url_for("chess_games", success=message))
+    message = f"Checked {result['games_checked']} games. No new moves were extracted."
+    if result.get("skipped_existing_moves"):
+        message += f" Skipped {result['skipped_existing_moves']} with existing moves."
     if result.get("skipped_no_pgn"):
         message += f" Skipped {result['skipped_no_pgn']} without PGN."
     return redirect(url_for("chess_games", success=message))
@@ -19715,6 +20349,24 @@ def chess_import_prepare():
             return redirect(url_for("chess_import", success=message))
         except Exception as exc:
             return redirect(url_for("chess_import", error=f"Chess.com import failed: {exc}"))
+    if source == "lichess":
+        try:
+            result = import_lichess_games(
+                username=username,
+                requested_limit=requested_limit,
+                scope=scope_key,
+                time_control=time_control,
+                color=color,
+            )
+            message = (
+                f"Imported {result['imported_new']} new Lichess games, "
+                f"skipped {result['skipped_duplicates']} duplicates."
+            )
+            if int(result.get("malformed_lines", 0) or 0):
+                message += f" Skipped {result['malformed_lines']} malformed export line(s)."
+            return redirect(url_for("chess_import", success=message))
+        except Exception as exc:
+            return redirect(url_for("chess_import", error=f"Lichess import failed: {exc}"))
 
     chess_data = load_chess_data()
     profile = upsert_chess_profile(chess_data, source, username)
