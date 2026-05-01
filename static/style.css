@@ -1007,6 +1007,43 @@ h2{font-size:clamp(2.2rem,4vw,3.6rem);margin-top:14px;letter-spacing:-.03em}.det
   gap:8px;
 }
 
+.chess-puzzle-mobile-coach{
+  display:none;
+}
+
+.chess-puzzle-mobile-coach[hidden]{
+  display:none;
+}
+
+.chess-puzzle-review-controls{
+  display:grid;
+  gap:10px;
+  padding:12px 14px;
+  border-radius:18px;
+  border:1px solid var(--border);
+  background:rgba(255,255,255,.02);
+}
+
+.chess-puzzle-review-buttons{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+}
+
+.chess-review-nav-btn{
+  min-width:52px;
+  justify-content:center;
+}
+
+.chess-review-nav-btn[disabled]{
+  opacity:.45;
+  cursor:not-allowed;
+}
+
+.chess-puzzle-review-status{
+  margin:0;
+}
+
 .chess-puzzle-status-pill{
   display:inline-flex;
   align-items:center;
@@ -1044,6 +1081,20 @@ h2{font-size:clamp(2.2rem,4vw,3.6rem);margin-top:14px;letter-spacing:-.03em}.det
   border-left:1px solid var(--border);
   border-top:1px solid var(--border);
   background:inherit;
+}
+
+@media (max-width: 900px){
+  .chess-puzzle-session-layout{
+    grid-template-columns:minmax(0, 1fr);
+  }
+
+  .chess-puzzle-mobile-coach{
+    display:block;
+  }
+
+  .chess-puzzle-coach-panel #chess-lichess-puzzle-feedback-card{
+    display:none;
+  }
 }
 
 .chess-puzzle-context-card{

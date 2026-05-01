@@ -43,6 +43,11 @@
                     <span class="hero-badge matte-tag">Lichess Puzzle</span>
                     <span>{{ chess_lichess_puzzle_solver.current_item.position_label }}</span>
                 </div>
+                <div class="surface-card chess-trainer-feedback-card chess-puzzle-coach-bubble chess-puzzle-mobile-coach" id="chess-lichess-puzzle-mobile-coach-card" data-feedback-state="idle" data-lichess-coach-card>
+                    <span class="chess-mini-label">Coach</span>
+                    <strong data-lichess-feedback-title>Ready</strong>
+                    <p class="chess-summary-note" data-lichess-feedback-text>{{ chess_lichess_puzzle_solver.current_item.goal_message or 'Look for forcing moves: checks, captures, and threats.' }}</p>
+                </div>
                 <div class="chess-board-stage chess-puzzle-board-stage">
                     <div class="chess-board chess-trainer-board" id="chess-lichess-puzzle-board" aria-label="Lichess puzzle board" data-board-interaction-version="lichess-board-fix-2026-05-01"></div>
                 </div>
@@ -50,6 +55,16 @@
                     <strong id="chess-lichess-puzzle-move-label">Your side to move</strong>
                     <span id="chess-lichess-puzzle-counter">Step 1 / {{ chess_lichess_puzzle_solver.step_count }}</span>
                     <span id="chess-lichess-puzzle-turn-label">{{ chess_lichess_puzzle_solver.current_item.user_color_label }} to move</span>
+                </div>
+                <div class="surface-card chess-puzzle-review-controls" id="chess-lichess-puzzle-review-controls">
+                    <div class="chess-puzzle-review-buttons">
+                        <button type="button" class="btn chess-inline-btn chess-review-nav-btn" data-review-nav="first" aria-label="Go to first position"><span>|&lt;</span></button>
+                        <button type="button" class="btn chess-inline-btn chess-review-nav-btn" data-review-nav="prev" aria-label="Go to previous position"><span>&lt;</span></button>
+                        <button type="button" class="btn chess-inline-btn chess-review-nav-btn" data-review-nav="live" aria-label="Return to live position"><span>&#9654;</span><span>Live</span></button>
+                        <button type="button" class="btn chess-inline-btn chess-review-nav-btn" data-review-nav="next" aria-label="Go to next position"><span>&gt;</span></button>
+                        <button type="button" class="btn chess-inline-btn chess-review-nav-btn" data-review-nav="last" aria-label="Go to latest position"><span>&gt;|</span></button>
+                    </div>
+                    <p class="chess-summary-note chess-muted-note chess-puzzle-review-status" id="chess-lichess-puzzle-review-status">Live position</p>
                 </div>
                 <div class="chess-puzzle-board-summary">
                     <span class="chess-puzzle-status-pill">{{ chess_lichess_puzzle_solver.current_item.rating_label }}</span>
@@ -70,10 +85,10 @@
                     <p class="chess-summary-note chess-muted-note">{{ chess_lichess_puzzle_solver.current_item.themes_label }}</p>
                 </div>
 
-                <div class="surface-card chess-trainer-feedback-card chess-puzzle-coach-bubble" id="chess-lichess-puzzle-feedback-card" data-feedback-state="idle">
+                <div class="surface-card chess-trainer-feedback-card chess-puzzle-coach-bubble" id="chess-lichess-puzzle-feedback-card" data-feedback-state="idle" data-lichess-coach-card>
                     <span class="chess-mini-label">Coach</span>
-                    <strong id="chess-lichess-puzzle-feedback-title">Ready</strong>
-                    <p class="chess-summary-note" id="chess-lichess-puzzle-feedback-text">{{ chess_lichess_puzzle_solver.current_item.goal_message or 'Look for forcing moves: checks, captures, and threats.' }}</p>
+                    <strong id="chess-lichess-puzzle-feedback-title" data-lichess-feedback-title>Ready</strong>
+                    <p class="chess-summary-note" id="chess-lichess-puzzle-feedback-text" data-lichess-feedback-text>{{ chess_lichess_puzzle_solver.current_item.goal_message or 'Look for forcing moves: checks, captures, and threats.' }}</p>
                 </div>
                 {% if chess_lichess_puzzle_solver.show_cycle_note %}
                 <p class="chess-summary-note chess-muted-note">All local puzzles have been solved cleanly once, so Lotus Chess is cycling them again.</p>
@@ -164,8 +179,9 @@
   const counterNode = document.getElementById("chess-lichess-puzzle-counter");
   const turnNode = document.getElementById("chess-lichess-puzzle-turn-label");
   const feedbackCard = document.getElementById("chess-lichess-puzzle-feedback-card");
-  const feedbackTitle = document.getElementById("chess-lichess-puzzle-feedback-title");
-  const feedbackText = document.getElementById("chess-lichess-puzzle-feedback-text");
+  const feedbackTitleNodes = Array.from(document.querySelectorAll("[data-lichess-feedback-title]"));
+  const feedbackTextNodes = Array.from(document.querySelectorAll("[data-lichess-feedback-text]"));
+  const coachCards = Array.from(document.querySelectorAll("[data-lichess-coach-card]"));
   const compareCard = document.getElementById("chess-lichess-puzzle-compare-card");
   const compareAttemptedRow = document.getElementById("chess-lichess-puzzle-compare-attempted");
   const compareExpectedRow = document.getElementById("chess-lichess-puzzle-compare-expected");
@@ -175,8 +191,10 @@
   const answerMoveNode = document.getElementById("chess-lichess-puzzle-answer-move");
   const answerNoteNode = document.getElementById("chess-lichess-puzzle-answer-note");
   const completionCard = document.getElementById("chess-lichess-puzzle-complete-card");
+  const reviewStatusNode = document.getElementById("chess-lichess-puzzle-review-status");
+  const reviewNavButtons = Array.from(document.querySelectorAll("[data-review-nav]"));
   const boardInteractionVersion = String(boardNode && boardNode.dataset.boardInteractionVersion || "unknown");
-  if (!boardNode || !dataNode || !stepsNode || !labelNode || !counterNode || !turnNode || !feedbackCard || !feedbackTitle || !feedbackText || !answerCard || !answerMoveNode || !answerNoteNode || !completionCard) return;
+  if (!boardNode || !dataNode || !stepsNode || !labelNode || !counterNode || !turnNode || !feedbackCard || !feedbackTitleNodes.length || !feedbackTextNodes.length || !answerCard || !answerMoveNode || !answerNoteNode || !completionCard || !reviewStatusNode) return;
 
   let steps = [];
   try { steps = JSON.parse(dataNode.textContent || "[]"); } catch (error) { return; }
@@ -201,6 +219,8 @@
 
   let currentStep = 0;
   let currentFen = steps[0].fen_before;
+  let historyPositions = [];
+  let reviewIndex = 0;
   let selectedSquare = "";
   let revealMove = false;
   let flipped = {{ 'true' if chess_lichess_puzzle_solver.current_item.user_color == 'black' else 'false' }};
@@ -225,6 +245,8 @@
   let dragGhostNode = null;
   let dragGhostMarkup = "";
   let suppressNextSquareClick = false;
+  let suppressTouchClickUntil = 0;
+  let activePointerId = null;
   const dragMoveThreshold = 6;
   const settingsStorageKey = "lotusChessSettings";
   const legacyMoveMethodStorageKey = "lotusChessMoveMethod";
@@ -239,11 +261,15 @@
   const boardDebug = {
     version: boardInteractionVersion,
     handlersAttached: false,
+    attachCount: 0,
+    lastRenderAt: "",
     lastPointerDown: "",
     lastPointerUp: "",
+    activePointerId: null,
     lastButton: "",
     lastSquare: "",
     moveMethod: defaultSettings.move_method,
+    touchAction: "",
     enableRightClickMarks: defaultSettings.enable_right_click_marks,
     clearMarksOnLeftClick: defaultSettings.clear_marks_on_left_click,
     manualArrowCount: 0,
@@ -255,6 +281,9 @@
     usingMouseFallback: true,
     selectedSquare: "",
     dragSourceSquare: "",
+    currentStep: 0,
+    reviewMode: false,
+    lastAction: "init",
     errors: [],
   };
   const initialCoachGoal = {{ (chess_lichess_puzzle_solver.current_item.goal_message or 'Look for forcing moves: checks, captures, and threats.')|tojson }};
@@ -272,21 +301,27 @@
   let skipSent = false;
 
   function syncBoardDebug(extra = {}) {
+    const liveIndex = Math.max(0, historyPositions.length - 1);
     Object.assign(boardDebug, {
       version: boardInteractionVersion,
       moveMethod: settings.move_method,
+      touchAction: boardNode ? String(boardNode.style.touchAction || window.getComputedStyle(boardNode).touchAction || "") : "",
       enableRightClickMarks: Boolean(settings.enable_right_click_marks),
       clearMarksOnLeftClick: Boolean(settings.clear_marks_on_left_click),
       manualArrowCount: manualArrowMarks.length,
       manualHighlightCount: manualHighlightSquares.size,
       selectedSquare,
       dragSourceSquare,
+      activePointerId,
+      currentStep,
+      reviewMode: reviewIndex < liveIndex,
     }, extra || {});
     window.lotusChessLichessBoardDebug = boardDebug;
     window.lotusChessLichessBoardState = {
       get settings() { return { ...settings }; },
       get manualArrowMarks() { return manualArrowMarks.slice(); },
       get manualHighlightSquares() { return Array.from(manualHighlightSquares); },
+      get historyPositions() { return historyPositions.map((entry) => ({ ...entry })); },
     };
   }
 
@@ -455,9 +490,124 @@
   }
 
   function setFeedback(state, title, text) {
-    feedbackCard.dataset.feedbackState = state;
-    feedbackTitle.textContent = title;
-    feedbackText.textContent = text;
+    coachCards.forEach((card) => {
+      if (card) card.dataset.feedbackState = state;
+    });
+    feedbackTitleNodes.forEach((node) => {
+      if (node) node.textContent = title;
+    });
+    feedbackTextNodes.forEach((node) => {
+      if (node) node.textContent = text;
+    });
+    syncBoardDebug({ lastAction: `feedback:${state}` });
+  }
+
+  function ensureBoardTouchSurface() {
+    if (!boardNode) return;
+    boardNode.style.touchAction = "none";
+    boardNode.style.msTouchAction = "none";
+  }
+
+  function blockSyntheticTouchClick(durationMs = 700) {
+    suppressTouchClickUntil = Date.now() + Math.max(250, Number(durationMs) || 0);
+  }
+
+  function liveHistoryIndex() {
+    return Math.max(0, historyPositions.length - 1);
+  }
+
+  function reviewModeActive() {
+    return reviewIndex < liveHistoryIndex();
+  }
+
+  function updateReviewControls() {
+    const liveIndex = liveHistoryIndex();
+    const safeIndex = Math.max(0, Math.min(reviewIndex, liveIndex));
+    reviewIndex = safeIndex;
+    const reviewing = reviewModeActive();
+    reviewStatusNode.textContent = reviewing
+      ? `Reviewing move ${safeIndex} / ${liveIndex}`
+      : `Live position${liveIndex > 0 ? ` · Move ${liveIndex} / ${liveIndex}` : ""}`;
+    reviewNavButtons.forEach((button) => {
+      const action = String(button.dataset.reviewNav || "");
+      if (action === "first") button.disabled = safeIndex <= 0;
+      if (action === "prev") button.disabled = safeIndex <= 0;
+      if (action === "live") button.disabled = !reviewing;
+      if (action === "next") button.disabled = safeIndex >= liveIndex;
+      if (action === "last") button.disabled = safeIndex >= liveIndex;
+    });
+    syncBoardDebug({ reviewMode: reviewing });
+  }
+
+  function resetHistory() {
+    historyPositions = [{
+      fen: String(steps[0].fen_before || ""),
+      label: "Initial position",
+      source: "initial",
+      stepIndex: 0,
+    }];
+    reviewIndex = 0;
+    updateReviewControls();
+    syncBoardDebug({ lastAction: "history:reset" });
+  }
+
+  function appendHistoryPosition(fen, label, source, stepIndex = currentStep) {
+    const normalizedFen = String(fen || "").trim();
+    if (!normalizedFen) return;
+    const entry = {
+      fen: normalizedFen,
+      label: String(label || "").trim() || "Position",
+      source: String(source || "position").trim() || "position",
+      stepIndex: Math.max(0, Number(stepIndex) || 0),
+    };
+    const previous = historyPositions[historyPositions.length - 1];
+    if (!previous || previous.fen !== entry.fen || previous.label !== entry.label || previous.source !== entry.source) {
+      historyPositions = historyPositions.concat(entry);
+    }
+    reviewIndex = liveHistoryIndex();
+    updateReviewControls();
+    syncBoardDebug({ lastAction: `history:${entry.source}` });
+  }
+
+  function renderReviewPosition(index) {
+    const liveIndex = liveHistoryIndex();
+    const safeIndex = Math.max(0, Math.min(Number(index) || 0, liveIndex));
+    if (safeIndex >= liveIndex) {
+      returnToLivePosition({ refreshArrows: true, preserveFeedback: true });
+      return;
+    }
+    const entry = historyPositions[safeIndex];
+    if (!entry) return;
+    if (completionTimer) {
+      window.clearTimeout(completionTimer);
+      completionTimer = null;
+    }
+    selectedSquare = "";
+    cancelPieceDrag();
+    cancelManualDraw();
+    clearBoardSelectionMarks();
+    reviewIndex = safeIndex;
+    renderBoard(entry.fen, {}, { forceBoard: false, refreshArrows: true });
+    updateReviewControls();
+    setFeedback("idle", "Review", `Reviewing ${entry.label}. Use Live to return to the active puzzle.`);
+    syncBoardDebug({ lastAction: `review:${safeIndex}` });
+  }
+
+  function returnToLivePosition({ refreshArrows = true, preserveFeedback = false } = {}) {
+    reviewIndex = liveHistoryIndex();
+    updateReviewControls();
+    refreshCurrentBoard({ refreshArrows });
+    if (!preserveFeedback) {
+      setFeedback("idle", "Live", currentStep >= steps.length ? "Puzzle complete." : initialCoachGoal);
+    }
+    syncBoardDebug({ lastAction: "review:live" });
+  }
+
+  function ensureLiveInteraction() {
+    if (!reviewModeActive()) return true;
+    setFeedback("idle", "Review mode", "Return to Live before playing a move.");
+    syncBoardDebug({ lastAction: "blocked:review-mode" });
+    return false;
   }
 
   function boardMapFromFen(fen) {
@@ -591,6 +741,7 @@
 
   function renderBoard(fen, legalTargetsBySource = {}, { forceBoard = false, refreshArrows = true } = {}) {
     currentFen = fen;
+    ensureBoardTouchSurface();
     const shouldRebuildBoard = forceBoard || renderedFlipped !== Boolean(flipped) || boardNode.querySelectorAll(".chess-board-square").length !== 64;
     if (shouldRebuildBoard) {
       const boardMap = boardMapFromFen(fen);
@@ -601,6 +752,7 @@
         square.className = "chess-board-square " + (isLight ? "light" : "dark");
         square.dataset.square = squareName;
         square.setAttribute("aria-label", squareName);
+        square.style.touchAction = "none";
         const piece = boardMap[squareName];
         const wrapper = buildPieceNode(piece);
         if (wrapper) square.appendChild(wrapper);
@@ -616,13 +768,6 @@
           coord.textContent = squareName[1];
           square.appendChild(coord);
         }
-        square.addEventListener("click", () => {
-          if (suppressNextSquareClick) {
-            suppressNextSquareClick = false;
-            return;
-          }
-          handleSquareClick(squareName);
-        });
         boardNode.appendChild(square);
       });
       renderedFen = fen;
@@ -634,6 +779,7 @@
     }
     applyBoardSquareState(legalTargetsBySource);
     if (refreshArrows) renderTutorArrows();
+    syncBoardDebug({ lastRenderAt: new Date().toISOString(), touchAction: boardNode.style.touchAction || window.getComputedStyle(boardNode).touchAction || "", lastAction: "render-board" });
   }
 
   function updateMoveList() {
@@ -649,9 +795,13 @@
     counterNode.textContent = step ? `Step ${currentStep + 1} / ${steps.length}` : `Step ${steps.length} / ${steps.length}`;
     turnNode.textContent = "{{ chess_lichess_puzzle_solver.current_item.user_color_label }} to move";
     updateMoveList();
+    updateReviewControls();
   }
 
   function showReveal() {
+    if (reviewModeActive()) {
+      returnToLivePosition({ refreshArrows: true, preserveFeedback: true });
+    }
     const step = steps[currentStep];
     if (!step) return;
     revealMove = true;
@@ -666,10 +816,13 @@
       engine: { from: "", to: "" },
     };
     setFeedback("hint", "Reveal", `This is the next solution move. ${step.expected_move_hint || "Try to understand the forcing idea, then repeat the puzzle."}`);
+    appendHistoryPosition(step.fen_before, `Reveal ${step.expected_move_san || step.expected_move_uci || "move"}`, "reveal", currentStep);
     refreshCurrentBoard({ refreshArrows: true });
   }
 
   function resetPuzzle() {
+    cancelPieceDrag();
+    cancelManualDraw();
     currentStep = 0;
     currentFen = steps[0].fen_before;
     selectedSquare = "";
@@ -685,9 +838,11 @@
     clearTutorHighlights();
     clearManualStudyMarks(true);
     clearBoardSelectionMarks();
+    resetHistory();
     setFeedback("idle", "Ready", initialCoachGoal);
     updateStatus();
     renderBoard(steps[0].fen_before, steps[0].legal_targets_by_source || {}, { forceBoard: false, refreshArrows: true });
+    syncBoardDebug({ lastAction: "reset-puzzle" });
   }
 
   function completePuzzle() {
@@ -701,7 +856,9 @@
     setFeedback("success", "Complete", "You completed the full local Lichess solution sequence.");
     postProgress(progressUrls.complete, { completed_clean: revealMove ? "false" : "true" });
     clearComparison();
+    reviewIndex = liveHistoryIndex();
     refreshCurrentBoard({ refreshArrows: true });
+    syncBoardDebug({ lastAction: "complete-puzzle" });
   }
 
   function refreshCurrentBoard({ refreshArrows = true } = {}) {
@@ -713,11 +870,16 @@
   }
 
   function advanceAfterCorrect(step) {
+    const userMoveLabel = step.expected_move_san || step.expected_move_uci || "Your move";
+    appendHistoryPosition(step.fen_after_user, userMoveLabel, "user-move", currentStep);
     renderBoard(step.fen_after_user, {}, { forceBoard: false, refreshArrows: false });
     const correctMessage = String(step.correct_feedback || "Correct. This keeps the solution line moving.");
     setFeedback("success", "Correct", step.auto_replies && step.auto_replies.length ? `${correctMessage} The puzzle reply will play now.` : correctMessage);
     if (step.auto_replies && step.auto_replies.length) {
       completionTimer = window.setTimeout(() => {
+        (step.auto_replies || []).forEach((reply, replyIndex) => {
+          appendHistoryPosition(reply.fen_after || step.fen_after_replies || step.fen_after_user, reply.move_san || reply.move_uci || `Reply ${replyIndex + 1}`, "opponent-reply", currentStep);
+        });
         renderBoard(step.fen_after_replies || step.fen_after_user, {}, { forceBoard: false, refreshArrows: false });
         currentStep += 1;
         selectedSquare = "";
@@ -765,6 +927,7 @@
   }
 
   function attemptMove(sourceSquare, targetSquare) {
+    if (!ensureLiveInteraction()) return;
     const step = steps[currentStep];
     if (!step) return;
     const legalTargetsBySource = step.legal_targets_by_source || {};
@@ -779,6 +942,7 @@
       selectedSquare = "";
       setFeedback("error", "Illegal move", "That move is not legal in this position. Try again.");
       renderBoard(step.fen_before, step.legal_targets_by_source || {}, { forceBoard: false, refreshArrows: true });
+      syncBoardDebug({ lastAction: "attempt:illegal" });
       return;
     }
     const attemptedUci = normalizedAttemptedMove(sourceSquare, targetSquare, step.expected_move_uci);
@@ -795,6 +959,7 @@
         engine: { from: "", to: "" },
       };
       advanceAfterCorrect(step);
+      syncBoardDebug({ lastAction: "attempt:correct" });
       return;
     }
     setComparison(attemptedSan, "");
@@ -807,6 +972,7 @@
     setFeedback("error", "Not quite", `Not quite. Try again. ${step.expected_move_hint || "Look for checks, captures, or threats."}`);
     selectedSquare = "";
     renderBoard(step.fen_before, step.legal_targets_by_source || {}, { forceBoard: false, refreshArrows: true });
+    syncBoardDebug({ lastAction: "attempt:wrong" });
   }
 
   function canMoveFromSquare(squareName, step = steps[Math.max(0, Math.min(currentStep, steps.length - 1))] || null) {
@@ -917,6 +1083,18 @@
     syncBoardDebug({ rightDrawStarted: false });
   }
 
+  function cancelActiveBoardInteraction(reason = "cancelled") {
+    const hadDrag = Boolean(dragSourceSquare);
+    const hadManual = Boolean(manualDrawActive);
+    if (!hadDrag && !hadManual) return;
+    cancelPieceDrag();
+    cancelManualDraw();
+    activePointerId = null;
+    blockSyntheticTouchClick(300);
+    refreshCurrentBoard({ refreshArrows: false });
+    syncBoardDebug({ activePointerId: null, lastAction: `cancel:${reason}` });
+  }
+
   function updateDragGhostPosition(clientX, clientY) {
     if (!dragGhostNode || typeof clientX !== "number" || typeof clientY !== "number") return;
     dragGhostNode.style.left = `${clientX}px`;
@@ -995,7 +1173,8 @@
     dragCurrentClientY = 0;
     dragHoverSquare = "";
     dragGhostMarkup = "";
-    syncBoardDebug({ dragStarted: false, dragSourceSquare: "" });
+    activePointerId = null;
+    syncBoardDebug({ dragStarted: false, dragSourceSquare: "", activePointerId: null, lastAction: "drag:cancel" });
   }
 
   function eventMatchesActivePointer(event, pointerId) {
@@ -1013,10 +1192,13 @@
     const shouldTreatAsClick = isDragOrClickMode() && !dragMoved && sourceSquare && (!endSquare || endSquare === sourceSquare);
     const shouldSuppressClick = dragMoved;
     cancelPieceDrag();
+    if (event && event.pointerType === "touch") blockSyntheticTouchClick(900);
     syncBoardDebug({
       dragReleased: true,
       lastPointerUp: event ? `${event.type}:${event.pointerType || "mouse"}:${sourceSquare}->${endSquare || ""}` : "release",
       lastSquare: endSquare || sourceSquare,
+      activePointerId: null,
+      lastAction: "pointerup:left",
     });
     if (shouldSuppressClick) {
       suppressNextSquareClick = true;
@@ -1065,8 +1247,16 @@
   function beginLeftBoardInteraction(event) {
     if (!event) return;
     if (event.pointerType !== "touch" && event.button !== 0) return;
+    if (!ensureLiveInteraction()) {
+      if (typeof event.preventDefault === "function") event.preventDefault();
+      return;
+    }
     const squareName = getBoardSquareFromEvent(event);
-    syncBoardDebug({ lastPointerDown: `${event.type}:${event.pointerType || "mouse"}:${squareName || ""}`, lastButton: "left", lastSquare: squareName || "", dragReleased: false });
+    if (event.pointerType === "touch") {
+      activePointerId = event.pointerId == null ? null : event.pointerId;
+      blockSyntheticTouchClick(900);
+    }
+    syncBoardDebug({ lastPointerDown: `${event.type}:${event.pointerType || "mouse"}:${squareName || ""}`, lastButton: "left", lastSquare: squareName || "", dragReleased: false, activePointerId, lastAction: "pointerdown:left" });
     const canStartDrag = isDragOrClickMode() && canMoveFromSquare(squareName);
     const hasManualMarks = Boolean(manualArrowMarks.length || manualHighlightSquares.size);
     const hasSelectionMarks = Boolean(selectedSquare || dragSourceSquare);
@@ -1087,6 +1277,7 @@
   }
 
   function handleSquareClick(squareName) {
+    if (!ensureLiveInteraction()) return;
     if (!completionCard.hidden) return;
     const step = steps[currentStep];
     if (!step) return;
@@ -1096,6 +1287,8 @@
         selectedSquare = squareName;
         syncBoardDebug({ selectedSquare });
         refreshCurrentBoard({ refreshArrows: true });
+      } else {
+        syncBoardDebug({ lastAction: "click:non-movable-square" });
       }
       return;
     }
@@ -1136,23 +1329,69 @@
     button.addEventListener("click", () => {
       const stepIndex = Number.parseInt(button.dataset.puzzleStep || "-1", 10);
       if (Number.isNaN(stepIndex) || stepIndex < 0 || stepIndex >= steps.length) return;
-      currentStep = stepIndex;
-      selectedSquare = "";
-      revealMove = false;
-      setAnswerVisible(false);
-      setCompletionVisible(false);
-      clearManualStudyMarks(true);
-      clearTutorHighlights();
-      clearComparison();
-      updateStatus();
-      refreshCurrentBoard({ refreshArrows: true });
-      setFeedback("idle", "Review", stepIndex === 0 ? initialCoachGoal : "Review this step, then find the next solution move.");
+      const targetFen = String((steps[stepIndex] || {}).fen_before || "");
+      let historyIndex = -1;
+      for (let index = historyPositions.length - 1; index >= 0; index -= 1) {
+        if ((historyPositions[index] || {}).fen === targetFen) {
+          historyIndex = index;
+          break;
+        }
+      }
+      if (historyIndex < 0 || historyIndex > liveHistoryIndex()) {
+        setFeedback("idle", "Not reached yet", "Play a few more moves before reviewing this step.");
+        syncBoardDebug({ lastAction: `review-unavailable:${stepIndex}` });
+        return;
+      }
+      renderReviewPosition(historyIndex);
+    });
+  });
+
+  reviewNavButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      const action = String(button.dataset.reviewNav || "");
+      const liveIndex = liveHistoryIndex();
+      if (action === "first") {
+        renderReviewPosition(0);
+        return;
+      }
+      if (action === "prev") {
+        renderReviewPosition(Math.max(0, reviewIndex - 1));
+        return;
+      }
+      if (action === "live") {
+        returnToLivePosition({ refreshArrows: true, preserveFeedback: false });
+        return;
+      }
+      if (action === "next") {
+        renderReviewPosition(Math.min(liveIndex, reviewIndex + 1));
+        return;
+      }
+      if (action === "last") {
+        renderReviewPosition(liveIndex);
+      }
     });
   });
 
   if (boardNode) {
+    ensureBoardTouchSurface();
     boardNode.addEventListener("dragstart", (event) => {
       event.preventDefault();
+    });
+
+    boardNode.addEventListener("click", (event) => {
+      const squareName = getBoardSquareFromEvent(event);
+      if (!squareName) return;
+      if (suppressNextSquareClick) {
+        suppressNextSquareClick = false;
+        event.preventDefault();
+        return;
+      }
+      if (Date.now() < suppressTouchClickUntil) {
+        event.preventDefault();
+        syncBoardDebug({ lastAction: "click:suppressed-touch" });
+        return;
+      }
+      handleSquareClick(squareName);
     });
 
     boardNode.addEventListener("auxclick", (event) => {
@@ -1179,9 +1418,12 @@
       if (event.pointerType !== "touch") return;
       if (event.button !== 2) return;
       event.preventDefault();
+      if (!ensureLiveInteraction()) return;
       const squareName = getBoardSquareFromEvent(event);
       if (!squareName) return;
       startManualDraw(squareName, event.pointerId);
+      activePointerId = event.pointerId == null ? null : event.pointerId;
+      blockSyntheticTouchClick(900);
       if (typeof boardNode.setPointerCapture === "function") {
         try {
           boardNode.setPointerCapture(event.pointerId);
@@ -1204,6 +1446,7 @@
       if (!manualDrawActive) return;
       if (!eventMatchesActivePointer(event, manualDrawPointerId)) return;
       event.preventDefault();
+      activePointerId = null;
       finishManualDraw(getBoardSquareFromEvent(event));
       if (typeof boardNode.releasePointerCapture === "function") {
         try {
@@ -1216,13 +1459,9 @@
 
     boardNode.addEventListener("pointercancel", (event) => {
       if (event.pointerType !== "touch") return;
-      if (dragSourceSquare) {
-        cancelPieceDrag();
-        refreshCurrentBoard({ refreshArrows: false });
-      }
       if (dragPointerId != null && event.pointerId === dragPointerId) dragPointerId = null;
       if (manualDrawPointerId != null && event.pointerId !== manualDrawPointerId) return;
-      cancelManualDraw();
+      cancelActiveBoardInteraction("pointercancel");
     });
 
     boardNode.addEventListener("lostpointercapture", (event) => {
@@ -1230,6 +1469,10 @@
       if (dragPointerId != null && event.pointerId === dragPointerId && !dragSourceSquare) dragPointerId = null;
       if (manualDrawPointerId != null && event.pointerId !== manualDrawPointerId) return;
       if (!manualDrawActive) manualDrawPointerId = null;
+      if (!dragSourceSquare && !manualDrawActive) {
+        activePointerId = null;
+        syncBoardDebug({ activePointerId: null, lastAction: "lostpointercapture" });
+      }
     });
 
     boardNode.addEventListener("mousedown", (event) => {
@@ -1239,14 +1482,16 @@
       }
       if (event.button !== 2) return;
       event.preventDefault();
+      if (!ensureLiveInteraction()) return;
       const squareName = getBoardSquareFromEvent(event);
       syncBoardDebug({ lastPointerDown: `mousedown:mouse:${squareName || ""}`, lastButton: "right", lastSquare: squareName || "" });
       if (!squareName) return;
       startManualDraw(squareName, null);
     }, true);
 
+    boardDebug.attachCount += 1;
     boardDebug.handlersAttached = true;
-    syncBoardDebug({ handlersAttached: true });
+    syncBoardDebug({ handlersAttached: true, attachCount: boardDebug.attachCount, lastAction: "handlers:attached" });
   }
 
   window.addEventListener("pointerup", (event) => {
@@ -1265,6 +1510,20 @@
   window.addEventListener("pointermove", (event) => {
     if (event.pointerType !== "touch") return;
     handlePieceDragMove(event);
+  });
+
+  window.addEventListener("blur", () => {
+    cancelActiveBoardInteraction("window-blur");
+  });
+
+  window.addEventListener("pagehide", () => {
+    cancelActiveBoardInteraction("pagehide");
+  });
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") {
+      cancelActiveBoardInteraction("visibility-hidden");
+    }
   });
 
   window.addEventListener("mousemove", (event) => {
@@ -1305,7 +1564,7 @@
   loadSettings();
   resetPuzzle();
   ensureProgressStarted();
-  syncBoardDebug({ handlersAttached: Boolean(boardDebug.handlersAttached) });
+  syncBoardDebug({ handlersAttached: Boolean(boardDebug.handlersAttached), touchAction: boardNode.style.touchAction || window.getComputedStyle(boardNode).touchAction || "", lastAction: "init-complete" });
 })();
 </script>
 {% endif %}
