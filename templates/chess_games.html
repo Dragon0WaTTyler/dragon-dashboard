@@ -30,21 +30,37 @@
         </div>
         {% if chess_opening_filter %}
         <div class="chess-banner chess-banner-success">Filtered by opening: {{ chess_opening_filter }}</div>
-        <div class="chess-games-actions">
-            <a class="btn" href="{{ url_for('chess_games', color=chess_game_filters.color, result=chess_game_filters.result, time_class=chess_game_filters.time_class, sort=chess_game_filters.sort) }}"><i data-lucide="x"></i><span>Clear opening filter</span></a>
-        </div>
         {% endif %}
+        {% if chess_line_filter %}
+        <div class="chess-banner chess-banner-success">Filtered by line: {{ chess_line_filter }}</div>
+        {% endif %}
+        <div class="chess-games-actions">
+            {% if chess_opening_filter or chess_line_filter %}
+            <a class="btn" href="{{ url_for('chess_games', color=chess_game_filters.color, result=chess_game_filters.result, time_class=chess_game_filters.time_class, sort=chess_game_filters.sort) }}"><i data-lucide="x"></i><span>Clear opening filter</span></a>
+            {% endif %}
+            {% if chess_line_filter %}
+        <a class="btn" href="{{ url_for('chess_branch_detail', line_key=chess_line_filter_key, opening_key=chess_opening_filter_key) if chess_opening_filter_key else url_for('chess_branch_detail', line_key=chess_line_filter_key) }}"><i data-lucide="play-circle"></i><span>Review this line</span></a>
+            <a class="btn" href="{{ url_for('chess_games', color=chess_game_filters.color, result=chess_game_filters.result, time_class=chess_game_filters.time_class, sort=chess_game_filters.sort, opening_key=chess_opening_filter_key) if chess_opening_filter_key else url_for('chess_games', color=chess_game_filters.color, result=chess_game_filters.result, time_class=chess_game_filters.time_class, sort=chess_game_filters.sort) }}"><i data-lucide="x"></i><span>Clear line filter</span></a>
+            {% endif %}
+        </div>
         <div class="chess-games-actions">
             <form method="post" action="{{ url_for('chess_games_enrich_openings') }}">
                 <button type="submit" class="btn"><i data-lucide="sparkles"></i><span>Extract PGN Openings</span></button>
             </form>
+            <form method="post" action="{{ url_for('chess_games_extract_moves') }}">
+                <button type="submit" class="btn"><i data-lucide="list-tree"></i><span>Extract PGN Moves</span></button>
+            </form>
             <p class="chess-summary-note">Uses PGN headers only. No engine analysis.</p>
+            <p class="chess-summary-note">Parses stored PGN only. No engine analysis.</p>
         </div>
         <form method="get" class="chess-games-filters">
             {% if chess_opening_filter_key %}
             <input type="hidden" name="opening_key" value="{{ chess_opening_filter_key }}">
             {% elif chess_opening_filter %}
             <input type="hidden" name="opening" value="{{ chess_opening_filter }}">
+            {% endif %}
+            {% if chess_line_filter_key %}
+            <input type="hidden" name="line_key" value="{{ chess_line_filter_key }}">
             {% endif %}
             <label class="chess-field">
                 <span>Color</span>
@@ -114,6 +130,12 @@
                 <p class="chess-summary-note">{{ game.opening_label }}</p>
                 {% if game.opening_inferred_from_eco %}
                 <p class="chess-summary-note chess-muted-note">Opening inferred from ECO code.</p>
+                {% endif %}
+                {% if game.moves %}
+                <p class="chess-summary-note chess-muted-note">{{ game.moves|length }} moves parsed from PGN.</p>
+                {% if game.opening_line_label %}
+                <p class="chess-summary-note chess-muted-note">First line: {{ game.opening_line_label }}</p>
+                {% endif %}
                 {% endif %}
             </div>
             <div class="chess-game-actions">

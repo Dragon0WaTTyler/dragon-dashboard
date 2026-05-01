@@ -124,6 +124,7 @@
                 </div>
                 <div class="chess-branch-row-actions">
                     <a class="btn chess-inline-btn" href="{{ branch.review_href }}"><i data-lucide="play-circle"></i><span>Review line</span></a>
+                    <a class="btn chess-inline-btn" href="{{ url_for('chess_drills', line_key=branch.line_key, opening_key=branch.opening_key, source='all_lines') }}"><i data-lucide="swords"></i><span>Drill this line</span></a>
                     <a class="btn chess-inline-btn" href="{{ branch.games_href }}"><i data-lucide="library-big"></i><span>View games</span></a>
                 </div>
             </article>
@@ -154,6 +155,7 @@
                     </div>
                     <div class="chess-branch-row-actions">
                         <a class="btn chess-inline-btn" href="{{ branch.review_href }}"><i data-lucide="play-circle"></i><span>Review line</span></a>
+                        <a class="btn chess-inline-btn" href="{{ url_for('chess_drills', line_key=branch.line_key, opening_key=branch.opening_key, source='weak_lines') }}"><i data-lucide="swords"></i><span>Drill this line</span></a>
                     </div>
                 </article>
                 {% endfor %}
@@ -224,6 +226,7 @@
                         </div>
                         <div class="chess-branch-row-actions">
                             <a class="btn chess-inline-btn" href="{{ branch.review_href }}"><i data-lucide="play-circle"></i><span>Review line</span></a>
+                            <a class="btn chess-inline-btn" href="{{ url_for('chess_drills', line_key=branch.line_key, opening_key=branch.opening_key, source='all_lines') }}"><i data-lucide="swords"></i><span>Drill this line</span></a>
                             <a class="btn chess-inline-btn" href="{{ branch.games_href }}"><i data-lucide="library-big"></i><span>View games</span></a>
                         </div>
                     </article>

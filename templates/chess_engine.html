@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="page-hero chess-hero">
+    <div class="hero-meta">
+        <span class="hero-badge matte-tag">Lotus Chess</span>
+        <span>Engine</span>
+    </div>
+    <h2>Stockfish Setup V1</h2>
+    <p class="subhead">Optional local engine foundation only. One FEN at a time, no batch analysis, no automatic puzzle generation.</p>
+</section>
+
+<nav class="surface-card chess-subnav" aria-label="Lotus Chess areas">
+    {% for item in chess_nav_items %}
+    <a class="chess-subnav-link {{ 'active' if item.key == chess_active_key else '' }}" href="{{ item.href }}">
+        <i data-lucide="{{ item.icon }}"></i>
+        <span>{{ item.label }}</span>
+    </a>
+    {% endfor %}
+</nav>
+
+<section class="chess-main chess-train-page">
+    <section class="surface-card section-card chess-focus-card">
+        <div class="hero-meta">
+            <span class="hero-badge matte-tag">Engine status</span>
+            <span>{{ 'Available' if chess_engine_status.available else 'Unavailable' }}</span>
+        </div>
+        <h3 class="title-scaled chess-section-title">{{ chess_engine_status.status_label }}</h3>
+        <p class="subhead chess-section-copy">{{ chess_engine_status.message }}</p>
+        <div class="chess-review-queue-meta">
+            <span>Configured path: {{ chess_engine_status.configured_path or 'Not set' }}</span>
+            <span>Resolved path: {{ chess_engine_status.resolved_path or 'Unavailable' }}</span>
+        </div>
+        <div class="chess-review-queue-meta">
+            <span>python-chess: {{ 'Yes' if chess_engine_status.python_chess_available else 'No' }}</span>
+            <span>Engine support: {{ 'Yes' if chess_engine_status.python_chess_engine_support else 'No' }}</span>
+            <span>Path exists: {{ 'Yes' if chess_engine_status.path_exists else 'No' }}</span>
+        </div>
+        <p class="chess-summary-note chess-muted-note">Set <code>STOCKFISH_PATH</code> in your environment or <code>.env</code>. Optional defaults: <code>STOCKFISH_DEPTH</code> and <code>STOCKFISH_TIME_MS</code>.</p>
+    </section>
+
+    <section class="surface-card section-card chess-train-section">
+        <div class="hero-meta">
+            <span class="hero-badge matte-tag">Test position</span>
+            <span>Manual only</span>
+        </div>
+        <form method="post" class="chess-filter-grid">
+            <label class="chess-filter-field" style="grid-column: 1 / -1;">
+                <span>FEN</span>
+                <input type="text" name="fen" value="{{ chess_engine_form.fen }}" placeholder="Enter a FEN position">
+            </label>
+            <label class="chess-filter-field">
+                <span>Depth</span>
+                <input type="number" name="depth" min="1" value="{{ chess_engine_form.depth }}">
+            </label>
+            <label class="chess-filter-field">
+                <span>Time (ms)</span>
+                <input type="number" name="time_ms" min="1" step="1" value="{{ chess_engine_form.time_ms }}">
+            </label>
+            <div class="chess-review-queue-actions" style="grid-column: 1 / -1;">
+                <button type="submit" class="btn"><i data-lucide="cpu"></i><span>Analyze test position</span></button>
+            </div>
+        </form>
+
+        {% if chess_engine_analysis %}
+        <article class="surface-card chess-train-action-card">
+            <div class="hero-meta">
+                <span class="hero-badge matte-tag">Analysis</span>
+                <span>{{ 'Ready' if chess_engine_analysis.ok else 'Unavailable' }}</span>
+            </div>
+            {% if chess_engine_analysis.ok %}
+            <h3>{{ chess_engine_analysis.best_move_san or chess_engine_analysis.best_move_uci or 'No move returned' }}</h3>
+            <div class="chess-review-queue-meta">
+                <span>Engine eval: {{ chess_engine_analysis.score_label or 'Unavailable' }}</span>
+                <span>Depth: {{ chess_engine_analysis.depth }}</span>
+                <span>Time: {{ chess_engine_analysis.time_ms }} ms</span>
+            </div>
+            <p class="chess-summary-note">Best move UCI: {{ chess_engine_analysis.best_move_uci or 'Unavailable' }}</p>
+            <p class="chess-summary-note">{{ chess_engine_analysis.fen or chess_engine_analysis.requested_fen }}</p>
+            {% else %}
+            <h3>Analysis unavailable</h3>
+            <p class="chess-summary-note">{{ chess_engine_analysis.error or 'The engine could not analyze this position.' }}</p>
+            {% if chess_engine_analysis.requested_fen %}
+            <p class="chess-summary-note">{{ chess_engine_analysis.requested_fen }}</p>
+            {% endif %}
+            {% endif %}
+        </article>
+        {% endif %}
+    </section>
+</section>
+{% endblock %}

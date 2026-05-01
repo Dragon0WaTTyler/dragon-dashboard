@@ -79,6 +79,29 @@
     <div id="pockettubeFeedDebugMode" style="margin-top:12px; padding:10px 12px; border:1px solid #ff0000; background:#fff; color:#111; font:700 13px/1.5 Arial, sans-serif;">
         showWatched = <span data-pockettube-debug-showwatched>unknown</span>
     </div>
+    <div style="margin-top:12px; padding:12px 14px; border:1px dashed rgba(255,255,255,.18); border-radius:16px; background:rgba(255,255,255,.03); color:var(--text-2); font-size:.78rem; line-height:1.55;">
+        <div><strong>Group debug</strong></div>
+        <div>Channels in group: {{ section_feed_context.channel_count or 0 }}</div>
+        <div>Videos shown: {{ section_feed_context.total_count or section_feed_context.video_count or 0 }}</div>
+        <div>Feed source used: {{ section_feed_context.feed_source_used or 'none' }}</div>
+        <div>Empty reason: {{ section_feed_context.empty_reason or 'none' }}</div>
+        <div>Latest fetch attempted: {{ 'yes' if section_feed_context.latest_fetch_diagnostics and section_feed_context.latest_fetch_diagnostics.attempted else 'no' }}</div>
+        <div>Latest fetch source: {{ section_feed_context.latest_fetch_diagnostics.source_used if section_feed_context.latest_fetch_diagnostics else 'none' }}</div>
+        <div>Channels requested: {{ section_feed_context.latest_fetch_diagnostics.channels_requested if section_feed_context.latest_fetch_diagnostics else 0 }}</div>
+        <div>Channels fetched: {{ section_feed_context.latest_fetch_diagnostics.channels_fetched if section_feed_context.latest_fetch_diagnostics else 0 }}</div>
+        <div>Latest videos found: {{ section_feed_context.latest_fetch_diagnostics.latest_videos_found if section_feed_context.latest_fetch_diagnostics else 0 }}</div>
+        <div>Latest fallback reason: {{ section_feed_context.latest_fetch_diagnostics.fallback_reason if section_feed_context.latest_fetch_diagnostics else 'unknown' }}</div>
+        <div>Latest fetched at: {{ section_feed_context.latest_fetch_diagnostics.fetched_at if section_feed_context.latest_fetch_diagnostics else 'unknown' }}</div>
+        <div>Local cached videos scanned: {{ section_feed_context.local_video_diagnostics.scanned_videos if section_feed_context.local_video_diagnostics else 0 }}</div>
+        <div>Local cached videos matched: {{ section_feed_context.local_video_diagnostics.local_matched_video_count if section_feed_context.local_video_diagnostics else 0 }}</div>
+        <div>Cached videos with channel ids: {{ section_feed_context.local_video_diagnostics.matched_channel_id_count if section_feed_context.local_video_diagnostics else 0 }}</div>
+        <div>Hydration candidates: {{ section_feed_context.local_video_diagnostics.hydration_candidate_count if section_feed_context.local_video_diagnostics else 0 }}</div>
+        <div>Local playlists contributing: {{ section_feed_context.local_video_diagnostics.local_playlist_count if section_feed_context.local_video_diagnostics else 0 }}</div>
+        <div>Match reason: {{ section_feed_context.local_video_diagnostics.group_match_reason if section_feed_context.local_video_diagnostics else 'unknown' }}</div>
+        <div>Last local cache update: {{ section_feed_context.local_video_diagnostics.last_cache_update if section_feed_context.local_video_diagnostics else 'unknown' }}</div>
+        <div>OAuth ready: {{ 'yes' if section_feed_context.local_video_diagnostics and section_feed_context.local_video_diagnostics.oauth_ready else 'no' }}</div>
+        <div>API key ready: {{ 'yes' if section_feed_context.local_video_diagnostics and section_feed_context.local_video_diagnostics.api_key_ready else 'no' }}</div>
+    </div>
     {% endif %}
     {% if request.args.get('pockettube_debug') == '1' %}
     <div id="pockettubeWatchedDebug" style="margin-top:14px; padding:14px; border:2px dashed #ff0000; background:#fff; color:#111; font:600 13px/1.6 Arial, sans-serif; display:block; white-space:pre-wrap;">
@@ -125,7 +148,15 @@
     </div>
     <div class="empty-state" style="margin-top:18px; display:none;" data-pockettube-watched-empty>All videos in this feed slice are currently hidden.</div>
     {% else %}
-    <div class="empty-state" style="margin-top:18px;">No videos found for the selected PocketTube filters.</div>
+    <div class="empty-state" style="margin-top:18px;">
+        {% if section_feed_context.empty_reason == 'no_local_videos' %}
+        {{ section_feed_context.channel_count }} channels found, but no local videos are loaded for this group yet. Try Sync.
+        {% elif section_feed_context.empty_reason == 'no_channels' %}
+        No channels were found in this PocketTube group yet.
+        {% else %}
+        No videos found for the selected PocketTube filters.
+        {% endif %}
+    </div>
     {% endif %}
     <div class="playlist-controls" style="margin-top:18px; flex-wrap:wrap;">
         {% if section_feed_context.has_previous %}
@@ -229,7 +260,7 @@
         {% endif %}
     </section>
     {% endfor %}
-{% else %}
+{% elif not (section_feed_context and section_feed_context.feed_visible) %}
 <div class="empty-state">No playlists configured in this section.</div>
 {% endif %}
 {% endblock %}

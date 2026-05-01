@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="page-hero chess-hero">
+    <div class="hero-meta">
+        <span class="hero-badge matte-tag">Lotus Chess</span>
+        <span>Review session</span>
+    </div>
+    <h2>Step through your queue.</h2>
+    <p class="subhead">A simple local review session built from your saved games, lines, and openings. No engine analysis.</p>
+    <div class="chess-hero-actions">
+        <a class="btn" href="{{ url_for('chess_train') }}"><i data-lucide="target"></i><span>Back to Train</span></a>
+        <a class="btn" href="{{ url_for('chess_drills') }}"><i data-lucide="swords"></i><span>Drills</span></a>
+        <a class="btn" href="{{ url_for('chess_review_session') }}"><i data-lucide="bookmark-check"></i><span>Start review session</span></a>
+    </div>
+</section>
+
+<nav class="surface-card chess-subnav" aria-label="Lotus Chess areas">
+    {% for item in chess_nav_items %}
+    <a class="chess-subnav-link {{ 'active' if item.key == chess_active_key else '' }}" href="{{ item.href }}">
+        <i data-lucide="{{ item.icon }}"></i>
+        <span>{{ item.label }}</span>
+    </a>
+    {% endfor %}
+</nav>
+
+<section class="chess-main chess-review-session-page">
+    {% if chess_review_session.empty_state %}
+    <section class="surface-card section-card chess-empty-state">
+        <div class="hero-meta">
+            <span class="hero-badge matte-tag">Queue empty</span>
+            <span>No active review items</span>
+        </div>
+        <h3 class="chess-section-title">Nothing to review right now.</h3>
+        <p class="chess-summary-note">Add games, openings, or lines to the queue from Train or a detail page.</p>
+        <div class="chess-review-queue-actions">
+            <a class="btn chess-inline-btn" href="{{ url_for('chess_train') }}"><i data-lucide="target"></i><span>Go to Train</span></a>
+            <a class="btn chess-inline-btn" href="{{ url_for('chess_games') }}"><i data-lucide="library-big"></i><span>Browse Games</span></a>
+            <a class="btn chess-inline-btn" href="{{ url_for('chess_openings') }}"><i data-lucide="waypoints"></i><span>Browse Openings</span></a>
+        </div>
+    </section>
+    {% else %}
+    <section class="surface-card section-card chess-focus-card">
+        <div class="hero-meta">
+            <span class="hero-badge matte-tag">Review queue</span>
+            <span>{{ chess_review_session.current_position_label }} current</span>
+        </div>
+        <section class="chess-overview-grid chess-review-session-overview-grid">
+            <article class="surface-card chess-overview-card">
+                <span class="chess-card-label">Total items</span>
+                <strong class="chess-card-value">{{ chess_review_session.total_count }}</strong>
+            </article>
+            <article class="surface-card chess-overview-card">
+                <span class="chess-card-label">Pending</span>
+                <strong class="chess-card-value">{{ chess_review_session.active_count }}</strong>
+            </article>
+            <article class="surface-card chess-overview-card">
+                <span class="chess-card-label">Done</span>
+                <strong class="chess-card-value">{{ chess_review_session.completed_count }}</strong>
+            </article>
+            <article class="surface-card chess-overview-card">
+                <span class="chess-card-label">Current</span>
+                <strong class="chess-card-value">{{ chess_review_session.current_item.type_label }}</strong>
+            </article>
+        </section>
+    </section>
+
+    <section class="surface-card section-card chess-review-session-card">
+        <div class="hero-meta">
+            <span class="hero-badge matte-tag">{{ chess_review_session.current_item.type_label }}</span>
+            <span>Item {{ chess_review_session.current_item.position_label }}</span>
+        </div>
+        <h3 class="title-scaled chess-section-title">{{ chess_review_session.current_item.current_label }}</h3>
+        <p class="chess-summary-note">{{ chess_review_session.current_item.reason or 'Saved for later review.' }}</p>
+        {% if chess_review_session.current_item.review_state_note %}
+        <p class="chess-summary-note">{{ chess_review_session.current_item.review_state_note }}</p>
+        {% endif %}
+        {% if chess_review_session.current_item.context_lines %}
+        <div class="chess-review-session-context">
+            {% for line in chess_review_session.current_item.context_lines %}
+            <p class="chess-summary-note">{{ line }}</p>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="chess-summary-note">Item data unavailable.</p>
+        {% endif %}
+        <div class="chess-review-queue-actions">
+            {% if chess_review_session.current_item.available and chess_review_session.current_item.practice_url %}
+            <a class="btn chess-inline-btn" href="{{ chess_review_session.current_item.practice_url }}"><i data-lucide="arrow-up-right"></i><span>{{ chess_review_session.current_item.practice_label }}</span></a>
+            {% else %}
+            <span class="chess-status-pill">Item data unavailable</span>
+            {% endif %}
+            {% if chess_review_session.current_item.open_url and chess_review_session.current_item.open_url != chess_review_session.current_item.practice_url %}
+            <a class="btn chess-inline-btn" href="{{ chess_review_session.current_item.open_url }}"><i data-lucide="external-link"></i><span>{{ chess_review_session.current_item.open_label }}</span></a>
+            {% endif %}
+            <form method="post" action="{{ url_for('chess_review_complete') }}">
+                <input type="hidden" name="queue_id" value="{{ chess_review_session.current_item.id }}">
+                <input type="hidden" name="next" value="{{ chess_review_session.current_item.mark_done_next_href }}">
+                <button type="submit" class="btn chess-mini-action-btn"><i data-lucide="check"></i><span>Mark done</span></button>
+            </form>
+            <a class="btn chess-mini-action-btn" href="{{ chess_review_session.skip_href }}"><i data-lucide="skip-forward"></i><span>Skip / Next</span></a>
+        </div>
+    </section>
+
+    <section class="surface-card section-card chess-review-session-card">
+        <div class="hero-meta">
+            <span class="hero-badge matte-tag">Session note</span>
+            <span>Local only. Result-based. Engine analysis comes later.</span>
+        </div>
+        {% if chess_review_session.current_item.type == 'line' %}
+        <p class="chess-summary-note">{{ chess_review_session.current_item.line_summary.note if chess_review_session.current_item.line_summary else 'Line review ready.' }}</p>
+        {% elif chess_review_session.current_item.type == 'opening' %}
+        <p class="chess-summary-note">Review the opening branches and decide whether this family deserves more attention.</p>
+        {% else %}
+        <p class="chess-summary-note">Review the game, note the result, then move on to the next item.</p>
+        {% endif %}
+        <div class="chess-review-queue-actions">
+            <a class="btn chess-inline-btn" href="{{ url_for('chess_train') }}"><i data-lucide="target"></i><span>Back to Train</span></a>
+            <a class="btn chess-inline-btn" href="{{ url_for('chess_drills') }}"><i data-lucide="swords"></i><span>Drills</span></a>
+        </div>
+    </section>
+    {% endif %}
+</section>
+{% endblock %}

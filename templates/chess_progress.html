@@ -27,7 +27,7 @@
     <section class="surface-card section-card chess-focus-card">
         <div class="hero-meta">
             <span class="hero-badge matte-tag">{{ chess_area.eyebrow }}</span>
-            <span>Phase 2F V0</span>
+            <span>Lotus Chess V0</span>
         </div>
         <h3 class="title-scaled chess-section-title">{{ chess_area.title }}</h3>
         <p class="subhead chess-section-copy">{{ chess_area.summary }}</p>
@@ -175,6 +175,38 @@
             {% else %}
             <div class="chess-progress-empty">Run Extract PGN Openings first.</div>
             <a class="btn" href="{{ url_for('chess_games') }}"><i data-lucide="library-big"></i><span>Go to Games</span></a>
+            {% endif %}
+        </article>
+
+        <article class="surface-card section-card chess-progress-panel">
+            <div class="hero-meta">
+                <span class="hero-badge matte-tag">Recurring lines V0</span>
+                <span>First moves only</span>
+            </div>
+            {% if chess_opening_lines_summary.tracked %}
+            <div class="chess-progress-chip-row">
+                <span class="chess-progress-chip"><strong>{{ chess_opening_lines_summary.tracked }}</strong> Lines</span>
+                <span class="chess-progress-chip"><strong>{{ chess_opening_lines_weak|length }}</strong> Weak</span>
+                <span class="chess-progress-chip"><strong>{{ chess_opening_lines_strong|length }}</strong> Strong</span>
+            </div>
+            {% if chess_opening_lines_top %}
+            <div class="chess-progress-opening-list">
+                {% for line in chess_opening_lines_top[:3] %}
+                <a class="chess-progress-opening-row" href="{{ line.href }}">
+                    <div class="chess-progress-opening-main">
+                        <span>{{ line.opening_label }}</span>
+                        <strong>{{ line.line_label }}</strong>
+                        <span>{{ line.total }} games</span>
+                    </div>
+                    <div class="chess-progress-opening-stats">
+                        <span>{{ line.score_percent_label }}</span>
+                    </div>
+                </a>
+                {% endfor %}
+            </div>
+            {% endif %}
+            {% else %}
+            <div class="chess-progress-empty">No recurring lines yet. Extract PGN Moves first.</div>
             {% endif %}
         </article>
 

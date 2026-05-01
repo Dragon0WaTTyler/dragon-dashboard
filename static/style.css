@@ -698,6 +698,12 @@ h2{font-size:clamp(2.2rem,4vw,3.6rem);margin-top:14px;letter-spacing:-.03em}.det
   min-width:0;
 }
 
+.chess-drill-shell,
+.chess-drill-panel{
+  display:grid;
+  gap:14px;
+}
+
 .chess-board-stage{
   width:100%;
   max-width:800px;
@@ -708,11 +714,66 @@ h2{font-size:clamp(2.2rem,4vw,3.6rem);margin-top:14px;letter-spacing:-.03em}.det
   grid-template-columns:repeat(8, minmax(0, 1fr));
   width:100%;
   aspect-ratio:1 / 1;
+  position:relative;
   border-radius:26px;
   overflow:hidden;
   border:1px solid var(--border);
   background:#050505;
   box-shadow:0 20px 60px rgba(0,0,0,.35);
+}
+
+.chess-board-arrows{
+  position:absolute;
+  inset:0;
+  width:100%;
+  height:100%;
+  pointer-events:none;
+  z-index:3;
+}
+
+.chess-arrow-attempted,
+.chess-arrow-expected,
+.chess-arrow-engine{
+  fill:none;
+  stroke-linecap:round;
+  stroke-width:8;
+  opacity:.78;
+}
+
+.chess-arrow-attempted{
+  stroke:rgba(118,180,255,.82);
+}
+
+.chess-arrow-expected{
+  stroke:rgba(255,107,107,.86);
+}
+
+.chess-arrow-engine{
+  stroke:rgba(255,214,102,.82);
+}
+
+.chess-arrow-attempted-fill{
+  fill:rgba(118,180,255,.82);
+}
+
+.chess-arrow-expected-fill{
+  fill:rgba(255,107,107,.86);
+}
+
+.chess-arrow-engine-fill{
+  fill:rgba(255,214,102,.82);
+}
+
+.chess-arrow-manual{
+  fill:none;
+  stroke:rgba(255,184,77,.84);
+  stroke-linecap:round;
+  stroke-width:7;
+  opacity:.72;
+}
+
+.chess-arrow-manual-fill{
+  fill:rgba(255,184,77,.84);
 }
 
 .chess-board-square{
@@ -737,6 +798,48 @@ h2{font-size:clamp(2.2rem,4vw,3.6rem);margin-top:14px;letter-spacing:-.03em}.det
   box-shadow:inset 0 0 0 3px rgba(255,107,107,.9), inset 0 0 24px rgba(255,107,107,.12);
 }
 
+.chess-board-square.selected{
+  box-shadow:inset 0 0 0 3px rgba(255,214,102,.95), inset 0 0 24px rgba(255,214,102,.16);
+}
+
+.chess-board-square.drag-source{
+  box-shadow:inset 0 0 0 3px rgba(255,214,102,.75), inset 0 0 18px rgba(255,214,102,.12);
+}
+
+.chess-board-square.legal-target::after{
+  content:"";
+  position:absolute;
+  width:26%;
+  height:26%;
+  border-radius:999px;
+  background:rgba(255,107,107,.78);
+  box-shadow:0 0 18px rgba(255,107,107,.22);
+}
+
+.chess-board-square.tutor-attempted-from,
+.chess-board-square.tutor-attempted-to{
+  box-shadow:inset 0 0 0 3px rgba(118,180,255,.88), inset 0 0 20px rgba(118,180,255,.16);
+}
+
+.chess-board-square.tutor-expected-from,
+.chess-board-square.tutor-expected-to{
+  box-shadow:inset 0 0 0 3px rgba(255,107,107,.92), inset 0 0 22px rgba(255,107,107,.18);
+}
+
+.chess-board-square.tutor-engine-from,
+.chess-board-square.tutor-engine-to{
+  box-shadow:inset 0 0 0 3px rgba(255,214,102,.92), inset 0 0 22px rgba(255,214,102,.18);
+}
+
+.chess-board-square.manual-marked{
+  box-shadow:inset 0 0 0 3px rgba(255,184,77,.42), inset 0 0 22px rgba(255,184,77,.12);
+}
+
+.chess-board-square.manual-mark-from,
+.chess-board-square.manual-mark-to{
+  box-shadow:inset 0 0 0 3px rgba(255,184,77,.62), inset 0 0 24px rgba(255,184,77,.18);
+}
+
 .chess-board-piece{
     width:100%;
     height:100%;
@@ -745,6 +848,22 @@ h2{font-size:clamp(2.2rem,4vw,3.6rem);margin-top:14px;letter-spacing:-.03em}.det
     justify-content:center;
     user-select:none;
     pointer-events:none;
+}
+
+.chess-board-piece.dragging-origin{
+  opacity:.28;
+  transform:scale(.96);
+  transition:opacity .08s ease, transform .08s ease;
+}
+
+.chess-board-piece.animating-origin{
+  opacity:.24;
+  transform:scale(.97);
+  transition:opacity .08s ease, transform .08s ease;
+}
+
+.chess-puzzle-drawing-note{
+  margin-top:-6px;
 }
 
 .chess-board-piece-img{
@@ -759,6 +878,59 @@ h2{font-size:clamp(2.2rem,4vw,3.6rem);margin-top:14px;letter-spacing:-.03em}.det
     user-select:none;
     -webkit-user-drag:none;
     filter:drop-shadow(0 2px 2px rgba(0,0,0,.35));
+}
+
+.chess-drag-ghost{
+  position:fixed;
+  left:0;
+  top:0;
+  width:min(12vw, 84px);
+  height:min(12vw, 84px);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  pointer-events:none;
+  transform:translate(-50%, -50%);
+  z-index:1200;
+  filter:drop-shadow(0 10px 24px rgba(0,0,0,.45));
+}
+
+.chess-move-anim-piece{
+  position:fixed;
+  left:0;
+  top:0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  pointer-events:none;
+  transform:translate(-50%, -50%);
+  z-index:1190;
+  will-change:transform, opacity;
+  filter:drop-shadow(0 9px 18px rgba(0,0,0,.32));
+}
+
+.chess-move-anim-piece .chess-board-piece{
+  width:100%;
+  height:100%;
+}
+
+.chess-move-anim-piece .chess-board-piece-img{
+  width:100%;
+  height:100%;
+  max-width:100%;
+  max-height:100%;
+}
+
+.chess-drag-ghost .chess-board-piece{
+  width:100%;
+  height:100%;
+}
+
+.chess-drag-ghost .chess-board-piece-img{
+  width:100%;
+  height:100%;
+  max-width:100%;
+  max-height:100%;
 }
 
 .chess-board-coordinate{
@@ -796,6 +968,264 @@ h2{font-size:clamp(2.2rem,4vw,3.6rem);margin-top:14px;letter-spacing:-.03em}.det
   background:rgba(0,0,0,.2);
 }
 
+.chess-puzzle-session{
+  display:grid;
+  gap:18px;
+}
+
+.chess-puzzle-session-layout{
+  display:grid;
+  grid-template-columns:minmax(0, 1.3fr) minmax(320px, .9fr);
+  gap:18px;
+  align-items:start;
+}
+
+.chess-puzzle-board-column{
+  display:grid;
+  gap:14px;
+}
+
+.chess-puzzle-board-stage{
+  padding:14px;
+  border-radius:24px;
+  border:1px solid var(--border);
+  background:rgba(255,255,255,.02);
+}
+
+.chess-puzzle-board-status{
+  justify-content:flex-start;
+}
+
+.chess-puzzle-board-summary{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+}
+
+.chess-puzzle-status-pill{
+  display:inline-flex;
+  align-items:center;
+  padding:7px 10px;
+  border-radius:999px;
+  border:1px solid var(--border);
+  background:rgba(255,255,255,.03);
+  color:var(--text-2);
+  font-size:.82rem;
+}
+
+.chess-puzzle-coach-panel{
+  display:grid;
+  gap:14px;
+  align-content:start;
+}
+
+.chess-puzzle-coach-head{
+  display:grid;
+  gap:8px;
+}
+
+.chess-puzzle-coach-bubble{
+  position:relative;
+}
+
+.chess-puzzle-coach-bubble::before{
+  content:"";
+  position:absolute;
+  left:18px;
+  top:-9px;
+  width:18px;
+  height:18px;
+  transform:rotate(45deg);
+  border-left:1px solid var(--border);
+  border-top:1px solid var(--border);
+  background:inherit;
+}
+
+.chess-puzzle-context-card{
+  display:grid;
+  gap:8px;
+  padding:14px 16px;
+  border-radius:18px;
+  border:1px solid var(--border);
+  background:rgba(255,255,255,.02);
+}
+
+.chess-puzzle-move-compare{
+  display:grid;
+  gap:8px;
+  padding:14px 16px;
+  border-radius:18px;
+  border:1px solid var(--border);
+  background:rgba(255,255,255,.02);
+}
+
+.chess-puzzle-move-compare[hidden]{
+  display:none;
+}
+
+.chess-puzzle-move-compare-row{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding:8px 0;
+  border-bottom:1px solid rgba(255,255,255,.06);
+}
+
+.chess-puzzle-move-compare-row:last-child{
+  border-bottom:0;
+}
+
+.chess-puzzle-move-compare-label{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  color:var(--text-2);
+  font-size:.82rem;
+}
+
+.chess-puzzle-move-compare-label::before{
+  content:"";
+  width:10px;
+  height:10px;
+  border-radius:999px;
+  display:inline-block;
+}
+
+.chess-puzzle-move-compare-label.attempted::before{
+  background:rgba(118,180,255,.85);
+}
+
+.chess-puzzle-move-compare-label.expected::before{
+  background:rgba(255,107,107,.88);
+}
+
+.chess-puzzle-move-compare-label.engine::before{
+  background:rgba(255,214,102,.88);
+}
+
+.chess-puzzle-move-compare-row strong{
+  color:var(--text);
+}
+
+.chess-puzzle-controls{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+}
+
+.chess-puzzle-controls .btn{
+  flex:1 1 132px;
+  min-width:0;
+}
+
+.chess-puzzle-settings-card{
+  gap:12px;
+}
+
+.chess-puzzle-settings-card .chess-field{
+  display:grid;
+  gap:8px;
+}
+
+.chess-puzzle-settings-groups{
+  display:grid;
+  gap:14px;
+}
+
+.chess-puzzle-settings-group{
+  display:grid;
+  gap:10px;
+  padding:12px 14px;
+  border-radius:16px;
+  border:1px solid rgba(255,255,255,.06);
+  background:rgba(255,255,255,.02);
+}
+
+.chess-puzzle-toggle{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  color:var(--text);
+}
+
+.chess-puzzle-toggle input{
+  width:auto;
+  margin:0;
+}
+
+.chess-puzzle-settings-actions{
+  display:flex;
+  justify-content:flex-start;
+  gap:10px;
+}
+
+.chess-puzzle-preset-grid{
+  display:grid;
+  gap:10px;
+}
+
+.chess-puzzle-preset-option{
+  display:flex;
+  align-items:flex-start;
+  gap:10px;
+  padding:10px 12px;
+  border-radius:14px;
+  border:1px solid var(--border);
+  background:rgba(255,255,255,.025);
+  cursor:pointer;
+}
+
+.chess-puzzle-preset-option input{
+  margin-top:3px;
+}
+
+.chess-puzzle-preset-copy{
+  display:grid;
+  gap:3px;
+}
+
+.chess-puzzle-preset-copy strong{
+  color:var(--text);
+}
+
+.chess-puzzle-preset-copy small{
+  color:var(--text-2);
+}
+
+.chess-puzzle-moves-list{
+  max-height:240px;
+  overflow-anchor:none;
+}
+
+.chess-puzzle-engine-panel{
+  gap:12px;
+}
+
+.chess-puzzle-engine-results{
+  display:grid;
+  gap:8px;
+}
+
+.chess-puzzle-tech-details{
+  display:grid;
+  gap:8px;
+  padding:10px 12px;
+  border-radius:14px;
+  border:1px solid rgba(255,255,255,.08);
+  background:rgba(0,0,0,.16);
+}
+
+.chess-puzzle-tech-details summary{
+  cursor:pointer;
+  color:var(--text);
+  font-weight:700;
+}
+
+.chess-puzzle-secondary-links{
+  align-items:stretch;
+}
+
 .chess-board-context{
   color:var(--text-2);
   font-size:.82rem;
@@ -826,6 +1256,57 @@ h2{font-size:clamp(2.2rem,4vw,3.6rem);margin-top:14px;letter-spacing:-.03em}.det
 
 .chess-board-review-actions .btn{
   flex:0 0 auto;
+}
+
+.chess-drill-answer-card{
+  display:grid;
+  gap:8px;
+  padding:16px;
+  border-radius:18px;
+  border:1px solid var(--border);
+  background:rgba(255,255,255,.03);
+}
+
+.chess-drill-answer-card strong{
+  font-size:1.35rem;
+  letter-spacing:.02em;
+}
+
+.chess-drill-answer-card[hidden]{
+  display:none;
+}
+
+.chess-trainer-feedback-card{
+  display:grid;
+  gap:8px;
+  padding:14px 16px;
+  border-radius:18px;
+  border:1px solid var(--border);
+  background:rgba(255,255,255,.025);
+}
+
+.chess-trainer-feedback-card strong{
+  color:var(--text);
+}
+
+.chess-trainer-feedback-card[data-feedback-state="success"]{
+  border-color:rgba(92,214,157,.55);
+  background:rgba(92,214,157,.08);
+}
+
+.chess-trainer-feedback-card[data-feedback-state="error"]{
+  border-color:rgba(255,107,107,.55);
+  background:rgba(255,107,107,.08);
+}
+
+.chess-trainer-feedback-card[data-feedback-state="info"]{
+  border-color:rgba(255,214,102,.45);
+  background:rgba(255,214,102,.08);
+}
+
+.chess-trainer-feedback-card[data-feedback-state="idle"]{
+  border-color:rgba(255,255,255,.12);
+  background:rgba(255,255,255,.03);
 }
 
 .chess-board-controls{
@@ -874,6 +1355,7 @@ h2{font-size:clamp(2.2rem,4vw,3.6rem);margin-top:14px;letter-spacing:-.03em}.det
   max-height:calc(100vh - 310px);
   overflow:auto;
   padding-right:4px;
+  overflow-anchor:none;
 }
 
 .chess-board-move-row{
@@ -943,6 +1425,16 @@ h2{font-size:clamp(2.2rem,4vw,3.6rem);margin-top:14px;letter-spacing:-.03em}.det
   border-radius:14px;
   border:1px solid transparent;
   color:var(--text-2);
+}
+
+@media (max-width: 980px){
+  .chess-puzzle-session-layout{
+    grid-template-columns:minmax(0,1fr);
+  }
+
+  .chess-puzzle-moves-list{
+    max-height:unset;
+  }
 }
 
 .chess-detail-list{

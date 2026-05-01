@@ -1,0 +1,231 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="page-hero chess-hero">
+    <div class="hero-meta">
+        <span class="hero-badge matte-tag">Lotus Chess</span>
+        <span>My Puzzles</span>
+    </div>
+    <h2>{{ chess_area.title }}</h2>
+    <p class="subhead">{{ chess_area.summary }}</p>
+</section>
+
+<nav class="surface-card chess-subnav" aria-label="Lotus Chess areas">
+    {% for item in chess_nav_items %}
+    <a class="chess-subnav-link {{ 'active' if item.key == chess_active_key else '' }}" href="{{ item.href }}">
+        <i data-lucide="{{ item.icon }}"></i>
+        <span>{{ item.label }}</span>
+    </a>
+    {% endfor %}
+</nav>
+
+<section class="chess-main chess-train-page">
+    {% if request.args.get('success') %}
+    <div class="chess-banner chess-banner-success">{{ request.args.get('success') }}</div>
+    {% endif %}
+    {% if request.args.get('error') %}
+    <div class="chess-banner chess-banner-error">{{ request.args.get('error') }}</div>
+    {% endif %}
+
+    <section class="surface-card section-card chess-focus-card">
+        <div class="hero-meta">
+            <span class="hero-badge matte-tag">My Puzzles</span>
+            <span>{{ chess_my_puzzles_status.ready_count or 0 }} ready</span>
+        </div>
+        <h3 class="title-scaled chess-section-title">{{ chess_my_puzzles_status.title }}</h3>
+        <p class="subhead chess-section-copy">{{ chess_my_puzzles_status.reason }}</p>
+        <p class="chess-summary-note">Generated from your Chess.com and Lichess games.</p>
+        {% if chess_my_puzzles_status.status_line %}
+        <p class="chess-summary-note chess-muted-note">{{ chess_my_puzzles_status.status_line }}</p>
+        {% endif %}
+        <div class="chess-hero-actions">
+            {% if chess_my_puzzles_status.primary_method == 'post' %}
+            <form method="post" action="{{ chess_my_puzzles_status.primary_url }}">
+                <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
+                <button type="submit" class="btn"><i data-lucide="play-circle"></i><span>{{ chess_my_puzzles_status.primary_label }}</span></button>
+            </form>
+            {% else %}
+            <a class="btn" href="{{ chess_my_puzzles_status.primary_url }}"><i data-lucide="play-circle"></i><span>{{ chess_my_puzzles_status.primary_label }}</span></a>
+            {% endif %}
+            <a class="btn chess-inline-btn" href="{{ chess_my_puzzles_status.secondary_url }}"><i data-lucide="arrow-down-right"></i><span>{{ chess_my_puzzles_status.secondary_label }}</span></a>
+        </div>
+    </section>
+
+    <section class="surface-card section-card chess-focus-card">
+        <div class="hero-meta">
+            <span class="hero-badge matte-tag">Lichess Puzzles</span>
+            <span>Separate source</span>
+        </div>
+        <h3 class="title-scaled chess-section-title">Lichess puzzles</h3>
+        <p class="subhead chess-section-copy">Practice tactical puzzles from the Lichess puzzle database later. This stays separate from My Puzzles.</p>
+        <p class="chess-summary-note chess-muted-note">Local source not imported yet.</p>
+        <div class="chess-hero-actions">
+            <a class="btn chess-inline-btn" href="{{ url_for('chess_lichess_puzzles') }}"><i data-lucide="sparkles"></i><span>Set up Lichess puzzles</span></a>
+            <span class="chess-status-pill">Coming soon</span>
+        </div>
+    </section>
+
+    <details class="surface-card section-card chess-train-section" id="chess-puzzles-advanced">
+        <summary class="chess-openings-toggle">
+            <div>
+                <strong>Advanced</strong>
+                <span>Open only when you want to inspect the system.</span>
+            </div>
+        </summary>
+
+        <div class="chess-review-queue-actions">
+            <a class="btn chess-inline-btn" href="{{ url_for('chess_engine') }}"><i data-lucide="cpu"></i><span>Engine</span></a>
+        </div>
+
+        <section class="surface-card section-card chess-train-section">
+            <div class="hero-meta">
+                <span class="hero-badge matte-tag">Auto candidates</span>
+                <span>{{ chess_auto_puzzle_candidates.visible_count or 0 }} visible</span>
+            </div>
+            <div class="chess-review-queue-actions">
+                <form method="post" action="{{ url_for('chess_puzzles_auto_queue_top') }}">
+                    <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
+                    <button type="submit" class="btn chess-inline-btn"><i data-lucide="list-plus"></i><span>Add top weak candidates to training queue</span></button>
+                </form>
+                <a class="btn chess-inline-btn" href="{{ url_for('chess_training_session') }}"><i data-lucide="target"></i><span>Training session</span></a>
+            </div>
+
+            {% if chess_auto_puzzle_candidates.visible_count %}
+            <div class="chess-review-queue-list">
+                {% for candidate in chess_auto_puzzle_candidate_items or [] %}
+                <article class="surface-card chess-review-queue-item">
+                    <div class="chess-review-queue-head">
+                        <strong>{{ candidate.opening_label or 'Unknown opening' }}</strong>
+                        <span class="chess-status-pill">{{ candidate.status|replace('_', ' ')|title }}</span>
+                    </div>
+                    <div class="chess-review-queue-meta">
+                        <span>{{ candidate.source_label or 'Personal puzzle' }}</span>
+                        <span>{{ candidate.priority_label or 'Low' }}</span>
+                        <span>Priority {{ candidate.priority_score or 0 }}</span>
+                    </div>
+                    <p class="chess-summary-note">{{ candidate.line_label or 'Line pending' }}</p>
+                    <div class="chess-review-queue-meta">
+                        <span>{{ candidate.record_label or 'Record unavailable' }}</span>
+                        <span>{{ candidate.score_percent_label or '0%' }}</span>
+                        <span>{{ candidate.games_count or 0 }} games</span>
+                    </div>
+                    {% if candidate.priority_reasons %}
+                    <p class="chess-summary-note">{{ candidate.priority_reasons[:3] | join(' · ') }}</p>
+                    {% endif %}
+                    <p class="chess-summary-note">{{ candidate.reason or 'Weak line from your games.' }}</p>
+                    <div class="chess-review-queue-meta">
+                        <span>{{ candidate.game_label or 'Game unavailable' }}</span>
+                        <span>{{ candidate.game_context or 'Game unavailable' }}</span>
+                    </div>
+                    <div class="chess-review-queue-actions">
+                        <a class="btn chess-mini-action-btn" href="{{ url_for('chess_training_puzzle', candidate_id=candidate.id) }}"><i data-lucide="swords"></i><span>Train puzzle</span></a>
+                        {% if candidate.status == 'candidate' %}
+                        <form method="post" action="{{ url_for('chess_puzzles_auto_queue') }}">
+                            <input type="hidden" name="candidate_id" value="{{ candidate.id }}">
+                            <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
+                            <button type="submit" class="btn chess-mini-action-btn"><i data-lucide="list-plus"></i><span>Add to training queue</span></button>
+                        </form>
+                        {% else %}
+                        <span class="chess-status-pill">{{ candidate.status|replace('_', ' ')|title }}</span>
+                        {% endif %}
+                        <form method="post" action="{{ url_for('chess_puzzles_auto_save') }}">
+                            <input type="hidden" name="candidate_id" value="{{ candidate.id }}">
+                            <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
+                            <button type="submit" class="btn chess-mini-action-btn"><i data-lucide="sparkles"></i><span>{% if candidate.saved_seed_id %}Already saved{% else %}Save to training seeds{% endif %}</span></button>
+                        </form>
+                        <form method="post" action="{{ url_for('chess_puzzles_auto_status') }}">
+                            <input type="hidden" name="candidate_id" value="{{ candidate.id }}">
+                            <input type="hidden" name="status" value="training">
+                            <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
+                            <button type="submit" class="btn chess-mini-action-btn"><i data-lucide="target"></i><span>Mark training</span></button>
+                        </form>
+                        <form method="post" action="{{ url_for('chess_puzzles_auto_status') }}">
+                            <input type="hidden" name="candidate_id" value="{{ candidate.id }}">
+                            <input type="hidden" name="status" value="done">
+                            <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
+                            <button type="submit" class="btn chess-mini-action-btn"><i data-lucide="check-circle-2"></i><span>Mark done</span></button>
+                        </form>
+                        <form method="post" action="{{ url_for('chess_puzzles_auto_status') }}">
+                            <input type="hidden" name="candidate_id" value="{{ candidate.id }}">
+                            <input type="hidden" name="status" value="archived">
+                            <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
+                            <button type="submit" class="btn chess-mini-action-btn"><i data-lucide="archive"></i><span>Archive</span></button>
+                        </form>
+                    </div>
+                    <div class="chess-review-queue-actions">
+                        {% if candidate.game_href %}
+                        <a class="btn chess-mini-action-btn" href="{{ candidate.game_href }}"><i data-lucide="arrow-up-right"></i><span>Open related game</span></a>
+                        {% endif %}
+                        {% if candidate.branch_href %}
+                        <a class="btn chess-mini-action-btn" href="{{ candidate.branch_href }}"><i data-lucide="git-branch"></i><span>Open branch detail</span></a>
+                        {% endif %}
+                    </div>
+                </article>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p class="chess-summary-note">No weak-line candidates yet.</p>
+            {% endif %}
+        </section>
+
+        <section class="surface-card section-card chess-train-section">
+            <div class="hero-meta">
+                <span class="hero-badge matte-tag">Manual puzzle seeds</span>
+                <span>{{ chess_puzzle_seeds.total_count or 0 }} local seeds</span>
+            </div>
+            {% if chess_puzzle_seeds.total_count %}
+            <div class="chess-review-queue-list">
+                {% for seed in chess_puzzle_seed_items or [] %}
+                <article class="surface-card chess-review-queue-item">
+                    <div class="chess-review-queue-head">
+                        <strong>{{ seed.opening_label or 'Opening pending' }}</strong>
+                        <span class="chess-status-pill">{{ seed.status|replace('_', ' ')|title }}</span>
+                    </div>
+                    <p class="chess-summary-note">{{ seed.move_number_label }} · {{ seed.side_to_move_label }} to move</p>
+                    {% if seed.user_note %}
+                    <p class="chess-summary-note">{{ seed.user_note }}</p>
+                    {% endif %}
+                    <div class="chess-review-queue-meta">
+                        <span>{{ seed.game_label or 'Game unavailable' }}</span>
+                        <span>{{ seed.game_context or 'Game unavailable' }}</span>
+                    </div>
+                    <div class="chess-review-queue-meta">
+                        <span>{{ seed.created_at or 'Saved recently' }}</span>
+                        <span>{{ seed.source|default('personal_game')|replace('_', ' ')|title }}</span>
+                    </div>
+                    {% if not seed.fen %}
+                    <p class="chess-summary-note">Position unavailable.</p>
+                    {% endif %}
+                    <div class="chess-review-queue-actions">
+                        {% if seed.game_available and seed.game_href %}
+                        <a class="btn chess-mini-action-btn" href="{{ seed.game_href }}"><i data-lucide="arrow-up-right"></i><span>Open game detail</span></a>
+                        {% else %}
+                        <span class="chess-status-pill">Game unavailable</span>
+                        {% endif %}
+                        {% if seed.branch_href %}
+                        <a class="btn chess-mini-action-btn" href="{{ seed.branch_href }}"><i data-lucide="git-branch"></i><span>Open related branch</span></a>
+                        {% endif %}
+                    </div>
+                    <div class="chess-review-queue-actions">
+                        {% for target_status, target_label in [('training', 'Mark training'), ('solved', 'Mark solved'), ('archived', 'Archive')] %}
+                        {% if seed.status == target_status %}
+                        <span class="chess-status-pill">{{ target_label }}</span>
+                        {% else %}
+                        <form method="post" action="{{ url_for('chess_puzzles_status') }}">
+                            <input type="hidden" name="seed_id" value="{{ seed.id }}">
+                            <input type="hidden" name="status" value="{{ target_status }}">
+                            <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
+                            <button type="submit" class="btn chess-mini-action-btn"><i data-lucide="{% if target_status == 'training' %}target{% elif target_status == 'solved' %}check-circle-2{% else %}archive{% endif %}"></i><span>{{ target_label }}</span></button>
+                        </form>
+                        {% endif %}
+                        {% endfor %}
+                    </div>
+                </article>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p class="chess-summary-note">No personal puzzle seeds yet. Open a game and save an interesting position.</p>
+            {% endif %}
+        </section>
+    </details>
+</section>
+{% endblock %}

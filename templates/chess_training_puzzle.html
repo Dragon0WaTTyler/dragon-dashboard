@@ -1,0 +1,2214 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="page-hero chess-hero">
+    <div class="hero-meta">
+        <span class="hero-badge matte-tag">Lotus Chess</span>
+        <span>Weak-line trainer</span>
+    </div>
+    <h2>Train your weakest line positions.</h2>
+    <p class="subhead">Use your own stored game continuation. Your side to move only. No automatic engine noise.</p>
+    <div class="chess-hero-actions">
+        <a class="btn" href="{{ url_for('chess_training_session') }}"><i data-lucide="target"></i><span>Back to Training Session</span></a>
+        <a class="btn" href="{{ url_for('chess_puzzles') }}"><i data-lucide="sparkles"></i><span>View candidates</span></a>
+    </div>
+</section>
+
+<nav class="surface-card chess-subnav" aria-label="Lotus Chess areas">
+    {% for item in chess_nav_items %}
+    <a class="chess-subnav-link {{ 'active' if item.key == chess_active_key else '' }}" href="{{ item.href }}">
+        <i data-lucide="{{ item.icon }}"></i>
+        <span>{{ item.label }}</span>
+    </a>
+    {% endfor %}
+</nav>
+
+<section class="chess-main chess-line-drill-page">
+    {% if chess_success_message %}
+    <div class="chess-banner chess-banner-success">{{ chess_success_message }}</div>
+    {% endif %}
+    {% if chess_error_message %}
+    <div class="chess-banner chess-banner-error">{{ chess_error_message }}</div>
+    {% endif %}
+
+    {% if chess_training_puzzle.empty_state %}
+    <section class="surface-card section-card chess-empty-state">
+        <div class="hero-meta">
+            <span class="hero-badge matte-tag">Training queue complete</span>
+            <span>No queued weak-line puzzles</span>
+        </div>
+        <p class="chess-summary-note">{{ chess_training_puzzle.message or 'No weak-line candidates yet.' }}</p>
+        <div class="chess-review-queue-actions">
+            <a class="btn chess-inline-btn" href="{{ url_for('chess_puzzles') }}"><i data-lucide="sparkles"></i><span>View candidates</span></a>
+            <a class="btn chess-inline-btn" href="{{ url_for('chess_branches') }}"><i data-lucide="git-branch"></i><span>Browse branches</span></a>
+        </div>
+    </section>
+    {% elif chess_training_puzzle.available %}
+    <section class="surface-card section-card chess-focus-card chess-puzzle-session">
+        <div class="chess-puzzle-session-layout">
+            <section class="chess-puzzle-board-column">
+                <div class="hero-meta chess-puzzle-board-meta">
+                    <span class="hero-badge matte-tag">{{ chess_training_puzzle.current_item.priority_label or 'Low' }}</span>
+                    <span>{{ chess_training_puzzle.current_item.position_label or 'Selected candidate' }}</span>
+                </div>
+                <div class="chess-board-stage chess-puzzle-board-stage">
+                    <div class="chess-board chess-trainer-board" id="chess-training-puzzle-board" aria-label="Weak line puzzle board" data-board-interaction-version="fix-2026-04-30" data-tutor-endpoint="{{ url_for('chess_training_puzzle_tutor_feedback_json') }}" data-candidate-id="{{ chess_training_puzzle.current_item.id }}" data-attempt-id="{{ chess_training_puzzle_attempt.id if chess_training_puzzle_attempt else '' }}" data-attempt-move-endpoint="{{ url_for('chess_training_puzzle_attempt_move_json') }}" data-attempt-reveal-endpoint="{{ url_for('chess_training_puzzle_attempt_reveal_json') }}" data-attempt-engine-endpoint="{{ url_for('chess_training_puzzle_attempt_engine_check_json') }}" data-attempt-critical-endpoint="{{ url_for('chess_training_puzzle_attempt_critical_moment_json') }}" data-attempt-skip-endpoint="{{ url_for('chess_training_puzzle_attempt_skip_json') }}" data-attempt-complete-endpoint="{{ url_for('chess_training_puzzle_attempt_complete_json') }}"></div>
+                </div>
+                <div class="chess-board-status chess-puzzle-board-status">
+                    <strong id="chess-training-puzzle-move-label">Your side to move</strong>
+                    <span id="chess-training-puzzle-counter">Step 1 / {{ chess_training_puzzle.step_count }}</span>
+                    <span id="chess-training-puzzle-turn-label">{{ chess_training_puzzle.current_item.user_color_label or 'Unknown' }} to move</span>
+                </div>
+                <div class="chess-puzzle-board-summary">
+                    <span class="chess-puzzle-status-pill">Your side: {{ chess_training_puzzle.current_item.user_color_label or 'Unknown' }}</span>
+                    <span class="chess-puzzle-status-pill">Source: {{ chess_training_puzzle.current_item.user_result_label or 'Game review' }}</span>
+                    <span class="chess-puzzle-status-pill">{{ chess_training_puzzle.step_count }} move{{ '' if chess_training_puzzle.step_count == 1 else 's' }}</span>
+                </div>
+                <p class="chess-summary-note chess-muted-note" id="chess-training-puzzle-goal-note">{{ chess_training_puzzle.current_item.goal_message or 'Focus on finding the move that keeps the line idea.' }}</p>
+            </section>
+
+            <aside class="chess-puzzle-coach-panel">
+                <div class="chess-puzzle-coach-head">
+                    <div class="hero-meta">
+                        <span class="hero-badge matte-tag">Coach</span>
+                        <span>This position comes from your game</span>
+                    </div>
+                    <h3 class="title-scaled chess-section-title">{{ chess_training_puzzle.current_item.opening_label or 'Unknown opening' }}</h3>
+                    <p class="chess-summary-note">{{ chess_training_puzzle.current_item.line_label or 'Line pending' }}</p>
+                    <p class="chess-summary-note chess-muted-note">{{ chess_training_puzzle.current_item.reason or 'Weak line from your games.' }}</p>
+                </div>
+
+                <div class="surface-card chess-trainer-feedback-card chess-puzzle-coach-bubble" id="chess-training-puzzle-feedback-card" data-feedback-state="idle">
+                    <span class="chess-mini-label">Coach</span>
+                    <strong id="chess-training-puzzle-feedback-title">Ready</strong>
+                    <p class="chess-summary-note" id="chess-training-puzzle-feedback-text">{{ chess_training_puzzle.current_item.goal_message or 'This came from your own game. Focus on finding the move that keeps the line idea.' }}</p>
+                </div>
+                {% if chess_training_puzzle.current_item.repeat_needed or (chess_training_puzzle.current_item.due_now and not chess_training_puzzle.current_item.mastered) %}
+                <p class="chess-summary-note chess-muted-note" data-repeat-note>{{ chess_training_puzzle.current_item.repeat_note.note or chess_training_puzzle.current_item.repeat_coach_note or 'This one is back for review.' }}</p>
+                {% if chess_training_puzzle.current_item.repeat_needed and (chess_training_puzzle.current_item.repeat_note.last_wrong_move or chess_training_puzzle.current_item.repeat_note.expected_move) %}
+                <p class="chess-summary-note chess-muted-note" data-repeat-note>
+                    {% if chess_training_puzzle.current_item.repeat_note.last_wrong_move %}
+                    Last time you tried {{ chess_training_puzzle.current_item.repeat_note.last_wrong_move }}.
+                    {% endif %}
+                    {% if chess_training_puzzle.current_item.repeat_note.expected_move %}
+                    This time, try to find {{ chess_training_puzzle.current_item.repeat_note.expected_move }}.
+                    {% else %}
+                    This time, try to find the line move.
+                    {% endif %}
+                </p>
+                {% endif %}
+                {% endif %}
+                {% if chess_training_puzzle.current_item.repeat_needed and chess_training_puzzle.current_item.repeat_note.comparison %}
+                <p class="chess-summary-note chess-muted-note" data-repeat-note>{{ chess_training_puzzle.current_item.repeat_note.comparison }}</p>
+                {% endif %}
+                <p class="chess-summary-note chess-muted-note" id="chess-training-puzzle-attempt-summary"{% if not chess_training_puzzle_attempt_summary.text %} hidden{% endif %}>{{ chess_training_puzzle_attempt_summary.text }}</p>
+                <div class="surface-card chess-puzzle-move-compare" id="chess-training-puzzle-compare-card" hidden>
+                    <div class="chess-puzzle-move-compare-row" id="chess-training-puzzle-compare-attempted" hidden>
+                        <span class="chess-puzzle-move-compare-label attempted">Your move</span>
+                        <strong id="chess-training-puzzle-compare-attempted-value">—</strong>
+                    </div>
+                    <div class="chess-puzzle-move-compare-row" id="chess-training-puzzle-compare-expected" hidden>
+                        <span class="chess-puzzle-move-compare-label expected">Line move</span>
+                        <strong id="chess-training-puzzle-compare-expected-value">—</strong>
+                    </div>
+                    <div class="chess-puzzle-move-compare-row" id="chess-training-puzzle-compare-engine" hidden>
+                        <span class="chess-puzzle-move-compare-label engine">Engine idea</span>
+                        <strong id="chess-training-puzzle-compare-engine-value">—</strong>
+                    </div>
+                </div>
+
+                <div class="surface-card chess-drill-answer-card chess-puzzle-coach-bubble" id="chess-training-puzzle-answer-card" hidden>
+                    <span class="chess-mini-label">Hint</span>
+                    <strong id="chess-training-puzzle-answer-move">Hidden</strong>
+                    <p class="chess-summary-note chess-muted-note" id="chess-training-puzzle-answer-note">Reveal the stored line move only if you need it.</p>
+                </div>
+
+                <div class="surface-card chess-puzzle-context-card">
+                    <span class="chess-mini-label">Context</span>
+                    <p class="chess-board-context">{{ chess_training_puzzle.current_item.game_label or 'Game unavailable' }}</p>
+                    <p class="chess-board-context">{{ chess_training_puzzle.current_item.game_context or 'Game unavailable' }}</p>
+                    {% if chess_training_puzzle.current_item.priority_reasons %}
+                    <p class="chess-summary-note chess-muted-note">{{ chess_training_puzzle.current_item.priority_reasons[:3] | join(' · ') }}</p>
+                    {% endif %}
+                </div>
+
+                <div class="chess-puzzle-controls">
+                    <button type="button" class="btn chess-inline-btn" id="chess-training-puzzle-hint-button" data-puzzle-action="reveal"><i data-lucide="eye"></i><span>Hint</span></button>
+                    <button type="button" class="btn chess-inline-btn" data-puzzle-action="reset"><i data-lucide="refresh-cw"></i><span>Reset</span></button>
+                    <button type="button" class="btn chess-inline-btn" data-puzzle-action="clear-marks"><i data-lucide="eraser"></i><span>Clear marks</span></button>
+                    <button type="button" class="btn chess-inline-btn" data-puzzle-action="flip"><i data-lucide="refresh-ccw"></i><span>Flip board</span></button>
+                    <a class="btn chess-inline-btn" href="{{ chess_training_puzzle.skip_href }}" id="chess-training-puzzle-skip-link"><i data-lucide="skip-forward"></i><span>Skip</span></a>
+                    <a class="btn chess-inline-btn" href="{{ chess_training_puzzle.complete_next_href }}"><i data-lucide="fast-forward"></i><span>Next puzzle</span></a>
+                </div>
+                <p class="chess-summary-note chess-muted-note chess-puzzle-drawing-note">Right-click squares to draw study marks.</p>
+
+                <details class="surface-card chess-board-review-card chess-puzzle-settings-card">
+                    <summary class="chess-openings-toggle">
+                        <div>
+                            <strong>Settings</strong>
+                            <span>Engine strength: {{ chess_training_puzzle_engine_preset.selected.label if chess_training_puzzle_engine_preset and chess_training_puzzle_engine_preset.selected else 'Balanced' }}</span>
+                        </div>
+                    </summary>
+                    <div class="chess-puzzle-settings-groups">
+                        <section class="chess-puzzle-settings-group">
+                            <span class="chess-mini-label">Movement</span>
+                            <div class="chess-field">
+                                <label for="chess-training-puzzle-move-method">Move Method</label>
+                                <select id="chess-training-puzzle-move-method" name="move_method">
+                                    <option value="drag-or-click">Drag or Click</option>
+                                    <option value="click-only">Click only</option>
+                                </select>
+                                <p class="chess-summary-note chess-muted-note" id="chess-training-puzzle-move-method-note">Drag or Click: move pieces by dragging or selecting start and end squares.</p>
+                            </div>
+                        </section>
+
+                        <section class="chess-puzzle-settings-group">
+                            <span class="chess-mini-label">Board</span>
+                            <label class="chess-puzzle-toggle">
+                                <input type="checkbox" id="chess-training-puzzle-show-coordinates" checked>
+                                <span>Show coordinates</span>
+                            </label>
+                            <div class="chess-field">
+                                <label for="chess-training-puzzle-coordinate-position">Coordinate position</label>
+                                <select id="chess-training-puzzle-coordinate-position" name="coordinate_position">
+                                    <option value="inside">Inside</option>
+                                </select>
+                            </div>
+                            <label class="chess-puzzle-toggle">
+                                <input type="checkbox" id="chess-training-puzzle-highlight-moves" checked>
+                                <span>Highlight moves</span>
+                            </label>
+                        </section>
+
+                        <section class="chess-puzzle-settings-group">
+                            <span class="chess-mini-label">Study marks</span>
+                            <label class="chess-puzzle-toggle">
+                                <input type="checkbox" id="chess-training-puzzle-enable-right-click-marks" checked>
+                                <span>Enable right-click marks</span>
+                            </label>
+                            <label class="chess-puzzle-toggle">
+                                <input type="checkbox" id="chess-training-puzzle-clear-marks-on-left-click" checked>
+                                <span>Clear marks on left click</span>
+                            </label>
+                        </section>
+
+                        <section class="chess-puzzle-settings-group">
+                            <span class="chess-mini-label">Coach</span>
+                            <label class="chess-puzzle-toggle">
+                                <input type="checkbox" id="chess-training-puzzle-enable-coach" checked>
+                                <span>Enable coach</span>
+                            </label>
+                            <label class="chess-puzzle-toggle">
+                                <input type="checkbox" id="chess-training-puzzle-show-puzzle-goal" checked>
+                                <span>Show puzzle goal</span>
+                            </label>
+                            <label class="chess-puzzle-toggle">
+                                <input type="checkbox" id="chess-training-puzzle-show-mistake-feedback" checked>
+                                <span>Show mistake feedback</span>
+                            </label>
+                            <label class="chess-puzzle-toggle">
+                                <input type="checkbox" id="chess-training-puzzle-show-chat-hints" checked>
+                                <span>Show chat hints</span>
+                            </label>
+                        </section>
+
+                        <section class="chess-puzzle-settings-group">
+                            <span class="chess-mini-label">Engine</span>
+                            <div class="chess-field">
+                                <label for="chess-training-puzzle-engine-strength">Engine strength</label>
+                                <select id="chess-training-puzzle-engine-strength" name="engine_strength">
+                                    {% for preset in chess_training_puzzle_engine_preset.options %}
+                                    <option value="{{ preset.key }}" {% if chess_training_puzzle_engine_preset.selected_key == preset.key %}selected{% endif %}>{{ preset.label }}</option>
+                                    {% endfor %}
+                                </select>
+                                <p class="chess-summary-note chess-muted-note" id="chess-training-puzzle-engine-strength-note">Balanced keeps the best default pace for coach checks.</p>
+                            </div>
+                        </section>
+
+                        <div class="chess-puzzle-settings-actions">
+                            <button type="button" class="btn chess-inline-btn" id="chess-training-puzzle-settings-reset"><i data-lucide="rotate-ccw"></i><span>Reset defaults</span></button>
+                        </div>
+                    </div>
+                </details>
+
+                <div class="chess-board-moves-head">
+                    <strong>Move list</strong>
+                    <span>{{ chess_training_puzzle.step_count }} step{{ '' if chess_training_puzzle.step_count == 1 else 's' }}</span>
+                </div>
+                <div class="chess-board-moves-list chess-puzzle-moves-list" id="chess-training-puzzle-steps-list">
+                    {% for step in chess_training_puzzle.steps %}
+                    <div class="chess-board-move-row" data-puzzle-step-row>
+                        <span class="chess-board-move-number">{{ loop.index }}.</span>
+                        <button type="button" class="chess-board-move-jump" data-puzzle-step="{{ loop.index0 }}">
+                            <span class="chess-board-move-side">{{ chess_training_puzzle.current_item.user_color_label[:1] if chess_training_puzzle.current_item.user_color_label else 'U' }}</span>
+                            <span class="chess-board-move-san">{{ step.expected_move_san }}</span>
+                        </button>
+                        <div class="chess-board-move-empty">
+                            <span class="chess-board-move-side">Ctx</span>
+                            <span class="chess-board-move-san">{{ step.move_number_label }}</span>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+
+                <details class="surface-card chess-board-review-card chess-puzzle-engine-panel" id="chess-training-puzzle-engine-panel">
+                    <summary class="chess-openings-toggle">
+                        <div>
+                            <strong>Engine coach</strong>
+                            <span>Optional position check only.</span>
+                        </div>
+                    </summary>
+                    <form method="post" action="{{ url_for('chess_training_puzzle_analyze') }}" class="chess-filter-grid" id="chess-training-puzzle-engine-form" data-json-endpoint="{{ url_for('chess_training_puzzle_analyze_json') }}">
+                        <input type="hidden" name="candidate_id" value="{{ chess_training_puzzle.current_item.id }}">
+                        <input type="hidden" name="engine_preset" value="{{ chess_training_puzzle_engine_preset.selected_key if chess_training_puzzle_engine_preset else 'balanced' }}">
+                        <div class="chess-review-queue-actions" style="grid-column: 1 / -1;">
+                            <button type="submit" class="btn chess-inline-btn"><i data-lucide="cpu"></i><span>Ask coach</span></button>
+                        </div>
+                    </form>
+                    <div class="chess-summary-note chess-puzzle-engine-results" id="chess-training-puzzle-engine-results">
+                    {% if chess_training_puzzle_engine_check %}
+                        {% if chess_training_puzzle_engine_check.ok %}
+                        <p class="chess-summary-note"><strong>Coach note</strong></p>
+                        <p class="chess-summary-note">{{ chess_training_puzzle_engine_check.comparison_label }}</p>
+                        <details class="chess-puzzle-tech-details">
+                            <summary>Technical engine details</summary>
+                            <p class="chess-summary-note">Engine eval: {{ chess_training_puzzle_engine_check.analysis.score_label or 'Unavailable' }}</p>
+                            <p class="chess-summary-note">Engine suggested move: {{ chess_training_puzzle_engine_check.analysis.best_move_san or chess_training_puzzle_engine_check.analysis.best_move_uci or 'Unavailable' }}</p>
+                            <p class="chess-summary-note">Stored move: {{ chess_training_puzzle_engine_check.stored_move_label or 'No stored move available' }}</p>
+                        </details>
+                        {% else %}
+                        <p class="chess-summary-note">{{ chess_training_puzzle_engine_check.error or 'Engine analysis is unavailable for this position.' }}</p>
+                        {% endif %}
+                    {% endif %}
+                    </div>
+                </details>
+
+                <details class="surface-card chess-board-review-card chess-puzzle-engine-panel" id="chess-training-puzzle-critical-panel">
+                    <summary class="chess-openings-toggle">
+                        <div>
+                            <strong>Check nearby moment</strong>
+                            <span>Look a few user moves around this candidate.</span>
+                        </div>
+                    </summary>
+                    <form method="post" action="{{ url_for('chess_training_puzzle_critical_moment') }}" class="chess-filter-grid" id="chess-training-puzzle-critical-form" data-json-endpoint="{{ url_for('chess_training_puzzle_critical_moment_json') }}" data-use-json-endpoint="{{ url_for('chess_training_puzzle_use_engine_moment_json') }}">
+                        <input type="hidden" name="candidate_id" value="{{ chess_training_puzzle.current_item.id }}">
+                        <input type="hidden" name="engine_preset" value="{{ chess_training_puzzle_engine_preset.selected_key if chess_training_puzzle_engine_preset else 'balanced' }}">
+                        <div class="chess-review-queue-actions" style="grid-column: 1 / -1;">
+                            <button type="submit" class="btn chess-inline-btn"><i data-lucide="search-check"></i><span>Find nearby critical moment</span></button>
+                        </div>
+                    </form>
+                    <div class="chess-summary-note chess-puzzle-engine-results" id="chess-training-puzzle-critical-results">
+                    {% if chess_training_puzzle_critical_check %}
+                        {% if chess_training_puzzle_critical_check.suggested_position %}
+                        <p class="chess-summary-note"><strong>Possible nearby critical moment</strong></p>
+                        <p class="chess-summary-note">{{ chess_training_puzzle_critical_check.suggested_position.reason }}</p>
+                        <details class="chess-puzzle-tech-details">
+                            <summary>Nearby moment details</summary>
+                            <p class="chess-summary-note">{{ chess_training_puzzle_critical_check.suggested_position.move_number_label }}</p>
+                            <p class="chess-summary-note">Engine suggested move: {{ chess_training_puzzle_critical_check.suggested_position.engine_move_label }}</p>
+                            <p class="chess-summary-note">Stored move: {{ chess_training_puzzle_critical_check.suggested_position.stored_move_label or 'No stored move available' }}</p>
+                        </details>
+                        <div class="chess-review-queue-actions">
+                            <button type="button" class="btn chess-inline-btn" id="chess-training-puzzle-use-engine-moment"><i data-lucide="sparkles"></i><span>Use this as puzzle position</span></button>
+                        </div>
+                        {% elif chess_training_puzzle_critical_check.message %}
+                        <p class="chess-summary-note">{{ chess_training_puzzle_critical_check.message }}</p>
+                        {% endif %}
+                        {% if chess_training_puzzle_critical_check.error %}
+                        <p class="chess-summary-note">{{ chess_training_puzzle_critical_check.error }}</p>
+                        {% endif %}
+                    {% endif %}
+                    </div>
+                </details>
+
+                <div class="surface-card chess-board-review-card" id="chess-training-puzzle-complete-card" hidden>
+                    <div class="hero-meta">
+                        <span class="hero-badge matte-tag">Puzzle complete</span>
+                        <span>Moving to the next candidate</span>
+                    </div>
+                    <strong>You completed this weak-line sequence.</strong>
+                    <p class="chess-summary-note">Lotus Chess will mark it done and continue if another queued candidate exists.</p>
+                    <div class="chess-board-review-actions">
+                        <button type="button" class="btn chess-inline-btn" data-puzzle-action="repeat"><i data-lucide="rotate-ccw"></i><span>Repeat puzzle</span></button>
+                        <a class="btn chess-inline-btn" href="{{ chess_training_puzzle.complete_next_href }}"><i data-lucide="skip-forward"></i><span>Next puzzle</span></a>
+                    </div>
+                </div>
+
+                <div class="chess-review-queue-actions chess-puzzle-secondary-links">
+                    <a class="btn chess-mini-action-btn" href="{{ url_for('chess_training_session', candidate_id=chess_training_puzzle.current_item.id) }}"><i data-lucide="target"></i><span>Back to Session</span></a>
+                    {% if chess_training_puzzle.current_item.branch_url %}
+                    <a class="btn chess-mini-action-btn" href="{{ chess_training_puzzle.current_item.branch_url }}"><i data-lucide="git-branch"></i><span>Open branch</span></a>
+                    {% endif %}
+                    {% if chess_training_puzzle.current_item.game_url %}
+                    <a class="btn chess-mini-action-btn" href="{{ chess_training_puzzle.current_item.game_url }}"><i data-lucide="arrow-up-right"></i><span>Open related game</span></a>
+                    {% endif %}
+                    <form method="post" action="{{ url_for('chess_puzzles_auto_status') }}">
+                        <input type="hidden" name="candidate_id" value="{{ chess_training_puzzle.current_item.id }}">
+                        <input type="hidden" name="status" value="archived">
+                        <input type="hidden" name="next" value="{{ chess_training_puzzle.next_puzzle_href }}">
+                        <button type="submit" class="btn chess-mini-action-btn"><i data-lucide="archive"></i><span>Archive</span></button>
+                    </form>
+                </div>
+
+                <form method="post" action="{{ url_for('chess_puzzles_auto_status') }}" id="chess-training-puzzle-complete-form">
+                    <input type="hidden" name="candidate_id" value="{{ chess_training_puzzle.current_item.id }}">
+                    <input type="hidden" name="status" value="done">
+                    <input type="hidden" name="next" value="{{ chess_training_puzzle.complete_next_href }}">
+                </form>
+            </aside>
+        </div>
+        <script id="chess-training-puzzle-data" type="application/json">{{ chess_training_puzzle.steps|tojson }}</script>
+    </section>
+    {% else %}
+    <section class="surface-card section-card chess-focus-card">
+        <div class="hero-meta">
+            <span class="hero-badge matte-tag">{{ chess_training_puzzle.current_item.priority_label or 'Low' }}</span>
+            <span>{{ chess_training_puzzle.current_item.position_label or 'Selected candidate' }}</span>
+        </div>
+        <h3 class="title-scaled chess-section-title">{{ chess_training_puzzle.current_item.opening_label or 'Unknown opening' }}</h3>
+        <p class="chess-summary-note">{{ chess_training_puzzle.current_item.line_label or 'Line pending' }}</p>
+        <p class="chess-summary-note">{{ chess_training_puzzle.current_item.reason or 'Weak line from your games.' }}</p>
+    </section>
+    <section class="surface-card section-card chess-empty-state">
+        <div class="hero-meta">
+            <span class="hero-badge matte-tag">Position unavailable</span>
+            <span>Try another weak line</span>
+        </div>
+        <p class="chess-summary-note">{{ chess_training_puzzle.message or 'This candidate does not have enough position data for interactive training.' }}</p>
+        <div class="chess-review-queue-actions">
+            <a class="btn chess-inline-btn" href="{{ chess_training_puzzle.skip_href }}"><i data-lucide="skip-forward"></i><span>Skip puzzle</span></a>
+            {% if chess_training_puzzle.current_item and chess_training_puzzle.current_item.branch_url %}
+            <a class="btn chess-inline-btn" href="{{ chess_training_puzzle.current_item.branch_url }}"><i data-lucide="git-branch"></i><span>Open branch</span></a>
+            {% endif %}
+            <form method="post" action="{{ url_for('chess_puzzles_auto_status') }}">
+                <input type="hidden" name="candidate_id" value="{{ chess_training_puzzle.current_item.id }}">
+                <input type="hidden" name="status" value="archived">
+                <input type="hidden" name="next" value="{{ chess_training_puzzle.next_puzzle_href }}">
+                <button type="submit" class="btn chess-inline-btn"><i data-lucide="archive"></i><span>Archive candidate</span></button>
+            </form>
+        </div>
+    </section>
+    {% endif %}
+</section>
+
+{% if chess_training_puzzle.available %}
+<script>
+(() => {
+  const dataNode = document.getElementById("chess-training-puzzle-data");
+  const boardNode = document.getElementById("chess-training-puzzle-board");
+  const stepsNode = document.getElementById("chess-training-puzzle-steps-list");
+  const labelNode = document.getElementById("chess-training-puzzle-move-label");
+  const counterNode = document.getElementById("chess-training-puzzle-counter");
+  const turnNode = document.getElementById("chess-training-puzzle-turn-label");
+  const feedbackCard = document.getElementById("chess-training-puzzle-feedback-card");
+  const feedbackTitle = document.getElementById("chess-training-puzzle-feedback-title");
+  const feedbackText = document.getElementById("chess-training-puzzle-feedback-text");
+  const compareCard = document.getElementById("chess-training-puzzle-compare-card");
+  const compareAttemptedRow = document.getElementById("chess-training-puzzle-compare-attempted");
+  const compareExpectedRow = document.getElementById("chess-training-puzzle-compare-expected");
+  const compareEngineRow = document.getElementById("chess-training-puzzle-compare-engine");
+  const compareAttemptedValue = document.getElementById("chess-training-puzzle-compare-attempted-value");
+  const compareExpectedValue = document.getElementById("chess-training-puzzle-compare-expected-value");
+  const compareEngineValue = document.getElementById("chess-training-puzzle-compare-engine-value");
+  const answerCard = document.getElementById("chess-training-puzzle-answer-card");
+  const answerMoveNode = document.getElementById("chess-training-puzzle-answer-move");
+  const answerNoteNode = document.getElementById("chess-training-puzzle-answer-note");
+  const completionCard = document.getElementById("chess-training-puzzle-complete-card");
+  const completeForm = document.getElementById("chess-training-puzzle-complete-form");
+  const attemptSummaryNode = document.getElementById("chess-training-puzzle-attempt-summary");
+  const goalNoteNode = document.getElementById("chess-training-puzzle-goal-note");
+  const repeatNoteNodes = Array.from(document.querySelectorAll("[data-repeat-note]"));
+  const hintButton = document.getElementById("chess-training-puzzle-hint-button");
+  const engineForm = document.getElementById("chess-training-puzzle-engine-form");
+  const engineResults = document.getElementById("chess-training-puzzle-engine-results");
+  const criticalForm = document.getElementById("chess-training-puzzle-critical-form");
+  const criticalResults = document.getElementById("chess-training-puzzle-critical-results");
+  const enginePanel = document.getElementById("chess-training-puzzle-engine-panel");
+  const criticalPanel = document.getElementById("chess-training-puzzle-critical-panel");
+  const moveMethodSelect = document.getElementById("chess-training-puzzle-move-method");
+  const moveMethodNote = document.getElementById("chess-training-puzzle-move-method-note");
+  const showCoordinatesToggle = document.getElementById("chess-training-puzzle-show-coordinates");
+  const coordinatePositionSelect = document.getElementById("chess-training-puzzle-coordinate-position");
+  const highlightMovesToggle = document.getElementById("chess-training-puzzle-highlight-moves");
+  const enableRightClickMarksToggle = document.getElementById("chess-training-puzzle-enable-right-click-marks");
+  const clearMarksOnLeftClickToggle = document.getElementById("chess-training-puzzle-clear-marks-on-left-click");
+  const enableCoachToggle = document.getElementById("chess-training-puzzle-enable-coach");
+  const showPuzzleGoalToggle = document.getElementById("chess-training-puzzle-show-puzzle-goal");
+  const showMistakeFeedbackToggle = document.getElementById("chess-training-puzzle-show-mistake-feedback");
+  const showChatHintsToggle = document.getElementById("chess-training-puzzle-show-chat-hints");
+  const engineStrengthSelect = document.getElementById("chess-training-puzzle-engine-strength");
+  const engineStrengthNote = document.getElementById("chess-training-puzzle-engine-strength-note");
+  const settingsResetButton = document.getElementById("chess-training-puzzle-settings-reset");
+  const skipLink = document.getElementById("chess-training-puzzle-skip-link");
+  if (!dataNode || !boardNode || !stepsNode || !labelNode || !counterNode || !turnNode || !feedbackCard || !feedbackTitle || !feedbackText || !answerCard || !answerMoveNode || !answerNoteNode || !completionCard || !completeForm) return;
+  let steps = [];
+  try { steps = JSON.parse(dataNode.textContent || "[]"); } catch (error) { return; }
+  if (!Array.isArray(steps) || !steps.length) return;
+  const files = ["a", "b", "c", "d", "e", "f", "g", "h"];
+  const ranks = ["8", "7", "6", "5", "4", "3", "2", "1"];
+  const pieceAssetMap = {
+    P: "{{ url_for('static', filename='chess/pieces/cburnett/wP.svg') }}",
+    N: "{{ url_for('static', filename='chess/pieces/cburnett/wN.svg') }}",
+    B: "{{ url_for('static', filename='chess/pieces/cburnett/wB.svg') }}",
+    R: "{{ url_for('static', filename='chess/pieces/cburnett/wR.svg') }}",
+    Q: "{{ url_for('static', filename='chess/pieces/cburnett/wQ.svg') }}",
+    K: "{{ url_for('static', filename='chess/pieces/cburnett/wK.svg') }}",
+    p: "{{ url_for('static', filename='chess/pieces/cburnett/bP.svg') }}",
+    n: "{{ url_for('static', filename='chess/pieces/cburnett/bN.svg') }}",
+    b: "{{ url_for('static', filename='chess/pieces/cburnett/bB.svg') }}",
+    r: "{{ url_for('static', filename='chess/pieces/cburnett/bR.svg') }}",
+    q: "{{ url_for('static', filename='chess/pieces/cburnett/bQ.svg') }}",
+    k: "{{ url_for('static', filename='chess/pieces/cburnett/bK.svg') }}",
+  };
+  let currentStep = 0;
+  let flipped = {{ 'true' if chess_training_puzzle.current_item.user_color == 'black' else 'false' }};
+  let selectedSquare = "";
+  let revealMove = false;
+  let completionSubmitted = false;
+  let tutorHighlights = { attempted: { from: "", to: "" }, expected: { from: "", to: "" }, engine: { from: "", to: "" } };
+  let manualArrowMarks = [];
+  let manualHighlightSquares = new Set();
+  let manualDrawStartSquare = "";
+  let manualDrawActive = false;
+  let manualDrawPointerId = null;
+  let moveMethod = "drag-or-click";
+  let dragSourceSquare = "";
+  let dragPointerId = null;
+  let dragMoved = false;
+  let dragStartClientX = 0;
+  let dragStartClientY = 0;
+  let dragCurrentClientX = 0;
+  let dragCurrentClientY = 0;
+  let dragHoverSquare = "";
+  let dragGhostNode = null;
+  let dragGhostMarkup = "";
+  let suppressNextSquareClick = false;
+  const dragMoveThreshold = 6;
+  const userMoveAnimationMs = 145;
+  const replyMoveAnimationMs = 135;
+  const wrongMoveAnimationMs = 125;
+  let renderedFen = "";
+  let renderedFlipped = null;
+  let lastTutorArrowSignature = "";
+  let advanceTimer = null;
+  let attemptId = String(boardNode.dataset.attemptId || "");
+  const boardInteractionVersion = String(boardNode.dataset.boardInteractionVersion || "unknown");
+  const settingsStorageKey = "lotusChessSettings";
+  const legacyMoveMethodStorageKey = "lotusChessMoveMethod";
+  const enginePresetDescriptions = {
+    fast: "Fast gives a quicker coach answer.",
+    balanced: "Balanced keeps the best default pace for coach checks.",
+    deep: "Deep is slower, but looks a bit harder at the position.",
+  };
+  const defaultSettings = {
+    move_method: "drag-or-click",
+    show_coordinates: true,
+    coordinate_position: "inside",
+    highlight_moves: true,
+    enable_right_click_marks: true,
+    clear_marks_on_left_click: true,
+    enable_coach: true,
+    show_puzzle_goal: true,
+    show_mistake_feedback: true,
+    show_chat_hints: true,
+    engine_strength: "{{ chess_training_puzzle_engine_preset.selected_key if chess_training_puzzle_engine_preset else 'balanced' }}",
+    play_sounds: false,
+    piece_animation: "fast",
+  };
+  let settings = { ...defaultSettings };
+  const boardDebug = {
+    version: boardInteractionVersion,
+    handlersAttached: false,
+    lastPointerDown: "",
+    lastPointerUp: "",
+    lastButton: "",
+    lastSquare: "",
+    moveMethod: defaultSettings.move_method,
+    enableRightClickMarks: defaultSettings.enable_right_click_marks,
+    clearMarksOnLeftClick: defaultSettings.clear_marks_on_left_click,
+    manualArrowCount: 0,
+    manualHighlightCount: 0,
+    dragStarted: false,
+    dragReleased: false,
+    rightDrawStarted: false,
+    rightDrawReleased: false,
+    usingMouseFallback: true,
+    selectedSquare: "",
+    dragSourceSquare: "",
+    errors: [],
+  };
+
+  function syncBoardDebug(extra = {}) {
+    Object.assign(boardDebug, {
+      version: boardInteractionVersion,
+      moveMethod: settings.move_method,
+      enableRightClickMarks: Boolean(settings.enable_right_click_marks),
+      clearMarksOnLeftClick: Boolean(settings.clear_marks_on_left_click),
+      manualArrowCount: manualArrowMarks.length,
+      manualHighlightCount: manualHighlightSquares.size,
+      selectedSquare,
+      dragSourceSquare,
+    }, extra || {});
+    window.lotusChessBoardDebug = boardDebug;
+    window.lotusChessBoardState = {
+      get settings() { return { ...settings }; },
+      get manualArrowMarks() { return manualArrowMarks.slice(); },
+      get manualHighlightSquares() { return Array.from(manualHighlightSquares); },
+    };
+  }
+
+  function normalizeMoveMethod(value) {
+    return value === "click-only" ? "click-only" : "drag-or-click";
+  }
+
+  function normalizeEngineStrength(value) {
+    return value === "fast" || value === "deep" ? value : "balanced";
+  }
+
+  function normalizeCoordinatePosition(value) {
+    return value === "inside" ? "inside" : "inside";
+  }
+
+  function normalizeBoolean(value, fallback) {
+    if (typeof value === "boolean") return value;
+    if (value === "true" || value === "1" || value === 1) return true;
+    if (value === "false" || value === "0" || value === 0) return false;
+    return Boolean(fallback);
+  }
+
+  function normalizeSettings(input = {}) {
+    const payload = (input && typeof input === "object") ? input : {};
+    return {
+      move_method: normalizeMoveMethod(payload.move_method),
+      show_coordinates: normalizeBoolean(payload.show_coordinates, defaultSettings.show_coordinates),
+      coordinate_position: normalizeCoordinatePosition(payload.coordinate_position),
+      highlight_moves: normalizeBoolean(payload.highlight_moves, defaultSettings.highlight_moves),
+      enable_right_click_marks: normalizeBoolean(payload.enable_right_click_marks, defaultSettings.enable_right_click_marks),
+      clear_marks_on_left_click: normalizeBoolean(payload.clear_marks_on_left_click, defaultSettings.clear_marks_on_left_click),
+      enable_coach: normalizeBoolean(payload.enable_coach, defaultSettings.enable_coach),
+      show_puzzle_goal: normalizeBoolean(payload.show_puzzle_goal, defaultSettings.show_puzzle_goal),
+      show_mistake_feedback: normalizeBoolean(payload.show_mistake_feedback, defaultSettings.show_mistake_feedback),
+      show_chat_hints: normalizeBoolean(payload.show_chat_hints, defaultSettings.show_chat_hints),
+      engine_strength: normalizeEngineStrength(payload.engine_strength),
+      play_sounds: normalizeBoolean(payload.play_sounds, defaultSettings.play_sounds),
+      piece_animation: payload.piece_animation === "off" || payload.piece_animation === "medium" ? payload.piece_animation : defaultSettings.piece_animation,
+    };
+  }
+
+  function saveSettings() {
+    try {
+      window.localStorage.setItem(settingsStorageKey, JSON.stringify(settings));
+    } catch (error) {
+      // Ignore storage errors and keep the in-memory settings.
+    }
+  }
+
+  function loadSettings() {
+    let stored = null;
+    try {
+      stored = window.localStorage.getItem(settingsStorageKey);
+    } catch (error) {
+      stored = null;
+    }
+    let parsed = {};
+    if (stored) {
+      try {
+        parsed = JSON.parse(stored) || {};
+      } catch (error) {
+        parsed = {};
+      }
+    } else {
+      let legacyMoveMethod = "";
+      try {
+        legacyMoveMethod = String(window.localStorage.getItem(legacyMoveMethodStorageKey) || "").trim();
+      } catch (error) {
+        legacyMoveMethod = "";
+      }
+      if (legacyMoveMethod) {
+        parsed.move_method = legacyMoveMethod;
+      }
+    }
+    settings = normalizeSettings({ ...defaultSettings, ...parsed });
+    moveMethod = settings.move_method;
+    syncBoardDebug({ moveMethod });
+  }
+
+  function isDragOrClickMode() {
+    return normalizeMoveMethod(settings.move_method) === "drag-or-click";
+  }
+
+  function currentMoveMethodNote() {
+    if (normalizeMoveMethod(settings.move_method) === "click-only") {
+      return "Click only: select the start square, then the target square.";
+    }
+    return "Drag or Click: move pieces by dragging or selecting start and end squares.";
+  }
+
+  function currentEngineStrengthNote() {
+    return enginePresetDescriptions[normalizeEngineStrength(settings.engine_strength)] || enginePresetDescriptions.balanced;
+  }
+
+  function updateAttemptSummary(payload) {
+    if (!payload || typeof payload !== "object") return;
+    if (payload.attempt && payload.attempt.id) {
+      attemptId = String(payload.attempt.id || attemptId || "");
+    }
+    if (!attemptSummaryNode) return;
+    const summary = payload.attempt_summary && typeof payload.attempt_summary === "object" ? payload.attempt_summary : {};
+    const text = String(summary.text || "").trim();
+    attemptSummaryNode.textContent = text;
+    if (text && settings.enable_coach) {
+      attemptSummaryNode.removeAttribute("hidden");
+    } else {
+      attemptSummaryNode.setAttribute("hidden", "hidden");
+    }
+  }
+
+  function syncSettingsInputs() {
+    if (moveMethodSelect) moveMethodSelect.value = settings.move_method;
+    if (showCoordinatesToggle) showCoordinatesToggle.checked = Boolean(settings.show_coordinates);
+    if (coordinatePositionSelect) coordinatePositionSelect.value = settings.coordinate_position;
+    if (highlightMovesToggle) highlightMovesToggle.checked = Boolean(settings.highlight_moves);
+    if (enableRightClickMarksToggle) enableRightClickMarksToggle.checked = Boolean(settings.enable_right_click_marks);
+    if (clearMarksOnLeftClickToggle) clearMarksOnLeftClickToggle.checked = Boolean(settings.clear_marks_on_left_click);
+    if (enableCoachToggle) enableCoachToggle.checked = Boolean(settings.enable_coach);
+    if (showPuzzleGoalToggle) showPuzzleGoalToggle.checked = Boolean(settings.show_puzzle_goal);
+    if (showMistakeFeedbackToggle) showMistakeFeedbackToggle.checked = Boolean(settings.show_mistake_feedback);
+    if (showChatHintsToggle) showChatHintsToggle.checked = Boolean(settings.show_chat_hints);
+    if (engineStrengthSelect) engineStrengthSelect.value = settings.engine_strength;
+    if (moveMethodNote) moveMethodNote.textContent = currentMoveMethodNote();
+    if (engineStrengthNote) engineStrengthNote.textContent = currentEngineStrengthNote();
+    document.querySelectorAll('input[name="engine_preset"]').forEach((input) => {
+      input.value = settings.engine_strength;
+    });
+  }
+
+  function applySettings({ rerender = true } = {}) {
+    moveMethod = settings.move_method;
+    syncSettingsInputs();
+    if (!settings.enable_right_click_marks) {
+      clearManualStudyMarks(true);
+    }
+    if (!settings.show_chat_hints) {
+      revealMove = false;
+      if (answerCard) answerCard.setAttribute("hidden", "hidden");
+    }
+    if (feedbackCard) feedbackCard.hidden = !settings.enable_coach;
+    if (compareCard && !settings.enable_coach) compareCard.setAttribute("hidden", "hidden");
+    if (answerCard && (!settings.enable_coach || !settings.show_chat_hints)) {
+      answerCard.setAttribute("hidden", "hidden");
+    }
+    if (hintButton) hintButton.hidden = !settings.show_chat_hints;
+    if (goalNoteNode) goalNoteNode.hidden = !settings.show_puzzle_goal;
+    repeatNoteNodes.forEach((node) => {
+      node.hidden = !settings.enable_coach;
+    });
+    if (attemptSummaryNode) attemptSummaryNode.hidden = !settings.enable_coach || !String(attemptSummaryNode.textContent || "").trim();
+    if (enginePanel) enginePanel.hidden = !settings.enable_coach;
+    if (criticalPanel) criticalPanel.hidden = !settings.enable_coach;
+    syncBoardDebug();
+    if (rerender) renderTrainer({ forceBoard: true });
+  }
+
+  function updateSetting(key, value, { rerender = true } = {}) {
+    settings = normalizeSettings({ ...settings, [key]: value });
+    saveSettings();
+    applySettings({ rerender });
+  }
+
+  function clearTutorHighlights() {
+    tutorHighlights = { attempted: { from: "", to: "" }, expected: { from: "", to: "" }, engine: { from: "", to: "" } };
+  }
+
+  function clearBoardSelectionMarks(resetState = true) {
+    if (resetState) selectedSquare = "";
+    dragSourceSquare = "";
+    dragPointerId = null;
+    if (!boardNode) return;
+    boardNode.querySelectorAll(".chess-board-square.selected, .chess-board-square.legal-target, .chess-board-square.drag-source").forEach((square) => {
+      square.classList.remove("selected", "legal-target", "drag-source");
+    });
+    syncBoardDebug({ selectedSquare, dragSourceSquare: "" });
+  }
+
+  function clearManualStudyMarks(skipRender = false) {
+    manualArrowMarks = [];
+    manualHighlightSquares = new Set();
+    manualDrawStartSquare = "";
+    manualDrawActive = false;
+    manualDrawPointerId = null;
+    if (boardNode) {
+      boardNode.querySelectorAll(".chess-board-square.manual-marked, .chess-board-square.manual-mark-from, .chess-board-square.manual-mark-to").forEach((square) => {
+        square.classList.remove("manual-marked", "manual-mark-from", "manual-mark-to");
+      });
+      renderTutorArrows();
+    }
+    syncBoardDebug({ rightDrawStarted: false, rightDrawReleased: false });
+    if (!skipRender) refreshCurrentBoard({ refreshArrows: true });
+  }
+
+  function normalizeManualArrow(fromSquare, toSquare) {
+    return {
+      from: String(fromSquare || "").trim(),
+      to: String(toSquare || "").trim(),
+    };
+  }
+
+  function toggleManualSquareHighlight(squareName) {
+    if (!settings.enable_right_click_marks) return;
+    const square = String(squareName || "").trim();
+    if (!square) return;
+    if (manualHighlightSquares.has(square)) {
+      manualHighlightSquares.delete(square);
+    } else {
+      manualHighlightSquares.add(square);
+    }
+  }
+
+  function toggleManualArrow(fromSquare, toSquare) {
+    if (!settings.enable_right_click_marks) return;
+    const arrow = normalizeManualArrow(fromSquare, toSquare);
+    if (!arrow.from || !arrow.to) return;
+    const index = manualArrowMarks.findIndex((item) => item.from === arrow.from && item.to === arrow.to);
+    if (index >= 0) {
+      manualArrowMarks.splice(index, 1);
+      return;
+    }
+    manualArrowMarks.push(arrow);
+  }
+
+  function clearMoveComparison() {
+    if (compareCard) compareCard.setAttribute("hidden", "hidden");
+    [compareAttemptedRow, compareExpectedRow, compareEngineRow].forEach((row) => {
+      if (row) row.setAttribute("hidden", "hidden");
+    });
+  }
+
+  function setMoveComparison(payload) {
+    if (!compareCard) return;
+    const attempted = String((payload && payload.attempted) || "").trim();
+    const expected = String((payload && payload.expected) || "").trim();
+    const engine = String((payload && payload.engine) || "").trim();
+    let visible = false;
+    if (compareAttemptedRow && compareAttemptedValue) {
+      if (attempted) {
+        compareAttemptedValue.textContent = attempted;
+        compareAttemptedRow.removeAttribute("hidden");
+        visible = true;
+      } else {
+        compareAttemptedRow.setAttribute("hidden", "hidden");
+      }
+    }
+    if (compareExpectedRow && compareExpectedValue) {
+      if (expected) {
+        compareExpectedValue.textContent = expected;
+        compareExpectedRow.removeAttribute("hidden");
+        visible = true;
+      } else {
+        compareExpectedRow.setAttribute("hidden", "hidden");
+      }
+    }
+    if (compareEngineRow && compareEngineValue) {
+      if (engine) {
+        compareEngineValue.textContent = engine;
+        compareEngineRow.removeAttribute("hidden");
+        visible = true;
+      } else {
+        compareEngineRow.setAttribute("hidden", "hidden");
+      }
+    }
+    if (visible) compareCard.removeAttribute("hidden");
+    else compareCard.setAttribute("hidden", "hidden");
+  }
+
+  function buildTutorArrowSignature() {
+    return JSON.stringify({
+      tutor: tutorHighlights || {},
+      manual: manualArrowMarks || [],
+      flipped: Boolean(flipped),
+      width: boardNode ? (boardNode.clientWidth || 0) : 0,
+      height: boardNode ? (boardNode.clientHeight || 0) : 0,
+    });
+  }
+
+  function refreshCurrentBoard({ refreshArrows = true } = {}) {
+    const complete = currentStep >= steps.length;
+    const step = stepData();
+    const fen = complete ? String((steps[steps.length - 1] || {}).fen_after_replies || "") : String((step || {}).fen_before || "");
+    const legalTargets = complete ? {} : ((step || {}).legal_targets_by_source || {});
+    renderBoard(fen, legalTargets, { forceBoard: false, refreshArrows });
+  }
+
+  function stepData() {
+    return steps[Math.max(0, Math.min(currentStep, steps.length - 1))] || null;
+  }
+
+  function canMoveFromSquare(squareName, step = stepData()) {
+    if (!step || !squareName) return false;
+    const legalTargetsBySource = step.legal_targets_by_source || {};
+    return Array.isArray(legalTargetsBySource[squareName]) && legalTargetsBySource[squareName].length > 0;
+  }
+
+  function removeDragGhost() {
+    if (dragGhostNode && dragGhostNode.parentNode) {
+      dragGhostNode.parentNode.removeChild(dragGhostNode);
+    }
+    dragGhostNode = null;
+  }
+
+  function waitFor(ms) {
+    return new Promise((resolve) => {
+      window.setTimeout(resolve, Math.max(0, Number(ms) || 0));
+    });
+  }
+
+  function buildPieceNode(piece) {
+    if (!piece || !pieceAssetMap[piece]) return null;
+    const wrapper = document.createElement("div");
+    wrapper.className = "chess-board-piece";
+    const img = document.createElement("img");
+    img.className = "chess-board-piece-img";
+    img.src = pieceAssetMap[piece];
+    img.alt = piece;
+    img.loading = "eager";
+    img.decoding = "async";
+    img.draggable = false;
+    wrapper.appendChild(img);
+    return wrapper;
+  }
+
+  function setSquarePieceAnimationState(squareName, active) {
+    if (!boardNode || !squareName) return;
+    const squareNode = boardNode.querySelector(`[data-square="${squareName}"]`);
+    const pieceNode = squareNode ? squareNode.querySelector(".chess-board-piece") : null;
+    if (!pieceNode) return;
+    pieceNode.classList.toggle("animating-origin", Boolean(active));
+  }
+
+  function applyBoardPieces(boardMap) {
+    if (!boardNode) return;
+    boardNode.querySelectorAll(".chess-board-square").forEach((squareNode) => {
+      const squareName = String(squareNode.dataset.square || "");
+      const piece = boardMap[squareName] || "";
+      const currentWrapper = squareNode.querySelector(".chess-board-piece");
+      if (!piece) {
+        if (currentWrapper) currentWrapper.remove();
+        return;
+      }
+      if (currentWrapper) {
+        const currentImg = currentWrapper.querySelector(".chess-board-piece-img");
+        if (currentImg && currentImg.alt === piece && currentImg.src === pieceAssetMap[piece]) {
+          return;
+        }
+        currentWrapper.remove();
+      }
+      const nextWrapper = buildPieceNode(piece);
+      if (!nextWrapper) return;
+      const fileCoord = squareNode.querySelector(".chess-board-coordinate.file");
+      const rankCoord = squareNode.querySelector(".chess-board-coordinate.rank");
+      if (fileCoord) {
+        squareNode.insertBefore(nextWrapper, fileCoord);
+      } else if (rankCoord) {
+        squareNode.insertBefore(nextWrapper, rankCoord);
+      } else {
+        squareNode.appendChild(nextWrapper);
+      }
+    });
+  }
+
+  async function animateFloatingPieceMarkup(markup, fromSquare, toSquare, { duration = userMoveAnimationMs, fadeOut = false } = {}) {
+    if (!markup || !fromSquare || !toSquare || fromSquare === toSquare || !boardNode) return false;
+    const fromNode = boardNode.querySelector(`[data-square="${fromSquare}"]`);
+    const toNode = boardNode.querySelector(`[data-square="${toSquare}"]`);
+    if (!fromNode || !toNode) return false;
+    const fromRect = fromNode.getBoundingClientRect();
+    const toRect = toNode.getBoundingClientRect();
+    if (!fromRect.width || !fromRect.height || !toRect.width || !toRect.height) return false;
+    const ghost = document.createElement("div");
+    ghost.className = "chess-move-anim-piece";
+    ghost.innerHTML = markup;
+    ghost.style.width = `${fromRect.width}px`;
+    ghost.style.height = `${fromRect.height}px`;
+    ghost.style.left = `${fromRect.left + (fromRect.width / 2)}px`;
+    ghost.style.top = `${fromRect.top + (fromRect.height / 2)}px`;
+    document.body.appendChild(ghost);
+    setSquarePieceAnimationState(fromSquare, true);
+    const deltaX = (toRect.left + (toRect.width / 2)) - (fromRect.left + (fromRect.width / 2));
+    const deltaY = (toRect.top + (toRect.height / 2)) - (fromRect.top + (fromRect.height / 2));
+    await new Promise((resolve) => {
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        ghost.removeEventListener("transitionend", finish);
+        resolve();
+      };
+      ghost.addEventListener("transitionend", finish);
+      window.requestAnimationFrame(() => {
+        ghost.style.transition = `transform ${duration}ms cubic-bezier(.2,.8,.2,1), opacity 90ms ease`;
+        ghost.style.transform = `translate(calc(-50% + ${deltaX}px), calc(-50% + ${deltaY}px))`;
+        if (fadeOut) {
+          ghost.style.opacity = "0.28";
+        }
+      });
+      window.setTimeout(finish, duration + 60);
+    });
+    setSquarePieceAnimationState(fromSquare, false);
+    ghost.remove();
+    return true;
+  }
+
+  async function animateRejectedMovePreview(fromSquare, toSquare) {
+    const sourceSquareNode = boardNode ? boardNode.querySelector(`[data-square="${fromSquare}"]`) : null;
+    const pieceNode = sourceSquareNode ? sourceSquareNode.querySelector(".chess-board-piece") : null;
+    const markup = pieceNode ? pieceNode.outerHTML : "";
+    if (!markup) return false;
+    return animateFloatingPieceMarkup(markup, fromSquare, toSquare, { duration: wrongMoveAnimationMs, fadeOut: true });
+  }
+
+  async function animateAcceptedMoveSequence(step, attemptedMove, { usedDrag = false } = {}) {
+    if (!step || !attemptedMove) return;
+    const fromSquare = String(attemptedMove).slice(0, 2);
+    const toSquare = String(attemptedMove).slice(2, 4);
+    if (!usedDrag) {
+      const sourceSquareNode = boardNode ? boardNode.querySelector(`[data-square="${fromSquare}"]`) : null;
+      const pieceNode = sourceSquareNode ? sourceSquareNode.querySelector(".chess-board-piece") : null;
+      const markup = pieceNode ? pieceNode.outerHTML : "";
+      if (markup) {
+        await animateFloatingPieceMarkup(markup, fromSquare, toSquare, { duration: userMoveAnimationMs });
+      } else {
+        await waitFor(70);
+      }
+    } else {
+      await waitFor(40);
+    }
+    if (step.fen_after_user) {
+      renderBoard(step.fen_after_user, {}, { forceBoard: false, refreshArrows: false });
+    }
+    for (const reply of (step.auto_replies || [])) {
+      const replyMove = String((reply && reply.move_uci) || "");
+      const replyFrom = replyMove.slice(0, 2);
+      const replyTo = replyMove.slice(2, 4);
+      const replySquareNode = boardNode ? boardNode.querySelector(`[data-square="${replyFrom}"]`) : null;
+      const replyPieceNode = replySquareNode ? replySquareNode.querySelector(".chess-board-piece") : null;
+      const replyMarkup = replyPieceNode ? replyPieceNode.outerHTML : "";
+      if (replyMarkup && replyFrom && replyTo && replyFrom !== replyTo) {
+        await animateFloatingPieceMarkup(replyMarkup, replyFrom, replyTo, { duration: replyMoveAnimationMs });
+      } else {
+        await waitFor(55);
+      }
+      if (reply.fen_after) {
+        renderBoard(reply.fen_after, {}, { forceBoard: false, refreshArrows: false });
+      }
+    }
+  }
+
+  function updateDragGhostPosition(clientX, clientY) {
+    if (!dragGhostNode || typeof clientX !== "number" || typeof clientY !== "number") return;
+    dragGhostNode.style.left = `${clientX}px`;
+    dragGhostNode.style.top = `${clientY}px`;
+  }
+
+  function ensureDragGhost() {
+    if (!dragGhostMarkup || dragGhostNode) return;
+    const ghost = document.createElement("div");
+    ghost.className = "chess-drag-ghost";
+    ghost.innerHTML = dragGhostMarkup;
+    const sourceSquareNode = dragSourceSquare ? boardNode.querySelector(`[data-square="${dragSourceSquare}"]`) : null;
+    if (sourceSquareNode) {
+      const rect = sourceSquareNode.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0) {
+        ghost.style.width = `${rect.width}px`;
+        ghost.style.height = `${rect.height}px`;
+      }
+    }
+    document.body.appendChild(ghost);
+    dragGhostNode = ghost;
+    updateDragGhostPosition(dragCurrentClientX, dragCurrentClientY);
+  }
+
+  function releaseDragPointerCapture(pointerId) {
+    if (!boardNode || typeof boardNode.releasePointerCapture !== "function" || pointerId == null) return;
+    try {
+      if (typeof boardNode.hasPointerCapture !== "function" || boardNode.hasPointerCapture(pointerId)) {
+        boardNode.releasePointerCapture(pointerId);
+      }
+    } catch (error) {
+      // Ignore pointer capture release issues.
+    }
+  }
+
+  function setDragSourceVisualState(active) {
+    if (!boardNode) return;
+    boardNode.querySelectorAll(".chess-board-square.drag-source").forEach((squareNode) => {
+      squareNode.classList.remove("drag-source");
+    });
+    boardNode.querySelectorAll(".chess-board-piece.dragging-origin").forEach((pieceNode) => {
+      pieceNode.classList.remove("dragging-origin");
+    });
+    if (!active || !dragSourceSquare) return;
+    const sourceSquareNode = boardNode.querySelector(`[data-square="${dragSourceSquare}"]`);
+    if (!sourceSquareNode) return;
+    sourceSquareNode.classList.add("drag-source");
+    const pieceNode = sourceSquareNode.querySelector(".chess-board-piece");
+    if (pieceNode) pieceNode.classList.add("dragging-origin");
+  }
+
+  function startPieceDrag(squareName, pointerId, event) {
+    if (!isDragOrClickMode() || !canMoveFromSquare(squareName)) return false;
+    dragSourceSquare = String(squareName || "").trim();
+    if (!dragSourceSquare) return false;
+    dragPointerId = pointerId == null ? null : pointerId;
+    dragMoved = false;
+    dragHoverSquare = dragSourceSquare;
+    dragCurrentClientX = event && typeof event.clientX === "number" ? event.clientX : 0;
+    dragCurrentClientY = event && typeof event.clientY === "number" ? event.clientY : 0;
+    const sourceSquareNode = dragSourceSquare ? boardNode.querySelector(`[data-square="${dragSourceSquare}"]`) : null;
+    const pieceNode = sourceSquareNode ? sourceSquareNode.querySelector(".chess-board-piece") : null;
+    dragGhostMarkup = pieceNode ? pieceNode.outerHTML : "";
+    syncBoardDebug({
+      dragStarted: true,
+      dragReleased: false,
+      lastSquare: dragSourceSquare,
+      lastButton: "left",
+      dragSourceSquare,
+    });
+    return true;
+  }
+
+  function cancelPieceDrag() {
+    setDragSourceVisualState(false);
+    releaseDragPointerCapture(dragPointerId);
+    removeDragGhost();
+    dragSourceSquare = "";
+    dragPointerId = null;
+    dragMoved = false;
+    dragStartClientX = 0;
+    dragStartClientY = 0;
+    dragCurrentClientX = 0;
+    dragCurrentClientY = 0;
+    dragHoverSquare = "";
+    dragGhostMarkup = "";
+    syncBoardDebug({ dragStarted: false, dragSourceSquare: "" });
+  }
+
+  function releasePieceDrag(event, allowRender = true) {
+    if (!dragSourceSquare) return false;
+    const releaseSquare = event ? getBoardSquareFromEvent(event) : "";
+    const endSquare = releaseSquare || (!event ? dragHoverSquare : "");
+    const sourceSquare = dragSourceSquare;
+    const shouldAttemptDragMove = isDragOrClickMode() && dragMoved && sourceSquare && endSquare && sourceSquare !== endSquare;
+    const shouldTreatAsClick = isDragOrClickMode() && !dragMoved && sourceSquare && (!endSquare || endSquare === sourceSquare);
+    const shouldSuppressClick = dragMoved;
+    cancelPieceDrag();
+    syncBoardDebug({
+      dragReleased: true,
+      lastPointerUp: event ? `${event.type}:${event.pointerType || "mouse"}:${sourceSquare}->${endSquare || ""}` : "release",
+      lastSquare: endSquare || sourceSquare,
+    });
+    if (shouldSuppressClick) {
+      suppressNextSquareClick = true;
+      window.setTimeout(() => {
+        suppressNextSquareClick = false;
+      }, 0);
+    }
+    if (shouldAttemptDragMove) {
+      if (event) event.preventDefault();
+      selectedSquare = "";
+      attemptPuzzleMove(sourceSquare, endSquare, stepData(), { usedDrag: true });
+      return true;
+    }
+    if (shouldTreatAsClick) {
+      suppressNextSquareClick = true;
+      window.setTimeout(() => {
+        suppressNextSquareClick = false;
+      }, 0);
+      handleSquareClick(sourceSquare);
+      return false;
+    }
+    return false;
+  }
+
+  function handlePieceDragMove(event) {
+    if (!dragSourceSquare) return;
+    if (!event || typeof event.clientX !== "number" || typeof event.clientY !== "number") return;
+    dragCurrentClientX = event.clientX;
+    dragCurrentClientY = event.clientY;
+    dragHoverSquare = getBoardSquareFromEvent(event);
+    syncBoardDebug({ lastSquare: dragHoverSquare || dragSourceSquare });
+    const deltaX = Math.abs(event.clientX - dragStartClientX);
+    const deltaY = Math.abs(event.clientY - dragStartClientY);
+    if (!dragMoved) {
+      if (Math.max(deltaX, deltaY) < dragMoveThreshold) return;
+      dragMoved = true;
+      setDragSourceVisualState(true);
+      ensureDragGhost();
+      updateDragGhostPosition(event.clientX, event.clientY);
+      return;
+    }
+    ensureDragGhost();
+    updateDragGhostPosition(event.clientX, event.clientY);
+  }
+
+  function beginLeftBoardInteraction(event) {
+    if (!event) return;
+    if (event.pointerType !== "touch" && event.button !== 0) return;
+    const squareName = getBoardSquareFromEvent(event);
+    syncBoardDebug({
+      lastPointerDown: `${event.type}:${event.pointerType || "mouse"}:${squareName || ""}`,
+      lastButton: "left",
+      lastSquare: squareName || "",
+      dragReleased: false,
+    });
+    const canStartDrag = isDragOrClickMode() && canMoveFromSquare(squareName);
+    const hasManualMarks = Boolean(manualArrowMarks.length || manualHighlightSquares.size);
+    const hasSelectionMarks = Boolean(selectedSquare || dragSourceSquare);
+    if (hasManualMarks && settings.clear_marks_on_left_click) {
+      clearManualStudyMarks(true);
+    }
+    if (hasSelectionMarks) {
+      clearBoardSelectionMarks(!selectedSquare || canStartDrag);
+    }
+    if (canStartDrag && !dragSourceSquare && startPieceDrag(squareName, event.pointerId, event)) {
+      if (typeof event.preventDefault === "function") {
+        event.preventDefault();
+      }
+      dragStartClientX = typeof event.clientX === "number" ? event.clientX : 0;
+      dragStartClientY = typeof event.clientY === "number" ? event.clientY : 0;
+      if (typeof boardNode.setPointerCapture === "function" && event.pointerId != null) {
+        try {
+          boardNode.setPointerCapture(event.pointerId);
+        } catch (error) {
+          dragPointerId = event.pointerId;
+        }
+      }
+    }
+  }
+
+  function eventMatchesActivePointer(event, pointerId) {
+    if (!event) return false;
+    if (pointerId == null) return true;
+    return event.pointerId === pointerId;
+  }
+
+  function boardMapFromFen(fen) {
+    const boardPart = String(fen || "").split(" ")[0] || "";
+    const rows = boardPart.split("/");
+    const map = {};
+    rows.forEach((row, rowIndex) => {
+      let fileIndex = 0;
+      for (const char of row) {
+        if (/^[1-8]$/.test(char)) {
+          fileIndex += Number(char);
+          continue;
+        }
+        const square = files[fileIndex] + ranks[rowIndex];
+        map[square] = char;
+        fileIndex += 1;
+      }
+    });
+    return map;
+  }
+
+  function setFeedback(state, title, message) {
+    feedbackCard.dataset.feedbackState = state;
+    feedbackTitle.textContent = title;
+    feedbackText.textContent = message;
+  }
+
+  function clearNode(node) {
+    if (!node) return;
+    while (node.firstChild) node.removeChild(node.firstChild);
+  }
+
+  function appendResultLine(node, text, strong = false) {
+    if (!node || !text) return;
+    const paragraph = document.createElement("p");
+    paragraph.className = "chess-summary-note";
+    if (strong) {
+      const strongNode = document.createElement("strong");
+      strongNode.textContent = text;
+      paragraph.appendChild(strongNode);
+    } else {
+      paragraph.textContent = text;
+    }
+    node.appendChild(paragraph);
+  }
+
+  async function postFormJson(form, endpoint) {
+    const formData = new FormData(form);
+    const response = await fetch(endpoint, {
+      method: "POST",
+      body: formData,
+      headers: { "X-Requested-With": "fetch" },
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error((payload && payload.error) || "Request failed.");
+    }
+    return payload || {};
+  }
+
+  async function postAttemptUpdate(endpoint, fields = {}) {
+    if (!endpoint || !attemptId) return null;
+    const formData = new FormData();
+    formData.set("attempt_id", attemptId);
+    Object.entries(fields || {}).forEach(([key, value]) => {
+      formData.set(key, value == null ? "" : String(value));
+    });
+    try {
+      const response = await fetch(endpoint, {
+        method: "POST",
+        body: formData,
+        headers: { "X-Requested-With": "fetch" },
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (response.ok) updateAttemptSummary(payload);
+      return payload || {};
+    } catch (error) {
+      return null;
+    }
+  }
+
+  function queueAttemptUpdate(endpoint, fields = {}) {
+    if (!endpoint || !attemptId) return Promise.resolve(null);
+    return postAttemptUpdate(endpoint, fields);
+  }
+
+  async function submitPuzzleCompletion() {
+    const endpoint = boardNode.dataset.attemptCompleteEndpoint || "";
+    if (endpoint && attemptId) {
+      await postAttemptUpdate(endpoint, {
+        final_step: steps.length,
+        total_steps: steps.length,
+      });
+    }
+    completeForm.submit();
+  }
+
+  async function fetchTutorFeedback(step, attemptedMove) {
+    const endpoint = boardNode.dataset.tutorEndpoint || "";
+    if (!endpoint || !step) return null;
+    const formData = new FormData();
+    formData.set("candidate_id", boardNode.dataset.candidateId || "");
+    formData.set("fen", step.fen_before || "");
+    formData.set("attempted_move", attemptedMove || "");
+    formData.set("expected_move", step.expected_move_uci || "");
+    formData.set("expected_move_san", step.expected_move_san || "");
+    formData.set("user_color", "{{ chess_training_puzzle.current_item.user_color or '' }}");
+    try {
+      const response = await fetch(endpoint, {
+        method: "POST",
+        body: formData,
+        headers: { "X-Requested-With": "fetch" },
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error((payload && payload.error) || "Tutor feedback failed.");
+      }
+      return payload.tutor_feedback || null;
+    } catch (error) {
+      return {
+        ok: false,
+        label: "Try again",
+        title: attemptedMove === String(step.expected_move_uci || "") ? "Correct" : "Not this line",
+        text: attemptedMove === String(step.expected_move_uci || "")
+          ? "Correct. This keeps the line idea."
+          : "This move is not the line move. Try again.",
+        engine_available: false,
+        attempted_move_uci: attemptedMove || "",
+        expected_move_uci: step.expected_move_uci || "",
+        expected_move_san: step.expected_move_san || "",
+        engine_move_uci: "",
+        engine_move_san: "",
+        highlights: {
+          attempted: { from: String(attemptedMove || "").slice(0, 2), to: String(attemptedMove || "").slice(2, 4) },
+          expected: { from: String(step.expected_move_uci || "").slice(0, 2), to: String(step.expected_move_uci || "").slice(2, 4) },
+          engine: { from: "", to: "" },
+        },
+      };
+    }
+  }
+
+  function applyTutorFeedback(feedback, fallbackState, fallbackTitle, fallbackText) {
+    const payload = feedback || {};
+    tutorHighlights = payload.highlights || { attempted: { from: "", to: "" }, expected: { from: "", to: "" }, engine: { from: "", to: "" } };
+    const label = String(payload.label || "").toLowerCase();
+    const state = payload.ok ? "success" : (payload.illegal_move ? "error" : (label.includes("useful") ? "info" : fallbackState));
+    const shouldShowDetailedMistakeFeedback = settings.enable_coach && settings.show_mistake_feedback;
+    const usePayloadMessage = payload.ok || payload.illegal_move || shouldShowDetailedMistakeFeedback;
+    setFeedback(state, usePayloadMessage ? (payload.title || fallbackTitle) : fallbackTitle, usePayloadMessage ? (payload.text || fallbackText) : fallbackText);
+    if (settings.enable_coach) {
+      setMoveComparison({
+        attempted: payload.attempted_move_san || payload.attempted_move_uci || "",
+        expected: payload.expected_move_san || payload.expected_move_uci || "",
+        engine: payload.engine_move_san || payload.engine_move_uci || "",
+      });
+    } else {
+      clearMoveComparison();
+    }
+  }
+
+  function renderEngineCheck(engineCheck) {
+    if (!engineResults) return;
+    clearNode(engineResults);
+    if (!engineCheck) return;
+    if (engineCheck.ok && engineCheck.analysis) {
+      appendResultLine(engineResults, "Coach note", true);
+      appendResultLine(engineResults, engineCheck.comparison_label || "The engine has a quiet note for this position.");
+      const details = document.createElement("details");
+      details.className = "chess-puzzle-tech-details";
+      const summary = document.createElement("summary");
+      summary.textContent = "Technical engine details";
+      details.appendChild(summary);
+      appendResultLine(details, `Engine eval: ${engineCheck.analysis.score_label || "Unavailable"}`);
+      appendResultLine(details, `Engine suggested move: ${engineCheck.analysis.best_move_san || engineCheck.analysis.best_move_uci || "Unavailable"}`);
+      appendResultLine(details, `Stored move: ${engineCheck.stored_move_label || "No stored move available"}`);
+      engineResults.appendChild(details);
+      return;
+    }
+    appendResultLine(engineResults, engineCheck.error || "Engine analysis is unavailable for this position.");
+  }
+
+  function renderCriticalCheck(criticalCheck) {
+    if (!criticalResults) return;
+    clearNode(criticalResults);
+    if (!criticalCheck) return;
+    if (criticalCheck.suggested_position) {
+      appendResultLine(criticalResults, "Possible nearby critical moment", true);
+      appendResultLine(criticalResults, criticalCheck.suggested_position.reason || "Engine suggests a different move here.");
+      const details = document.createElement("details");
+      details.className = "chess-puzzle-tech-details";
+      const summary = document.createElement("summary");
+      summary.textContent = "Nearby moment details";
+      details.appendChild(summary);
+      appendResultLine(details, criticalCheck.suggested_position.move_number_label || "Nearby position");
+      appendResultLine(details, `Engine suggested move: ${criticalCheck.suggested_position.engine_move_label || "Unavailable"}`);
+      appendResultLine(details, `Stored move: ${criticalCheck.suggested_position.stored_move_label || "No stored move available"}`);
+      criticalResults.appendChild(details);
+      const actions = document.createElement("div");
+      actions.className = "chess-review-queue-actions";
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "btn chess-inline-btn";
+      button.id = "chess-training-puzzle-use-engine-moment";
+      button.innerHTML = '<i data-lucide="sparkles"></i><span>Use this as puzzle position</span>';
+      actions.appendChild(button);
+      criticalResults.appendChild(actions);
+      if (window.lucide && typeof window.lucide.createIcons === "function") {
+        window.lucide.createIcons({ attrs: { "stroke-width": 1.8 } });
+      }
+    } else if (criticalCheck.message) {
+      appendResultLine(criticalResults, criticalCheck.message);
+    }
+    if (criticalCheck.error) {
+      appendResultLine(criticalResults, criticalCheck.error);
+    }
+  }
+
+  function squareCenter(squareName) {
+    if (!squareName || squareName.length < 2) return null;
+    const file = squareName[0];
+    const rank = squareName[1];
+    const boardFiles = flipped ? [...files].reverse() : files;
+    const boardRanks = flipped ? [...ranks].reverse() : ranks;
+    const fileIndex = boardFiles.indexOf(file);
+    const rankIndex = boardRanks.indexOf(rank);
+    if (fileIndex < 0 || rankIndex < 0) return null;
+    const size = boardNode.clientWidth || 0;
+    if (!size) return null;
+    const cell = size / 8;
+    return { x: (fileIndex * cell) + (cell / 2), y: (rankIndex * cell) + (cell / 2) };
+  }
+
+  function buildArrowLine(fromSquare, toSquare, cssClass) {
+    const fromPoint = squareCenter(fromSquare);
+    const toPoint = squareCenter(toSquare);
+    if (!fromPoint || !toPoint) return "";
+    return `<line class="${cssClass}" x1="${fromPoint.x}" y1="${fromPoint.y}" x2="${toPoint.x}" y2="${toPoint.y}" marker-end="url(#${cssClass}-head)"></line>`;
+  }
+
+  function renderTutorArrows() {
+    const signature = buildTutorArrowSignature();
+    if (signature === lastTutorArrowSignature) return;
+    const existing = boardNode.querySelector(".chess-board-arrows");
+    if (existing) existing.remove();
+    const arrows = [
+      buildArrowLine(tutorHighlights.attempted && tutorHighlights.attempted.from, tutorHighlights.attempted && tutorHighlights.attempted.to, "chess-arrow-attempted"),
+      buildArrowLine(tutorHighlights.expected && tutorHighlights.expected.from, tutorHighlights.expected && tutorHighlights.expected.to, "chess-arrow-expected"),
+      buildArrowLine(tutorHighlights.engine && tutorHighlights.engine.from, tutorHighlights.engine && tutorHighlights.engine.to, "chess-arrow-engine"),
+      ...manualArrowMarks.map((item) => buildArrowLine(item.from, item.to, "chess-arrow-manual")),
+    ].filter(Boolean);
+    if (!arrows.length) {
+      lastTutorArrowSignature = signature;
+      return;
+    }
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("class", "chess-board-arrows");
+    svg.setAttribute("viewBox", `0 0 ${boardNode.clientWidth || 100} ${boardNode.clientHeight || 100}`);
+    svg.setAttribute("preserveAspectRatio", "none");
+    svg.innerHTML = `
+      <defs>
+        <marker id="chess-arrow-attempted-head" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto" markerUnits="strokeWidth">
+          <path d="M0,0 L8,4 L0,8 z" class="chess-arrow-attempted-fill"></path>
+        </marker>
+        <marker id="chess-arrow-expected-head" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto" markerUnits="strokeWidth">
+          <path d="M0,0 L8,4 L0,8 z" class="chess-arrow-expected-fill"></path>
+        </marker>
+        <marker id="chess-arrow-engine-head" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto" markerUnits="strokeWidth">
+          <path d="M0,0 L8,4 L0,8 z" class="chess-arrow-engine-fill"></path>
+        </marker>
+        <marker id="chess-arrow-manual-head" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto" markerUnits="strokeWidth">
+          <path d="M0,0 L8,4 L0,8 z" class="chess-arrow-manual-fill"></path>
+        </marker>
+      </defs>
+      ${arrows.join("")}
+    `;
+    boardNode.appendChild(svg);
+    lastTutorArrowSignature = signature;
+  }
+
+  function applyBoardSquareState(legalTargetsBySource) {
+    const activeLegalTargets = new Set(Array.isArray((legalTargetsBySource || {})[selectedSquare]) ? (legalTargetsBySource || {})[selectedSquare] : []);
+    boardNode.querySelectorAll(".chess-board-square").forEach((square) => {
+      const squareName = String(square.dataset.square || "");
+      square.classList.toggle("selected", Boolean(settings.highlight_moves && selectedSquare === squareName));
+      square.classList.toggle("drag-source", Boolean(dragSourceSquare === squareName));
+      square.classList.toggle("legal-target", Boolean(settings.highlight_moves && activeLegalTargets.has(squareName)));
+      square.classList.toggle("tutor-attempted-from", Boolean(tutorHighlights.attempted && tutorHighlights.attempted.from === squareName));
+      square.classList.toggle("tutor-attempted-to", Boolean(tutorHighlights.attempted && tutorHighlights.attempted.to === squareName));
+      square.classList.toggle("tutor-expected-from", Boolean(tutorHighlights.expected && tutorHighlights.expected.from === squareName));
+      square.classList.toggle("tutor-expected-to", Boolean(tutorHighlights.expected && tutorHighlights.expected.to === squareName));
+      square.classList.toggle("tutor-engine-from", Boolean(tutorHighlights.engine && tutorHighlights.engine.from === squareName));
+      square.classList.toggle("tutor-engine-to", Boolean(tutorHighlights.engine && tutorHighlights.engine.to === squareName));
+      square.classList.toggle("manual-marked", manualHighlightSquares.has(squareName));
+      square.classList.toggle("manual-mark-from", manualArrowMarks.some((item) => item.from === squareName));
+      square.classList.toggle("manual-mark-to", manualArrowMarks.some((item) => item.to === squareName));
+      const wrapper = square.querySelector(".chess-board-piece");
+      if (wrapper) {
+        wrapper.classList.toggle("dragging-origin", Boolean(dragMoved && dragSourceSquare === squareName));
+      }
+    });
+  }
+
+  function renderBoard(fen, legalTargetsBySource, { forceBoard = false, refreshArrows = true } = {}) {
+    const shouldRebuildBoard = forceBoard || renderedFlipped !== Boolean(flipped) || boardNode.querySelectorAll(".chess-board-square").length !== 64;
+    if (shouldRebuildBoard) {
+      const boardMap = boardMapFromFen(fen);
+      boardNode.innerHTML = "";
+      const boardFiles = flipped ? [...files].reverse() : files;
+      const boardRanks = flipped ? [...ranks].reverse() : ranks;
+      for (const rank of boardRanks) {
+        for (const file of boardFiles) {
+          const square = document.createElement("div");
+          const squareName = file + rank;
+          const fileIndex = files.indexOf(file);
+          const rankIndex = ranks.indexOf(rank);
+          const isLight = (fileIndex + rankIndex) % 2 === 0;
+          square.className = "chess-board-square " + (isLight ? "light" : "dark");
+          square.dataset.square = squareName;
+          const piece = boardMap[squareName];
+          if (piece && pieceAssetMap[piece]) {
+            const wrapper = document.createElement("div");
+            wrapper.className = "chess-board-piece";
+            const img = document.createElement("img");
+            img.className = "chess-board-piece-img";
+            img.src = pieceAssetMap[piece];
+            img.alt = piece;
+            img.loading = "eager";
+            img.decoding = "async";
+            img.draggable = false;
+            wrapper.appendChild(img);
+            square.appendChild(wrapper);
+          }
+          if (settings.show_coordinates && rank === "1") {
+            const coord = document.createElement("span");
+            coord.className = "chess-board-coordinate file";
+            coord.textContent = file;
+            square.appendChild(coord);
+          }
+          if (settings.show_coordinates && file === "a") {
+            const coord = document.createElement("span");
+            coord.className = "chess-board-coordinate rank";
+            coord.textContent = rank;
+            square.appendChild(coord);
+          }
+          square.addEventListener("click", () => {
+            if (suppressNextSquareClick) {
+              suppressNextSquareClick = false;
+              return;
+            }
+            handleSquareClick(squareName);
+          });
+          boardNode.appendChild(square);
+        }
+      }
+      renderedFen = fen;
+      renderedFlipped = Boolean(flipped);
+      lastTutorArrowSignature = "";
+    } else if (renderedFen !== fen) {
+      applyBoardPieces(boardMapFromFen(fen));
+      renderedFen = fen;
+    }
+    applyBoardSquareState(legalTargetsBySource);
+    if (refreshArrows) renderTutorArrows();
+  }
+
+  function keepCurrentStepVisible() {
+    const activeButton = stepsNode.querySelector(`.chess-board-move-jump[data-puzzle-step="${currentStep}"]`);
+    if (!activeButton || !stepsNode) return;
+    const containerTop = stepsNode.scrollTop;
+    const containerBottom = containerTop + stepsNode.clientHeight;
+    const rowTop = activeButton.offsetTop;
+    const rowBottom = rowTop + activeButton.offsetHeight;
+    if (rowTop < containerTop) {
+      stepsNode.scrollTop = rowTop;
+      return;
+    }
+    if (rowBottom > containerBottom) {
+      stepsNode.scrollTop = Math.max(0, rowBottom - stepsNode.clientHeight);
+    }
+  }
+
+  function renderTrainer({ forceBoard = false, refreshArrows = true } = {}) {
+    const complete = currentStep >= steps.length;
+    const step = stepData();
+    const fen = complete ? String((steps[steps.length - 1] || {}).fen_after_replies || "") : String((step || {}).fen_before || "");
+    const legalTargets = complete ? {} : ((step || {}).legal_targets_by_source || {});
+    renderBoard(fen, legalTargets, { forceBoard, refreshArrows });
+    labelNode.textContent = complete ? "Puzzle complete" : ((step || {}).move_number_label || "Your move");
+    counterNode.textContent = complete ? `Complete · ${steps.length} / ${steps.length}` : `Step ${currentStep + 1} / ${steps.length}`;
+    turnNode.textContent = complete ? "Sequence complete" : `${(step || {}).side_to_move_label || 'Your side'} to move`;
+    stepsNode.querySelectorAll("[data-puzzle-step-row]").forEach((row, index) => {
+      row.classList.toggle("active", !complete && index === currentStep);
+    });
+    stepsNode.querySelectorAll("[data-puzzle-step]").forEach((button) => {
+      button.classList.toggle("active", !complete && Number(button.dataset.puzzleStep || 0) === currentStep);
+    });
+    if (complete) {
+      completionCard.removeAttribute("hidden");
+      answerCard.setAttribute("hidden", "hidden");
+      if (!completionSubmitted) {
+        completionSubmitted = true;
+        window.setTimeout(() => { submitPuzzleCompletion(); }, 1100);
+      }
+    } else {
+      completionCard.setAttribute("hidden", "hidden");
+      if (revealMove && settings.show_chat_hints) {
+        tutorHighlights = {
+          attempted: { from: "", to: "" },
+          expected: { from: String(step.expected_move_uci || "").slice(0, 2), to: String(step.expected_move_uci || "").slice(2, 4) },
+          engine: { from: "", to: "" },
+        };
+        answerCard.removeAttribute("hidden");
+        answerMoveNode.textContent = step.expected_move_san || "Unavailable";
+        answerNoteNode.textContent = "Expected move in this line.";
+        setMoveComparison({
+          attempted: "",
+          expected: step.expected_move_san || step.expected_move_uci || "",
+          engine: "",
+        });
+      } else {
+        answerCard.setAttribute("hidden", "hidden");
+      }
+    }
+    keepCurrentStepVisible();
+  }
+
+  function normalizedAttemptedMove(fromSquare, toSquare, expectedUci) {
+    const basic = `${fromSquare}${toSquare}`;
+    if (String(expectedUci || "").length === 5 && basic === String(expectedUci).slice(0, 4)) {
+      return String(expectedUci);
+    }
+    return basic;
+  }
+
+  function getBoardSquareFromEvent(event) {
+    if (!event) return "";
+    if (typeof event.clientX === "number" && typeof event.clientY === "number") {
+      return getBoardSquareFromClientPoint(event.clientX, event.clientY);
+    }
+    const target = event.target && typeof event.target.closest === "function" ? event.target.closest("[data-square]") : null;
+    if (!target || !boardNode.contains(target)) return "";
+    return String(target.dataset.square || "").trim();
+  }
+
+  function getBoardSquareFromClientPoint(clientX, clientY) {
+    if (!boardNode || typeof clientX !== "number" || typeof clientY !== "number") return "";
+    if (document.elementFromPoint) {
+      const pointedNode = document.elementFromPoint(clientX, clientY);
+      const pointedSquare = pointedNode && typeof pointedNode.closest === "function" ? pointedNode.closest(".chess-board-square") : null;
+      if (pointedSquare && boardNode.contains(pointedSquare)) {
+        return pointedSquare.dataset.square || "";
+      }
+    }
+    return "";
+  }
+
+  function startManualDraw(squareName, pointerId) {
+    if (!settings.enable_right_click_marks) return;
+    const square = String(squareName || "").trim();
+    if (!square) return;
+    manualDrawStartSquare = square;
+    manualDrawActive = true;
+    manualDrawPointerId = pointerId == null ? null : pointerId;
+    syncBoardDebug({
+      lastSquare: square,
+      lastButton: "right",
+      rightDrawStarted: true,
+      rightDrawReleased: false,
+    });
+  }
+
+  function finishManualDraw(squareName) {
+    const endSquare = String(squareName || "").trim();
+    if (!manualDrawActive || !manualDrawStartSquare) {
+      manualDrawActive = false;
+      manualDrawStartSquare = "";
+      manualDrawPointerId = null;
+      return;
+    }
+    if (!endSquare) {
+      manualDrawActive = false;
+      manualDrawStartSquare = "";
+      manualDrawPointerId = null;
+      return;
+    }
+    if (endSquare === manualDrawStartSquare) {
+      toggleManualSquareHighlight(endSquare);
+    } else {
+      toggleManualArrow(manualDrawStartSquare, endSquare);
+    }
+    manualDrawActive = false;
+    manualDrawStartSquare = "";
+    manualDrawPointerId = null;
+    syncBoardDebug({
+      lastSquare: endSquare,
+      rightDrawStarted: false,
+      rightDrawReleased: true,
+    });
+    refreshCurrentBoard({ refreshArrows: true });
+  }
+
+  function cancelManualDraw() {
+    manualDrawActive = false;
+    manualDrawStartSquare = "";
+    manualDrawPointerId = null;
+    syncBoardDebug({ rightDrawStarted: false });
+  }
+
+  function buildImmediateTutorFeedback(step, attemptedMove) {
+    const expectedMove = String((step && step.expected_move_uci) || "");
+    const attempted = String(attemptedMove || "");
+    const legalTargetsBySource = (step && step.legal_targets_by_source) || {};
+    const sourceSquare = attempted.slice(0, 2);
+    const targetSquare = attempted.slice(2, 4);
+    const legalTargets = Array.isArray(legalTargetsBySource[sourceSquare]) ? legalTargetsBySource[sourceSquare] : [];
+    const illegalMove = !sourceSquare || !targetSquare || !legalTargets.includes(targetSquare);
+    return {
+      ok: !illegalMove && attempted === expectedMove,
+      illegal_move: illegalMove,
+      attempted_move_uci: attempted,
+      expected_move_uci: expectedMove,
+      expected_move_san: String((step && step.expected_move_san) || ""),
+      engine_move_uci: "",
+      engine_move_san: "",
+      title: illegalMove ? "Illegal move" : (attempted === expectedMove ? "Correct" : "Not this line"),
+      text: illegalMove
+        ? "That move cannot be played in this position. Try again."
+        : (attempted === expectedMove
+            ? (String((step && step.correct_feedback) || "") || "Correct. This keeps the line idea.")
+            : `This move is not the line move. ${String((step && step.expected_move_hint) || "Look for the move that keeps the line idea.").trim()} Try again.`),
+      highlights: {
+        attempted: { from: attempted.slice(0, 2), to: attempted.slice(2, 4) },
+        expected: { from: expectedMove.slice(0, 2), to: expectedMove.slice(2, 4) },
+        engine: { from: "", to: "" },
+      },
+    };
+  }
+
+  async function attemptPuzzleMove(fromSquare, toSquare, step = stepData(), { usedDrag = false } = {}) {
+    if (!step) return;
+    const attemptedMove = normalizedAttemptedMove(fromSquare, toSquare, step.expected_move_uci);
+    const immediateFeedback = buildImmediateTutorFeedback(step, attemptedMove);
+    const shouldFetchDetailedTutorFeedback = settings.enable_coach && settings.show_mistake_feedback && attemptedMove !== step.expected_move_uci;
+    const tutorFeedbackPromise = shouldFetchDetailedTutorFeedback ? fetchTutorFeedback(step, attemptedMove) : Promise.resolve(null);
+    if (immediateFeedback.illegal_move) {
+      selectedSquare = "";
+      applyTutorFeedback(immediateFeedback, "error", "Illegal move", "That move cannot be played in this position. Try again.");
+      refreshCurrentBoard({ refreshArrows: true });
+      return;
+    }
+    if (attemptedMove === step.expected_move_uci) {
+      queueAttemptUpdate(boardNode.dataset.attemptMoveEndpoint || "", {
+        result: "correct",
+        step_index: currentStep,
+      });
+      selectedSquare = "";
+      revealMove = false;
+      if (advanceTimer) {
+        window.clearTimeout(advanceTimer);
+        advanceTimer = null;
+      }
+      clearTutorHighlights();
+      clearMoveComparison();
+      await animateAcceptedMoveSequence(step, attemptedMove, { usedDrag });
+      advanceTimer = window.setTimeout(() => {
+        const repliesText = (step.auto_replies || []).map(reply => reply.move_san).filter(Boolean).join(" · ");
+        clearManualStudyMarks(true);
+        clearBoardSelectionMarks();
+        currentStep += 1;
+        clearTutorHighlights();
+        clearMoveComparison();
+        const baseMessage = String(step.correct_feedback || `Correct. ${step.expected_move_san} keeps the line idea.`);
+        if (repliesText) {
+          setFeedback("success", "Correct", `${baseMessage} Opponent reply: ${repliesText}.`);
+        } else {
+          setFeedback("success", "Correct", baseMessage);
+        }
+        renderTrainer({ refreshArrows: false });
+        window.setTimeout(() => {
+          refreshCurrentBoard({ refreshArrows: true });
+        }, 24);
+        advanceTimer = null;
+      }, 40);
+      return;
+    }
+    selectedSquare = "";
+    if (!usedDrag) {
+      await animateRejectedMovePreview(fromSquare, toSquare);
+    } else {
+      await waitFor(40);
+    }
+    applyTutorFeedback(immediateFeedback, "error", "Not this line", "This move is not the line move. Try again.");
+    refreshCurrentBoard({ refreshArrows: true });
+    queueAttemptUpdate(boardNode.dataset.attemptMoveEndpoint || "", {
+      result: "wrong",
+      step_index: currentStep,
+      fen: step.fen_before || "",
+      attempted_move_uci: attemptedMove || "",
+      attempted_move_san: attemptedMove || "",
+      expected_move_uci: step.expected_move_uci || "",
+      engine_move_uci: "",
+    });
+    tutorFeedbackPromise.then((tutorFeedback) => {
+      if (!tutorFeedback || currentStep >= steps.length || stepData() !== step) return;
+      applyTutorFeedback(tutorFeedback, "error", "Not this line", "This move is not the line move. Try again.");
+      refreshCurrentBoard({ refreshArrows: true });
+    }).catch(() => {});
+  }
+
+  async function handleSquareClick(squareName) {
+    if (advanceTimer) return;
+    if (currentStep >= steps.length) return;
+    const step = stepData();
+    if (!step) return;
+    const legalTargetsBySource = step.legal_targets_by_source || {};
+    if (!selectedSquare) {
+      if (!legalTargetsBySource[squareName] || !legalTargetsBySource[squareName].length) {
+        setFeedback("idle", "Choose your piece", `${step.side_to_move_label || 'Your side'} to move in this stored line.`);
+        return;
+      }
+      clearTutorHighlights();
+      clearMoveComparison();
+      selectedSquare = squareName;
+      syncBoardDebug({ selectedSquare });
+      setFeedback("idle", "Piece selected", `Selected ${squareName}. Choose the target square.`);
+      refreshCurrentBoard({ refreshArrows: false });
+      return;
+    }
+    if (selectedSquare === squareName) {
+      selectedSquare = "";
+      syncBoardDebug({ selectedSquare: "" });
+      setFeedback("idle", "Selection cleared", "Choose a piece, then click the target square.");
+      clearMoveComparison();
+      refreshCurrentBoard({ refreshArrows: false });
+      return;
+    }
+    await attemptPuzzleMove(selectedSquare, squareName, step);
+  }
+
+  document.querySelectorAll("[data-puzzle-step]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const requestedStep = Number(button.dataset.puzzleStep || 0);
+      currentStep = Math.max(0, Math.min(requestedStep, steps.length - 1));
+      if (advanceTimer) {
+        window.clearTimeout(advanceTimer);
+        advanceTimer = null;
+      }
+      selectedSquare = "";
+      revealMove = false;
+      completionSubmitted = false;
+      clearManualStudyMarks(true);
+      clearBoardSelectionMarks();
+      clearTutorHighlights();
+      clearMoveComparison();
+      setFeedback("idle", "Step selected", "Continue from this stored position.");
+      renderTrainer();
+    });
+  });
+
+  document.querySelectorAll("[data-puzzle-action]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const action = button.dataset.puzzleAction;
+      if (action === "reveal") {
+        if (!settings.show_chat_hints) {
+          revealMove = false;
+          answerCard.setAttribute("hidden", "hidden");
+          return;
+        }
+        revealMove = !revealMove;
+        if (revealMove && currentStep < steps.length) {
+          postAttemptUpdate(boardNode.dataset.attemptRevealEndpoint || "");
+          setFeedback("info", "Expected move", `Line move: ${steps[currentStep].expected_move_san}. ${steps[currentStep].expected_move_hint || "Look at the idea behind it."}`);
+        } else if (!revealMove && !selectedSquare) {
+          clearTutorHighlights();
+          clearMoveComparison();
+        }
+        renderTrainer();
+        return;
+      }
+      if (action === "reset") {
+        if (advanceTimer) {
+          window.clearTimeout(advanceTimer);
+          advanceTimer = null;
+        }
+        currentStep = 0;
+        selectedSquare = "";
+        revealMove = false;
+        completionSubmitted = false;
+        clearManualStudyMarks(true);
+        clearBoardSelectionMarks();
+        clearTutorHighlights();
+        clearMoveComparison();
+        setFeedback("idle", "Reset", initialCoachGoal);
+        renderTrainer();
+        return;
+      }
+      if (action === "flip") {
+        flipped = !flipped;
+        renderTrainer();
+        return;
+      }
+      if (action === "clear-marks") {
+        clearManualStudyMarks();
+        return;
+      }
+      if (action === "repeat") {
+        if (advanceTimer) {
+          window.clearTimeout(advanceTimer);
+          advanceTimer = null;
+        }
+        currentStep = 0;
+        selectedSquare = "";
+        revealMove = false;
+        completionSubmitted = false;
+        clearManualStudyMarks(true);
+        clearBoardSelectionMarks();
+        clearTutorHighlights();
+        clearMoveComparison();
+        setFeedback("idle", "Ready", initialCoachGoal);
+        renderTrainer();
+      }
+    });
+  });
+
+  if (boardNode) {
+    boardNode.addEventListener("dragstart", (event) => {
+      event.preventDefault();
+    });
+
+    boardNode.addEventListener("auxclick", (event) => {
+      const squareName = getBoardSquareFromEvent(event);
+      if (squareName) {
+        event.preventDefault();
+      }
+    });
+
+    boardNode.addEventListener("contextmenu", (event) => {
+      const squareName = getBoardSquareFromEvent(event);
+      if (manualDrawActive || squareName) {
+        event.preventDefault();
+      }
+    });
+
+    boardNode.addEventListener("pointerdown", (event) => {
+      if (event.pointerType !== "touch") return;
+      beginLeftBoardInteraction(event);
+    }, true);
+
+    boardNode.addEventListener("pointermove", (event) => {
+      if (event.pointerType !== "touch") return;
+      handlePieceDragMove(event);
+    });
+
+    boardNode.addEventListener("pointerdown", (event) => {
+      if (event.pointerType !== "touch") return;
+      if (event.button !== 2) return;
+      event.preventDefault();
+      const squareName = getBoardSquareFromEvent(event);
+      if (!squareName) return;
+      startManualDraw(squareName, event.pointerId);
+      if (typeof boardNode.setPointerCapture === "function") {
+        try {
+          boardNode.setPointerCapture(event.pointerId);
+        } catch (error) {
+          manualDrawPointerId = event.pointerId;
+        }
+      }
+    });
+
+    boardNode.addEventListener("pointerup", (event) => {
+      if (event.pointerType !== "touch") return;
+      if (!dragSourceSquare) return;
+      if (!eventMatchesActivePointer(event, dragPointerId)) return;
+      releasePieceDrag(event, false);
+    });
+
+    boardNode.addEventListener("pointerup", (event) => {
+      if (event.pointerType !== "touch") return;
+      if (!manualDrawActive) return;
+      if (!eventMatchesActivePointer(event, manualDrawPointerId)) return;
+      event.preventDefault();
+      const squareName = getBoardSquareFromEvent(event);
+      finishManualDraw(squareName);
+      if (typeof boardNode.releasePointerCapture === "function") {
+        try {
+          boardNode.releasePointerCapture(event.pointerId);
+        } catch (error) {
+          manualDrawPointerId = null;
+        }
+      }
+    });
+
+    boardNode.addEventListener("pointercancel", (event) => {
+      if (event.pointerType !== "touch") return;
+      if (dragSourceSquare) {
+        cancelPieceDrag();
+        refreshCurrentBoard({ refreshArrows: false });
+      }
+      if (dragPointerId != null && event.pointerId === dragPointerId) {
+        dragPointerId = null;
+      }
+      if (manualDrawPointerId != null && event.pointerId !== manualDrawPointerId) return;
+      cancelManualDraw();
+    });
+
+    boardNode.addEventListener("lostpointercapture", (event) => {
+      if (event.pointerType !== "touch") return;
+      if (dragPointerId != null && event.pointerId === dragPointerId && !dragSourceSquare) {
+        dragPointerId = null;
+      }
+      if (manualDrawPointerId != null && event.pointerId !== manualDrawPointerId) return;
+      if (!manualDrawActive) {
+        manualDrawPointerId = null;
+      }
+    });
+
+    boardNode.addEventListener("mousedown", (event) => {
+      if (event.button === 0) {
+        beginLeftBoardInteraction(event);
+        return;
+      }
+      if (event.button !== 2) return;
+      event.preventDefault();
+      const squareName = getBoardSquareFromEvent(event);
+      syncBoardDebug({
+        lastPointerDown: `mousedown:mouse:${squareName || ""}`,
+        lastButton: "right",
+        lastSquare: squareName || "",
+      });
+      if (!squareName) return;
+      startManualDraw(squareName, null);
+    }, true);
+
+    boardDebug.handlersAttached = true;
+    syncBoardDebug({ handlersAttached: true });
+  }
+
+  window.addEventListener("pointerup", (event) => {
+    if (event.pointerType !== "touch") return;
+    if (dragSourceSquare && eventMatchesActivePointer(event, dragPointerId)) {
+      releasePieceDrag(event, true);
+    }
+    if (!manualDrawActive) return;
+    if (!eventMatchesActivePointer(event, manualDrawPointerId)) return;
+    const squareName = getBoardSquareFromEvent(event);
+    if (squareName) {
+      finishManualDraw(squareName);
+      return;
+    }
+    cancelManualDraw();
+  });
+
+  window.addEventListener("pointermove", (event) => {
+    if (event.pointerType !== "touch") return;
+    handlePieceDragMove(event);
+  });
+
+  window.addEventListener("mousemove", (event) => {
+    if (!dragSourceSquare) return;
+    handlePieceDragMove(event);
+  });
+
+  window.addEventListener("mouseup", (event) => {
+    const squareName = getBoardSquareFromEvent(event);
+    syncBoardDebug({
+      lastPointerUp: `mouseup:mouse:${squareName || ""}`,
+      lastButton: event.button === 2 ? "right" : "left",
+      lastSquare: squareName || "",
+    });
+    if (dragSourceSquare && event.button === 0) {
+      releasePieceDrag(event, true);
+    }
+    if (!manualDrawActive || event.button !== 2) return;
+    if (squareName) {
+      finishManualDraw(squareName);
+      return;
+    }
+    cancelManualDraw();
+  });
+
+  window.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    if (!manualArrowMarks.length && !manualHighlightSquares.size) return;
+    clearManualStudyMarks();
+  });
+
+  window.addEventListener("error", (event) => {
+    const message = event && event.message ? String(event.message) : "Unknown error";
+    boardDebug.errors = [...boardDebug.errors.slice(-4), message];
+    syncBoardDebug({ errors: boardDebug.errors.slice() });
+  });
+
+  loadSettings();
+  applySettings({ rerender: false });
+  if (moveMethodSelect) {
+    moveMethodSelect.addEventListener("change", () => {
+      cancelPieceDrag();
+      updateSetting("move_method", moveMethodSelect.value || "drag-or-click");
+    });
+  }
+  if (showCoordinatesToggle) {
+    showCoordinatesToggle.addEventListener("change", () => updateSetting("show_coordinates", showCoordinatesToggle.checked));
+  }
+  if (coordinatePositionSelect) {
+    coordinatePositionSelect.addEventListener("change", () => updateSetting("coordinate_position", coordinatePositionSelect.value || "inside"));
+  }
+  if (highlightMovesToggle) {
+    highlightMovesToggle.addEventListener("change", () => updateSetting("highlight_moves", highlightMovesToggle.checked));
+  }
+  if (enableRightClickMarksToggle) {
+    enableRightClickMarksToggle.addEventListener("change", () => updateSetting("enable_right_click_marks", enableRightClickMarksToggle.checked));
+  }
+  if (clearMarksOnLeftClickToggle) {
+    clearMarksOnLeftClickToggle.addEventListener("change", () => updateSetting("clear_marks_on_left_click", clearMarksOnLeftClickToggle.checked, { rerender: false }));
+  }
+  if (enableCoachToggle) {
+    enableCoachToggle.addEventListener("change", () => updateSetting("enable_coach", enableCoachToggle.checked));
+  }
+  if (showPuzzleGoalToggle) {
+    showPuzzleGoalToggle.addEventListener("change", () => updateSetting("show_puzzle_goal", showPuzzleGoalToggle.checked));
+  }
+  if (showMistakeFeedbackToggle) {
+    showMistakeFeedbackToggle.addEventListener("change", () => updateSetting("show_mistake_feedback", showMistakeFeedbackToggle.checked, { rerender: false }));
+  }
+  if (showChatHintsToggle) {
+    showChatHintsToggle.addEventListener("change", () => updateSetting("show_chat_hints", showChatHintsToggle.checked));
+  }
+  if (engineStrengthSelect) {
+    engineStrengthSelect.addEventListener("change", () => updateSetting("engine_strength", engineStrengthSelect.value || "balanced", { rerender: false }));
+  }
+  if (settingsResetButton) {
+    settingsResetButton.addEventListener("click", () => {
+      settings = normalizeSettings(defaultSettings);
+      saveSettings();
+      cancelPieceDrag();
+      clearManualStudyMarks(true);
+      clearBoardSelectionMarks();
+      applySettings({ rerender: true });
+    });
+  }
+
+  if (engineForm && engineResults) {
+    engineForm.addEventListener("submit", async (event) => {
+      const endpoint = engineForm.dataset.jsonEndpoint || "";
+      if (!endpoint) return;
+      event.preventDefault();
+      try {
+        const payload = await postFormJson(engineForm, endpoint);
+        postAttemptUpdate(boardNode.dataset.attemptEngineEndpoint || "");
+        renderEngineCheck(payload.engine_check || null);
+      } catch (error) {
+        renderEngineCheck({ ok: false, error: error.message || "Engine analysis failed." });
+      }
+    });
+  }
+
+  if (criticalForm && criticalResults) {
+    criticalForm.addEventListener("submit", async (event) => {
+      const endpoint = criticalForm.dataset.jsonEndpoint || "";
+      if (!endpoint) return;
+      event.preventDefault();
+      try {
+        const payload = await postFormJson(criticalForm, endpoint);
+        postAttemptUpdate(boardNode.dataset.attemptCriticalEndpoint || "");
+        renderCriticalCheck(payload.critical_check || null);
+      } catch (error) {
+        renderCriticalCheck({ ok: false, error: error.message || "Nearby engine check failed." });
+      }
+    });
+
+    criticalResults.addEventListener("click", async (event) => {
+      const button = event.target.closest("#chess-training-puzzle-use-engine-moment");
+      if (!button) return;
+      const endpoint = criticalForm.dataset.useJsonEndpoint || "";
+      if (!endpoint) return;
+      event.preventDefault();
+      button.disabled = true;
+      try {
+        const payload = await postFormJson(criticalForm, endpoint);
+        if (payload && payload.next_url) {
+          window.location.href = payload.next_url;
+          return;
+        }
+        renderCriticalCheck({ ok: false, error: payload.message || "Could not use this position." });
+      } catch (error) {
+        button.disabled = false;
+        renderCriticalCheck({ ok: false, error: error.message || "Could not use this position." });
+      }
+    });
+  }
+
+  if (skipLink) {
+    skipLink.addEventListener("click", async (event) => {
+      const nextHref = skipLink.getAttribute("href") || "";
+      if (!nextHref) return;
+      event.preventDefault();
+      const endpoint = boardNode.dataset.attemptSkipEndpoint || "";
+      if (endpoint && attemptId) {
+        await postAttemptUpdate(endpoint, {
+          final_step: Math.max(0, currentStep),
+          total_steps: steps.length,
+        });
+      }
+      window.location.href = nextHref;
+    });
+  }
+
+  let resizeRenderFrame = null;
+  const initialCoachGoal = {{ (chess_training_puzzle.current_item.goal_message or 'This came from your own game. Focus on finding the move that keeps the line idea.')|tojson }};
+  window.addEventListener("resize", () => {
+    if (resizeRenderFrame != null) return;
+    resizeRenderFrame = window.requestAnimationFrame(() => {
+      resizeRenderFrame = null;
+      renderTrainer({ refreshArrows: true });
+    });
+  });
+
+  setFeedback("idle", "Ready", initialCoachGoal);
+  syncBoardDebug({ handlersAttached: Boolean(boardDebug.handlersAttached) });
+  renderTrainer();
+})();
+</script>
+{% endif %}
+{% endblock %}

@@ -12,15 +12,7 @@
         {% if chess_game.url %}
         <a class="btn" href="{{ chess_game.url }}" target="_blank" rel="noopener noreferrer"><i data-lucide="arrow-up-right"></i><span>Original game</span></a>
         {% endif %}
-        {% if chess_game.review_queue_active %}
-        <span class="chess-status-pill">Already in review queue</span>
-        {% else %}
-        <form method="post" action="{{ url_for('chess_review_add_game') }}">
-            <input type="hidden" name="game_id" value="{{ chess_game.id }}">
-            <input type="hidden" name="reason" value="Saved from game detail.">
-            <button type="submit" class="btn"><i data-lucide="bookmark-plus"></i><span>Add this game to review queue</span></button>
-        </form>
-        {% endif %}
+        <a class="btn" href="{{ url_for('chess_puzzles') }}"><i data-lucide="sparkles"></i><span>Puzzle seeds</span></a>
     </div>
 </section>
 
@@ -45,24 +37,82 @@
                 <span>Replay only. No engine analysis.</span>
             </div>
             {% if chess_game.replay.available %}
-            <div class="chess-board-replay-layout" data-default-flipped="{{ 'true' if chess_game.replay_default_flipped else 'false' }}">
+            <div class="chess-board-replay-layout" data-default-flipped="{{ 'true' if chess_game.replay_default_flipped else 'false' }}" data-initial-ply="{{ chess_game.replay_initial_ply or 0 }}">
                 <div class="chess-board-panel">
                     <div class="chess-board-stage">
                         <div class="chess-board" id="chess-board-viewer" aria-label="Chess board replay"></div>
                     </div>
-                    <div class="chess-board-status">
-                        <strong id="chess-board-move-label">Start position</strong>
-                        <span id="chess-board-move-counter">0 / {{ chess_game.replay.positions|length - 1 }}</span>
-                        <span id="chess-board-turn-label">White to move</span>
+                <div class="chess-board-status">
+                    <strong id="chess-board-move-label">Start position</strong>
+                    <span id="chess-board-move-counter">0 / {{ chess_game.replay.positions|length - 1 }}</span>
+                    <span id="chess-board-turn-label">White to move</span>
+                </div>
+                <p class="chess-summary-note chess-muted-note">Replay only. No engine analysis.</p>
+                <p class="chess-board-context">Source: {{ chess_game.source_label }} · Result: {{ chess_game.result }}</p>
+                {% if chess_game.review_queue_context %}
+                <article class="surface-card chess-board-review-card">
+                    <div class="hero-meta">
+                        <span class="hero-badge matte-tag">Review queue item</span>
+                        <span>{{ chess_game.review_queue_context.created_at or 'Queued' }}</span>
                     </div>
-                    <p class="chess-summary-note chess-muted-note">Replay only. No engine analysis.</p>
-                    <div class="chess-board-controls">
-                        <button type="button" class="btn chess-inline-btn" data-board-action="start"><i data-lucide="skip-back"></i><span>Start</span></button>
-                        <button type="button" class="btn chess-inline-btn" data-board-action="prev"><i data-lucide="chevron-left"></i><span>Prev</span></button>
-                        <button type="button" class="btn chess-inline-btn" data-board-action="next"><i data-lucide="chevron-right"></i><span>Next</span></button>
-                        <button type="button" class="btn chess-inline-btn" data-board-action="end"><i data-lucide="skip-forward"></i><span>End</span></button>
-                        <button type="button" class="btn chess-inline-btn" data-board-action="flip"><i data-lucide="refresh-cw"></i><span>Flip board</span></button>
+                    <strong>{{ chess_game.review_queue_context.title }}</strong>
+                    <p class="chess-summary-note">{{ chess_game.review_queue_context.reason or 'Saved for later review.' }}</p>
+                    <div class="chess-board-review-actions">
+                        <form method="post" action="{{ url_for('chess_review_complete') }}">
+                            <input type="hidden" name="queue_id" value="{{ chess_game.review_queue_context.id }}">
+                            <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
+                            <button type="submit" class="btn chess-inline-btn"><i data-lucide="check-circle-2"></i><span>Mark done</span></button>
+                        </form>
+                        <a class="btn chess-inline-btn" href="{{ chess_game.review_queue_back_to_train_url }}"><i data-lucide="target"></i><span>Back to Train</span></a>
+                        <a class="btn chess-inline-btn" href="{{ chess_game.review_queue_back_to_games_url }}"><i data-lucide="library-big"></i><span>Back to Games</span></a>
                     </div>
+                </article>
+                {% elif chess_game.review_queue_active %}
+                <article class="surface-card chess-board-review-card">
+                    <div class="hero-meta">
+                        <span class="hero-badge matte-tag">Already in review queue</span>
+                        <span>{{ chess_game.review_queue_item_id or 'Queued' }}</span>
+                    </div>
+                    {% if chess_game.review_queue_item_id %}
+                    <p class="chess-summary-note">Review this game directly from the queue.</p>
+                    <div class="chess-board-review-actions">
+                        <a class="btn chess-inline-btn" href="{{ chess_game.review_queue_review_url }}"><i data-lucide="play-circle"></i><span>Review from queue</span></a>
+                        <form method="post" action="{{ url_for('chess_review_complete') }}">
+                            <input type="hidden" name="queue_id" value="{{ chess_game.review_queue_item_id }}">
+                            <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
+                            <button type="submit" class="btn chess-inline-btn"><i data-lucide="check-circle-2"></i><span>Mark done</span></button>
+                        </form>
+                    </div>
+                    {% endif %}
+                </article>
+                {% else %}
+                <div class="chess-review-quick-actions">
+                    <form method="post" action="{{ url_for('chess_review_add_game') }}">
+                        <input type="hidden" name="game_id" value="{{ chess_game.id }}">
+                        <input type="hidden" name="reason" value="Saved from game detail.">
+                        <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
+                        <button type="submit" class="btn chess-inline-btn"><i data-lucide="bookmark-plus"></i><span>Add to review queue</span></button>
+                    </form>
+                </div>
+                {% endif %}
+                <article class="surface-card chess-board-review-card chess-puzzle-seed-card">
+                    <div class="hero-meta">
+                        <span class="hero-badge matte-tag">Personal puzzle seed</span>
+                        <span>Save the current board position for later training.</span>
+                    </div>
+                    <form method="post" action="{{ url_for('chess_puzzles_save') }}" class="chess-puzzle-seed-form">
+                        <input type="hidden" name="game_id" value="{{ chess_game.id }}">
+                        <input type="hidden" name="ply_index" id="chess-puzzle-seed-ply" value="{{ chess_game.replay_initial_ply or 0 }}">
+                        <input type="hidden" name="fen" id="chess-puzzle-seed-fen" value="">
+                        <input type="hidden" name="side_to_move" id="chess-puzzle-seed-turn" value="">
+                        <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
+                        <input type="text" class="chess-inline-input" name="user_note" placeholder="Optional note for this position">
+                        <div class="chess-review-queue-actions">
+                            <button type="submit" class="btn chess-inline-btn"><i data-lucide="sparkles"></i><span>Save as puzzle seed</span></button>
+                            <a class="btn chess-inline-btn" href="{{ url_for('chess_puzzles') }}"><i data-lucide="book-open-check"></i><span>Open puzzle seeds</span></a>
+                        </div>
+                    </form>
+                </article>
                 </div>
                 <div class="chess-board-moves-panel">
                     <div class="chess-board-moves-head">
@@ -90,6 +140,13 @@
                             {% endif %}
                         </div>
                         {% endfor %}
+                    </div>
+                    <div class="chess-board-controls chess-board-moves-controls" aria-label="Replay controls">
+                        <button type="button" class="btn chess-inline-btn" data-board-action="start"><i data-lucide="skip-back"></i><span>Start</span></button>
+                        <button type="button" class="btn chess-inline-btn" data-board-action="prev"><i data-lucide="chevron-left"></i><span>Prev</span></button>
+                        <button type="button" class="btn chess-inline-btn" data-board-action="next"><i data-lucide="chevron-right"></i><span>Next</span></button>
+                        <button type="button" class="btn chess-inline-btn" data-board-action="end"><i data-lucide="skip-forward"></i><span>End</span></button>
+                        <button type="button" class="btn chess-inline-btn" data-board-action="flip"><i data-lucide="refresh-cw"></i><span>Flip board</span></button>
                     </div>
                 </div>
             </div>
@@ -193,6 +250,9 @@
   const counterNode = document.getElementById("chess-board-move-counter");
   const turnNode = document.getElementById("chess-board-turn-label");
   const layoutNode = document.querySelector(".chess-board-replay-layout");
+  const puzzlePlyNode = document.getElementById("chess-puzzle-seed-ply");
+  const puzzleFenNode = document.getElementById("chess-puzzle-seed-fen");
+  const puzzleTurnNode = document.getElementById("chess-puzzle-seed-turn");
   if (!dataNode || !boardNode || !movesNode || !labelNode || !counterNode || !turnNode || !layoutNode) {
     return;
   }
@@ -224,8 +284,22 @@
     k: "{{ url_for('static', filename='chess/pieces/cburnett/bK.svg') }}",
   };
 
-  let currentPly = 0;
+  const initialPly = Math.max(0, Number(layoutNode.dataset.initialPly || 0) || 0);
+  let currentPly = initialPly;
   let flipped = layoutNode.dataset.defaultFlipped === "true";
+  let scrollFrame = 0;
+
+  function syncPuzzleSeedFields(position) {
+    if (puzzlePlyNode) {
+      puzzlePlyNode.value = String(currentPly);
+    }
+    if (puzzleFenNode) {
+      puzzleFenNode.value = String((position && position.fen) || "");
+    }
+    if (puzzleTurnNode) {
+      puzzleTurnNode.value = String((position && position.turn) || "");
+    }
+  }
 
   function boardMapFromFen(fen) {
     const boardPart = String(fen || "").split(" ")[0] || "";
@@ -264,6 +338,23 @@
       return [];
     }
     return [text.slice(0, 2), text.slice(2, 4)];
+  }
+
+  function keepCurrentMoveVisible() {
+    if (!movesNode) {
+      return;
+    }
+    if (scrollFrame) {
+      window.cancelAnimationFrame(scrollFrame);
+    }
+    scrollFrame = window.requestAnimationFrame(() => {
+      const activeButton = movesNode.querySelector(`.chess-board-move-jump[data-ply="${currentPly}"]`);
+      if (!activeButton) {
+        return;
+      }
+      const activeRow = activeButton.closest(".chess-board-move-row") || activeButton;
+      activeRow.scrollIntoView({ block: "nearest", inline: "nearest" });
+    });
   }
 
   function renderBoard() {
@@ -309,6 +400,7 @@
     labelNode.textContent = currentPly === 0 ? "Start position" : positions[currentPly].move;
     counterNode.textContent = currentPly + " / " + (positions.length - 1);
     turnNode.textContent = position.turn === "black" ? "Black to move" : "White to move";
+    syncPuzzleSeedFields(position);
 
     movesNode.querySelectorAll(".chess-board-move-jump").forEach((button) => {
       const buttonPly = Number(button.dataset.ply || "0");
@@ -318,10 +410,11 @@
         row.classList.toggle("active", buttonPly === currentPly);
       }
     });
+    keepCurrentMoveVisible();
     const activeButton = movesNode.querySelector(`.chess-board-move-jump[data-ply="${currentPly}"]`);
-    if (activeButton) {
-      const activeRow = activeButton.closest(".chess-board-move-row") || activeButton;
-      activeRow.scrollIntoView({ block: "nearest", inline: "nearest" });
+    const activeRow = activeButton ? activeButton.closest(".chess-board-move-row") : null;
+    if (activeRow) {
+      activeRow.classList.add("active");
     }
   }
 
@@ -355,7 +448,7 @@
     }
     const target = event.target;
     const tagName = target && target.tagName ? target.tagName.toLowerCase() : "";
-    if (tagName === "input" || tagName === "textarea" || tagName === "select" || tagName === "button") {
+    if (tagName === "input" || tagName === "textarea" || tagName === "select" || tagName === "button" || (target && target.isContentEditable)) {
       return;
     }
     if (event.key === "ArrowLeft") {
@@ -379,6 +472,9 @@
     });
   });
 
+  if (currentPly >= positions.length) {
+    currentPly = Math.max(0, positions.length - 1);
+  }
   renderBoard();
 })();
 </script>

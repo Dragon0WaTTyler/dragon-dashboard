@@ -1,0 +1,175 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="page-hero chess-hero">
+    <div class="hero-meta">
+        <span class="hero-badge matte-tag">Lotus Chess</span>
+        <span>Lichess Puzzles</span>
+    </div>
+    <h2>{{ chess_lichess_puzzles_status.title }}</h2>
+    <p class="subhead">{{ chess_lichess_puzzles_status.summary }}</p>
+</section>
+
+<nav class="surface-card chess-subnav" aria-label="Lotus Chess areas">
+    {% for item in chess_nav_items %}
+    <a class="chess-subnav-link {{ 'active' if item.key == chess_active_key else '' }}" href="{{ item.href }}">
+        <i data-lucide="{{ item.icon }}"></i>
+        <span>{{ item.label }}</span>
+    </a>
+    {% endfor %}
+</nav>
+
+<section class="chess-main chess-train-page">
+    <section class="surface-card section-card chess-focus-card">
+        <div class="hero-meta">
+            <span class="hero-badge matte-tag">{{ chess_lichess_puzzles_status.badge or 'Coming soon' }}</span>
+            <span>{{ chess_lichess_puzzles_status.status_line or 'Local source not imported yet.' }}</span>
+        </div>
+        <h3 class="title-scaled chess-section-title">{{ chess_lichess_puzzles_status.title }}</h3>
+        <p class="subhead chess-section-copy">{{ chess_lichess_puzzles_status.summary }}</p>
+        <div class="chess-hero-actions">
+            <a class="btn" href="{{ chess_lichess_puzzles_status.primary_url }}"><i data-lucide="sparkles"></i><span>{{ chess_lichess_puzzles_status.primary_label }}</span></a>
+            <a class="btn chess-inline-btn" href="{{ chess_lichess_puzzles_status.secondary_url }}"><i data-lucide="arrow-left"></i><span>{{ chess_lichess_puzzles_status.secondary_label }}</span></a>
+        </div>
+    </section>
+
+    <section class="surface-card section-card chess-train-section">
+        <div class="hero-meta">
+            <span class="hero-badge matte-tag">Source status</span>
+            <span>{{ 'Available' if chess_lichess_puzzles_status.available else 'Missing' }}</span>
+        </div>
+        <p class="chess-summary-note">
+            {% if chess_lichess_puzzles_status.available %}
+            {{ chess_lichess_puzzles_status.count or 0 }} local puzzles loaded from {{ chess_lichess_puzzles_status.file_path or chess_lichess_puzzles_status.expected_file }}.
+            {% else %}
+            No local Lichess puzzle source imported yet. Place a small sample CSV at {{ chess_lichess_puzzles_status.expected_file }}.
+            {% endif %}
+        </p>
+        <div class="chess-review-queue-meta">
+            <span>Rating range: {{ chess_lichess_puzzles_status.rating_range_label or 'Preview' }}</span>
+            <span>Themes: {{ chess_lichess_puzzles_status.top_themes_label or 'Preview' }}</span>
+        </div>
+        {% if chess_lichess_puzzles_status.warning %}
+        <p class="chess-summary-note chess-muted-note">{{ chess_lichess_puzzles_status.warning }}</p>
+        {% endif %}
+        {% if chess_lichess_puzzles_status.error %}
+        <p class="chess-summary-note chess-muted-note">CSV error: {{ chess_lichess_puzzles_status.error }}</p>
+        {% endif %}
+        {% if chess_lichess_puzzles_status.missing_columns %}
+        <p class="chess-summary-note chess-muted-note">Missing columns: {{ chess_lichess_puzzles_status.missing_columns | join(', ') }}</p>
+        {% endif %}
+    </section>
+
+    <section class="chess-puzzle-grid">
+        {% for section in chess_lichess_puzzles_status.sections or [] %}
+        <article class="surface-card chess-puzzle-hub-card">
+            <div class="hero-meta">
+                <span class="hero-badge matte-tag">{{ section.status or 'Preview' }}</span>
+            </div>
+            <h3 class="title-scaled chess-section-title">{{ section.title }}</h3>
+            <p class="subhead chess-section-copy">{{ section.description }}</p>
+        </article>
+        {% endfor %}
+    </section>
+
+    <section class="surface-card section-card chess-train-section">
+        <div class="hero-meta">
+            <span class="hero-badge matte-tag">Custom</span>
+            <span>{{ chess_lichess_puzzles_status.custom_match_count or 0 }} match{{ '' if chess_lichess_puzzles_status.custom_match_count == 1 else 'es' }}</span>
+        </div>
+        <p class="chess-summary-note">{{ chess_lichess_puzzles_status.custom_match_status }}</p>
+        {% if chess_lichess_puzzles_status.custom_match_warning %}
+        <p class="chess-summary-note chess-muted-note">{{ chess_lichess_puzzles_status.custom_match_warning }}</p>
+        {% endif %}
+        <form class="chess-import-form" method="get" action="{{ url_for('chess_lichess_puzzles') }}">
+            <div class="chess-puzzle-preset-grid">
+                {% for rating in chess_lichess_puzzles_status.rating_filters or [] %}
+                <label class="chess-puzzle-preset-option">
+                    <input
+                        type="radio"
+                        name="rating_preset"
+                        value="{{ rating.key }}"
+                        {% if chess_lichess_puzzles_status.custom_filters.rating_preset == rating.key %}checked{% endif %}
+                    >
+                    <span class="chess-puzzle-preset-copy">
+                        <strong>{{ rating.label }}</strong>
+                        <small>
+                            {% if rating.max %}
+                            Rated {{ rating.min }} to {{ rating.max }}
+                            {% else %}
+                            Rated {{ rating.min }} and up
+                            {% endif %}
+                        </small>
+                    </span>
+                </label>
+                {% endfor %}
+            </div>
+            <div class="chess-import-grid">
+                <label class="chess-field">
+                    <span>Min rating</span>
+                    <input type="number" name="min_rating" min="0" step="1" value="{{ chess_lichess_puzzles_status.custom_filters.min_rating or '' }}" placeholder="1200">
+                </label>
+                <label class="chess-field">
+                    <span>Max rating</span>
+                    <input type="number" name="max_rating" min="0" step="1" value="{{ chess_lichess_puzzles_status.custom_filters.max_rating or '' }}" placeholder="1600">
+                </label>
+            </div>
+            <div class="hero-meta">
+                <span class="hero-badge matte-tag">Themes</span>
+                <span>Pick one or more, or leave all themes on.</span>
+            </div>
+            <div class="chess-puzzle-settings-group">
+                <label class="chess-puzzle-toggle">
+                    <input
+                        type="checkbox"
+                        name="theme"
+                        value="all"
+                        {% if not chess_lichess_puzzles_status.custom_filters.selected_themes %}checked{% endif %}
+                    >
+                    <span>All themes</span>
+                </label>
+                {% for theme in chess_lichess_puzzles_status.theme_filters or [] %}
+                <label class="chess-puzzle-toggle">
+                    <input
+                        type="checkbox"
+                        name="theme"
+                        value="{{ theme.key }}"
+                        {% if theme.key in (chess_lichess_puzzles_status.custom_filters.selected_themes or []) %}checked{% endif %}
+                        {% if not theme.available %}disabled{% endif %}
+                    >
+                    <span>{{ theme.label }}{% if theme.count %} · {{ theme.count }}{% endif %}</span>
+                </label>
+                {% endfor %}
+            </div>
+            <div class="chess-hero-actions">
+                <button class="btn" type="submit"><i data-lucide="sliders-horizontal"></i><span>Apply filters</span></button>
+                <a class="btn chess-inline-btn" href="{{ url_for('chess_lichess_puzzles') }}"><i data-lucide="rotate-ccw"></i><span>Reset custom</span></a>
+                {% if chess_lichess_puzzles_status.custom_start_url %}
+                <a class="btn chess-inline-btn" href="{{ chess_lichess_puzzles_status.custom_start_url }}"><i data-lucide="play-circle"></i><span>Start custom</span></a>
+                {% else %}
+                <span class="chess-status-pill">No matching local puzzle</span>
+                {% endif %}
+            </div>
+        </form>
+        {% if chess_lichess_puzzles_status.custom_preview_puzzle %}
+        <div class="chess-review-queue-meta">
+            <span>Next match: {{ chess_lichess_puzzles_status.custom_preview_puzzle.puzzle_id }}</span>
+            <span>Rating: {{ chess_lichess_puzzles_status.custom_preview_puzzle.rating or 'Unknown' }}</span>
+            <span>Themes: {{ (chess_lichess_puzzles_status.custom_preview_puzzle.themes or [])[:3] | join(' · ') or 'None' }}</span>
+        </div>
+        {% endif %}
+    </section>
+
+    <details class="surface-card section-card chess-train-section">
+        <summary class="chess-openings-toggle">
+            <div>
+                <strong>Setup</strong>
+                <span>Expected local CSV shape for the future source.</span>
+            </div>
+        </summary>
+        <p class="chess-summary-note">Expected filename: <strong>{{ chess_lichess_puzzles_status.expected_file }}</strong></p>
+        <p class="chess-summary-note">Optional alternate path: <strong>{% if chess_lichess_puzzles_status.expected_paths and chess_lichess_puzzles_status.expected_paths|length > 1 %}{{ chess_lichess_puzzles_status.expected_paths[1] }}{% else %}{{ chess_lichess_puzzles_status.expected_file }}{% endif %}</strong></p>
+        <p class="chess-summary-note">Expected columns: PuzzleId, FEN, Moves, Rating, RatingDeviation, Popularity, NbPlays, Themes, GameUrl, OpeningTags</p>
+        <p class="chess-summary-note chess-muted-note">This uses only the local sample CSV. No upload flow, full database import, or external network call is used here.</p>
+    </details>
+</section>
+{% endblock %}

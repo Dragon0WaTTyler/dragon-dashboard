@@ -23,14 +23,8 @@ from pathlib import Path
 from flask import Flask, Response, jsonify, redirect, render_template, request, session, send_file, url_for
 from markupsafe import Markup
 from werkzeug.middleware.proxy_fix import ProxyFix
-try:
-    import edge_tts
-except ImportError:
-    edge_tts = None
-try:
-    import google.generativeai as genai
-except ImportError:
-    genai = None
+edge_tts = None
+genai = None
 try:
     from dotenv import load_dotenv
 except ImportError:
@@ -39,9 +33,11 @@ except ImportError:
 try:
     import chess as chesslib
     import chess.pgn as chess_pgn
+    import chess.engine as chess_engine_mod
 except ImportError:
     chesslib = None
     chess_pgn = None
+    chess_engine_mod = None
 
 try:
     from google.auth.transport.requests import Request as GoogleAuthRequest
@@ -79,6 +75,17 @@ def load_local_env(path):
     except Exception:
         return {}
     return values
+
+
+def _get_edge_tts_module():
+    global edge_tts
+    if edge_tts is None:
+        try:
+            import edge_tts as edge_tts_module
+        except ImportError:
+            return None
+        edge_tts = edge_tts_module
+    return edge_tts
 
 
 LOCAL_ENV = load_local_env(BASE_DIR / ".env")
@@ -136,6 +143,9 @@ YOUTUBE_API_KEY      = config_value("YOUTUBE_API_KEY", "")
 GEMINI_API_KEY       = config_value("GEMINI_API_KEY", "")
 GEMINI_PROJECT_NAME  = config_value("GEMINI_PROJECT_NAME", "projects/947897749170")
 GEMINI_PROJECT_NUMBER = config_value("GEMINI_PROJECT_NUMBER", "947897749170")
+STOCKFISH_PATH       = config_value("STOCKFISH_PATH", "")
+STOCKFISH_DEPTH      = config_value("STOCKFISH_DEPTH", "12")
+STOCKFISH_TIME_MS    = config_value("STOCKFISH_TIME_MS", "1200")
 NOTION_TOKEN         = config_value("NOTION_TOKEN", "")
 NOTION_DATABASE_ID   = config_value("NOTION_DATABASE_ID", "")
 NOTION_BOOKS_DATABASE_ID = config_value("NOTION_BOOKS_DATABASE_ID", "")
@@ -189,6 +199,8 @@ READING_BACKUPS_DIR  = BASE_DIR / "backups" / "reading"
 READING_TTS_CACHE_DIR = BASE_DIR / "cache" / "reading_tts"
 CHESS_DATA_PATH      = BASE_DIR / "chess_data.json"  # local personal chess state; keep out of commits
 CHESS_COURSES_PATH   = BASE_DIR / "chess_courses.json"  # local curated chess courses; keep out of commits
+LICHESS_PUZZLE_SAMPLE_PATH = BASE_DIR / "lichess_puzzles_sample.csv"
+LICHESS_PUZZLE_SAMPLE_DATA_PATH = BASE_DIR / "data" / "lichess_puzzles_sample.csv"
 YOUTUBE_TOKEN_PATH   = BASE_DIR / "youtube_token.json"
 CACHE_DATA_PATH      = BASE_DIR / "cache_data.json"
 CHAT_HISTORY_DB_PATH = BASE_DIR / "chat_history.db"
@@ -410,6 +422,8 @@ RUNTIME_CACHE = {
     "want_to_union_films": None,
     "youtube_playlists": {},
     "youtube_channel_debug": {},
+    "youtube_channel_latest_uploads": {},
+    "youtube_channel_group_feed_videos": {},
     "youtube_section_picks": {},
     "refreshing": {}
 }
@@ -791,6 +805,203 @@ def current_timestamp():
     return datetime.now().astimezone().isoformat(timespec="seconds")
 
 
+def _safe_stockfish_int(raw_value, default):
+    try:
+        parsed = int(str(raw_value or "").strip())
+    except Exception:
+        return default
+    return max(1, parsed)
+
+
+def get_stockfish_path():
+    raw_value = str(STOCKFISH_PATH or "").strip()
+    if not raw_value:
+        return ""
+    expanded = os.path.expandvars(os.path.expanduser(raw_value))
+    return expanded.strip()
+
+
+def get_stockfish_depth():
+    return _safe_stockfish_int(STOCKFISH_DEPTH, 12)
+
+
+def get_stockfish_time_ms():
+    return _safe_stockfish_int(STOCKFISH_TIME_MS, 1200)
+
+
+def get_chess_puzzle_engine_presets():
+    balanced_depth = get_stockfish_depth()
+    balanced_time_ms = max(300, min(get_stockfish_time_ms(), 2000))
+    fast_depth = max(6, min(balanced_depth - 2, 10))
+    fast_time_ms = max(300, min(balanced_time_ms // 2, 700))
+    deep_depth = max(balanced_depth + 2, 14)
+    deep_time_ms = max(900, min(int(balanced_time_ms * 1.75), 2500))
+    return {
+        "fast": {
+            "key": "fast",
+            "label": "Fast",
+            "description": "Quicker answer.",
+            "depth": fast_depth,
+            "time_ms": fast_time_ms,
+        },
+        "balanced": {
+            "key": "balanced",
+            "label": "Balanced",
+            "description": "Best default.",
+            "depth": balanced_depth,
+            "time_ms": balanced_time_ms,
+        },
+        "deep": {
+            "key": "deep",
+            "label": "Deep",
+            "description": "Slower but stronger.",
+            "depth": deep_depth,
+            "time_ms": deep_time_ms,
+        },
+    }
+
+
+def resolve_chess_puzzle_engine_preset(preset_key=""):
+    presets = get_chess_puzzle_engine_presets()
+    requested = str(preset_key or "").strip().lower()
+    preset = presets.get(requested) or presets.get("balanced") or {}
+    return {
+        "selected_key": str(preset.get("key", "balanced") or "balanced"),
+        "selected": dict(preset),
+        "options": [dict(presets[key]) for key in ("fast", "balanced", "deep") if key in presets],
+    }
+
+
+def get_stockfish_limit(depth=None, time_ms=None):
+    effective_depth = _safe_stockfish_int(depth, get_stockfish_depth())
+    effective_time_ms = _safe_stockfish_int(time_ms, get_stockfish_time_ms())
+    if chess_engine_mod is None:
+        return None
+    return chess_engine_mod.Limit(depth=effective_depth, time=effective_time_ms / 1000.0)
+
+
+def is_stockfish_available():
+    if chesslib is None or chess_engine_mod is None:
+        return False
+    configured_path = get_stockfish_path()
+    if not configured_path:
+        return False
+    resolved = shutil.which(configured_path) if not Path(configured_path).exists() else configured_path
+    return bool(resolved and Path(resolved).exists())
+
+
+def get_engine_status():
+    configured_path = get_stockfish_path()
+    resolved_path = ""
+    path_exists = False
+    if configured_path:
+        resolved_path = shutil.which(configured_path) if not Path(configured_path).exists() else configured_path
+        path_exists = bool(resolved_path and Path(resolved_path).exists())
+    python_chess_engine_ready = chesslib is not None and chess_engine_mod is not None
+    available = bool(configured_path and path_exists and python_chess_engine_ready)
+    if not configured_path:
+        status_label = "Engine not configured"
+        message = "Set STOCKFISH_PATH in your environment or .env to enable local engine tests."
+    elif not path_exists:
+        status_label = "Engine unavailable"
+        message = "The configured Stockfish path could not be found on this machine."
+    elif not python_chess_engine_ready:
+        status_label = "python-chess engine support unavailable"
+        message = "Install python-chess with engine support to analyze positions locally."
+    else:
+        status_label = "Engine available"
+        message = "Stockfish is ready for one-off local FEN analysis."
+    return {
+        "configured": bool(configured_path),
+        "configured_path": configured_path,
+        "resolved_path": resolved_path or configured_path,
+        "path_exists": path_exists,
+        "python_chess_available": chesslib is not None,
+        "python_chess_engine_support": chess_engine_mod is not None,
+        "available": available,
+        "status_label": status_label,
+        "message": message,
+        "default_depth": get_stockfish_depth(),
+        "default_time_ms": get_stockfish_time_ms(),
+    }
+
+
+def analyze_fen_with_stockfish(fen, depth=None, time_ms=None):
+    requested_fen = str(fen or "").strip()
+    status = get_engine_status()
+    result = {
+        "requested_fen": requested_fen,
+        "ok": False,
+        "available": status["available"],
+        "error": "",
+        "best_move_uci": "",
+        "best_move_san": "",
+        "score_cp": None,
+        "score_mate": None,
+        "score_label": "",
+        "depth": _safe_stockfish_int(depth, status["default_depth"]),
+        "time_ms": _safe_stockfish_int(time_ms, status["default_time_ms"]),
+        "fen": "",
+    }
+    if not requested_fen:
+        result["error"] = "Enter a FEN to analyze."
+        return result
+    if chesslib is None:
+        result["error"] = "python-chess is not installed locally."
+        return result
+    try:
+        board = chesslib.Board(requested_fen)
+        result["fen"] = board.fen()
+    except Exception:
+        result["error"] = "That FEN is invalid."
+        return result
+    if not status["available"]:
+        result["error"] = status["message"]
+        return result
+
+    engine_path = status["resolved_path"] or status["configured_path"]
+    limit = get_stockfish_limit(depth=result["depth"], time_ms=result["time_ms"])
+    if not engine_path or limit is None:
+        result["error"] = "Engine support is unavailable."
+        return result
+
+    engine = None
+    try:
+        engine = chess_engine_mod.SimpleEngine.popen_uci(engine_path)
+        info = engine.analyse(board, limit)
+        principal_variation = list(info.get("pv") or [])
+        best_move = principal_variation[0] if principal_variation else None
+        score = info.get("score")
+        pov_score = score.pov(board.turn) if score else None
+        if best_move:
+            result["best_move_uci"] = best_move.uci()
+            try:
+                result["best_move_san"] = board.san(best_move)
+            except Exception:
+                result["best_move_san"] = best_move.uci()
+        if pov_score is not None:
+            mate_score = pov_score.mate()
+            cp_score = pov_score.score(mate_score=100000)
+            if mate_score is not None:
+                result["score_mate"] = mate_score
+                result["score_label"] = f"Mate in {mate_score}"
+            elif cp_score is not None:
+                result["score_cp"] = cp_score
+                result["score_label"] = f"{cp_score} cp"
+        result["depth"] = int(info.get("depth", result["depth"]) or result["depth"])
+        result["ok"] = True
+        return result
+    except Exception as exc:
+        result["error"] = f"Engine analysis failed: {type(exc).__name__}."
+        return result
+    finally:
+        if engine is not None:
+            try:
+                engine.quit()
+            except Exception:
+                pass
+
+
 def default_chess_data():
     return {
         "profiles": [],
@@ -798,6 +1009,9 @@ def default_chess_data():
         "games": [],
         "openings": [],
         "review_queue": [],
+        "puzzle_seeds": [],
+        "auto_puzzle_candidates": [],
+        "puzzle_attempts": [],
         "settings": {
             "active_profile_id": None,
         },
@@ -810,7 +1024,7 @@ def load_chess_data():
     if not isinstance(raw, dict):
         raw = {}
     data = default_chess_data()
-    for key in ("profiles", "imports", "games", "openings", "review_queue"):
+    for key in ("profiles", "imports", "games", "openings", "review_queue", "puzzle_seeds", "auto_puzzle_candidates", "puzzle_attempts"):
         value = raw.get(key, [])
         data[key] = [dict(item) for item in value if isinstance(item, dict)] if isinstance(value, list) else []
     settings = raw.get("settings", {})
@@ -827,7 +1041,7 @@ def load_chess_data():
 def save_chess_data(data):
     payload = default_chess_data()
     incoming = data if isinstance(data, dict) else {}
-    for key in ("profiles", "imports", "games", "openings", "review_queue"):
+    for key in ("profiles", "imports", "games", "openings", "review_queue", "puzzle_seeds", "auto_puzzle_candidates", "puzzle_attempts"):
         value = incoming.get(key, [])
         payload[key] = [dict(item) for item in value if isinstance(item, dict)] if isinstance(value, list) else []
     settings = incoming.get("settings", {})
@@ -837,6 +1051,551 @@ def save_chess_data(data):
     payload["updated_at"] = current_timestamp()
     save_json_file(CHESS_DATA_PATH, payload)
     return payload
+
+
+def normalize_puzzle_attempt_status(value):
+    normalized = str(value or "").strip().lower()
+    if normalized in {"started", "completed", "skipped", "archived"}:
+        return normalized
+    return "started"
+
+
+def normalize_puzzle_review_state(value):
+    normalized = str(value or "").strip().lower()
+    if normalized in {"new", "repeat_due", "scheduled", "review_due", "mastered"}:
+        return normalized
+    return "new"
+
+
+def _puzzle_attempt_sort_value(attempt):
+    if not isinstance(attempt, dict):
+        return datetime.min
+    return parse_timestamp(attempt.get("updated_at")) or parse_timestamp(attempt.get("created_at")) or datetime.min
+
+
+def build_puzzle_attempt_id(candidate_id, started_at=""):
+    candidate_value = str(candidate_id or "").strip()
+    timestamp_value = str(started_at or current_timestamp()).strip() or current_timestamp()
+    digest = hashlib.sha1(f"{candidate_value}|{timestamp_value}".encode("utf-8")).hexdigest()[:14]
+    return f"attempt:{candidate_value}:{digest}"
+
+
+def safe_puzzle_attempt_int(value, default=0):
+    try:
+        return int(str(value or "").strip() or default)
+    except Exception:
+        return int(default)
+
+
+def _safe_attempt_timestamp_value(value):
+    return parse_timestamp(value) or None
+
+
+def _copy_puzzle_review_fields(attempt):
+    payload = dict(attempt or {}) if isinstance(attempt, dict) else {}
+    return {
+        "review_state": normalize_puzzle_review_state(payload.get("review_state")),
+        "last_attempt_at": str(payload.get("last_attempt_at", "") or "").strip(),
+        "next_due_at": str(payload.get("next_due_at", "") or "").strip(),
+        "clean_streak": max(0, int(payload.get("clean_streak", 0) or 0)),
+        "miss_streak": max(0, int(payload.get("miss_streak", 0) or 0)),
+        "times_seen": max(0, int(payload.get("times_seen", 0) or 0)),
+        "times_clean": max(0, int(payload.get("times_clean", 0) or 0)),
+        "times_missed": max(0, int(payload.get("times_missed", 0) or 0)),
+        "mastered": bool(payload.get("mastered", False)),
+    }
+
+
+def build_puzzle_review_schedule(clean_streak=0, needs_repeat=False, skipped=False):
+    streak_value = max(0, int(clean_streak or 0))
+    now = datetime.now(timezone.utc)
+    if needs_repeat or skipped:
+        next_due = now
+        review_state = "repeat_due"
+        mastered = False
+    elif streak_value >= 3:
+        next_due = now + timedelta(days=14)
+        review_state = "mastered"
+        mastered = True
+    elif streak_value >= 2:
+        next_due = now + timedelta(days=3)
+        review_state = "scheduled"
+        mastered = False
+    else:
+        next_due = now + timedelta(days=1)
+        review_state = "scheduled"
+        mastered = False
+    return {
+        "review_state": review_state,
+        "next_due_at": next_due.isoformat(),
+        "mastered": mastered,
+    }
+
+
+def find_previous_resolved_puzzle_attempt(data, candidate_id="", exclude_attempt_id=""):
+    payload = data if isinstance(data, dict) else default_chess_data()
+    candidate_value = str(candidate_id or "").strip()
+    exclude_value = str(exclude_attempt_id or "").strip()
+    matches = []
+    for item in payload.get("puzzle_attempts", []) or []:
+        if not isinstance(item, dict):
+            continue
+        if candidate_value and str(item.get("candidate_id", "") or "").strip() != candidate_value:
+            continue
+        if exclude_value and str(item.get("id", "") or "").strip() == exclude_value:
+            continue
+        if normalize_puzzle_attempt_status(item.get("status")) not in {"completed", "skipped"}:
+            continue
+        matches.append(item)
+    if not matches:
+        return None
+    matches.sort(key=_puzzle_attempt_sort_value, reverse=True)
+    return matches[0]
+
+
+def puzzle_attempt_due_now(attempt, now=None):
+    payload = dict(attempt or {}) if isinstance(attempt, dict) else {}
+    if not payload:
+        return False
+    status_value = normalize_puzzle_attempt_status(payload.get("status"))
+    if status_value in {"started", "archived"}:
+        return False
+    if latest_puzzle_attempt_needs_repeat(payload):
+        return True
+    mastered = bool(payload.get("mastered", False))
+    due_value = _safe_attempt_timestamp_value(payload.get("next_due_at"))
+    if due_value is None:
+        return not mastered
+    compare_now = now if isinstance(now, datetime) else datetime.now(timezone.utc)
+    return due_value <= compare_now
+
+
+def find_puzzle_attempt(data, attempt_id="", candidate_id="", status=None):
+    payload = data if isinstance(data, dict) else default_chess_data()
+    attempt_value = str(attempt_id or "").strip()
+    candidate_value = str(candidate_id or "").strip()
+    status_value = normalize_puzzle_attempt_status(status) if status else ""
+    matches = []
+    for item in payload.get("puzzle_attempts", []) or []:
+        if not isinstance(item, dict):
+            continue
+        if attempt_value and str(item.get("id", "") or "").strip() != attempt_value:
+            continue
+        if candidate_value and str(item.get("candidate_id", "") or "").strip() != candidate_value:
+            continue
+        if status_value and normalize_puzzle_attempt_status(item.get("status")) != status_value:
+            continue
+        matches.append(item)
+    if not matches:
+        return None
+    matches.sort(key=_puzzle_attempt_sort_value, reverse=True)
+    return matches[0]
+
+
+def build_puzzle_attempt_summary(attempt):
+    payload = dict(attempt or {}) if isinstance(attempt, dict) else {}
+    wrong_count = max(0, int(payload.get("wrong_count", 0) or 0))
+    reveal_used = bool(payload.get("reveal_used", False))
+    status_value = normalize_puzzle_attempt_status(payload.get("status"))
+    completed_clean = bool(payload.get("completed_clean", False))
+    needs_repeat = bool(payload.get("needs_repeat", False))
+    due_now = puzzle_attempt_due_now(payload)
+    mastered = bool(payload.get("mastered", False))
+    parts = []
+    if status_value == "completed":
+        if completed_clean:
+            parts.append("Clean solve")
+        elif needs_repeat:
+            parts.append("Needs another try")
+    elif status_value == "skipped":
+        parts.append("Skipped")
+    if due_now and status_value in {"completed", "skipped"} and not needs_repeat and not mastered:
+        parts.append("Due for review")
+    if mastered:
+        parts.append("Mastered")
+    if wrong_count > 0:
+        parts.append(f"{wrong_count} wrong move{'s' if wrong_count != 1 else ''}")
+    if reveal_used:
+        parts.append("Reveal used")
+    return {
+        "text": " · ".join(parts),
+        "wrong_count": wrong_count,
+        "reveal_used": reveal_used,
+        "completed_clean": completed_clean,
+        "needs_repeat": needs_repeat,
+        "due_now": due_now,
+        "mastered": mastered,
+        "status": status_value,
+    }
+
+
+def get_latest_puzzle_attempt_map(data):
+    payload = data if isinstance(data, dict) else default_chess_data()
+    latest_map = {}
+    for raw_attempt in payload.get("puzzle_attempts", []) or []:
+        if not isinstance(raw_attempt, dict):
+            continue
+        candidate_id = str(raw_attempt.get("candidate_id", "") or "").strip()
+        if not candidate_id:
+            continue
+        existing = latest_map.get(candidate_id)
+        if existing is None or _puzzle_attempt_sort_value(raw_attempt) >= _puzzle_attempt_sort_value(existing):
+            latest_map[candidate_id] = raw_attempt
+    return latest_map
+
+
+def latest_puzzle_attempt_needs_repeat(attempt):
+    payload = dict(attempt or {}) if isinstance(attempt, dict) else {}
+    if not payload:
+        return False
+    status_value = normalize_puzzle_attempt_status(payload.get("status"))
+    if status_value == "skipped":
+        return True
+    if bool(payload.get("needs_repeat", False)):
+        return True
+    if max(0, int(payload.get("wrong_count", 0) or 0)) > 0:
+        return True
+    if bool(payload.get("reveal_used", False)):
+        return True
+    return False
+
+
+def format_puzzle_move_label_from_fen(fen, move_uci, fallback=""):
+    move_text = str(move_uci or "").strip()
+    if not move_text:
+        return str(fallback or "").strip()
+    board_fen = str(fen or "").strip()
+    if chesslib is not None and board_fen:
+        try:
+            board = chesslib.Board(board_fen)
+            move_obj = chesslib.Move.from_uci(move_text)
+            if move_obj in board.legal_moves:
+                return board.san(move_obj)
+        except Exception:
+            pass
+    return str(fallback or move_text).strip()
+
+
+def build_puzzle_repeat_note(candidate, latest_attempt):
+    candidate_payload = dict(candidate or {}) if isinstance(candidate, dict) else {}
+    attempt_payload = dict(latest_attempt or {}) if isinstance(latest_attempt, dict) else {}
+    summary = build_puzzle_attempt_summary(attempt_payload)
+    if not latest_puzzle_attempt_needs_repeat(attempt_payload):
+        return {
+            "repeat_needed": False,
+            "note": "",
+            "title": "",
+            "reason": "",
+            "last_wrong_move": "",
+            "expected_move": "",
+            "comparison": "",
+            "highlight_move": "",
+            "summary": summary,
+        }
+
+    status_value = normalize_puzzle_attempt_status(attempt_payload.get("status"))
+    wrong_count = max(0, int(attempt_payload.get("wrong_count", 0) or 0))
+    reveal_used = bool(attempt_payload.get("reveal_used", False))
+    wrong_moves = attempt_payload.get("wrong_moves", [])
+    if not isinstance(wrong_moves, list):
+        wrong_moves = []
+    last_wrong = dict(wrong_moves[-1] or {}) if wrong_moves and isinstance(wrong_moves[-1], dict) else {}
+    last_wrong_move = format_puzzle_move_label_from_fen(last_wrong.get("fen", ""), last_wrong.get("attempted_move_uci", ""), last_wrong.get("attempted_move_san", ""))
+    expected_move = format_puzzle_move_label_from_fen(last_wrong.get("fen", ""), last_wrong.get("expected_move_uci", ""), candidate_payload.get("next_move_label", ""))
+    reason = ""
+    if status_value == "skipped":
+        reason = "Skipped before."
+    elif reveal_used and wrong_count > 0:
+        reason = "Reveal was used before."
+    elif reveal_used:
+        reason = "Reveal was used before."
+    elif wrong_count > 0:
+        reason = "Wrong move before."
+    else:
+        reason = "Needs another try."
+    note_bits = ["This puzzle came back because you missed it before."]
+    if reason:
+        note_bits.append(reason)
+    if last_wrong_move:
+        note_bits.append(f"Last time you tried {last_wrong_move}.")
+    if expected_move:
+        note_bits.append(f"This time, try to find {expected_move}.")
+    else:
+        note_bits.append("This time, try to find the line move.")
+    note_bits.append("Try to solve it cleanly this time.")
+    return {
+        "repeat_needed": True,
+        "note": " ".join(note_bits),
+        "title": "Try again",
+        "reason": reason,
+        "last_wrong_move": last_wrong_move,
+        "expected_move": expected_move,
+        "comparison": f"Last time: {last_wrong_move}." if last_wrong_move else "",
+        "highlight_move": last_wrong.get("attempted_move_uci", "") or "",
+        "summary": summary,
+    }
+
+
+def get_candidate_repeat_state(candidate, latest_attempt):
+    candidate_payload = dict(candidate or {}) if isinstance(candidate, dict) else {}
+    attempt_payload = dict(latest_attempt or {}) if isinstance(latest_attempt, dict) else {}
+    base_status = normalize_chess_auto_candidate_status(candidate_payload.get("status", "candidate"))
+    if base_status == "archived":
+        repeat_note = build_puzzle_repeat_note(candidate_payload, attempt_payload)
+        return {
+            "repeat_needed": False,
+            "effective_status": "archived",
+            "latest_attempt": attempt_payload,
+            "latest_attempt_status": normalize_puzzle_attempt_status(attempt_payload.get("status")) if attempt_payload else "",
+            "summary": build_puzzle_attempt_summary(attempt_payload),
+            "reason": "",
+            "coach_note": "",
+            "repeat_note": repeat_note,
+        }
+
+    latest_status = normalize_puzzle_attempt_status(attempt_payload.get("status")) if attempt_payload else ""
+    repeat_needed = latest_puzzle_attempt_needs_repeat(attempt_payload)
+    due_now = puzzle_attempt_due_now(attempt_payload)
+    mastered = bool(attempt_payload.get("mastered", False))
+    review_state = normalize_puzzle_review_state(attempt_payload.get("review_state"))
+    candidate_status_timestamp = (
+        parse_timestamp(candidate_payload.get("updated_at", ""))
+        or parse_timestamp(candidate_payload.get("created_at", ""))
+        or datetime.min
+    )
+    attempt_timestamp = _puzzle_attempt_sort_value(attempt_payload) if attempt_payload else datetime.min
+    effective_status = base_status
+    repeat_note = build_puzzle_repeat_note(candidate_payload, attempt_payload)
+    reason = str(repeat_note.get("reason", "") or "").strip()
+    coach_note = str(repeat_note.get("note", "") or "").strip()
+    if repeat_needed:
+        if not coach_note:
+            coach_note = "This puzzle came back because you missed it before. Try to solve it cleanly this time."
+    elif latest_status == "completed" and due_now and not mastered:
+        coach_note = "This one is back for review. See if you can solve it cleanly again."
+        reason = "Due for review"
+
+    if latest_status == "completed":
+        if base_status in {"queued", "training"} and candidate_status_timestamp > attempt_timestamp:
+            effective_status = base_status
+        else:
+            effective_status = "candidate" if (repeat_needed or (due_now and not mastered)) else "done"
+    elif latest_status == "skipped":
+        if base_status in {"queued", "training"} and candidate_status_timestamp > attempt_timestamp:
+            effective_status = base_status
+        else:
+            effective_status = "candidate"
+    elif latest_status == "started" and base_status == "candidate":
+        effective_status = "training"
+
+    return {
+        "repeat_needed": repeat_needed,
+        "due_now": due_now,
+        "review_state": review_state,
+        "mastered": mastered,
+        "effective_status": effective_status,
+        "latest_attempt": attempt_payload,
+        "latest_attempt_status": latest_status,
+        "summary": build_puzzle_attempt_summary(attempt_payload),
+        "reason": reason,
+        "coach_note": coach_note,
+        "repeat_note": repeat_note,
+    }
+
+
+def get_or_create_active_puzzle_attempt(data, candidate, total_steps=0):
+    payload = data if isinstance(data, dict) else default_chess_data()
+    candidate_payload = dict(candidate or {}) if isinstance(candidate, dict) else {}
+    candidate_id = str(candidate_payload.get("id", "") or "").strip()
+    if not candidate_id:
+        return {"attempt": None, "changed": False, "created": False}
+    attempts = [
+        item for item in (payload.get("puzzle_attempts", []) or [])
+        if isinstance(item, dict)
+        and str(item.get("candidate_id", "") or "").strip() == candidate_id
+        and normalize_puzzle_attempt_status(item.get("status")) == "started"
+    ]
+    attempts.sort(key=_puzzle_attempt_sort_value, reverse=True)
+    changed = False
+    active_attempt = None
+    now = current_timestamp()
+    if attempts:
+        active_attempt = attempts[0]
+        for extra_attempt in attempts[1:]:
+            if normalize_puzzle_attempt_status(extra_attempt.get("status")) != "archived":
+                extra_attempt["status"] = "archived"
+                extra_attempt["updated_at"] = now
+                changed = True
+        total_steps_value = max(0, int(total_steps or 0))
+        if total_steps_value and int(active_attempt.get("total_steps", 0) or 0) != total_steps_value:
+            active_attempt["total_steps"] = total_steps_value
+            changed = True
+        for field_name, field_value in (
+            ("game_id", str(candidate_payload.get("game_id", "") or "").strip()),
+            ("source_type", str(candidate_payload.get("source_type", "") or "").strip()),
+        ):
+            if field_value and str(active_attempt.get(field_name, "") or "").strip() != field_value:
+                active_attempt[field_name] = field_value
+                changed = True
+        if changed:
+            active_attempt["updated_at"] = now
+        return {"attempt": dict(active_attempt), "changed": changed, "created": False}
+
+    created_at = now
+    total_steps_value = max(0, int(total_steps or 0))
+    previous_attempt = find_previous_resolved_puzzle_attempt(payload, candidate_id=candidate_id)
+    previous_review = _copy_puzzle_review_fields(previous_attempt)
+    new_attempt = {
+        "id": build_puzzle_attempt_id(candidate_id, created_at),
+        "candidate_id": candidate_id,
+        "game_id": str(candidate_payload.get("game_id", "") or "").strip(),
+        "source_type": str(candidate_payload.get("source_type", "") or "").strip(),
+        "started_at": created_at,
+        "completed_at": "",
+        "status": "started",
+        "wrong_count": 0,
+        "correct_count": 0,
+        "reveal_used": False,
+        "hint_used": False,
+        "engine_check_used": False,
+        "critical_moment_check_used": False,
+        "completed_clean": False,
+        "needs_repeat": False,
+        "final_step": 0,
+        "total_steps": total_steps_value,
+        "wrong_moves": [],
+        "review_state": previous_review.get("review_state", "new") if previous_attempt else "new",
+        "last_attempt_at": str(previous_review.get("last_attempt_at", previous_attempt.get("completed_at", "") if isinstance(previous_attempt, dict) else "") or "").strip(),
+        "next_due_at": str(previous_review.get("next_due_at", "") or "").strip(),
+        "clean_streak": max(0, int(previous_review.get("clean_streak", 0) or 0)),
+        "miss_streak": max(0, int(previous_review.get("miss_streak", 0) or 0)),
+        "times_seen": max(0, int(previous_review.get("times_seen", 0) or 0)) + 1,
+        "times_clean": max(0, int(previous_review.get("times_clean", 0) or 0)),
+        "times_missed": max(0, int(previous_review.get("times_missed", 0) or 0)),
+        "mastered": bool(previous_review.get("mastered", False)),
+        "created_at": created_at,
+        "updated_at": created_at,
+    }
+    payload.setdefault("puzzle_attempts", []).append(new_attempt)
+    return {"attempt": dict(new_attempt), "changed": True, "created": True}
+
+
+def record_puzzle_wrong_move(data, attempt_id, step_index=0, fen="", attempted_move_uci="", attempted_move_san="", expected_move_uci="", engine_move_uci=""):
+    attempt = find_puzzle_attempt(data, attempt_id=attempt_id)
+    if not isinstance(attempt, dict):
+        return {"ok": False, "error": "Active puzzle attempt unavailable.", "attempt": None}
+    wrong_moves = attempt.get("wrong_moves")
+    if not isinstance(wrong_moves, list):
+        wrong_moves = []
+        attempt["wrong_moves"] = wrong_moves
+    wrong_moves.append({
+        "step_index": max(0, int(step_index or 0)),
+        "fen": str(fen or "").strip(),
+        "attempted_move_uci": str(attempted_move_uci or "").strip(),
+        "attempted_move_san": str(attempted_move_san or "").strip(),
+        "expected_move_uci": str(expected_move_uci or "").strip(),
+        "engine_move_uci": str(engine_move_uci or "").strip(),
+        "created_at": current_timestamp(),
+    })
+    attempt["wrong_count"] = max(0, int(attempt.get("wrong_count", 0) or 0)) + 1
+    attempt["final_step"] = max(max(0, int(attempt.get("final_step", 0) or 0)), max(0, int(step_index or 0)))
+    attempt["updated_at"] = current_timestamp()
+    return {"ok": True, "error": "", "attempt": dict(attempt)}
+
+
+def record_puzzle_correct_move(data, attempt_id, step_index=0):
+    attempt = find_puzzle_attempt(data, attempt_id=attempt_id)
+    if not isinstance(attempt, dict):
+        return {"ok": False, "error": "Active puzzle attempt unavailable.", "attempt": None}
+    attempt["correct_count"] = max(0, int(attempt.get("correct_count", 0) or 0)) + 1
+    attempt["final_step"] = max(max(0, int(attempt.get("final_step", 0) or 0)), max(0, int(step_index or 0)))
+    attempt["updated_at"] = current_timestamp()
+    return {"ok": True, "error": "", "attempt": dict(attempt)}
+
+
+def record_puzzle_reveal(data, attempt_id):
+    attempt = find_puzzle_attempt(data, attempt_id=attempt_id)
+    if not isinstance(attempt, dict):
+        return {"ok": False, "error": "Active puzzle attempt unavailable.", "attempt": None}
+    if not bool(attempt.get("reveal_used", False)):
+        attempt["reveal_used"] = True
+        attempt["updated_at"] = current_timestamp()
+    return {"ok": True, "error": "", "attempt": dict(attempt)}
+
+
+def record_puzzle_engine_check(data, attempt_id):
+    attempt = find_puzzle_attempt(data, attempt_id=attempt_id)
+    if not isinstance(attempt, dict):
+        return {"ok": False, "error": "Active puzzle attempt unavailable.", "attempt": None}
+    if not bool(attempt.get("engine_check_used", False)):
+        attempt["engine_check_used"] = True
+        attempt["updated_at"] = current_timestamp()
+    return {"ok": True, "error": "", "attempt": dict(attempt)}
+
+
+def record_puzzle_critical_moment_check(data, attempt_id):
+    attempt = find_puzzle_attempt(data, attempt_id=attempt_id)
+    if not isinstance(attempt, dict):
+        return {"ok": False, "error": "Active puzzle attempt unavailable.", "attempt": None}
+    if not bool(attempt.get("critical_moment_check_used", False)):
+        attempt["critical_moment_check_used"] = True
+        attempt["updated_at"] = current_timestamp()
+    return {"ok": True, "error": "", "attempt": dict(attempt)}
+
+
+def skip_puzzle_attempt(data, attempt_id, final_step=0, total_steps=0):
+    attempt = find_puzzle_attempt(data, attempt_id=attempt_id)
+    if not isinstance(attempt, dict):
+        return {"ok": False, "error": "Active puzzle attempt unavailable.", "attempt": None}
+    review = _copy_puzzle_review_fields(attempt)
+    schedule = build_puzzle_review_schedule(clean_streak=0, needs_repeat=True, skipped=True)
+    attempt["status"] = "skipped"
+    attempt["completed_at"] = current_timestamp()
+    attempt["completed_clean"] = False
+    attempt["needs_repeat"] = True
+    attempt["final_step"] = max(0, int(final_step or 0))
+    attempt["total_steps"] = max(max(0, int(attempt.get("total_steps", 0) or 0)), max(0, int(total_steps or 0)))
+    attempt["last_attempt_at"] = attempt["completed_at"]
+    attempt["clean_streak"] = 0
+    attempt["miss_streak"] = max(0, int(review.get("miss_streak", 0) or 0)) + 1
+    attempt["times_seen"] = max(1, int(review.get("times_seen", 0) or 0))
+    attempt["times_clean"] = max(0, int(review.get("times_clean", 0) or 0))
+    attempt["times_missed"] = max(0, int(review.get("times_missed", 0) or 0)) + 1
+    attempt["review_state"] = schedule["review_state"]
+    attempt["next_due_at"] = schedule["next_due_at"]
+    attempt["mastered"] = False
+    attempt["updated_at"] = current_timestamp()
+    return {"ok": True, "error": "", "attempt": dict(attempt)}
+
+
+def complete_puzzle_attempt(data, attempt_id, final_step=0, total_steps=0):
+    attempt = find_puzzle_attempt(data, attempt_id=attempt_id)
+    if not isinstance(attempt, dict):
+        return {"ok": False, "error": "Active puzzle attempt unavailable.", "attempt": None}
+    wrong_count = max(0, int(attempt.get("wrong_count", 0) or 0))
+    reveal_used = bool(attempt.get("reveal_used", False))
+    completed_clean = wrong_count == 0 and not reveal_used
+    review = _copy_puzzle_review_fields(attempt)
+    next_clean_streak = max(0, int(review.get("clean_streak", 0) or 0)) + 1 if completed_clean else 0
+    next_miss_streak = 0 if completed_clean else max(0, int(review.get("miss_streak", 0) or 0)) + 1
+    schedule = build_puzzle_review_schedule(clean_streak=next_clean_streak, needs_repeat=not completed_clean)
+    attempt["status"] = "completed"
+    attempt["completed_at"] = current_timestamp()
+    attempt["completed_clean"] = completed_clean
+    attempt["needs_repeat"] = not completed_clean
+    attempt["final_step"] = max(0, int(final_step or 0))
+    attempt["total_steps"] = max(max(0, int(attempt.get("total_steps", 0) or 0)), max(0, int(total_steps or 0)))
+    attempt["last_attempt_at"] = attempt["completed_at"]
+    attempt["clean_streak"] = next_clean_streak
+    attempt["miss_streak"] = next_miss_streak
+    attempt["times_seen"] = max(1, int(review.get("times_seen", 0) or 0))
+    attempt["times_clean"] = max(0, int(review.get("times_clean", 0) or 0)) + (1 if completed_clean else 0)
+    attempt["times_missed"] = max(0, int(review.get("times_missed", 0) or 0)) + (0 if completed_clean else 1)
+    attempt["review_state"] = schedule["review_state"]
+    attempt["next_due_at"] = schedule["next_due_at"]
+    attempt["mastered"] = bool(schedule["mastered"])
+    attempt["updated_at"] = current_timestamp()
+    return {"ok": True, "error": "", "attempt": dict(attempt)}
 
 
 def default_chess_courses():
@@ -2130,6 +2889,9 @@ def build_chess_line_review_payload(data, line_key, opening_key=""):
     payload = data if isinstance(data, dict) else default_chess_data()
     normalized_line_key = normalize_chess_opening_token(line_key)
     normalized_opening_key = normalize_chess_opening_token(opening_key)
+    target_ply_count = len([part for part in normalized_line_key.split(" ") if part]) if normalized_line_key else 8
+    if target_ply_count <= 0:
+        target_ply_count = 8
     games = [dict(item) for item in payload.get("games", []) or [] if isinstance(item, dict)]
     review_snapshot = build_chess_review_queue_snapshot(payload)
     matching_games = []
@@ -2137,28 +2899,32 @@ def build_chess_line_review_payload(data, line_key, opening_key=""):
     representative_sort = None
     opening_labels = []
     source_counts = {}
+    time_class_counts = {}
+    next_move_counts = {}
     wins = losses = draws = unknown = white_games = black_games = 0
     latest_date = ""
     latest_sort = None
     score_total = 0.0
     line_label = ""
-    ply_count = 0
     for game in games:
-        game_line_key = normalize_chess_opening_token(get_game_line_key(game))
+        moves = [str(move or "").strip() for move in (game.get("moves", []) or []) if str(move or "").strip()]
+        if not moves:
+            continue
+        game_line_key = normalize_chess_opening_token(get_game_line_key(game, ply_count=target_ply_count))
         if not game_line_key or game_line_key != normalized_line_key:
             continue
         game_opening_key = normalize_chess_opening_token(get_game_opening_key(game))
         if normalized_opening_key and game_opening_key != normalized_opening_key:
             continue
         if not line_label:
-            line_label = get_game_line_label(game)
-        if not ply_count:
-            ply_count = len([move for move in (game.get("moves", []) or []) if str(move or "").strip()][:8])
+            line_label = get_game_line_label(game, ply_count=target_ply_count)
         opening_label = get_game_opening_label(game)
         if opening_label and opening_label not in opening_labels and opening_label != "Opening pending":
             opening_labels.append(opening_label)
         source_label = chess_source_label(game.get("source", ""))
         source_counts[source_label] = int(source_counts.get(source_label, 0) or 0) + 1
+        time_class_label = chess_time_class_label(game.get("time_class", ""))
+        time_class_counts[time_class_label] = int(time_class_counts.get(time_class_label, 0) or 0) + 1
         result = str(game.get("user_result", "") or "").strip().lower() or "unknown"
         color = str(game.get("user_color", "") or "").strip().lower() or "unknown"
         if result == "win":
@@ -2179,6 +2945,9 @@ def build_chess_line_review_payload(data, line_key, opening_key=""):
         if latest_sort is None or sort_value > latest_sort:
             latest_sort = sort_value
             latest_date = str(game.get("date", "") or "").strip() or format_timestamp_label(game.get("imported_at", ""), default="")
+        if len(moves) > target_ply_count:
+            next_move = moves[target_ply_count]
+            next_move_counts[next_move] = int(next_move_counts.get(next_move, 0) or 0) + 1
         replay_candidate = build_chess_game_replay(game)
         if replay_candidate.get("available") and replay_candidate.get("positions"):
             if representative_sort is None or sort_value > representative_sort:
@@ -2189,11 +2958,37 @@ def build_chess_line_review_payload(data, line_key, opening_key=""):
     total = len(matching_games)
     score_percent = round((score_total / total) * 100, 1) if total else 0.0
     sources = [{"label": label, "count": count} for label, count in sorted(source_counts.items(), key=lambda item: (-int(item[1]), item[0]))]
+    time_classes = [{"label": label, "count": count} for label, count in sorted(time_class_counts.items(), key=lambda item: (-int(item[1]), item[0]))]
+    next_moves = [
+        {"move": move, "count": count}
+        for move, count in sorted(next_move_counts.items(), key=lambda item: (-int(item[1]), item[0]))[:5]
+    ]
+    most_common_next_move = next_moves[0] if next_moves else None
+    review_item = (review_snapshot.get("active_line_map", {}) or {}).get(normalized_line_key)
+    verdict_label = "Unstable line"
+    verdict_note = "Mixed results or not enough games yet."
+    if review_item:
+        verdict_label = "Needs review"
+        verdict_note = "Already in review queue."
+    elif total < 3:
+        verdict_label = "Unstable line"
+        verdict_note = f"Sample too small ({total} games)."
+    elif score_percent >= 60 and wins >= losses:
+        verdict_label = "Strong line"
+        verdict_note = "Your results are clear enough to read as a strength."
+    elif score_percent <= 40 and losses > wins:
+        verdict_label = "Weak line"
+        verdict_note = "Your results suggest this branch deserves attention."
+    else:
+        verdict_label = "Unstable line"
+        verdict_note = "The results are mixed, so this branch is still noisy."
+    if total >= 3 and score_percent <= 40 and losses > wins and not review_item:
+        verdict_note = "Needs review."
     opening_labels = opening_labels or (["Opening pending"] if total else [])
     if representative_game:
         full_replay = representative_game.get("_replay", {}) or {}
         replay_positions = list(full_replay.get("positions", []) or [])
-        line_ply_count = min(max(0, ply_count), max(0, len(replay_positions) - 1))
+        line_ply_count = min(max(0, target_ply_count), max(0, len(replay_positions) - 1))
         line_positions = replay_positions[: line_ply_count + 1] if replay_positions and line_ply_count else replay_positions[:1]
         replay_payload = {
             "available": bool(line_positions),
@@ -2210,9 +3005,8 @@ def build_chess_line_review_payload(data, line_key, opening_key=""):
             "title": "",
             "replay": {"available": False, "error": "Board replay could not be prepared from this line.", "positions": [], "move_pairs": []},
             "replay_default_flipped": False,
-            "line_ply_count": ply_count,
+            "line_ply_count": target_ply_count,
         }
-    review_item = (review_snapshot.get("active_line_map", {}) or {}).get(normalized_line_key)
     return {
         "line_key": normalized_line_key,
         "opening_key": normalized_opening_key,
@@ -2231,13 +3025,112 @@ def build_chess_line_review_payload(data, line_key, opening_key=""):
         "latest_date": latest_date or "Date pending",
         "sources": sources,
         "source_breakdown": " | ".join(f"{item['label']}: {item['count']}" for item in sources),
+        "time_classes": time_classes,
+        "time_class_breakdown": " | ".join(f"{item['label']}: {item['count']}" for item in time_classes),
+        "next_moves": next_moves,
+        "next_moves_count": sum(int(item.get("count", 0) or 0) for item in next_moves),
+        "most_common_next_move": most_common_next_move,
         "matching_games": matching_games,
         "representative_game": representative_payload,
-        "ply_count": representative_payload.get("line_ply_count", ply_count),
+        "ply_count": representative_payload.get("line_ply_count", target_ply_count),
+        "line_ply_count": target_ply_count,
+        "opening_display_label": representative_payload.get("opening_display_label", "") if representative_payload else "",
+        "opening_name": representative_payload.get("opening_name", "") if representative_payload else "",
+        "opening_eco": representative_payload.get("opening_eco", "") if representative_payload else "",
+        "opening_variation": representative_payload.get("opening_variation", "") if representative_payload else "",
+        "opening_side": representative_payload.get("opening_side", "") if representative_payload else "",
+        "line_summary": {
+            "label": verdict_label,
+            "note": verdict_note,
+            "sample_note": f"{total} games reaching this line" if total else "No games reaching this line yet.",
+            "record": f"{wins} W / {losses} L / {draws} D",
+            "score": format_chess_percent(score_percent),
+            "next_move_label": most_common_next_move.get("move", "") if most_common_next_move else "",
+            "next_move_count": int(most_common_next_move.get("count", 0) or 0) if most_common_next_move else 0,
+            "review_state": "Already in review queue" if review_item else ("Needs review" if verdict_label in {"Weak line"} else ""),
+        },
         "review_queue_active": bool(review_item),
         "review_queue_item_id": str((review_item or {}).get("id", "") or "").strip(),
         "review_queue_item": review_item,
     }
+
+
+def build_chess_line_drill_payload(data, line_key, opening_key=""):
+    payload = build_chess_line_review_payload(data, line_key, opening_key=opening_key)
+    line_moves = [str(move or "").strip() for move in str(payload.get("line_key", "") or "").split(" ") if str(move or "").strip()]
+    representative_game = dict(payload.get("representative_game", {}) or {})
+    replay = dict((representative_game.get("replay", {}) or {}))
+    positions = list(replay.get("positions", []) or [])
+    line_ply_count = len(line_moves)
+    if positions and line_ply_count:
+        line_positions = positions[: min(line_ply_count, max(0, len(positions) - 1)) + 1]
+    elif positions:
+        line_positions = positions[:1]
+    else:
+        line_positions = []
+    available_ply_count = max(0, len(line_positions) - 1)
+    trainer_steps = []
+    for step_index in range(available_ply_count):
+        before_position = dict(line_positions[step_index] or {})
+        after_position = dict(line_positions[step_index + 1] or {})
+        expected_san = str(after_position.get("move", "") or "").strip() or (line_moves[step_index] if step_index < len(line_moves) else "")
+        expected_uci = str(after_position.get("last_move", "") or "").strip()
+        legal_targets_by_source = {}
+        if chesslib is not None and str(before_position.get("fen", "") or "").strip():
+            try:
+                board = chesslib.Board(str(before_position.get("fen", "") or "").strip())
+                for legal_move in board.legal_moves:
+                    uci_text = legal_move.uci()
+                    from_square = str(uci_text[:2] or "").strip()
+                    to_square = str(uci_text[2:4] or "").strip()
+                    if not from_square or not to_square:
+                        continue
+                    legal_targets_by_source.setdefault(from_square, []).append(to_square)
+            except Exception:
+                legal_targets_by_source = {}
+        trainer_steps.append({
+            "step_index": step_index,
+            "ply_before": int(before_position.get("ply", step_index) or step_index),
+            "move_number_label": build_chess_puzzle_move_label(step_index + 1, expected_san),
+            "expected_move_san": expected_san,
+            "expected_move_uci": expected_uci,
+            "fen_before": str(before_position.get("fen", "") or "").strip(),
+            "fen_after": str(after_position.get("fen", "") or "").strip(),
+            "side_to_move": str(before_position.get("turn", "") or "").strip().lower() or "white",
+            "side_to_move_label": str(before_position.get("turn", "") or "").strip().title() or "White",
+            "last_move_after": str(after_position.get("last_move", "") or "").strip(),
+            "legal_targets_by_source": legal_targets_by_source,
+        })
+    drill_replay = {
+        "available": len(line_positions) > 1,
+        "error": "",
+        "positions": line_positions,
+        "move_pairs": build_chess_move_pairs(line_moves),
+        "line_moves": line_moves,
+        "line_move_pairs": build_chess_move_pairs(line_moves),
+        "line_ply_count": available_ply_count,
+        "line_end_ply": available_ply_count,
+        "line_move_count": line_ply_count,
+        "hide_next_moves_default": True,
+        "trainer_steps": trainer_steps,
+        "interactive_available": bool(trainer_steps),
+        "completion_fen": str((line_positions[-1] if line_positions else {}).get("fen", "") or "").strip(),
+    }
+    if not line_positions:
+        drill_replay["error"] = "This line does not have enough position data for interactive training."
+    elif not drill_replay["interactive_available"]:
+        drill_replay["error"] = "This line does not have enough position data for interactive training."
+    elif not drill_replay["available"]:
+        drill_replay["error"] = "Board replay could not be prepared from this line."
+    payload["drill"] = drill_replay
+    payload["drill_available"] = drill_replay["available"]
+    payload["drill_error"] = drill_replay["error"]
+    payload["drill_line_moves"] = line_moves
+    payload["drill_line_move_pairs"] = drill_replay["line_move_pairs"]
+    payload["drill_line_ply_count"] = available_ply_count
+    payload["drill_line_end_ply"] = available_ply_count
+    payload["drill_line_move_count"] = line_ply_count
+    return payload
 
 
 def build_chess_games_browser_context():
@@ -2311,6 +3204,8 @@ def build_chess_games_browser_context():
         {"key": "openings", "label": "Openings", "href": url_for("chess_openings"), "icon": "waypoints"},
         {"key": "branches", "label": "Branches", "href": url_for("chess_branches"), "icon": "git-branch"},
         {"key": "train", "label": "Train", "href": url_for("chess_train"), "icon": "target"},
+        {"key": "drills", "label": "Drills", "href": url_for("chess_drills"), "icon": "swords"},
+        {"key": "puzzles", "label": "Puzzles", "href": url_for("chess_puzzles"), "icon": "sparkles"},
         {"key": "progress", "label": "Progress", "href": url_for("chess_progress"), "icon": "activity"},
         {"key": "courses", "label": "Courses", "href": url_for("chess_courses"), "icon": "graduation-cap"},
     ]
@@ -2492,7 +3387,7 @@ def build_opening_line_summary(data, ply_count=8):
             line_key=str(entry.get("line_key", "") or "").strip(),
         ) if str(entry.get("line_key", "") or "").strip() else ""
         entry["href"] = url_for(
-            "chess_line_detail",
+            "chess_branch_detail",
             line_key=str(entry.get("line_key", "") or "").strip(),
             opening_key=str(entry.get("opening_key", "") or "").strip(),
         ) if str(entry.get("line_key", "") or "").strip() else ""
@@ -2630,6 +3525,135 @@ def build_opening_branch_map(data, opening_key=None):
     }
 
 
+def build_drill_candidates(data):
+    payload = data if isinstance(data, dict) else default_chess_data()
+    games = [dict(item) for item in payload.get("games", []) or [] if isinstance(item, dict)]
+    review_snapshot = build_chess_review_queue_snapshot(payload)
+    weak_lines = {
+        normalize_chess_opening_token(item.get("line_key", ""))
+        for item in (build_opening_line_summary(payload, ply_count=8).get("weak", []) or [])
+        if str(item.get("line_key", "") or "").strip()
+    }
+    candidates = []
+    for game in games:
+        moves = [str(move or "").strip() for move in (game.get("moves", []) or []) if str(move or "").strip()]
+        if len(moves) < 2:
+            continue
+        replay = build_chess_game_replay(game)
+        positions = list(replay.get("positions", []) or [])
+        if not replay.get("available") or len(positions) < 2:
+            continue
+        user_color = str(game.get("user_color", "") or "").strip().lower()
+        if user_color == "white":
+            target_parity = 1
+        elif user_color == "black":
+            target_parity = 0
+        else:
+            target_parity = 1
+        line_ply = min(8, len(moves) - 1)
+        candidate_ply = 0
+        for ply in range(line_ply + 1, len(moves) + 1):
+            if ply % 2 == target_parity:
+                candidate_ply = ply
+                break
+        if not candidate_ply:
+            for ply in range(1, len(moves) + 1):
+                if ply % 2 == target_parity:
+                    candidate_ply = ply
+                    break
+        if not candidate_ply or candidate_ply >= len(positions):
+            continue
+        ply_before = max(0, candidate_ply - 1)
+        line_key = get_game_line_key(game, ply_count=8)
+        opening_key = get_game_opening_key(game)
+        game_id = str(game.get("id", "") or "").strip()
+        queue_priority = 0
+        if normalize_chess_opening_token(game_id) in (review_snapshot.get("active_game_map", {}) or {}):
+            queue_priority = 3
+        elif line_key and normalize_chess_opening_token(line_key) in (review_snapshot.get("active_line_map", {}) or {}):
+            queue_priority = 2
+        elif opening_key and normalize_chess_opening_token(opening_key) in (review_snapshot.get("active_opening_map", {}) or {}):
+            queue_priority = 1
+        latest_sort = parse_timestamp(game.get("end_time", "")) or parse_timestamp(game.get("imported_at", "")) or parse_timestamp(game.get("date", "")) or datetime.min
+        candidate = {
+            "id": f"{game_id}:{candidate_ply}",
+            "game_id": game_id,
+            "game_title": f"{str(game.get('white', '') or '').strip() or 'White'} vs {str(game.get('black', '') or '').strip() or 'Black'}",
+            "opening_key": opening_key,
+            "opening_label": get_game_opening_label(game),
+            "line_key": line_key,
+            "line_label": get_game_line_label(game, ply_count=8),
+            "ply_before": ply_before,
+            "expected_move": moves[candidate_ply - 1],
+            "fen_before": str(positions[ply_before].get("fen", "") or "").strip(),
+            "fen_after": str(positions[candidate_ply].get("fen", "") or "").strip(),
+            "source": str(game.get("source", "") or "").strip(),
+            "source_label": chess_source_label(game.get("source", "")),
+            "user_color": user_color or "unknown",
+            "user_color_label": str(game.get("user_color", "") or "").strip().title() or "Unknown",
+            "user_result": str(game.get("user_result", "") or "").strip() or "unknown",
+            "user_result_label": chess_user_result_label(game.get("user_result", "")),
+            "date": str(game.get("date", "") or "").strip() or "Date pending",
+            "time_class_label": chess_time_class_label(game.get("time_class", "")),
+            "latest_sort": latest_sort,
+            "review_queue_priority": queue_priority,
+            "is_review_candidate": queue_priority > 0,
+            "is_weak_line": normalize_chess_opening_token(line_key) in weak_lines if line_key else False,
+            "open_game_href": url_for("chess_game_detail", game_id=chess_game_url_id(game_id)),
+            "review_line_href": url_for("chess_line_detail", line_key=line_key, opening_key=opening_key) if line_key else "",
+        }
+        candidates.append(candidate)
+    candidates.sort(
+        key=lambda item: (
+            int(item.get("review_queue_priority", 0) or 0),
+            int(bool(item.get("is_weak_line"))),
+            item.get("latest_sort") or datetime.min,
+            str(item.get("game_id", "") or ""),
+        ),
+        reverse=True,
+    )
+    return candidates
+
+
+def choose_drill_candidate(candidates, filters):
+    items = [dict(item) for item in candidates or [] if isinstance(item, dict)]
+    source = str((filters or {}).get("source", "all_lines") or "all_lines").strip().lower() or "all_lines"
+    opening_key = normalize_chess_opening_token((filters or {}).get("opening_key", ""))
+    line_key = normalize_chess_opening_token((filters or {}).get("line_key", ""))
+    if source == "review_queue":
+        items = [item for item in items if bool(item.get("is_review_candidate"))]
+    elif source == "weak_lines":
+        items = [item for item in items if bool(item.get("is_weak_line"))]
+    if opening_key:
+        items = [item for item in items if normalize_chess_opening_token(item.get("opening_key", "")) == opening_key]
+    if line_key:
+        items = [item for item in items if normalize_chess_opening_token(item.get("line_key", "")) == line_key]
+    if not items:
+        return {"candidate": None, "candidates": [], "offset": 0, "count": 0}
+    try:
+        offset = int((filters or {}).get("offset", 0) or 0)
+    except Exception:
+        offset = 0
+    if offset < 0:
+        offset = 0
+    index = offset % len(items)
+    return {"candidate": dict(items[index]), "candidates": items, "offset": index, "count": len(items)}
+
+
+def build_drill_board_payload(candidate):
+    payload = candidate if isinstance(candidate, dict) else {}
+    return {
+        "available": bool(str(payload.get("fen_before", "") or "").strip()),
+        "fen_before": str(payload.get("fen_before", "") or "").strip(),
+        "fen_after": str(payload.get("fen_after", "") or "").strip(),
+        "expected_move": str(payload.get("expected_move", "") or "").strip(),
+        "ply_before": int(payload.get("ply_before", 0) or 0),
+        "ply_after": int(payload.get("ply_before", 0) or 0) + 1,
+        "turn_before": "white" if int(payload.get("ply_before", 0) or 0) % 2 == 0 else "black",
+        "turn_after": "black" if int(payload.get("ply_before", 0) or 0) % 2 == 0 else "white",
+    }
+
+
 def sort_openings(summary, mode):
     mode_value = str(mode or "").strip().lower() or "most_played"
     items = list(summary or [])
@@ -2744,6 +3768,239 @@ def build_training_recommendations(data):
         "openings_count": len(opening_summary),
         "has_games": bool(games),
     }
+
+
+def build_chess_train_today_focus(chess_data, auto_snapshot=None, review_snapshot=None, opening_line_summary=None):
+    payload = chess_data if isinstance(chess_data, dict) else default_chess_data()
+    auto_payload = auto_snapshot if isinstance(auto_snapshot, dict) else build_auto_puzzle_candidates_snapshot(payload)
+    review_payload = review_snapshot if isinstance(review_snapshot, dict) else build_chess_review_queue_snapshot(payload)
+    line_payload = opening_line_summary if isinstance(opening_line_summary, dict) else build_opening_line_summary(payload, ply_count=8)
+    games = [dict(item) for item in payload.get("games", []) or [] if isinstance(item, dict)]
+
+    default_focus = {
+        "focus_type": "empty",
+        "title": "No urgent weakness found yet.",
+        "reason": "Import more games or review recent games so Lotus Chess can choose what matters next.",
+        "primary_label": "Import games",
+        "primary_url": url_for("chess_import"),
+        "secondary_label": "Advanced",
+        "secondary_url": "#chess-train-advanced",
+        "priority_label": "",
+        "opening_label": "",
+        "line_label": "",
+        "detail_label": "",
+    }
+
+    if not games:
+        return default_focus
+
+    active_training_items = [
+        dict(item) for item in (auto_payload.get("all_items", []) or [])
+        if isinstance(item, dict) and str(item.get("status", "") or "").strip().lower() in {"queued", "training"}
+    ]
+    if active_training_items:
+        current_item = active_training_items[0]
+        opening_label = str(current_item.get("opening_label", "") or "").strip() or "Unknown opening"
+        line_label = str(current_item.get("line_label", "") or "").strip() or "Line pending"
+        is_repeat = bool(current_item.get("repeat_needed", False))
+        is_due_review = bool(current_item.get("due_now", False)) and not is_repeat
+        return {
+            "focus_type": "repeat_training" if is_repeat else ("due_review" if is_due_review else "continue_training"),
+            "title": "Try again" if is_repeat else ("Review now" if is_due_review else "Continue training."),
+            "reason": "Some puzzles need another try. Start with the positions you missed before." if is_repeat else ("This one is back for review. Keep the line fresh before it fades." if is_due_review else "This is the most useful thing to train now because the line is already queued from your weakest recent patterns."),
+            "primary_label": "Continue training",
+            "primary_url": url_for("chess_training_puzzle", candidate_id=current_item.get("id", "")),
+            "secondary_label": "Details",
+            "secondary_url": url_for("chess_training_session", candidate_id=current_item.get("id", "")),
+            "priority_label": str(current_item.get("priority_label", "") or "").strip(),
+            "opening_label": opening_label,
+            "line_label": line_label,
+            "detail_label": f"{opening_label} · {line_label}",
+        }
+
+    top_candidate = dict(auto_payload.get("top_priority_candidate", {}) or {})
+    if top_candidate and str(top_candidate.get("status", "") or "").strip().lower() == "candidate":
+        opening_label = str(top_candidate.get("opening_label", "") or "").strip() or "Unknown opening"
+        line_label = str(top_candidate.get("line_label", "") or "").strip() or "Line pending"
+        priority_label = str(top_candidate.get("priority_label", "") or "").strip()
+        score_label = str(top_candidate.get("score_percent_label", "") or "").strip() or format_chess_percent(top_candidate.get("score_percent", 0.0))
+        games_count = int(top_candidate.get("games_count", 0) or 0)
+        is_repeat = bool(top_candidate.get("repeat_needed", False))
+        is_due_review = bool(top_candidate.get("due_now", False)) and not is_repeat
+        return {
+            "focus_type": "repeat_candidate" if is_repeat else ("due_review" if is_due_review else "start_candidate"),
+            "title": "Try again" if is_repeat else ("Review now" if is_due_review else "Today's focus"),
+            "reason": "Some puzzles need another try. Start with the positions you missed before." if is_repeat else ("This one is back for review. Solve it cleanly to keep the idea fresh." if is_due_review else f"Because this line appears in your games and scores badly: {score_label} across {games_count} games."),
+            "primary_label": "Try again" if is_repeat else ("Review now" if is_due_review else "Start training"),
+            "primary_url": url_for("chess_training_puzzle", candidate_id=top_candidate.get("id", "")),
+            "secondary_label": "Details",
+            "secondary_url": url_for("chess_puzzles"),
+            "priority_label": priority_label,
+            "opening_label": opening_label,
+            "line_label": line_label,
+            "detail_label": f"{opening_label} · {line_label}",
+        }
+
+    active_review_items = [dict(item) for item in (review_payload.get("active_items", []) or []) if isinstance(item, dict)]
+    if active_review_items:
+        review_item = active_review_items[0]
+        return {
+            "focus_type": "review_queue",
+            "title": "Review now",
+            "reason": "You have pending review items waiting, so the fastest useful next step is to work through the queue.",
+            "primary_label": "Review now",
+            "primary_url": url_for("chess_review_session", queue_id=review_item.get("id", "")),
+            "secondary_label": "Details",
+            "secondary_url": url_for("chess_review_session"),
+            "priority_label": "",
+            "opening_label": "",
+            "line_label": "",
+            "detail_label": str(review_item.get("title", "") or "").strip(),
+        }
+
+    weak_lines = [dict(item) for item in (line_payload.get("weak", []) or []) if isinstance(item, dict)]
+    if weak_lines:
+        weak_line = weak_lines[0]
+        opening_key = str(weak_line.get("opening_key", "") or "").strip()
+        line_key = str(weak_line.get("line_key", "") or "").strip()
+        opening_label = str(weak_line.get("opening_label", "") or "").strip() or "Unknown opening"
+        line_label = str(weak_line.get("line_label", "") or "").strip() or "Line pending"
+        score_label = str(weak_line.get("score_percent_label", "") or "").strip() or format_chess_percent(weak_line.get("score_percent", 0.0))
+        return {
+            "focus_type": "weak_line",
+            "title": "What you should work on now",
+            "reason": f"This branch is underperforming in your own games: {score_label} with repeated results worth reviewing.",
+            "primary_label": "View weak line",
+            "primary_url": url_for("chess_branch_detail", line_key=line_key, opening_key=opening_key) if opening_key else url_for("chess_branch_detail", line_key=line_key),
+            "secondary_label": "Details",
+            "secondary_url": url_for("chess_branches", opening_key=opening_key) if opening_key else url_for("chess_branches"),
+            "priority_label": "",
+            "opening_label": opening_label,
+            "line_label": line_label,
+            "detail_label": f"{opening_label} · {line_label}",
+        }
+
+    return {
+        "focus_type": "no_urgent_weakness",
+        "title": "No urgent weakness found yet.",
+        "reason": "Review recent games or import more games so Lotus Chess can spot the next line that deserves training.",
+        "primary_label": "Review recent games",
+        "primary_url": url_for("chess_games"),
+        "secondary_label": "Advanced",
+        "secondary_url": "#chess-train-advanced",
+        "priority_label": "",
+        "opening_label": "",
+        "line_label": "",
+        "detail_label": "",
+    }
+
+
+def build_my_puzzles_status(chess_data, auto_snapshot=None):
+    payload = chess_data if isinstance(chess_data, dict) else default_chess_data()
+    auto_payload = auto_snapshot if isinstance(auto_snapshot, dict) else build_auto_puzzle_candidates_snapshot(payload)
+    games = [dict(item) for item in (payload.get("games", []) or []) if isinstance(item, dict)]
+    counts = dict(auto_payload.get("counts", {}) or {})
+    queued_count = int(counts.get("queued", 0) or 0)
+    training_count = int(counts.get("training", 0) or 0)
+    ready_count = queued_count + training_count
+    done_count = int(counts.get("done", 0) or 0)
+    candidate_count = int(counts.get("candidate", 0) or 0)
+    visible_count = int(auto_payload.get("visible_count", 0) or 0)
+    repeat_needed_count = int(auto_payload.get("repeat_needed_count", 0) or 0)
+    due_now_count = int(auto_payload.get("due_now_count", 0) or 0)
+    mastered_count = int(auto_payload.get("mastered_count", 0) or 0)
+    top_candidate = dict(auto_payload.get("top_priority_candidate", {}) or {})
+    top_line_label = str(top_candidate.get("line_label", "") or "").strip() or "Weak line pending"
+    top_opening_label = str(top_candidate.get("opening_label", "") or "").strip() or "Unknown opening"
+
+    status = {
+        "imported_game_count": len(games),
+        "auto_candidate_count": visible_count,
+        "ready_count": ready_count,
+        "queued_count": queued_count,
+        "training_count": training_count,
+        "done_count": done_count,
+        "candidate_count": candidate_count,
+        "repeat_needed_count": repeat_needed_count,
+        "due_now_count": due_now_count,
+        "mastered_count": mastered_count,
+        "top_candidate": top_candidate,
+        "can_start_immediately": False,
+        "primary_label": "Start My Puzzles",
+        "primary_url": "",
+        "primary_method": "post",
+        "secondary_label": "Advanced",
+        "secondary_url": "#chess-puzzles-advanced",
+        "title": "My Puzzles",
+        "reason": "Built from your own games.",
+        "status_line": "",
+        "empty_state": False,
+    }
+
+    if not games:
+        status.update({
+            "primary_label": "Import games",
+            "primary_url": url_for("chess_import"),
+            "primary_method": "get",
+            "reason": "Import your Chess.com or Lichess games first so Lotus Chess can build personal puzzles from your weak lines.",
+            "status_line": "No imported games yet.",
+            "empty_state": True,
+        })
+        return status
+
+    if ready_count > 0:
+        status_line = f"{ready_count} ready to solve"
+        if due_now_count > 0:
+            status_line += f" · {due_now_count} due now"
+        if repeat_needed_count > 0:
+            status_line += f" · {repeat_needed_count} need another try"
+        if mastered_count > 0:
+            status_line += f" · {mastered_count} mastered"
+        status_line += f" · {done_count} completed"
+        status.update({
+            "can_start_immediately": True,
+            "primary_url": url_for("chess_puzzles_start_my_puzzles"),
+            "reason": "Generated from your Chess.com and Lichess games. Lotus Chess already has weak-line puzzles ready for you.",
+            "status_line": status_line,
+        })
+        if top_candidate:
+            if repeat_needed_count > 0:
+                status["reason"] = "Generated from your Chess.com and Lichess games. Some puzzles need another try, so Lotus Chess will bring those back first."
+            else:
+                status["reason"] = f"Generated from your Chess.com and Lichess games. Continue with {top_opening_label} · {top_line_label}."
+        return status
+
+    if visible_count > 0:
+        status_line = f"{visible_count} personal puzzles available"
+        if due_now_count > 0:
+            status_line += f" · {due_now_count} due now"
+        if repeat_needed_count > 0:
+            status_line += f" · {repeat_needed_count} need another try"
+        if mastered_count > 0:
+            status_line += f" · {mastered_count} mastered"
+        status_line += f" · {done_count} completed"
+        status.update({
+            "can_start_immediately": True,
+            "primary_url": url_for("chess_puzzles_start_my_puzzles"),
+            "reason": "Generated from your Chess.com and Lichess games. Lotus Chess can prepare the top weak-line puzzles for you now.",
+            "status_line": status_line,
+        })
+        if top_candidate:
+            if repeat_needed_count > 0:
+                status["reason"] = "Generated from your Chess.com and Lichess games. Some puzzles need another try, and Lotus Chess will bring those back first."
+            else:
+                status["reason"] = f"Generated from your Chess.com and Lichess games. The next puzzle comes from {top_opening_label} · {top_line_label}."
+        return status
+
+    status.update({
+        "primary_label": "Browse Games",
+        "primary_url": url_for("chess_games"),
+        "primary_method": "get",
+        "reason": "No weak-line puzzles are ready yet. Review recent games or import more games so Lotus Chess can surface better training positions.",
+        "status_line": f"{len(games)} imported games · no personal puzzles ready yet",
+        "empty_state": True,
+    })
+    return status
 
 
 def format_chess_percent(value):
@@ -2941,6 +4198,1777 @@ def normalize_chess_review_item_type(value):
     return "game"
 
 
+def normalize_chess_puzzle_seed_status(value):
+    normalized = str(value or "").strip().lower()
+    if normalized in {"training", "solved", "archived"}:
+        return normalized
+    return "new"
+
+
+def normalize_chess_auto_candidate_status(value):
+    normalized = str(value or "").strip().lower() or "candidate"
+    if normalized in {"candidate", "queued", "training", "done", "archived"}:
+        return normalized
+    return "candidate"
+
+
+def build_chess_puzzle_move_label(ply_index, move_san=""):
+    try:
+        ply_value = max(0, int(ply_index or 0))
+    except Exception:
+        ply_value = 0
+    move_text = str(move_san or "").strip()
+    if ply_value <= 0:
+        return "Start position"
+    move_number = (ply_value + 1) // 2
+    prefix = f"{move_number}." if ply_value % 2 == 1 else f"{move_number}..."
+    return f"{prefix} {move_text}".strip() if move_text else prefix
+
+
+def build_chess_puzzle_seed_signature(game_id, ply_index=0, fen=""):
+    normalized_game_id = normalize_chess_opening_token(game_id)
+    try:
+        ply_value = max(0, int(ply_index or 0))
+    except Exception:
+        ply_value = 0
+    fen_text = str(fen or "").strip()
+    fen_hash = hashlib.sha1(fen_text.encode("utf-8")).hexdigest()[:12] if fen_text else "nofen"
+    return f"{normalized_game_id}:{ply_value}:{fen_hash}"
+
+
+def find_chess_puzzle_seed(data, game_id="", ply_index=0, fen=""):
+    payload = data if isinstance(data, dict) else default_chess_data()
+    target_signature = build_chess_puzzle_seed_signature(game_id, ply_index=ply_index, fen=fen)
+    for seed in payload.get("puzzle_seeds", []) or []:
+        if not isinstance(seed, dict):
+            continue
+        if str(seed.get("signature", "") or "").strip() == target_signature:
+            return dict(seed)
+    return None
+
+
+def create_chess_puzzle_seed(data, game, ply_index=0, fen="", side_to_move="", user_note=""):
+    payload = data if isinstance(data, dict) else default_chess_data()
+    game_payload = dict(game or {})
+    game_id = str(game_payload.get("id", "") or "").strip()
+    if not game_id:
+        return {"created": False, "duplicate": False, "seed": None, "error": "Missing game id."}
+    try:
+        ply_value = max(0, int(ply_index or 0))
+    except Exception:
+        return {"created": False, "duplicate": False, "seed": None, "error": "Invalid move index."}
+    replay = build_chess_game_replay(game_payload)
+    positions = list(replay.get("positions", []) or [])
+    if not positions:
+        return {"created": False, "duplicate": False, "seed": None, "error": "No replay positions available for this game."}
+    if ply_value >= len(positions):
+        return {"created": False, "duplicate": False, "seed": None, "error": "That board position is not available."}
+    current_position = dict(positions[ply_value] or {})
+    fen_value = str(fen or current_position.get("fen", "") or "").strip()
+    if not fen_value:
+        return {"created": False, "duplicate": False, "seed": None, "error": "Missing board position."}
+    existing = find_chess_puzzle_seed(payload, game_id=game_id, ply_index=ply_value, fen=fen_value)
+    if existing:
+        return {"created": False, "duplicate": True, "seed": existing, "error": ""}
+    move_text = str(current_position.get("move", "") or "").strip()
+    move_label = build_chess_puzzle_move_label(ply_value, move_text if move_text != "start" else "")
+    opening_key = get_game_opening_key(game_payload)
+    opening_label = get_game_opening_label(game_payload)
+    opening = game_payload.get("opening", {}) if isinstance(game_payload.get("opening", {}), dict) else {}
+    signature = build_chess_puzzle_seed_signature(game_id, ply_index=ply_value, fen=fen_value)
+    seed = {
+        "id": f"seed-{secrets.token_hex(6)}",
+        "signature": signature,
+        "game_id": game_id,
+        "source": "personal_game",
+        "ply_index": ply_value,
+        "move_number_label": move_label,
+        "fen": fen_value,
+        "side_to_move": str(side_to_move or current_position.get("turn", "") or "").strip().lower() or "unknown",
+        "opening_key": opening_key,
+        "opening_label": opening_label,
+        "opening_name": str(opening.get("name", "") or "").strip(),
+        "opening_eco": str(opening.get("eco", "") or "").strip(),
+        "line_key": get_game_line_key(game_payload),
+        "line_label": get_game_line_label(game_payload),
+        "game_label": f"{str(game_payload.get('white', '') or '').strip() or 'White'} vs {str(game_payload.get('black', '') or '').strip() or 'Black'}",
+        "game_context": f"{str(game_payload.get('date', '') or '').strip() or 'Date pending'} · {chess_user_result_label(game_payload.get('user_result', ''))}",
+        "user_note": str(user_note or "").strip(),
+        "status": "new",
+        "created_at": current_timestamp(),
+        "updated_at": current_timestamp(),
+    }
+    payload.setdefault("puzzle_seeds", []).append(seed)
+    return {"created": True, "duplicate": False, "seed": seed, "error": ""}
+
+
+def build_chess_puzzle_seeds_snapshot(data):
+    payload = data if isinstance(data, dict) else default_chess_data()
+    games = {str(game.get("id", "") or "").strip(): dict(game) for game in (payload.get("games", []) or []) if isinstance(game, dict)}
+    seeds = []
+    counts = {"new": 0, "training": 0, "solved": 0, "archived": 0}
+    for raw_seed in payload.get("puzzle_seeds", []) or []:
+        if not isinstance(raw_seed, dict):
+            continue
+        seed = dict(raw_seed)
+        seed["status"] = normalize_chess_puzzle_seed_status(seed.get("status", "new"))
+        seed["source"] = str(seed.get("source", "") or "").strip() or "personal_game"
+        seed["game_id"] = str(seed.get("game_id", "") or "").strip()
+        seed["opening_key"] = str(seed.get("opening_key", "") or "").strip()
+        seed["opening_label"] = str(seed.get("opening_label", "") or "").strip() or "Opening pending"
+        seed["opening_name"] = str(seed.get("opening_name", "") or "").strip()
+        seed["opening_eco"] = str(seed.get("opening_eco", "") or "").strip()
+        seed["line_key"] = str(seed.get("line_key", "") or "").strip()
+        seed["line_label"] = str(seed.get("line_label", "") or "").strip()
+        seed["game_label"] = str(seed.get("game_label", "") or "").strip() or "Game unavailable"
+        seed["game_context"] = str(seed.get("game_context", "") or "").strip()
+        seed["user_note"] = str(seed.get("user_note", "") or "").strip()
+        seed["move_number_label"] = str(seed.get("move_number_label", "") or "").strip() or "Position"
+        seed["side_to_move"] = str(seed.get("side_to_move", "") or "").strip().lower() or "unknown"
+        seed["side_to_move_label"] = str(seed.get("side_to_move", "") or "").strip().title() or "Unknown"
+        seed["created_at"] = str(seed.get("created_at", "") or "").strip()
+        seed["updated_at"] = str(seed.get("updated_at", "") or "").strip()
+        seed["fen"] = str(seed.get("fen", "") or "").strip()
+        try:
+            seed["ply_index"] = max(0, int(seed.get("ply_index", 0) or 0))
+        except Exception:
+            seed["ply_index"] = 0
+        game_match = games.get(seed["game_id"])
+        seed["game_available"] = bool(game_match)
+        seed["game_href"] = url_for("chess_game_detail", game_id=chess_game_url_id(seed["game_id"]), ply=seed["ply_index"]) if seed["game_id"] else ""
+        seed["branch_href"] = url_for("chess_branch_detail", line_key=seed["line_key"], opening_key=seed["opening_key"]) if seed["line_key"] else (url_for("chess_branches", opening_key=seed["opening_key"]) if seed["opening_key"] else "")
+        if game_match:
+            seed["game_label"] = f"{str(game_match.get('white', '') or '').strip() or 'White'} vs {str(game_match.get('black', '') or '').strip() or 'Black'}"
+            seed["game_context"] = f"{str(game_match.get('date', '') or '').strip() or format_timestamp_label(game_match.get('imported_at', ''), default='Date pending')} · {chess_user_result_label(game_match.get('user_result', ''))}"
+            if not seed["opening_label"] or seed["opening_label"] == "Opening pending":
+                seed["opening_label"] = get_game_opening_label(game_match)
+        counts[seed["status"]] = int(counts.get(seed["status"], 0) or 0) + 1
+        seeds.append(seed)
+    seeds.sort(key=lambda item: parse_timestamp(item.get("updated_at", "")) or parse_timestamp(item.get("created_at", "")) or datetime.min, reverse=True)
+    return {
+        "items": seeds,
+        "seed_items": seeds,
+        "total_count": len(seeds),
+        "counts": counts,
+    }
+
+
+def update_chess_puzzle_seed_status(data, seed_id, status):
+    payload = data if isinstance(data, dict) else default_chess_data()
+    target_id = str(seed_id or "").strip()
+    if not target_id:
+        return {"changed": False, "seed": None, "error": "Missing puzzle seed id."}
+    status_value = normalize_chess_puzzle_seed_status(status)
+    for seed in payload.get("puzzle_seeds", []) or []:
+        if not isinstance(seed, dict):
+            continue
+        if str(seed.get("id", "") or "").strip() != target_id:
+            continue
+        if str(seed.get("status", "new") or "new").strip().lower() == status_value:
+            return {"changed": False, "seed": dict(seed), "error": f"Already marked {status_value}."}
+        seed["status"] = status_value
+        seed["updated_at"] = current_timestamp()
+        return {"changed": True, "seed": dict(seed), "error": ""}
+    return {"changed": False, "seed": None, "error": "Puzzle seed not found."}
+
+
+def build_auto_puzzle_candidate_id(line_key="", opening_key="", game_id="", ply_index=0, fen=""):
+    token = "|".join([
+        normalize_chess_opening_token(line_key),
+        normalize_chess_opening_token(opening_key),
+        str(game_id or "").strip(),
+        str(int(ply_index or 0)),
+        hashlib.sha1(str(fen or "").strip().encode("utf-8")).hexdigest()[:12] if str(fen or "").strip() else "",
+    ])
+    return f"auto-seed-{hashlib.sha1(token.encode('utf-8')).hexdigest()[:16]}"
+
+
+def build_auto_puzzle_candidate_state_map(data):
+    payload = data if isinstance(data, dict) else default_chess_data()
+    state_map = {}
+    for raw_item in payload.get("auto_puzzle_candidates", []) or []:
+        if not isinstance(raw_item, dict):
+            continue
+        candidate_id = str(raw_item.get("id", "") or "").strip()
+        if not candidate_id:
+            continue
+        state_map[candidate_id] = {
+            "id": candidate_id,
+            "status": normalize_chess_auto_candidate_status(raw_item.get("status", "candidate")),
+            "created_at": str(raw_item.get("created_at", "") or "").strip(),
+            "updated_at": str(raw_item.get("updated_at", "") or "").strip(),
+            "saved_seed_id": str(raw_item.get("saved_seed_id", "") or "").strip(),
+            "raw": dict(raw_item),
+        }
+    return state_map
+
+
+def upsert_auto_puzzle_candidate_state(data, candidate_id, status="", saved_seed_id=""):
+    payload = data if isinstance(data, dict) else default_chess_data()
+    target_id = str(candidate_id or "").strip()
+    if not target_id:
+        return {"changed": False, "item": None, "error": "Missing auto candidate id."}
+    status_value = normalize_chess_auto_candidate_status(status or "candidate")
+    saved_seed_value = str(saved_seed_id or "").strip()
+    for item in payload.get("auto_puzzle_candidates", []) or []:
+        if not isinstance(item, dict):
+            continue
+        if str(item.get("id", "") or "").strip() != target_id:
+            continue
+        changed = False
+        if status_value and str(item.get("status", "candidate") or "candidate").strip().lower() != status_value:
+            item["status"] = status_value
+            changed = True
+        if saved_seed_value and str(item.get("saved_seed_id", "") or "").strip() != saved_seed_value:
+            item["saved_seed_id"] = saved_seed_value
+            changed = True
+        if changed:
+            item["updated_at"] = current_timestamp()
+        return {"changed": changed, "item": dict(item), "error": ""}
+    new_item = {
+        "id": target_id,
+        "status": status_value or "candidate",
+        "saved_seed_id": saved_seed_value,
+        "created_at": current_timestamp(),
+        "updated_at": current_timestamp(),
+    }
+    payload.setdefault("auto_puzzle_candidates", []).append(new_item)
+    return {"changed": True, "item": dict(new_item), "error": ""}
+
+
+def build_auto_puzzle_candidate_priority(candidate, opening_summary=None):
+    payload = candidate if isinstance(candidate, dict) else {}
+    opening_payload = opening_summary if isinstance(opening_summary, dict) else {}
+    try:
+        total = max(0, int(payload.get("games_count", 0) or 0))
+    except Exception:
+        total = 0
+    try:
+        wins = max(0, int(payload.get("wins", 0) or 0))
+    except Exception:
+        wins = 0
+    try:
+        losses = max(0, int(payload.get("losses", 0) or 0))
+    except Exception:
+        losses = 0
+    try:
+        draws = max(0, int(payload.get("draws", 0) or 0))
+    except Exception:
+        draws = 0
+    try:
+        score_percent = float(payload.get("score_percent", 0.0) or 0.0)
+    except Exception:
+        score_percent = 0.0
+    try:
+        opening_total = max(0, int(payload.get("opening_total", opening_payload.get("total", 0)) or 0))
+    except Exception:
+        opening_total = 0
+    try:
+        opening_score = float(payload.get("opening_score_percent", opening_payload.get("score_percent", 0.0)) or 0.0)
+    except Exception:
+        opening_score = 0.0
+    status = normalize_chess_auto_candidate_status(payload.get("status", "candidate"))
+    reason_bits = []
+    score = 0.0
+
+    if total < 2:
+        score -= 12
+        reason_bits.append("Small sample")
+    else:
+        score += min(total, 6) * 5
+        if total >= 4:
+            reason_bits.append(f"{total} games in this branch")
+
+    if losses > wins:
+        score += 22
+        reason_bits.append("More losses than wins")
+    if losses >= 2:
+        score += 10
+        reason_bits.append(f"{losses} losses in this branch")
+
+    if score_percent <= 0:
+        score += 28
+        reason_bits.append("0% score")
+    elif score_percent <= 25:
+        score += 22
+        reason_bits.append("Very low score")
+    elif score_percent <= 40:
+        score += 14
+        reason_bits.append("Low score")
+    elif score_percent <= 50:
+        score += 8
+        reason_bits.append("Below average score")
+
+    if str(payload.get("source_user_result", "") or "").strip().lower() == "loss":
+        score += 10
+        reason_bits.append("Recent loss")
+
+    source_type = str(payload.get("source_type", payload.get("source", "")) or "").strip().lower()
+    if source_type == "weak_line":
+        score += 12
+        reason_bits.append("Weak recurring line")
+    elif source_type == "lost_game":
+        score += 8
+        reason_bits.append("Training position from a loss")
+    elif source_type == "weak_opening":
+        score += 6
+        reason_bits.append("Weak opening family")
+    elif source_type == "recent_game":
+        score += 2
+        reason_bits.append("Recent game review")
+    elif source_type == "engine_nearby_moment":
+        score += 6
+        reason_bits.append("Engine nearby moment")
+
+    if opening_total >= 3 and opening_score <= 45:
+        score += 12
+        reason_bits.append("Opening family also underperforming")
+
+    if status == "queued":
+        score += 8
+        reason_bits.append("Already queued for training")
+    elif status == "training":
+        score += 12
+        reason_bits.append("Already in training")
+    elif status == "done":
+        score = min(score - 25, 12)
+        reason_bits.append("Already completed")
+    elif status == "archived":
+        score = 0
+        reason_bits.append("Archived")
+
+    if not str(payload.get("fen", "") or "").strip():
+        score -= 5
+        reason_bits.append("Missing position data")
+
+    if not str(payload.get("game_id", "") or "").strip():
+        score -= 8
+        reason_bits.append("Missing game data")
+
+    if status == "done":
+        score = min(score, 12)
+    elif status == "archived":
+        score = 0
+
+    priority_score = max(0, min(100, int(round(score))))
+    if priority_score >= 70:
+        priority_label = "Critical"
+    elif priority_score >= 45:
+        priority_label = "High"
+    elif priority_score >= 25:
+        priority_label = "Medium"
+    else:
+        priority_label = "Low"
+    priority_reasons = []
+    for reason in reason_bits:
+        text = str(reason or "").strip()
+        if text and text not in priority_reasons:
+            priority_reasons.append(text)
+    if not priority_reasons:
+        priority_reasons.append("Weak branch from your imported games")
+    return {
+        "priority_score": priority_score,
+        "priority_label": priority_label,
+        "priority_reasons": priority_reasons[:3],
+    }
+
+
+def build_auto_puzzle_game_entries(data, ply_count=8):
+    payload = data if isinstance(data, dict) else default_chess_data()
+    try:
+        line_limit = max(1, int(ply_count or 8))
+    except Exception:
+        line_limit = 8
+    entries = []
+    for raw_game in payload.get("games", []) or []:
+        if not isinstance(raw_game, dict):
+            continue
+        replay = build_chess_game_replay(raw_game)
+        positions = [dict(item) for item in (replay.get("positions", []) or []) if isinstance(item, dict)]
+        moves = [str(move or "").strip() for move in (raw_game.get("moves", []) or []) if str(move or "").strip()]
+        user_color = str(raw_game.get("user_color", "") or "").strip().lower()
+        game_id = str(raw_game.get("id", "") or "").strip()
+        if not game_id or not replay.get("available") or len(positions) < 2 or not moves:
+            continue
+        if user_color not in {"white", "black"}:
+            continue
+        entries.append({
+            "game": dict(raw_game),
+            "replay": replay,
+            "positions": positions,
+            "moves": moves,
+            "game_id": game_id,
+            "user_color": user_color,
+            "user_result": str(raw_game.get("user_result", "") or "").strip().lower() or "unknown",
+            "opening_key": get_game_opening_key(raw_game),
+            "opening_label": get_game_opening_label(raw_game),
+            "line_key": get_game_line_key(raw_game, ply_count=line_limit),
+            "line_label": get_game_line_label(raw_game, ply_count=line_limit),
+            "line_ply_count": len(str(get_game_line_key(raw_game, ply_count=line_limit) or "").split()),
+            "sort_value": parse_timestamp(raw_game.get("end_time", "")) or parse_timestamp(raw_game.get("imported_at", "")) or parse_timestamp(raw_game.get("date", "")) or datetime.min,
+            "date_label": str(raw_game.get("date", "") or "").strip() or format_timestamp_label(raw_game.get("imported_at", ""), default="Date pending"),
+        })
+    return entries
+
+
+def choose_auto_puzzle_candidate_ply(game_entry, anchor_ply=None, preferred_min=8, preferred_max=16):
+    entry = game_entry if isinstance(game_entry, dict) else {}
+    positions = [dict(item) for item in (entry.get("positions", []) or []) if isinstance(item, dict)]
+    user_color = str(entry.get("user_color", "") or "").strip().lower()
+    if user_color not in {"white", "black"} or len(positions) < 2:
+        return None
+    max_start = len(positions) - 2
+    if max_start < 0:
+        return None
+
+    def has_future_user_move(start_ply):
+        try:
+            start_value = max(0, min(max_start, int(start_ply or 0)))
+        except Exception:
+            start_value = 0
+        for ply_index in range(start_value, max_start + 1):
+            before_position = dict(positions[ply_index] or {})
+            if str(before_position.get("turn", "") or "").strip().lower() != user_color:
+                continue
+            after_position = dict(positions[ply_index + 1] or {})
+            if str(after_position.get("last_move", "") or "").strip() and str(after_position.get("move", "") or "").strip():
+                return True
+        return False
+
+    candidate_starts = []
+
+    def add_start(value):
+        try:
+            start_value = max(0, min(max_start, int(value or 0)))
+        except Exception:
+            return
+        if start_value not in candidate_starts:
+            candidate_starts.append(start_value)
+
+    if anchor_ply is not None:
+        add_start(anchor_ply)
+        add_start(int(anchor_ply or 0) - 2)
+        add_start(int(anchor_ply or 0) + 2)
+    for value in range(preferred_min, preferred_max + 1, 2):
+        add_start(value)
+    add_start(entry.get("line_ply_count", 0))
+    add_start(6)
+    add_start(4)
+    add_start(2)
+    add_start(0)
+
+    for start_value in candidate_starts:
+        if has_future_user_move(start_value):
+            return start_value
+    return None
+
+
+def build_auto_puzzle_candidate_from_game(data, game_entry, state_map=None, line_entry=None, opening_summary=None, source_type="lost_game", reason="", anchor_ply=None):
+    payload = data if isinstance(data, dict) else default_chess_data()
+    entry = game_entry if isinstance(game_entry, dict) else {}
+    game = dict(entry.get("game", {}) or {})
+    positions = [dict(item) for item in (entry.get("positions", []) or []) if isinstance(item, dict)]
+    if not game or len(positions) < 2:
+        return None
+    game_id = str(entry.get("game_id", game.get("id", "")) or "").strip()
+    if not game_id:
+        return None
+    target_ply = choose_auto_puzzle_candidate_ply(entry, anchor_ply=anchor_ply)
+    if target_ply is None or target_ply >= len(positions):
+        return None
+    target_position = dict(positions[target_ply] or {})
+    fen_value = str(target_position.get("fen", "") or "").strip()
+    if not fen_value:
+        return None
+
+    source_value = str(source_type or "lost_game").strip().lower() or "lost_game"
+    line_payload = dict(line_entry or {})
+    opening_payload = dict(opening_summary or {})
+    opening_key = str(entry.get("opening_key", line_payload.get("opening_key", "")) or "").strip()
+    line_key = str(entry.get("line_key", line_payload.get("line_key", "")) or "").strip()
+    candidate_id = build_auto_puzzle_candidate_id(
+        line_key=line_key,
+        opening_key=opening_key,
+        game_id=game_id,
+        ply_index=target_ply,
+        fen=fen_value,
+    )
+    state = dict((state_map or {}).get(candidate_id, {}) or {})
+    status = normalize_chess_auto_candidate_status(state.get("status", "candidate"))
+    manual_seed = find_chess_puzzle_seed(payload, game_id=game_id, ply_index=target_ply, fen=fen_value)
+    if manual_seed and status == "candidate":
+        status = "training"
+
+    line_total = int(line_payload.get("total", 0) or 0)
+    line_wins = int(line_payload.get("wins", 0) or 0)
+    line_losses = int(line_payload.get("losses", 0) or 0)
+    line_draws = int(line_payload.get("draws", 0) or 0)
+    line_white_games = int(line_payload.get("white_games", 0) or 0)
+    line_black_games = int(line_payload.get("black_games", 0) or 0)
+    line_score_percent = float(line_payload.get("score_percent", 0.0) or 0.0)
+
+    opening_total = int(opening_payload.get("total", 0) or 0)
+    opening_wins = int(opening_payload.get("wins", 0) or 0)
+    opening_losses = int(opening_payload.get("losses", 0) or 0)
+    opening_draws = int(opening_payload.get("draws", 0) or 0)
+    opening_score = float(opening_payload.get("score_percent", 0.0) or 0.0)
+
+    use_opening_stats = source_value == "weak_opening" and opening_total > max(line_total, 0)
+    stats_total = opening_total if use_opening_stats and opening_total else max(line_total, 1)
+    stats_wins = opening_wins if use_opening_stats and opening_total else line_wins
+    stats_losses = opening_losses if use_opening_stats and opening_total else line_losses
+    stats_draws = opening_draws if use_opening_stats and opening_total else line_draws
+    stats_score_percent = opening_score if use_opening_stats and opening_total else line_score_percent
+    stats_white_games = int(opening_payload.get("white_games", 0) or 0) if use_opening_stats and opening_total else line_white_games
+    stats_black_games = int(opening_payload.get("black_games", 0) or 0) if use_opening_stats and opening_total else line_black_games
+
+    next_move = ""
+    moves = [str(move or "").strip() for move in (entry.get("moves", game.get("moves", []) or []) or []) if str(move or "").strip()]
+    if target_ply < len(moves):
+        next_move = moves[target_ply]
+
+    if not reason:
+        if source_value == "weak_line":
+            reason = "Weak line from your games."
+        elif source_value == "lost_game":
+            reason = "Training position from a lost game."
+        elif source_value == "weak_opening":
+            reason = "Low-score opening family from your games."
+        else:
+            reason = "Recent game review position."
+
+    candidate = {
+        "id": candidate_id,
+        "source": source_value,
+        "source_type": source_value,
+        "source_label": source_value.replace("_", " ").title(),
+        "status": status,
+        "saved_seed_id": str((manual_seed or {}).get("id", "") or state.get("saved_seed_id", "") or "").strip(),
+        "line_key": line_key,
+        "line_label": str(line_payload.get("line_label", entry.get("line_label", "")) or "").strip() or "Line pending",
+        "opening_key": opening_key,
+        "opening_label": str(line_payload.get("opening_label", entry.get("opening_label", "")) or "").strip() or "Unknown opening",
+        "opening_name": str((game.get("opening", {}) or {}).get("name", "") or "").strip(),
+        "opening_eco": str((game.get("opening", {}) or {}).get("eco", "") or "").strip(),
+        "opening_total": opening_total,
+        "opening_score_percent": opening_score,
+        "game_id": game_id,
+        "game_label": f"{str(game.get('white', '') or '').strip() or 'White'} vs {str(game.get('black', '') or '').strip() or 'Black'}",
+        "game_context": f"{str(entry.get('date_label', '') or '').strip() or 'Date pending'} · {chess_user_result_label(game.get('user_result', ''))}",
+        "user_color": str(entry.get("user_color", game.get("user_color", "")) or "").strip().lower() or "unknown",
+        "user_color_label": str(entry.get("user_color", game.get("user_color", "")) or "").strip().title() or "Unknown",
+        "user_result_label": chess_user_result_label(game.get("user_result", "")),
+        "source_user_result": str(game.get("user_result", "") or "").strip().lower() or "unknown",
+        "time_class_label": chess_time_class_label(game.get("time_class", "")),
+        "ply_index": target_ply,
+        "move_number_label": build_chess_puzzle_move_label(target_ply, str(target_position.get("move", "") or "").strip()),
+        "fen": fen_value,
+        "side_to_move": str(target_position.get("turn", "") or "").strip().lower() or "unknown",
+        "side_to_move_label": str(target_position.get("turn", "") or "").strip().title() or "Unknown",
+        "wins": stats_wins,
+        "losses": stats_losses,
+        "draws": stats_draws,
+        "games_count": stats_total,
+        "white_games": stats_white_games,
+        "black_games": stats_black_games,
+        "record_label": f"{stats_wins} W / {stats_losses} L / {stats_draws} D",
+        "score_percent": stats_score_percent,
+        "score_percent_label": format_chess_percent(stats_score_percent),
+        "reason": reason,
+        "next_move_label": next_move,
+        "latest_date": str(line_payload.get("latest_game_date", entry.get("date_label", "")) or "").strip() or "Date pending",
+        "game_available": True,
+        "game_href": url_for("chess_game_detail", game_id=chess_game_url_id(game_id), ply=target_ply),
+        "branch_href": url_for("chess_branch_detail", line_key=line_key, opening_key=opening_key) if line_key else (url_for("chess_branches", opening_key=opening_key) if opening_key else ""),
+        "created_at": str(state.get("created_at", "") or "").strip(),
+        "updated_at": str(state.get("updated_at", "") or "").strip(),
+        "sort_value": entry.get("sort_value") or datetime.min,
+    }
+    candidate.update(build_auto_puzzle_candidate_priority(candidate, opening_summary=opening_payload))
+    return candidate
+
+
+def build_auto_puzzle_candidates_snapshot(data):
+    payload = data if isinstance(data, dict) else default_chess_data()
+    state_map = build_auto_puzzle_candidate_state_map(payload)
+    latest_attempt_map = get_latest_puzzle_attempt_map(payload)
+    line_summary = build_opening_line_summary(payload, ply_count=8)
+    opening_lookup = {
+        str(item.get("key", "") or "").strip(): dict(item)
+        for item in build_opening_summary(payload)
+        if isinstance(item, dict)
+    }
+    weak_combined_keys = {
+        str(item.get("key", "") or "").strip()
+        for item in (line_summary.get("weak", []) or [])
+        if isinstance(item, dict)
+    }
+    line_lookup = {
+        str(item.get("key", "") or "").strip(): dict(item)
+        for item in (line_summary.get("items", []) or [])
+        if isinstance(item, dict)
+    }
+    games_with_replay = build_auto_puzzle_game_entries(payload, ply_count=int(line_summary.get("ply_count", 8) or 8))
+    candidate_items = []
+    counts = {"candidate": 0, "queued": 0, "training": 0, "done": 0, "archived": 0}
+    seen_signatures = set()
+    game_counts = {}
+    opening_counts = {}
+    max_candidates = 40
+    coverage_target = 15
+    repeat_needed_count = 0
+    due_now_count = 0
+    mastered_count = 0
+
+    def register_candidate(candidate, ignore_opening_cap=False):
+        nonlocal repeat_needed_count, due_now_count, mastered_count
+        if not isinstance(candidate, dict):
+            return False
+        candidate_id = str(candidate.get("id", "") or "").strip()
+        game_id = str(candidate.get("game_id", "") or "").strip()
+        fen_value = str(candidate.get("fen", "") or "").strip()
+        try:
+            ply_index = max(0, int(candidate.get("ply_index", 0) or 0))
+        except Exception:
+            ply_index = 0
+        if not candidate_id or not game_id or not fen_value:
+            return False
+        signature = build_chess_puzzle_seed_signature(game_id, ply_index=ply_index, fen=fen_value)
+        if signature in seen_signatures:
+            return False
+        if int(game_counts.get(game_id, 0) or 0) >= 2:
+            return False
+        opening_key = str(candidate.get("opening_key", "") or "").strip() or "__unknown__"
+        if not ignore_opening_cap and int(opening_counts.get(opening_key, 0) or 0) >= 3:
+            return False
+        repeat_state = get_candidate_repeat_state(candidate, latest_attempt_map.get(candidate_id))
+        candidate["latest_attempt"] = dict(repeat_state.get("latest_attempt", {}) or {})
+        candidate["latest_attempt_summary"] = dict(repeat_state.get("summary", {}) or {})
+        candidate["latest_attempt_status"] = str(repeat_state.get("latest_attempt_status", "") or "").strip()
+        candidate["repeat_needed"] = bool(repeat_state.get("repeat_needed", False))
+        candidate["due_now"] = bool(repeat_state.get("due_now", False))
+        candidate["review_state"] = str(repeat_state.get("review_state", "") or "").strip()
+        candidate["mastered"] = bool(repeat_state.get("mastered", False))
+        candidate["repeat_reason"] = str(repeat_state.get("reason", "") or "").strip()
+        candidate["repeat_coach_note"] = str(repeat_state.get("coach_note", "") or "").strip()
+        candidate["repeat_note"] = dict(repeat_state.get("repeat_note", {}) or {})
+        candidate["base_status"] = normalize_chess_auto_candidate_status(candidate.get("status", "candidate"))
+        candidate["status"] = str(repeat_state.get("effective_status", candidate["base_status"]) or candidate["base_status"]).strip().lower() or candidate["base_status"]
+        if candidate["repeat_needed"]:
+            repeat_needed_count += 1
+            priority_reasons = [str(item or "").strip() for item in (candidate.get("priority_reasons", []) or []) if str(item or "").strip()]
+            if candidate["repeat_reason"] and candidate["repeat_reason"] not in priority_reasons:
+                priority_reasons.insert(0, candidate["repeat_reason"])
+            candidate["priority_reasons"] = priority_reasons[:3]
+        if candidate["due_now"]:
+            due_now_count += 1
+        if candidate["mastered"]:
+            mastered_count += 1
+        seen_signatures.add(signature)
+        game_counts[game_id] = int(game_counts.get(game_id, 0) or 0) + 1
+        opening_counts[opening_key] = int(opening_counts.get(opening_key, 0) or 0) + 1
+        counts[candidate["status"]] = int(counts.get(candidate["status"], 0) or 0) + 1
+        candidate_items.append(candidate)
+        return True
+
+    for raw_line in line_summary.get("items", []) or []:
+        if not isinstance(raw_line, dict):
+            continue
+        total = int(raw_line.get("total", 0) or 0)
+        wins = int(raw_line.get("wins", 0) or 0)
+        losses = int(raw_line.get("losses", 0) or 0)
+        draws = int(raw_line.get("draws", 0) or 0)
+        score_percent = float(raw_line.get("score_percent", 0.0) or 0.0)
+        if total < 2:
+            continue
+        opening_key = str(raw_line.get("opening_key", "") or "").strip()
+        opening_summary = opening_lookup.get(opening_key, {})
+        opening_score = float(opening_summary.get("score_percent", 0.0) or 0.0)
+        opening_total = int(opening_summary.get("total", 0) or 0)
+        repeated_losses = losses >= 2
+        low_score = score_percent <= 40.0
+        more_losses_than_wins = losses > wins
+        weak_opening_family = opening_total >= 3 and opening_score <= 45.0
+        is_weak_line = str(raw_line.get("key", "") or "").strip() in weak_combined_keys
+        if not any((repeated_losses, low_score, more_losses_than_wins, weak_opening_family, is_weak_line)):
+            continue
+
+        matching_games = []
+        for game_entry in games_with_replay:
+            if normalize_chess_opening_token(game_entry.get("line_key", "")) != normalize_chess_opening_token(raw_line.get("line_key", "")):
+                continue
+            if opening_key and normalize_chess_opening_token(game_entry.get("opening_key", "")) != normalize_chess_opening_token(opening_key):
+                continue
+            matching_games.append(dict(game_entry))
+        if not matching_games:
+            continue
+        matching_games.sort(key=lambda item: (1 if str(item.get("user_result", "") or "").strip().lower() == "loss" else 0, item.get("sort_value") or datetime.min), reverse=True)
+        representative = matching_games[0]
+        reason = "Weak line from your games."
+        if repeated_losses:
+            reason = "Repeated losses in this branch."
+        elif more_losses_than_wins:
+            reason = "More losses than wins in this branch."
+        elif weak_opening_family:
+            reason = "Low score in this opening family."
+        elif low_score:
+            reason = "Low score in this branch."
+        candidate = build_auto_puzzle_candidate_from_game(
+            payload,
+            representative,
+            state_map=state_map,
+            line_entry=raw_line,
+            opening_summary=opening_summary,
+            source_type="weak_line",
+            reason=reason,
+            anchor_ply=len(str(raw_line.get("line_key", "") or "").split()),
+        )
+        register_candidate(candidate, ignore_opening_cap=True)
+        if len(candidate_items) >= max_candidates:
+            break
+
+    if len(candidate_items) < max_candidates:
+        lost_games = [
+            dict(item) for item in games_with_replay
+            if str(item.get("user_result", "") or "").strip().lower() == "loss"
+        ]
+        lost_games.sort(key=lambda item: item.get("sort_value") or datetime.min, reverse=True)
+        for game_entry in lost_games:
+            line_key = str(game_entry.get("line_key", "") or "").strip()
+            opening_key = str(game_entry.get("opening_key", "") or "").strip()
+            line_entry = line_lookup.get(f"{opening_key}||{line_key}", {})
+            candidate = build_auto_puzzle_candidate_from_game(
+                payload,
+                game_entry,
+                state_map=state_map,
+                line_entry=line_entry,
+                opening_summary=opening_lookup.get(opening_key, {}),
+                source_type="lost_game",
+                reason="Training position from a lost game.",
+                anchor_ply=max(8, int(game_entry.get("line_ply_count", 0) or 0)),
+            )
+            register_candidate(candidate)
+            if len(candidate_items) >= max_candidates or len(candidate_items) >= coverage_target:
+                break
+
+    if len(candidate_items) < coverage_target:
+        weak_openings = []
+        for opening_item in opening_lookup.values():
+            if not isinstance(opening_item, dict):
+                continue
+            opening_total = int(opening_item.get("total", 0) or 0)
+            opening_losses = int(opening_item.get("losses", 0) or 0)
+            opening_wins = int(opening_item.get("wins", 0) or 0)
+            opening_score = float(opening_item.get("score_percent", 0.0) or 0.0)
+            if opening_total < 2:
+                continue
+            if opening_score > 45.0 and opening_losses <= opening_wins:
+                continue
+            weak_openings.append(dict(opening_item))
+        weak_openings.sort(key=lambda item: (float(item.get("score_percent", 0.0) or 0.0), -int(item.get("total", 0) or 0)))
+        for opening_item in weak_openings:
+            opening_key = str(opening_item.get("key", "") or "").strip()
+            if int(opening_counts.get(opening_key or "__unknown__", 0) or 0) >= 3:
+                continue
+            matching_games = [
+                dict(item) for item in games_with_replay
+                if normalize_chess_opening_token(item.get("opening_key", "")) == normalize_chess_opening_token(opening_key)
+            ]
+            matching_games.sort(
+                key=lambda item: (
+                    1 if str(item.get("user_result", "") or "").strip().lower() == "loss" else 0,
+                    item.get("sort_value") or datetime.min,
+                ),
+                reverse=True,
+            )
+            for game_entry in matching_games:
+                line_entry = line_lookup.get(f"{opening_key}||{str(game_entry.get('line_key', '') or '').strip()}", {})
+                candidate = build_auto_puzzle_candidate_from_game(
+                    payload,
+                    game_entry,
+                    state_map=state_map,
+                    line_entry=line_entry,
+                    opening_summary=opening_item,
+                    source_type="weak_opening",
+                    reason="Review this opening family from a loss-prone line.",
+                    anchor_ply=max(8, int(game_entry.get("line_ply_count", 0) or 0)),
+                )
+                if register_candidate(candidate):
+                    break
+            if len(candidate_items) >= coverage_target or len(candidate_items) >= max_candidates:
+                break
+
+    if len(candidate_items) < coverage_target:
+        recent_games = sorted(games_with_replay, key=lambda item: item.get("sort_value") or datetime.min, reverse=True)
+        for game_entry in recent_games:
+            opening_key = str(game_entry.get("opening_key", "") or "").strip()
+            line_entry = line_lookup.get(f"{opening_key}||{str(game_entry.get('line_key', '') or '').strip()}", {})
+            candidate = build_auto_puzzle_candidate_from_game(
+                payload,
+                game_entry,
+                state_map=state_map,
+                line_entry=line_entry,
+                opening_summary=opening_lookup.get(opening_key, {}),
+                source_type="recent_game",
+                reason="Recent game review position.",
+                anchor_ply=max(8, int(game_entry.get("line_ply_count", 0) or 0)),
+            )
+            register_candidate(candidate)
+            if len(candidate_items) >= coverage_target or len(candidate_items) >= max_candidates:
+                break
+
+    for state_item in state_map.values():
+        raw_item = dict(state_item.get("raw", {}) or {})
+        if not raw_item:
+            continue
+        if str(raw_item.get("source_type", raw_item.get("source", "")) or "").strip().lower() != "engine_nearby_moment":
+            continue
+        persisted_candidate = dict(raw_item)
+        persisted_candidate["status"] = normalize_chess_auto_candidate_status(persisted_candidate.get("status", "queued"))
+        persisted_candidate["priority_label"] = str(persisted_candidate.get("priority_label", "") or "").strip() or "Medium"
+        persisted_candidate["priority_reasons"] = list(persisted_candidate.get("priority_reasons", []) or [])
+        persisted_candidate["sort_value"] = parse_timestamp(persisted_candidate.get("updated_at", "")) or parse_timestamp(persisted_candidate.get("created_at", "")) or datetime.min
+        if not str(persisted_candidate.get("score_percent_label", "") or "").strip():
+            persisted_candidate["score_percent_label"] = format_chess_percent(persisted_candidate.get("score_percent", 0.0))
+        if not str(persisted_candidate.get("record_label", "") or "").strip():
+            persisted_candidate["record_label"] = f"{int(persisted_candidate.get('wins', 0) or 0)} W / {int(persisted_candidate.get('losses', 0) or 0)} L / {int(persisted_candidate.get('draws', 0) or 0)} D"
+        if not str(persisted_candidate.get("source_label", "") or "").strip():
+            persisted_candidate["source_label"] = "Engine nearby moment"
+        register_candidate(persisted_candidate, ignore_opening_cap=True)
+
+    def candidate_sort_rank(item):
+        status_value = str(item.get("status", "") or "").strip().lower()
+        repeat_needed = bool(item.get("repeat_needed", False))
+        due_now = bool(item.get("due_now", False))
+        mastered = bool(item.get("mastered", False))
+        if status_value in {"queued", "training"}:
+            return 0
+        if status_value == "candidate" and repeat_needed and due_now:
+            return 1
+        if status_value == "candidate" and due_now and not mastered:
+            return 2
+        if status_value == "candidate" and not mastered:
+            return 3
+        if status_value == "candidate" and mastered:
+            return 4
+        if status_value == "done" and mastered:
+            return 5
+        if status_value == "done":
+            return 6
+        return 4
+
+    candidate_items.sort(
+        key=lambda item: (
+            candidate_sort_rank(item),
+            -(1 if bool(item.get("repeat_needed", False)) else 0),
+            -(1 if bool(item.get("due_now", False)) else 0),
+            1 if bool(item.get("mastered", False)) else 0,
+            -(int(item.get("priority_score", 0) or 0)),
+            -(int(item.get("games_count", 0) or 0)),
+            item.get("sort_value") or datetime.min,
+        )
+    )
+    visible_items = [item for item in candidate_items if str(item.get("status", "") or "").strip().lower() != "archived"]
+    actionable_items = [
+        item for item in candidate_items
+        if str(item.get("status", "") or "").strip().lower() not in {"done", "archived"}
+    ]
+    return {
+        "items": visible_items,
+        "candidate_items": visible_items,
+        "all_items": candidate_items,
+        "top_priority_candidate": actionable_items[0] if actionable_items else (candidate_items[0] if candidate_items else None),
+        "total_count": len(candidate_items),
+        "visible_count": len(visible_items),
+        "counts": counts,
+        "repeat_needed_count": repeat_needed_count,
+        "due_now_count": due_now_count,
+        "mastered_count": mastered_count,
+    }
+
+
+def add_top_auto_candidates_to_training_queue(data, limit=3):
+    payload = data if isinstance(data, dict) else default_chess_data()
+    try:
+        queue_limit = max(1, int(limit or 3))
+    except Exception:
+        queue_limit = 3
+    snapshot = build_auto_puzzle_candidates_snapshot(payload)
+    added = 0
+    touched = []
+    primary_items = [
+        dict(item) for item in (snapshot.get("candidate_items", []) or [])
+        if isinstance(item, dict)
+        and str(item.get("status", "") or "").strip().lower() == "candidate"
+        and not bool(item.get("mastered", False))
+    ]
+    fallback_mastered_items = [
+        dict(item) for item in (snapshot.get("all_items", []) or [])
+        if isinstance(item, dict)
+        and bool(item.get("mastered", False))
+        and str(item.get("status", "") or "").strip().lower() in {"candidate", "done"}
+    ]
+    for item in primary_items + ([] if primary_items else fallback_mastered_items):
+        if not isinstance(item, dict):
+            continue
+        result = upsert_auto_puzzle_candidate_state(payload, item.get("id", ""), status="queued", saved_seed_id=str(item.get("saved_seed_id", "") or "").strip())
+        if result.get("changed"):
+            added += 1
+            touched.append(dict(result.get("item", {}) or {}))
+        if added >= queue_limit:
+            break
+    return {"changed": added > 0, "added": added, "items": touched}
+
+
+def build_auto_training_session_payload(data, offset=0, candidate_id=""):
+    payload = data if isinstance(data, dict) else default_chess_data()
+    snapshot = build_auto_puzzle_candidates_snapshot(payload)
+    session_items = [
+        dict(item) for item in (snapshot.get("all_items", []) or [])
+        if isinstance(item, dict) and str(item.get("status", "") or "").strip().lower() in {"queued", "training"}
+    ]
+    session_items.sort(
+        key=lambda item: (
+            -(1 if bool(item.get("repeat_needed", False)) else 0),
+            -(int(item.get("priority_score", 0) or 0)),
+            0 if str(item.get("status", "") or "").strip().lower() == "queued" else 1,
+            -(int(item.get("games_count", 0) or 0)),
+            item.get("sort_value") or datetime.min,
+        )
+    )
+    total_candidates = int(snapshot.get("total_count", 0) or 0)
+    queued_count = sum(1 for item in session_items if str(item.get("status", "") or "").strip().lower() == "queued")
+    training_count = sum(1 for item in session_items if str(item.get("status", "") or "").strip().lower() == "training")
+    done_count = int((snapshot.get("counts", {}) or {}).get("done", 0) or 0)
+    if not session_items:
+        return {
+            "available": False,
+            "empty_state": True,
+            "current_item": None,
+            "current_position_label": "0 / 0",
+            "total_candidates": total_candidates,
+            "queued_count": queued_count,
+            "training_count": training_count,
+            "done_count": done_count,
+            "next_href": url_for("chess_training_session"),
+            "skip_href": url_for("chess_training_session"),
+            "snapshot": snapshot,
+        }
+    target_id = str(candidate_id or "").strip()
+    current_index = 0
+    if target_id:
+        for index, item in enumerate(session_items):
+            if str(item.get("id", "") or "").strip() == target_id:
+                current_index = index
+                break
+    else:
+        try:
+            current_index = int(offset or 0)
+        except Exception:
+            current_index = 0
+    if current_index < 0:
+        current_index = 0
+    current_index %= len(session_items)
+    current_item = dict(session_items[current_index])
+    changed = False
+    if str(current_item.get("status", "") or "").strip().lower() == "queued":
+        upsert_auto_puzzle_candidate_state(payload, current_item.get("id", ""), status="training", saved_seed_id=str(current_item.get("saved_seed_id", "") or "").strip())
+        current_item["status"] = "training"
+        changed = True
+    next_index = (current_index + 1) % len(session_items)
+    current_item["position_label"] = f"{current_index + 1} / {len(session_items)}"
+    current_item["practice_url"] = url_for("chess_training_puzzle", candidate_id=current_item.get("id", "")) if str(current_item.get("id", "") or "").strip() else ""
+    current_item["branch_url"] = str(current_item.get("branch_href", "") or "").strip()
+    current_item["game_url"] = str(current_item.get("game_href", "") or "").strip()
+    current_item["status_label"] = str(current_item.get("status", "") or "").strip().replace("_", " ").title() or "Candidate"
+    current_item["available"] = bool(current_item.get("fen")) or bool(current_item.get("game_url")) or bool(current_item.get("branch_url"))
+    current_item["priority_label"] = str(current_item.get("priority_label", "") or "").strip() or "Low"
+    current_item["priority_score"] = int(current_item.get("priority_score", 0) or 0)
+    current_item["priority_reasons"] = list(current_item.get("priority_reasons", []) or [])[:3]
+    current_item["mark_done_next_href"] = url_for("chess_training_session", offset=current_index)
+    current_item["archive_next_href"] = url_for("chess_training_session", offset=current_index)
+    if changed:
+        save_chess_data(payload)
+    return {
+        "available": True,
+        "empty_state": False,
+        "current_item": current_item,
+        "current_position_label": current_item["position_label"],
+        "total_candidates": total_candidates,
+        "queued_count": max(0, queued_count - 1) if changed else queued_count,
+        "training_count": training_count + 1 if changed else training_count,
+        "done_count": done_count,
+        "next_href": url_for("chess_training_session", offset=next_index),
+        "skip_href": url_for("chess_training_session", offset=next_index),
+        "snapshot": snapshot,
+    }
+
+
+def build_auto_training_puzzle_payload(data, candidate_id=""):
+    payload = data if isinstance(data, dict) else default_chess_data()
+    snapshot = build_auto_puzzle_candidates_snapshot(payload)
+    queue_items = [
+        dict(item) for item in (snapshot.get("all_items", []) or [])
+        if isinstance(item, dict) and str(item.get("status", "") or "").strip().lower() in {"queued", "training"}
+    ]
+    queue_items.sort(
+        key=lambda item: (
+            -(1 if bool(item.get("repeat_needed", False)) else 0),
+            -(int(item.get("priority_score", 0) or 0)),
+            0 if str(item.get("status", "") or "").strip().lower() == "queued" else 1,
+            -(int(item.get("games_count", 0) or 0)),
+            item.get("sort_value") or datetime.min,
+        )
+    )
+    target_candidate_id = str(candidate_id or "").strip()
+    current_index = 0
+    current_item = None
+    if target_candidate_id:
+        for index, item in enumerate(queue_items):
+            if str(item.get("id", "") or "").strip() == target_candidate_id:
+                current_item = dict(item)
+                current_index = index
+                break
+        if current_item is None:
+            for item in (snapshot.get("all_items", []) or []):
+                if not isinstance(item, dict):
+                    continue
+                if str(item.get("id", "") or "").strip() == target_candidate_id:
+                    current_item = dict(item)
+                    break
+    elif queue_items:
+        current_item = dict(queue_items[0])
+    total_candidates = int(snapshot.get("total_count", 0) or 0)
+    queued_count = sum(1 for item in queue_items if str(item.get("status", "") or "").strip().lower() == "queued")
+    training_count = sum(1 for item in queue_items if str(item.get("status", "") or "").strip().lower() == "training")
+    done_count = int((snapshot.get("counts", {}) or {}).get("done", 0) or 0)
+    if current_item is None:
+        return {
+            "available": False,
+            "empty_state": True,
+            "message": "Training queue complete.",
+            "current_item": None,
+            "steps": [],
+            "total_candidates": total_candidates,
+            "queued_count": queued_count,
+            "training_count": training_count,
+            "done_count": done_count,
+            "next_puzzle_href": url_for("chess_training_puzzle"),
+            "skip_href": url_for("chess_training_puzzle"),
+        }
+
+    current_status = str(current_item.get("status", "") or "").strip().lower()
+    changed = False
+    current_in_queue = False
+    if current_status in {"candidate", "queued"}:
+        upsert_auto_puzzle_candidate_state(payload, current_item.get("id", ""), status="training", saved_seed_id=str(current_item.get("saved_seed_id", "") or "").strip())
+        current_item["status"] = "training"
+        current_status = "training"
+        changed = True
+    if queue_items:
+        current_in_queue = any(str(item.get("id", "") or "").strip() == str(current_item.get("id", "") or "").strip() for item in queue_items)
+
+    next_candidate_id = ""
+    if queue_items and current_in_queue:
+        if current_index >= len(queue_items):
+            current_index = 0
+        if len(queue_items) > 1:
+            next_candidate_id = str(queue_items[(current_index + 1) % len(queue_items)].get("id", "") or "").strip()
+            if next_candidate_id == str(current_item.get("id", "") or "").strip():
+                next_candidate_id = ""
+
+    game_id = str(current_item.get("game_id", "") or "").strip()
+    game = find_chess_game(payload, game_id)
+    user_color = str((game or {}).get("user_color", current_item.get("user_color", "")) or "").strip().lower()
+    replay = build_chess_game_replay(game or {})
+    positions = list(replay.get("positions", []) or [])
+    candidate_ply = max(0, int(current_item.get("ply_index", 0) or 0))
+    start_ply = None
+    steps = []
+    unavailable_message = ""
+    if user_color not in {"white", "black"}:
+        unavailable_message = "Side unavailable for this training candidate."
+    elif not positions or not replay.get("available"):
+        unavailable_message = "This candidate does not have enough position data for interactive training."
+    else:
+        for ply_index in range(candidate_ply, max(0, len(positions) - 1)):
+            position = dict(positions[ply_index] or {})
+            if str(position.get("turn", "") or "").strip().lower() == user_color:
+                start_ply = ply_index
+                break
+        if start_ply is None:
+            unavailable_message = "This candidate does not have a usable continuation for your side."
+        else:
+            scan_ply = start_ply
+            while scan_ply < len(positions) - 1 and len(steps) < 4:
+                before_position = dict(positions[scan_ply] or {})
+                if str(before_position.get("turn", "") or "").strip().lower() != user_color:
+                    scan_ply += 1
+                    continue
+                user_after = dict(positions[scan_ply + 1] or {})
+                expected_uci = str(user_after.get("last_move", "") or "").strip()
+                expected_san = str(user_after.get("move", "") or "").strip()
+                if not expected_uci or not expected_san:
+                    break
+                fen_before = str(before_position.get("fen", "") or "").strip()
+                expected_idea = "It keeps the line idea."
+                if chesslib is not None and fen_before:
+                    try:
+                        board_for_idea = chesslib.Board(fen_before)
+                        move_for_idea = chesslib.Move.from_uci(expected_uci)
+                        expected_idea = describe_move_idea(board_for_idea, move_for_idea)
+                    except Exception:
+                        expected_idea = "It keeps the line idea."
+                legal_targets_by_source = {}
+                if chesslib is not None and fen_before:
+                    try:
+                        board = chesslib.Board(fen_before)
+                        for legal_move in board.legal_moves:
+                            uci_text = legal_move.uci()
+                            from_square = str(uci_text[:2] or "").strip()
+                            to_square = str(uci_text[2:4] or "").strip()
+                            if not from_square or not to_square:
+                                continue
+                            legal_targets_by_source.setdefault(from_square, []).append(to_square)
+                    except Exception:
+                        legal_targets_by_source = {}
+                auto_replies = []
+                advance_ply = scan_ply + 1
+                while advance_ply < len(positions) - 1 and str((positions[advance_ply] or {}).get("turn", "") or "").strip().lower() != user_color:
+                    reply_after = dict(positions[advance_ply + 1] or {})
+                    auto_replies.append({
+                        "move_san": str(reply_after.get("move", "") or "").strip(),
+                        "move_uci": str(reply_after.get("last_move", "") or "").strip(),
+                        "fen_after": str(reply_after.get("fen", "") or "").strip(),
+                    })
+                    advance_ply += 1
+                steps.append({
+                    "step_index": len(steps),
+                    "start_ply": scan_ply,
+                    "expected_move_san": expected_san,
+                    "expected_move_uci": expected_uci,
+                    "expected_move_idea": expected_idea,
+                    "expected_move_hint": expected_idea,
+                    "correct_feedback": f"Correct. {expected_idea}",
+                    "fen_before": fen_before,
+                    "fen_after_user": str(user_after.get("fen", "") or "").strip(),
+                    "fen_after_replies": str((positions[advance_ply] or {}).get("fen", "") or "").strip() if advance_ply < len(positions) else str(user_after.get("fen", "") or "").strip(),
+                    "side_to_move": user_color,
+                    "side_to_move_label": user_color.title(),
+                    "move_number_label": build_chess_puzzle_move_label(scan_ply + 1, expected_san),
+                    "auto_replies": auto_replies,
+                    "legal_targets_by_source": legal_targets_by_source,
+                })
+                scan_ply = advance_ply
+            if not steps:
+                unavailable_message = "This candidate does not have enough position data for interactive training."
+
+    current_item["status_label"] = str(current_item.get("status", "") or "").strip().replace("_", " ").title() or "Candidate"
+    current_item["priority_label"] = str(current_item.get("priority_label", "") or "").strip() or "Low"
+    current_item["priority_score"] = int(current_item.get("priority_score", 0) or 0)
+    current_item["priority_reasons"] = list(current_item.get("priority_reasons", []) or [])[:3]
+    current_item["user_color"] = user_color or "unknown"
+    current_item["user_color_label"] = user_color.title() if user_color in {"white", "black"} else "Unknown"
+    current_item["branch_url"] = str(current_item.get("branch_href", "") or "").strip()
+    current_item["game_url"] = str(current_item.get("game_href", "") or "").strip()
+    current_item["position_label"] = f"{current_index + 1} / {len(queue_items)}" if queue_items and current_in_queue else "Selected candidate"
+    current_item["practice_url"] = url_for("chess_training_puzzle", candidate_id=current_item.get("id", ""))
+    current_item["goal_message"] = build_personal_puzzle_goal(current_item)
+    if changed:
+        save_chess_data(payload)
+    next_puzzle_href = url_for("chess_training_puzzle", candidate_id=next_candidate_id) if next_candidate_id else url_for("chess_training_puzzle")
+    return {
+        "available": bool(steps),
+        "empty_state": False,
+        "message": unavailable_message,
+        "current_item": current_item,
+        "steps": steps,
+        "start_ply": start_ply,
+        "step_count": len(steps),
+        "total_candidates": total_candidates,
+        "queued_count": queued_count,
+        "training_count": training_count + (1 if changed and current_status == "training" else 0),
+        "done_count": done_count,
+        "next_puzzle_href": next_puzzle_href,
+        "skip_href": next_puzzle_href,
+        "complete_next_href": next_puzzle_href,
+    }
+
+
+def build_training_puzzle_engine_check(puzzle_payload, depth=None, time_ms=None):
+    payload = puzzle_payload if isinstance(puzzle_payload, dict) else {}
+    current_item = dict(payload.get("current_item", {}) or {})
+    candidate_id = str(current_item.get("id", "") or "").strip()
+    candidate_fen = str(current_item.get("fen", "") or "").strip()
+    steps = [dict(step) for step in (payload.get("steps", []) or []) if isinstance(step, dict)]
+    stored_step = dict(steps[0] or {}) if steps else {}
+    stored_move_uci = str(stored_step.get("expected_move_uci", "") or "").strip()
+    stored_move_san = str(stored_step.get("expected_move_san", "") or "").strip()
+    result = {
+        "candidate_id": candidate_id,
+        "requested": True,
+        "fen": candidate_fen,
+        "available": False,
+        "ok": False,
+        "error": "",
+        "stored_move_uci": stored_move_uci,
+        "stored_move_san": stored_move_san,
+        "stored_move_label": stored_move_san or stored_move_uci or "",
+        "comparison_label": "No stored move available",
+        "comparison_matches": False,
+        "analysis": None,
+    }
+    if not candidate_fen:
+        result["error"] = "This candidate does not have a FEN for engine analysis."
+        return result
+    analysis = analyze_fen_with_stockfish(candidate_fen, depth=depth, time_ms=time_ms)
+    result["analysis"] = analysis
+    result["available"] = bool(analysis.get("available"))
+    result["ok"] = bool(analysis.get("ok"))
+    result["error"] = str(analysis.get("error", "") or "").strip()
+    if not stored_move_uci:
+        result["comparison_label"] = "No stored move available"
+        return result
+    engine_move_uci = str(analysis.get("best_move_uci", "") or "").strip().lower()
+    if not engine_move_uci:
+        result["comparison_label"] = "No stored move available"
+        return result
+    if engine_move_uci == stored_move_uci.lower():
+        result["comparison_matches"] = True
+        result["comparison_label"] = "Engine move matches the stored move"
+    else:
+        result["comparison_label"] = "Engine suggests a different move"
+    return result
+
+
+def build_training_puzzle_critical_moment_check(data, puzzle_payload, depth=None, time_ms=None):
+    payload = data if isinstance(data, dict) else default_chess_data()
+    puzzle = puzzle_payload if isinstance(puzzle_payload, dict) else {}
+    current_item = dict(puzzle.get("current_item", {}) or {})
+    result = {
+        "requested": True,
+        "ok": False,
+        "error": "",
+        "candidate_id": str(current_item.get("id", "") or "").strip(),
+        "positions_checked": [],
+        "suggested_position": None,
+        "message": "",
+        "window_size": 0,
+    }
+    candidate_id = result["candidate_id"]
+    game_id = str(current_item.get("game_id", "") or "").strip()
+    if not candidate_id:
+        result["error"] = "Training candidate unavailable."
+        return result
+    if not get_engine_status().get("available"):
+        result["error"] = get_engine_status().get("message", "Engine unavailable.")
+        return result
+    if not game_id:
+        result["error"] = "Related game unavailable for this candidate."
+        return result
+    game = find_chess_game(payload, game_id)
+    if not isinstance(game, dict):
+        result["error"] = "Related game unavailable for this candidate."
+        return result
+    user_color = str((game or {}).get("user_color", current_item.get("user_color", "")) or "").strip().lower()
+    if user_color not in {"white", "black"}:
+        result["error"] = "Side unavailable for nearby engine check."
+        return result
+    replay = build_chess_game_replay(game)
+    positions = [dict(item) for item in (replay.get("positions", []) or []) if isinstance(item, dict)]
+    if not replay.get("available") or len(positions) < 2:
+        result["error"] = "This candidate does not have enough replay data for a nearby engine check."
+        return result
+    try:
+        candidate_ply = max(0, int(current_item.get("ply_index", 0) or 0))
+    except Exception:
+        candidate_ply = 0
+
+    user_positions = []
+    for ply_index in range(0, len(positions) - 1):
+        before_position = dict(positions[ply_index] or {})
+        if str(before_position.get("turn", "") or "").strip().lower() != user_color:
+            continue
+        after_position = dict(positions[ply_index + 1] or {})
+        stored_move_uci = str(after_position.get("last_move", "") or "").strip()
+        stored_move_san = str(after_position.get("move", "") or "").strip()
+        fen_before = str(before_position.get("fen", "") or "").strip()
+        if not fen_before or not stored_move_uci:
+            continue
+        user_positions.append({
+            "ply_index": ply_index,
+            "fen": fen_before,
+            "side_to_move": user_color,
+            "side_to_move_label": user_color.title(),
+            "stored_move_uci": stored_move_uci,
+            "stored_move_san": stored_move_san,
+            "stored_move_label": stored_move_san or stored_move_uci,
+            "move_number_label": build_chess_puzzle_move_label(ply_index + 1, stored_move_san),
+            "distance": abs(ply_index - candidate_ply),
+        })
+    if not user_positions:
+        result["error"] = "This candidate does not have enough replay data for a nearby engine check."
+        return result
+
+    closest_index = min(range(len(user_positions)), key=lambda idx: user_positions[idx]["distance"])
+    start_index = max(0, closest_index - 2)
+    end_index = min(len(user_positions), closest_index + 3)
+    window_positions = user_positions[start_index:end_index]
+    result["window_size"] = len(window_positions)
+    if not window_positions:
+        result["error"] = "No nearby positions were available for engine checking."
+        return result
+
+    checked_positions = []
+    for position in window_positions:
+        analysis = analyze_fen_with_stockfish(position.get("fen", ""), depth=depth, time_ms=time_ms)
+        engine_move_uci = str(analysis.get("best_move_uci", "") or "").strip()
+        engine_move_san = str(analysis.get("best_move_san", "") or "").strip()
+        stored_move_uci = str(position.get("stored_move_uci", "") or "").strip()
+        matches = bool(engine_move_uci and stored_move_uci and engine_move_uci.lower() == stored_move_uci.lower())
+        checked_positions.append({
+            **position,
+            "analysis": analysis,
+            "engine_move_uci": engine_move_uci,
+            "engine_move_san": engine_move_san,
+            "engine_move_label": engine_move_san or engine_move_uci or "Unavailable",
+            "matches_stored_move": matches,
+            "comparison_label": "Engine move matches the stored move" if matches else ("Engine suggests a different move" if engine_move_uci else "Engine check unavailable"),
+        })
+    result["positions_checked"] = checked_positions
+
+    differing_positions = [
+        item for item in checked_positions
+        if bool(item.get("analysis", {}).get("ok")) and not bool(item.get("matches_stored_move"))
+    ]
+    if differing_positions:
+        differing_positions.sort(key=lambda item: (item.get("distance", 99), item.get("ply_index", 0)))
+        suggested = dict(differing_positions[0])
+        suggested["reason"] = "Engine suggests a different move here. This is close to the current candidate and on your side to move."
+        result["suggested_position"] = suggested
+        result["message"] = "Possible nearby critical moment"
+        result["ok"] = True
+        return result
+
+    ok_positions = [item for item in checked_positions if bool(item.get("analysis", {}).get("ok"))]
+    result["ok"] = bool(ok_positions)
+    result["message"] = "No stronger nearby moment found."
+    return result
+
+
+def build_move_highlight_payload(attempted_move_uci="", expected_move_uci="", engine_move_uci=""):
+    def split_move(uci_text):
+        move_text = str(uci_text or "").strip().lower()
+        if len(move_text) < 4:
+            return {"uci": move_text, "from": "", "to": ""}
+        return {"uci": move_text, "from": move_text[:2], "to": move_text[2:4]}
+
+    return {
+        "attempted": split_move(attempted_move_uci),
+        "expected": split_move(expected_move_uci),
+        "engine": split_move(engine_move_uci),
+    }
+
+
+CHESS_THEME_GOAL_RULES = [
+    ({"mate", "matein1", "matein2", "matein3", "matein4", "matein5"}, "This is a mate pattern. Start by checking the king's forcing moves."),
+    ({"fork", "double attack"}, "Look for a fork: one move that attacks two targets."),
+    ({"pin", "skewer"}, "Look for a pinned piece. The tactic may work because it cannot move freely."),
+    ({"discovered attack", "discoveredattack"}, "Look for a discovered attack. One move may uncover pressure from another piece."),
+    ({"hanging piece", "hangingpiece", "material", "advantage"}, "There may be free material. Look for an undefended piece."),
+    ({"back rank", "backrank", "back rank mate", "backrankmate"}, "Watch the back rank. The king may have no escape squares."),
+    ({"endgame"}, "This is an endgame tactic. Accuracy matters more than speed."),
+    ({"sacrifice", "sac"}, "A sacrifice may open a forcing line. Check candidate forcing moves."),
+]
+
+
+def normalize_chess_theme_key(value):
+    return re.sub(r"[^a-z0-9]+", " ", str(value or "").strip().lower()).strip()
+
+
+def theme_matches_alias(raw_theme, aliases):
+    normalized = normalize_chess_theme_key(raw_theme)
+    if not normalized:
+        return False
+    normalized_aliases = {normalize_chess_theme_key(alias) for alias in aliases if normalize_chess_theme_key(alias)}
+    if normalized in normalized_aliases:
+        return True
+    compact = normalized.replace(" ", "")
+    compact_aliases = {alias.replace(" ", "") for alias in normalized_aliases}
+    if compact in compact_aliases:
+        return True
+    return any(alias in normalized or alias in compact for alias in normalized_aliases)
+
+
+def describe_theme_goal(themes):
+    theme_values = [str(item or "").strip() for item in (themes or []) if str(item or "").strip()]
+    for aliases, message in CHESS_THEME_GOAL_RULES:
+        if any(theme_matches_alias(theme, aliases) for theme in theme_values):
+            return message
+    if any(theme_matches_alias(theme, {"opening"}) for theme in theme_values):
+        return "Stay alert for a tactical shot hidden inside the opening moves."
+    return "Look for forcing moves: checks, captures, and threats."
+
+
+def build_personal_puzzle_goal(current_item):
+    item = current_item if isinstance(current_item, dict) else {}
+    opening_label = str(item.get("opening_label", "") or "").strip()
+    line_label = str(item.get("line_label", "") or "").strip()
+    reason = str(item.get("reason", "") or "").strip()
+    if opening_label and opening_label != "Unknown opening":
+        return f"This came from your own {opening_label} game. Focus on finding the move that keeps the line idea."
+    if line_label and line_label != "Line pending":
+        return f"This came from your own game. Stay with the {line_label} idea and find the move that keeps it together."
+    if "weak" in reason.lower():
+        return "This came from your own game. Focus on the move that keeps the line from drifting."
+    return "This came from your own game. Focus on finding the move that keeps the line idea."
+
+
+def piece_type_label(piece_type):
+    lookup = {
+        getattr(chesslib, "PAWN", 1): "pawn",
+        getattr(chesslib, "KNIGHT", 2): "knight",
+        getattr(chesslib, "BISHOP", 3): "bishop",
+        getattr(chesslib, "ROOK", 4): "rook",
+        getattr(chesslib, "QUEEN", 5): "queen",
+        getattr(chesslib, "KING", 6): "king",
+    }
+    return lookup.get(piece_type, "piece")
+
+
+def describe_move_idea(board, move, themes=None):
+    if chesslib is None or board is None or move is None:
+        return "It keeps the key idea in the position."
+    try:
+        if move not in board.legal_moves:
+            return "It keeps the key idea in the position."
+    except Exception:
+        return "It keeps the key idea in the position."
+
+    theme_values = [str(item or "").strip() for item in (themes or []) if str(item or "").strip()]
+    moved_piece = board.piece_at(move.from_square)
+    capture_piece = board.piece_at(move.to_square)
+    is_capture = bool(board.is_capture(move))
+    gives_check = bool(board.gives_check(move))
+    is_castle = bool(board.is_castling(move))
+    promotion = getattr(move, "promotion", None)
+    next_board = board.copy(stack=False)
+    try:
+        next_board.push(move)
+    except Exception:
+        return "It keeps the key idea in the position."
+
+    if next_board.is_checkmate():
+        return "It finishes with mate."
+    if promotion:
+        promoted_label = piece_type_label(promotion)
+        if gives_check:
+            return f"It promotes to a {promoted_label} with check."
+        return f"It promotes to a {promoted_label} and changes the position immediately."
+    if gives_check and is_capture:
+        target_label = piece_type_label(capture_piece.piece_type) if capture_piece else "piece"
+        return f"It gives check and removes the {target_label} at the same time."
+    if gives_check:
+        return "It gives check and keeps the move forcing."
+
+    if any(theme_matches_alias(theme, {"fork", "double attack"}) for theme in theme_values):
+        return "It creates a fork and attacks two targets at once."
+    if any(theme_matches_alias(theme, {"pin", "skewer"}) for theme in theme_values):
+        return "It leans on a pin so the defender cannot move freely."
+    if any(theme_matches_alias(theme, {"discovered attack", "discoveredattack"}) for theme in theme_values):
+        return "It uncovers an attack while the moved piece joins in."
+    if any(theme_matches_alias(theme, {"back rank", "backrank", "back rank mate", "backrankmate"}) for theme in theme_values):
+        return "It uses the back-rank weakness around the king."
+    if any(theme_matches_alias(theme, {"sacrifice", "sac"}) for theme in theme_values):
+        return "It gives material to open a forcing line."
+    if any(theme_matches_alias(theme, {"endgame"}) for theme in theme_values):
+        return "It keeps the endgame tactic precise."
+    if any(theme_matches_alias(theme, {"hanging piece", "hangingpiece", "material", "advantage"}) for theme in theme_values):
+        return "It picks up loose material."
+
+    if is_capture:
+        target_label = piece_type_label(capture_piece.piece_type) if capture_piece else "piece"
+        return f"It is a capture that removes the {target_label}."
+    if is_castle:
+        return "It improves king safety and brings the rook into play."
+
+    if moved_piece is not None:
+        attacked_targets = []
+        for square in next_board.attacks(move.to_square):
+            target_piece = next_board.piece_at(square)
+            if target_piece is None or target_piece.color == moved_piece.color:
+                continue
+            if target_piece.piece_type == getattr(chesslib, "KING", 6):
+                continue
+            attacked_targets.append(target_piece.piece_type)
+        valuable_targets = [piece for piece in attacked_targets if piece in {getattr(chesslib, "QUEEN", 5), getattr(chesslib, "ROOK", 4), getattr(chesslib, "BISHOP", 3), getattr(chesslib, "KNIGHT", 2)}]
+        if len(valuable_targets) >= 2:
+            return "It attacks two valuable targets at once."
+        piece_name = piece_type_label(moved_piece.piece_type)
+        if moved_piece.piece_type in {getattr(chesslib, "KNIGHT", 2), getattr(chesslib, "BISHOP", 3)}:
+            return f"It improves the {piece_name} and keeps pressure on the position."
+        if moved_piece.piece_type == getattr(chesslib, "ROOK", 4):
+            return "It activates the rook and increases pressure."
+        if moved_piece.piece_type == getattr(chesslib, "QUEEN", 5):
+            return "It brings the queen into the attack with purpose."
+    return "It keeps the key tactical idea in the position."
+
+
+def build_coach_move_explanation(board, move, themes=None, move_label=""):
+    idea = describe_move_idea(board, move, themes=themes)
+    label = str(move_label or "").strip()
+    if label:
+        return f"{label} {idea}"
+    return idea
+
+
+def build_engine_tutor_feedback(fen, attempted_move, expected_move="", expected_move_san="", user_color=""):
+    requested_fen = str(fen or "").strip()
+    attempted_uci = str(attempted_move or "").strip().lower()
+    expected_uci = str(expected_move or "").strip().lower()
+    result = {
+        "ok": False,
+        "label": "Try again",
+        "title": "Try again",
+        "text": "This move is not the line move. Try again.",
+        "engine_available": False,
+        "attempted_move_uci": attempted_uci,
+        "attempted_move_san": "",
+        "expected_move_uci": expected_uci,
+        "expected_move_san": str(expected_move_san or "").strip(),
+        "engine_move_uci": "",
+        "engine_move_san": "",
+        "highlights": build_move_highlight_payload(attempted_uci, expected_uci, ""),
+        "matches_expected": bool(attempted_uci and expected_uci and attempted_uci == expected_uci),
+        "matches_engine": False,
+        "engine_matches_expected": False,
+        "illegal_move": False,
+        "comparison_type": "unavailable",
+        "error": "",
+    }
+    if not requested_fen or chesslib is None:
+        result["comparison_type"] = "unavailable"
+        return result
+    try:
+        board = chesslib.Board(requested_fen)
+    except Exception:
+        result["error"] = "That position could not be checked."
+        result["comparison_type"] = "unavailable"
+        return result
+
+    attempted_obj = None
+    expected_obj = None
+    if attempted_uci:
+        try:
+            attempted_obj = chesslib.Move.from_uci(attempted_uci)
+        except Exception:
+            attempted_obj = None
+    if expected_uci:
+        try:
+            expected_obj = chesslib.Move.from_uci(expected_uci)
+        except Exception:
+            expected_obj = None
+    if attempted_obj is None or attempted_obj not in board.legal_moves:
+        result["illegal_move"] = True
+        result["title"] = "Illegal move"
+        result["label"] = "Not recommended"
+        result["text"] = "That move cannot be played in this position. Try again."
+        result["comparison_type"] = "illegal"
+        return result
+
+    try:
+        result["attempted_move_san"] = board.san(attempted_obj)
+    except Exception:
+        result["attempted_move_san"] = attempted_uci
+
+    analysis = analyze_fen_with_stockfish(requested_fen)
+    result["engine_available"] = bool(analysis.get("available"))
+    result["engine_move_uci"] = str(analysis.get("best_move_uci", "") or "").strip().lower()
+    result["engine_move_san"] = str(analysis.get("best_move_san", "") or "").strip()
+    engine_obj = None
+    if result["engine_move_uci"]:
+        try:
+            engine_obj = chesslib.Move.from_uci(result["engine_move_uci"])
+        except Exception:
+            engine_obj = None
+    result["highlights"] = build_move_highlight_payload(attempted_uci, expected_uci, result["engine_move_uci"])
+    result["matches_engine"] = bool(result["engine_move_uci"] and attempted_uci == result["engine_move_uci"])
+    result["engine_matches_expected"] = bool(
+        result["engine_move_uci"] and expected_uci and result["engine_move_uci"] == expected_uci
+    )
+    expected_label = result["expected_move_san"] or result["expected_move_uci"] or "the stored move"
+    engine_label = result["engine_move_san"] or result["engine_move_uci"] or ""
+    expected_idea = describe_move_idea(board, expected_obj) if expected_obj is not None else "It keeps the line idea."
+    attempted_idea = describe_move_idea(board, attempted_obj)
+    engine_idea = describe_move_idea(board, engine_obj) if engine_obj is not None else ""
+
+    if result["matches_expected"]:
+        result["ok"] = True
+        result["title"] = "Correct"
+        result["label"] = "Good move"
+        result["comparison_type"] = "attempted_matches_expected"
+        if result["matches_engine"]:
+            result["text"] = f"Correct. {attempted_idea} Engine also likes this move."
+        elif result["engine_move_san"]:
+            result["comparison_type"] = "engine_differs"
+            result["text"] = f"Correct. {attempted_idea} This is the stored solution move; engine suggests {engine_label} as another option."
+        else:
+            result["text"] = f"Correct. {attempted_idea}"
+        return result
+
+    result["title"] = "Not this line"
+    if result["matches_engine"]:
+        result["label"] = "Useful move"
+        result["comparison_type"] = "attempted_matches_engine"
+        result["text"] = f"{result['attempted_move_san']} is a useful idea, and the engine also points there. For this puzzle, train {expected_label}. Try again."
+        return result
+
+    result["label"] = "Risky move"
+    if result["engine_matches_expected"] and expected_label:
+        result["comparison_type"] = "engine_matches_expected"
+        result["text"] = f"{result['attempted_move_san']} is not the line move. The expected move is {expected_label}. {expected_idea} Try again."
+    elif engine_label:
+        result["comparison_type"] = "engine_differs"
+        result["text"] = f"{result['attempted_move_san']} is not the line move. Engine prefers {engine_label}. {engine_idea or expected_idea} Try again."
+    else:
+        result["comparison_type"] = "unavailable"
+        result["text"] = f"{result['attempted_move_san']} is not the line move. The expected move is {expected_label}. {expected_idea} Try again."
+    return result
+
+
+def build_engine_nearby_candidate(data, puzzle_payload, critical_check):
+    payload = data if isinstance(data, dict) else default_chess_data()
+    puzzle = puzzle_payload if isinstance(puzzle_payload, dict) else {}
+    current_item = dict(puzzle.get("current_item", {}) or {})
+    critical = critical_check if isinstance(critical_check, dict) else {}
+    suggested = dict(critical.get("suggested_position", {}) or {})
+    if not current_item or not suggested:
+        return None
+    game_id = str(current_item.get("game_id", "") or "").strip()
+    fen_value = str(suggested.get("fen", "") or "").strip()
+    try:
+        ply_index = max(0, int(suggested.get("ply_index", 0) or 0))
+    except Exception:
+        ply_index = 0
+    if not game_id or not fen_value:
+        return None
+    candidate_id = build_auto_puzzle_candidate_id(
+        line_key=str(current_item.get("line_key", "") or "").strip(),
+        opening_key=str(current_item.get("opening_key", "") or "").strip(),
+        game_id=game_id,
+        ply_index=ply_index,
+        fen=fen_value,
+    )
+    state_map = build_auto_puzzle_candidate_state_map(payload)
+    existing_state = dict((state_map.get(candidate_id, {}) or {}).get("raw", {}) or {})
+    manual_seed = find_chess_puzzle_seed(payload, game_id=game_id, ply_index=ply_index, fen=fen_value)
+    status_value = normalize_chess_auto_candidate_status(existing_state.get("status", "queued"))
+    if manual_seed and status_value == "candidate":
+        status_value = "training"
+    source_user_result = str(current_item.get("source_user_result", "") or "").strip().lower() or "unknown"
+    candidate = {
+        "id": candidate_id,
+        "source": "engine_nearby_moment",
+        "source_type": "engine_nearby_moment",
+        "source_label": "Engine nearby moment",
+        "status": status_value or "queued",
+        "saved_seed_id": str((manual_seed or {}).get("id", "") or existing_state.get("saved_seed_id", "") or "").strip(),
+        "original_candidate_id": str(current_item.get("id", "") or "").strip(),
+        "line_key": str(current_item.get("line_key", "") or "").strip(),
+        "line_label": str(current_item.get("line_label", "") or "").strip() or "Line pending",
+        "opening_key": str(current_item.get("opening_key", "") or "").strip(),
+        "opening_label": str(current_item.get("opening_label", "") or "").strip() or "Unknown opening",
+        "opening_name": str(current_item.get("opening_name", "") or "").strip(),
+        "opening_eco": str(current_item.get("opening_eco", "") or "").strip(),
+        "opening_total": int(current_item.get("opening_total", 0) or 0),
+        "opening_score_percent": float(current_item.get("opening_score_percent", 0.0) or 0.0),
+        "game_id": game_id,
+        "game_label": str(current_item.get("game_label", "") or "").strip() or "Game unavailable",
+        "game_context": str(current_item.get("game_context", "") or "").strip() or "Game unavailable",
+        "user_color": str(current_item.get("user_color", "") or "").strip().lower() or "unknown",
+        "user_color_label": str(current_item.get("user_color_label", "") or "").strip() or "Unknown",
+        "user_result_label": str(current_item.get("user_result_label", "") or "").strip() or chess_user_result_label(source_user_result),
+        "source_user_result": source_user_result,
+        "time_class_label": str(current_item.get("time_class_label", "") or "").strip(),
+        "ply_index": ply_index,
+        "move_number_label": str(suggested.get("move_number_label", "") or "").strip() or build_chess_puzzle_move_label(ply_index + 1, str(suggested.get("stored_move_san", "") or "").strip()),
+        "fen": fen_value,
+        "side_to_move": str(suggested.get("side_to_move", current_item.get("user_color", "")) or "").strip().lower() or "unknown",
+        "side_to_move_label": str(suggested.get("side_to_move_label", "") or "").strip() or "Unknown",
+        "wins": int(current_item.get("wins", 0) or 0),
+        "losses": int(current_item.get("losses", 0) or 0),
+        "draws": int(current_item.get("draws", 0) or 0),
+        "games_count": int(current_item.get("games_count", 0) or 0),
+        "white_games": int(current_item.get("white_games", 0) or 0),
+        "black_games": int(current_item.get("black_games", 0) or 0),
+        "record_label": str(current_item.get("record_label", "") or "").strip() or "Record unavailable",
+        "score_percent": float(current_item.get("score_percent", 0.0) or 0.0),
+        "score_percent_label": str(current_item.get("score_percent_label", "") or "").strip() or format_chess_percent(current_item.get("score_percent", 0.0)),
+        "reason": "Engine found a nearby training moment.",
+        "next_move_label": str(suggested.get("stored_move_label", "") or "").strip(),
+        "stored_move_uci": str(suggested.get("stored_move_uci", "") or "").strip(),
+        "stored_move_san": str(suggested.get("stored_move_san", "") or "").strip(),
+        "engine_suggested_move_uci": str(suggested.get("engine_move_uci", "") or "").strip(),
+        "engine_suggested_move_san": str(suggested.get("engine_move_san", "") or "").strip(),
+        "latest_date": str(current_item.get("latest_date", "") or "").strip() or "Date pending",
+        "game_available": bool(str(current_item.get("game_href", "") or "").strip()),
+        "game_href": str(current_item.get("game_href", "") or "").strip(),
+        "branch_href": str(current_item.get("branch_href", "") or "").strip(),
+        "created_at": str(existing_state.get("created_at", "") or "").strip() or current_timestamp(),
+        "updated_at": current_timestamp(),
+        "sort_value": current_item.get("sort_value") or datetime.min,
+    }
+    candidate.update(build_auto_puzzle_candidate_priority(candidate))
+    candidate["priority_reasons"] = list(candidate.get("priority_reasons", []) or [])
+    if "Engine nearby moment" not in candidate["priority_reasons"]:
+        candidate["priority_reasons"].insert(0, "Engine nearby moment")
+    return candidate
+
+
+def save_engine_nearby_candidate(data, candidate):
+    payload = data if isinstance(data, dict) else default_chess_data()
+    item = dict(candidate or {})
+    item.pop("sort_value", None)
+    candidate_id = str(item.get("id", "") or "").strip()
+    game_id = str(item.get("game_id", "") or "").strip()
+    fen_value = str(item.get("fen", "") or "").strip()
+    try:
+        ply_index = max(0, int(item.get("ply_index", 0) or 0))
+    except Exception:
+        ply_index = 0
+    if not candidate_id or not game_id or not fen_value:
+        return {"changed": False, "created": False, "item": None, "error": "Missing engine-derived candidate data."}
+    signature = build_chess_puzzle_seed_signature(game_id, ply_index=ply_index, fen=fen_value)
+    existing = None
+    for raw_item in payload.get("auto_puzzle_candidates", []) or []:
+        if not isinstance(raw_item, dict):
+            continue
+        raw_signature = build_chess_puzzle_seed_signature(
+            str(raw_item.get("game_id", "") or "").strip(),
+            ply_index=int(raw_item.get("ply_index", 0) or 0),
+            fen=str(raw_item.get("fen", "") or "").strip(),
+        )
+        if str(raw_item.get("id", "") or "").strip() == candidate_id or raw_signature == signature:
+            existing = raw_item
+            break
+    if existing is not None:
+        changed = False
+        for key, value in item.items():
+            if key == "created_at":
+                continue
+            if existing.get(key) != value:
+                existing[key] = value
+                changed = True
+        if str(existing.get("status", "") or "").strip().lower() == "archived":
+            existing["status"] = "queued"
+            changed = True
+        if changed:
+            existing["updated_at"] = current_timestamp()
+        return {"changed": changed, "created": False, "item": dict(existing), "error": ""}
+    payload.setdefault("auto_puzzle_candidates", []).append(dict(item))
+    return {"changed": True, "created": True, "item": dict(item), "error": ""}
+
+
 def get_chess_review_queue_item_key(item_type, game_id="", opening_key="", line_key=""):
     item_type_value = normalize_chess_review_item_type(item_type)
     if item_type_value == "line":
@@ -2984,7 +6012,7 @@ def build_chess_review_queue_snapshot(data):
         item["completed_at"] = str(item.get("completed_at", "") or "").strip() or None
         item["type_label"] = "Line" if item_type == "line" else ("Opening" if item_type == "opening" else "Game")
         if item_type == "line" and item["line_key"]:
-            item["action_url"] = url_for("chess_line_detail", line_key=item["line_key"], opening_key=item["opening_key"]) if item["opening_key"] else url_for("chess_line_detail", line_key=item["line_key"])
+            item["action_url"] = url_for("chess_branch_detail", line_key=item["line_key"], opening_key=item["opening_key"]) if item["opening_key"] else url_for("chess_branch_detail", line_key=item["line_key"])
         elif item_type == "opening" and item["opening_key"]:
             item["action_url"] = f"/chess/games?opening_key={urllib.parse.quote(item['opening_key'], safe='')}"
         elif item["game_id"]:
@@ -3118,7 +6146,198 @@ def complete_chess_review_queue_item(data, queue_id):
     return {"changed": False, "item": None, "error": "Review item not found."}
 
 
-def build_chess_home_cards(data, train_today_count=0, review_queue_count=0, progress_score_percent=0.0, courses_saved_count=0):
+def build_chess_review_session_payload(data, offset=0, queue_id=""):
+    payload = data if isinstance(data, dict) else default_chess_data()
+    snapshot = build_chess_review_queue_snapshot(payload)
+    active_items = [dict(item) for item in snapshot.get("active_items", []) or [] if isinstance(item, dict)]
+    completed_items = [dict(item) for item in snapshot.get("completed_items", []) or [] if isinstance(item, dict)]
+    active_count = len(active_items)
+    completed_count = len(completed_items)
+    total_count = active_count + completed_count
+    if not active_count:
+        return {
+            "available": False,
+            "empty_state": True,
+            "offset": 0,
+            "current_index": -1,
+            "current_item": None,
+            "active_items": active_items,
+            "completed_items": completed_items,
+            "active_count": active_count,
+            "completed_count": completed_count,
+            "total_count": total_count,
+            "current_position_label": "0 / 0",
+            "next_href": url_for("chess_review_session"),
+            "skip_href": url_for("chess_review_session"),
+            "practice_url": "",
+            "practice_label": "",
+            "open_url": "",
+            "open_label": "",
+            "mark_done_next_href": url_for("chess_review_session"),
+            "context_lines": [],
+            "review_snapshot": snapshot,
+        }
+
+    current_index = 0
+    target_queue_id = str(queue_id or "").strip()
+    if target_queue_id:
+        for index, item in enumerate(active_items):
+            if str(item.get("id", "") or "").strip() == target_queue_id:
+                current_index = index
+                break
+        else:
+            try:
+                current_index = int(offset or 0)
+            except Exception:
+                current_index = 0
+    else:
+        try:
+            current_index = int(offset or 0)
+        except Exception:
+            current_index = 0
+    if current_index < 0:
+        current_index = 0
+    current_index %= active_count
+    current_item = dict(active_items[current_index]) if active_items else None
+    next_index = (current_index + 1) % active_count if active_count else 0
+    prev_index = (current_index - 1 + active_count) % active_count if active_count else 0
+
+    current_item = dict(current_item or {})
+    current_item["index"] = current_index
+    current_item["position_label"] = f"{current_index + 1} / {active_count}"
+    current_item["type_label"] = str(current_item.get("type_label", "") or "").strip() or (
+        "Line" if current_item.get("type") == "line" else ("Opening" if current_item.get("type") == "opening" else "Game")
+    )
+
+    context_lines = []
+    practice_label = ""
+    practice_url = ""
+    open_label = ""
+    open_url = ""
+    review_state_note = ""
+    available = True
+
+    if current_item.get("type") == "line":
+        line_key = str(current_item.get("line_key", "") or "").strip()
+        opening_key = str(current_item.get("opening_key", "") or "").strip()
+        line_payload = build_chess_line_review_payload(payload, line_key, opening_key=opening_key) if line_key else {}
+        line_summary = dict(line_payload.get("line_summary", {}) or {})
+        line_label = str(current_item.get("line_label", "") or "").strip() or str(line_payload.get("line_label", "") or "").strip() or "Recurring line"
+        opening_label = str(current_item.get("opening_label", "") or "").strip() or str(line_payload.get("opening_labels_text", "") or "").strip() or "Opening pending"
+        practice_label = "Practice line"
+        practice_url = url_for("chess_line_drill", line_key=line_key, opening_key=opening_key) if line_key else str(current_item.get("action_url", "") or "").strip()
+        open_label = "Open branch"
+        open_url = url_for("chess_branch_detail", line_key=line_key, opening_key=opening_key) if line_key else str(current_item.get("action_url", "") or "").strip()
+        review_state_note = str(line_summary.get("review_state", "") or "").strip()
+        current_item["line_summary"] = line_summary
+        context_lines = [
+            opening_label,
+            line_label,
+            str(line_summary.get("sample_note", "") or "").strip() or "Not enough line data yet.",
+            f"Record: {str(line_summary.get('record', '') or '').strip()}" if line_summary.get("record") else "",
+            f"Score: {str(line_summary.get('score', '') or '').strip()}" if line_summary.get("score") else "",
+            f"Most common next move: {str(line_summary.get('next_move_label', '') or '').strip()}" if line_summary.get("next_move_label") else "",
+        ]
+        if not line_key or not line_payload or int(line_payload.get("total", 0) or 0) <= 0:
+            available = False
+    elif current_item.get("type") == "opening":
+        opening_key = str(current_item.get("opening_key", "") or "").strip()
+        opening_label = str(current_item.get("opening_label", "") or "").strip() or "Opening pending"
+        opening_summary = None
+        for item in build_opening_summary(payload):
+            if normalize_chess_opening_token(item.get("key", "")) == normalize_chess_opening_token(opening_key):
+                opening_summary = dict(item)
+                break
+        practice_label = "Open branches"
+        practice_url = url_for("chess_branches", opening_key=opening_key) if opening_key else str(current_item.get("action_url", "") or "").strip()
+        open_label = "Open opening"
+        open_url = url_for("chess_openings", opening_key=opening_key) if opening_key else str(current_item.get("action_url", "") or "").strip()
+        if opening_summary:
+            context_lines = [
+                opening_label,
+                f"{int(opening_summary.get('total', 0) or 0)} games",
+                str(opening_summary.get("score_percent", 0.0) or 0.0) + "% score",
+                f"Record: {int(opening_summary.get('wins', 0) or 0)} W / {int(opening_summary.get('losses', 0) or 0)} L / {int(opening_summary.get('draws', 0) or 0)} D",
+            ]
+            if int(opening_summary.get("white_games", 0) or 0) or int(opening_summary.get("black_games", 0) or 0):
+                context_lines.append(
+                    f"White {int(opening_summary.get('white_games', 0) or 0)} · Black {int(opening_summary.get('black_games', 0) or 0)}"
+                )
+        else:
+            available = False
+            context_lines = [opening_label, "Item data unavailable."]
+    else:
+        game_id = str(current_item.get("game_id", "") or "").strip()
+        game_match = None
+        for game in payload.get("games", []) or []:
+            if not isinstance(game, dict):
+                continue
+            if str(game.get("id", "") or "").strip() == game_id:
+                game_match = dict(game)
+                break
+        practice_label = "Open game"
+        practice_url = str(current_item.get("action_url", "") or "").strip() or (url_for("chess_game_detail", game_id=chess_game_url_id(game_id)) if game_id else url_for("chess_train"))
+        open_label = "Open games"
+        open_url = practice_url
+        if game_match:
+            opening_label = get_game_opening_label(game_match)
+            context_lines = [
+                f"{str(game_match.get('white', '') or '').strip() or 'White'} vs {str(game_match.get('black', '') or '').strip() or 'Black'}",
+                f"{str(game_match.get('date', '') or '').strip() or format_timestamp_label(game_match.get('imported_at', ''), default='Date pending')}",
+                f"{str(game_match.get('user_color', '') or '').strip().title() or 'Unknown'} · {chess_user_result_label(game_match.get('user_result', ''))}",
+                f"{chess_time_class_label(game_match.get('time_class', ''))} · {opening_label}",
+            ]
+        else:
+            available = False
+            context_lines = ["Item data unavailable."]
+
+    context_lines = [line for line in context_lines if str(line or "").strip()]
+    if not practice_url:
+        practice_url = url_for("chess_train")
+    if not open_url:
+        open_url = practice_url
+    if not practice_label:
+        practice_label = "Open item"
+    if not open_label:
+        open_label = "Open item"
+
+    current_item["available"] = available
+    current_item["context_lines"] = context_lines
+    current_item["practice_url"] = practice_url
+    current_item["practice_label"] = practice_label
+    current_item["open_url"] = open_url
+    current_item["open_label"] = open_label
+    current_item["review_state_note"] = review_state_note
+    current_item["current_label"] = current_item.get("line_label") or current_item.get("opening_label") or current_item.get("title") or "Review item"
+    current_item["current_type"] = current_item.get("type", "game")
+    current_item["mark_done_next_href"] = url_for("chess_review_session", offset=current_index)
+
+    return {
+        "available": True,
+        "empty_state": False,
+        "offset": current_index,
+        "current_index": current_index,
+        "current_item": current_item,
+        "active_items": active_items,
+        "completed_items": completed_items,
+        "active_count": active_count,
+        "completed_count": completed_count,
+        "total_count": total_count,
+        "current_position_label": f"{current_index + 1} / {active_count}",
+        "next_href": url_for("chess_review_session", offset=next_index),
+        "skip_href": url_for("chess_review_session", offset=next_index),
+        "prev_href": url_for("chess_review_session", offset=prev_index),
+        "practice_url": practice_url,
+        "practice_label": practice_label,
+        "open_url": open_url,
+        "open_label": open_label,
+        "mark_done_next_href": url_for("chess_review_session", offset=current_index),
+        "context_lines": context_lines,
+        "review_snapshot": snapshot,
+    }
+
+
+def build_chess_home_cards(data, train_today_count=0, review_queue_count=0, progress_score_percent=0.0, courses_saved_count=0, drills_count=0, puzzle_seeds_count=0):
     data = data if isinstance(data, dict) else default_chess_data()
     profiles = len(data.get("profiles", []) or [])
     imports = len(data.get("imports", []) or [])
@@ -3129,6 +6348,9 @@ def build_chess_home_cards(data, train_today_count=0, review_queue_count=0, prog
         {"label": "Imported games", "value": str(games) if games else "0"},
         {"label": "Progress", "value": format_chess_percent(progress_score_percent), "href": url_for("chess_progress")},
         {"label": "Train today", "value": str(train_today_count) if train_today_count else "0", "href": url_for("chess_train")},
+        {"label": "Drills", "value": str(drills_count) if drills_count else "0", "href": url_for("chess_drills")},
+        {"label": "Puzzle seeds", "value": str(puzzle_seeds_count) if puzzle_seeds_count else "0", "href": url_for("chess_puzzles")},
+        {"label": "Review session", "value": str(review_queue_count) if review_queue_count else "0", "href": url_for("chess_review_session")},
         {"label": "Review queue", "value": str(review_queue_count) if review_queue_count else "0"},
         {"label": "Courses saved", "value": str(courses_saved_count) if courses_saved_count else "0", "href": url_for("chess_courses")},
     ]
@@ -6538,12 +9760,15 @@ def save_reading_tts_timings(timings_path, metadata_path, text, payload):
 
 
 async def _save_reading_tts_audio(text, voice, output_path, metadata_path):
-    communicator = edge_tts.Communicate(text, voice, boundary="SentenceBoundary")
+    edge_tts_module = _get_edge_tts_module()
+    if edge_tts_module is None:
+        raise RuntimeError("Audio generation backend is not available.")
+    communicator = edge_tts_module.Communicate(text, voice, boundary="SentenceBoundary")
     await communicator.save(str(output_path), str(metadata_path))
 
 
 def generate_reading_tts_audio(text, voice, output_path, metadata_path=None):
-    if edge_tts is None:
+    if _get_edge_tts_module() is None:
         raise RuntimeError("Audio generation backend is not available.")
     output_path.parent.mkdir(parents=True, exist_ok=True)
     metadata_target = Path(metadata_path) if metadata_path else output_path.with_suffix(".metadata.jsonl")
@@ -6558,7 +9783,7 @@ def ensure_reading_tts_cache(tts_payload):
     needs_timings = not timings_path.exists()
     if not needs_audio and not needs_timings:
         return
-    if edge_tts is None:
+    if _get_edge_tts_module() is None:
         raise RuntimeError("Audio generation backend is not available.")
     cache_path.parent.mkdir(parents=True, exist_ok=True)
     generate_reading_tts_audio(tts_payload["text"], tts_payload["voice"], cache_path, metadata_path)
@@ -6777,6 +10002,7 @@ def load_cache_data():
         data.setdefault("films", {})
         data.setdefault("youtube_playlists", {})
         data.setdefault("youtube_section_feeds", {})
+        data.setdefault("youtube_channel_latest_uploads", {})
         return data
 
 
@@ -6912,6 +10138,51 @@ def set_persisted_youtube_section_feed_entry(key, payload):
         "data": json.loads(json.dumps(payload)),
     }
     save_cache_data(cache_data)
+
+
+def get_persisted_youtube_channel_latest_entry(key, force_refresh=False, allow_stale=False):
+    if force_refresh:
+        return None, None
+    cache_data = load_cache_data()
+    entry = cache_data.get("youtube_channel_latest_uploads", {}).get(key)
+    if not isinstance(entry, dict):
+        return None, None
+    stale = is_cache_entry_stale(entry)
+    if stale and not allow_stale:
+        return None, True
+    data = entry.get("data", {})
+    if not isinstance(data, dict):
+        return None, stale
+    return json.loads(json.dumps(data)), stale
+
+
+def set_persisted_youtube_channel_latest_entry(key, payload):
+    cache_data = load_cache_data()
+    cache_data.setdefault("youtube_channel_latest_uploads", {})
+    cache_data["youtube_channel_latest_uploads"][key] = {
+        "updated_at": current_timestamp(),
+        "data": json.loads(json.dumps(payload if isinstance(payload, dict) else {})),
+    }
+    save_cache_data(cache_data)
+
+
+def clear_persisted_youtube_channel_latest_cache(keys=None):
+    cache_data = load_cache_data()
+    bucket = cache_data.get("youtube_channel_latest_uploads", {})
+    if not isinstance(bucket, dict):
+        bucket = {}
+    changed = False
+    if keys is None:
+        if bucket:
+            cache_data["youtube_channel_latest_uploads"] = {}
+            changed = True
+    else:
+        for key in list(keys):
+            if key in bucket:
+                bucket.pop(key, None)
+                changed = True
+    if changed:
+        save_cache_data(cache_data)
 
 
 def clear_persisted_youtube_section_feed_cache(keys=None):
@@ -7301,6 +10572,9 @@ def canonical_section_name(value):
         "ytlibrary": "Library",
         "youtubewatchlater": "YouTube Watch Later",
         "watchlater": "YouTube Watch Later",
+        "myfavoret": "My Favorite",
+        "myfavorite": "My Favorite",
+        "myfavourite": "My Favorite",
     }
     return aliases.get(normalized, cleaned)
 
@@ -7894,20 +11168,27 @@ def _youtube_channel_upload_playlist_id(channel_id):
         cached = channel_cache.get(cache_key, {})
         if isinstance(cached, dict) and cached.get("uploads_playlist_id"):
             return str(cached.get("uploads_playlist_id", "") or "").strip()
-    if not YOUTUBE_API_KEY:
-        return ""
-    params = {
-        "part": "contentDetails",
-        "id": channel_id,
-        "key": YOUTUBE_API_KEY,
-    }
-    try:
-        response = requests.get("https://www.googleapis.com/youtube/v3/channels", params=params, timeout=15)
-        if response.status_code != 200:
+    data = {}
+    if YOUTUBE_API_KEY:
+        params = {
+            "part": "contentDetails",
+            "id": channel_id,
+            "key": YOUTUBE_API_KEY,
+        }
+        try:
+            response = requests.get("https://www.googleapis.com/youtube/v3/channels", params=params, timeout=15)
+            if response.status_code == 200:
+                data = response.json() or {}
+        except Exception:
+            data = {}
+    if not data:
+        service = build_youtube_service()
+        if not service:
             return ""
-        data = response.json() or {}
-    except Exception:
-        return ""
+        try:
+            data = service.channels().list(part="contentDetails", id=channel_id).execute() or {}
+        except Exception:
+            return ""
     uploads_playlist_id = ""
     for item in data.get("items", []) or []:
         uploads_playlist_id = (
@@ -7926,7 +11207,63 @@ def _youtube_channel_upload_playlist_id(channel_id):
     return str(uploads_playlist_id or "").strip()
 
 
-def _youtube_channel_latest_video_summary(channel_id, channel_name="", fallback_video=None):
+def _fetch_youtube_channel_latest_video_via_rss(channel_id):
+    channel_id = str(channel_id or "").strip()
+    if not channel_id:
+        return {}
+    rss_url = f"https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}"
+    try:
+        response = requests.get(rss_url, timeout=8)
+    except Exception:
+        return {}
+    if response.status_code != 200:
+        return {}
+    try:
+        import xml.etree.ElementTree as ET
+        root = ET.fromstring(response.text)
+    except Exception:
+        return {}
+    ns = {
+        "atom": "http://www.w3.org/2005/Atom",
+        "yt": "http://www.youtube.com/xml/schemas/2015",
+        "media": "http://search.yahoo.com/mrss/",
+    }
+    entry = root.find("atom:entry", ns)
+    if entry is None:
+        return {}
+    video_id = str(entry.findtext("yt:videoId", default="", namespaces=ns) or "").strip()
+    if not video_id:
+        return {}
+    title = str(entry.findtext("atom:title", default="", namespaces=ns) or "").strip()
+    published_at = str(entry.findtext("atom:published", default="", namespaces=ns) or "").strip()
+    author = entry.find("atom:author", ns)
+    channel_name = ""
+    if author is not None:
+        channel_name = str(author.findtext("atom:name", default="", namespaces=ns) or "").strip()
+    thumbnail_url = ""
+    media_group = entry.find("media:group", ns)
+    if media_group is not None:
+        thumb = media_group.find("media:thumbnail", ns)
+        if thumb is not None:
+            thumbnail_url = str(thumb.attrib.get("url", "") or "").strip()
+    if not thumbnail_url:
+        thumbnail_url = f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg"
+    return {
+        "title": title,
+        "video_id": video_id,
+        "playlist_id": "",
+        "playlist_item_id": "",
+        "playlist_name": "Channel Feed",
+        "channel_name": channel_name or "Unknown Channel",
+        "channel_id": channel_id,
+        "thumb": thumbnail_url,
+        "duration": "",
+        "published_at": published_at,
+        "url": f"https://www.youtube.com/watch?v={video_id}",
+    }
+
+
+def _youtube_channel_latest_video_summary(channel_id, channel_name="", fallback_video=None, fetch_live=True):
     channel_id = str(channel_id or "").strip()
     cache_key = _youtube_channel_latest_video_cache_key(channel_id or channel_name)
     with RUNTIME_CACHE_LOCK:
@@ -7934,6 +11271,32 @@ def _youtube_channel_latest_video_summary(channel_id, channel_name="", fallback_
         cached = channel_cache.get(cache_key, {})
         if isinstance(cached, dict) and isinstance(cached.get("latest_video"), dict):
             return json.loads(json.dumps(cached.get("latest_video", {})))
+    persisted_entry, _persisted_stale = get_persisted_youtube_channel_latest_entry(cache_key, allow_stale=True)
+    if isinstance(persisted_entry, dict) and isinstance(persisted_entry.get("latest_video"), dict):
+        with RUNTIME_CACHE_LOCK:
+            RUNTIME_CACHE.setdefault("youtube_channel_latest_uploads", {})[cache_key] = json.loads(json.dumps(persisted_entry))
+        return json.loads(json.dumps(persisted_entry.get("latest_video", {})))
+    if not fetch_live:
+        if fallback_video:
+            return build_youtube_channel_video_summary(fallback_video)
+        return {}
+    if not YOUTUBE_API_KEY:
+        latest_video = _fetch_youtube_channel_latest_video_via_rss(channel_id)
+        if latest_video:
+            payload = {
+                "channel_id": channel_id,
+                "uploads_playlist_id": "",
+                "latest_video": json.loads(json.dumps(latest_video)),
+                "latest_source": "rss_latest",
+                "updated_at": current_timestamp(),
+            }
+            with RUNTIME_CACHE_LOCK:
+                RUNTIME_CACHE.setdefault("youtube_channel_latest_uploads", {})[cache_key] = json.loads(json.dumps(payload))
+            set_persisted_youtube_channel_latest_entry(cache_key, payload)
+            return json.loads(json.dumps(latest_video))
+        if fallback_video:
+            return build_youtube_channel_video_summary(fallback_video)
+        return {}
 
     fallback_video = fallback_video if isinstance(fallback_video, dict) else {}
     if not channel_id:
@@ -7948,6 +11311,7 @@ def _youtube_channel_latest_video_summary(channel_id, channel_name="", fallback_
         return {}
 
     latest_video = {}
+    latest_source = "none"
     if YOUTUBE_API_KEY:
         params = {
             "part": "snippet",
@@ -7972,25 +11336,34 @@ def _youtube_channel_latest_video_summary(channel_id, channel_name="", fallback_
                         "playlist_item_id": str(item.get("id", "") or "").strip(),
                         "playlist_name": "Uploads",
                         "channel_name": str(snippet.get("videoOwnerChannelTitle") or snippet.get("channelTitle") or channel_name or "").strip() or channel_name or "Unknown Channel",
+                        "channel_id": str(snippet.get("videoOwnerChannelId") or snippet.get("channelId") or channel_id).strip(),
                         "thumb": get_best_thumbnail(snippet, video_id),
                         "duration": get_youtube_duration(video_id).get("display", "0:00"),
                         "published_at": str(snippet.get("publishedAt", "") or "").strip(),
                         "url": f"https://www.youtube.com/watch?v={video_id}&list={uploads_playlist_id}",
                     }
+                    latest_source = "api_latest"
                     break
         except Exception:
             latest_video = {}
+    if not latest_video:
+        latest_video = _fetch_youtube_channel_latest_video_via_rss(channel_id)
+        if latest_video:
+            latest_source = "rss_latest"
 
     if not latest_video and fallback_video:
         latest_video = build_youtube_channel_video_summary(fallback_video)
 
+    payload = {
+        "channel_id": channel_id,
+        "uploads_playlist_id": uploads_playlist_id,
+        "latest_video": json.loads(json.dumps(latest_video)),
+        "latest_source": latest_source,
+        "updated_at": current_timestamp(),
+    }
     with RUNTIME_CACHE_LOCK:
-        RUNTIME_CACHE.setdefault("youtube_channel_latest_uploads", {})[cache_key] = {
-            "channel_id": channel_id,
-            "uploads_playlist_id": uploads_playlist_id,
-            "latest_video": json.loads(json.dumps(latest_video)),
-            "updated_at": current_timestamp(),
-        }
+        RUNTIME_CACHE.setdefault("youtube_channel_latest_uploads", {})[cache_key] = json.loads(json.dumps(payload))
+    set_persisted_youtube_channel_latest_entry(cache_key, payload)
     return json.loads(json.dumps(latest_video))
 
 
@@ -8019,7 +11392,11 @@ def _resolve_pockettube_feed_per_page(value, default=12):
 
 def _apply_pockettube_feed_pagination(feed_context, page=None, per_page=None):
     context = json.loads(json.dumps(feed_context if isinstance(feed_context, dict) else {}))
+    context["name"] = canonical_section_name(context.get("name", ""))
+    context["group_name"] = canonical_section_name(context.get("group_name", ""))
+    context["channel_group_label"] = canonical_section_name(context.get("channel_group_label", ""))
     feed_all = list(context.get("feed_all", []) or context.get("feed_preview", []) or context.get("feed_items", []) or [])
+    available_video_count = len(feed_all)
     if page is None or per_page is None:
         try:
             request_page = request.args.get("page", 1)
@@ -8112,6 +11489,16 @@ def _apply_pockettube_feed_pagination(feed_context, page=None, per_page=None):
     context["feed_items"] = page_items
     context["pagination_numbers"] = [page]
     context["feed_visible"] = bool(context.get("pockettube_group_visible") or int(context.get("channel_count", 0) or 0) > 0)
+    if context["feed_visible"] and int(context.get("channel_count", 0) or 0) > 0:
+        if available_video_count <= 0:
+            context["empty_reason"] = "no_local_videos"
+        elif total_count <= 0:
+            context["empty_reason"] = "filters"
+        else:
+            context["empty_reason"] = ""
+    else:
+        context["empty_reason"] = "no_channels"
+    context["available_video_count"] = available_video_count
     return context
 
 
@@ -8158,6 +11545,57 @@ def fetch_youtube_channel_group_feed_videos(channel_id, channel_name="", limit=4
     return json.loads(json.dumps(videos))
 
 
+def refresh_pockettube_section_latest_uploads(section_name, admin_data=None, max_channels=200):
+    admin_data = admin_data if isinstance(admin_data, dict) else load_admin_data()
+    pockettube_context = _pockettube_section_membership_context(section_name, admin_data=admin_data)
+    channels = list(pockettube_context.get("channels", []) or [])
+    target_channels = channels[:max(max_channels, 0)]
+    fetched = 0
+    found = 0
+    latest_items = []
+    cache_keys = []
+    source_counter = {}
+    for record in target_channels:
+        channel_id = str(record.get("channel_id", "") or "").strip()
+        if not channel_id:
+            continue
+        fetched += 1
+        latest_video = _youtube_channel_latest_video_summary(
+            channel_id,
+            channel_name=record.get("channel_name", ""),
+            fallback_video=None,
+            fetch_live=True,
+        )
+        cache_key = _youtube_channel_latest_video_cache_key(channel_id)
+        cache_keys.append(cache_key)
+        persisted_entry, _persisted_stale = get_persisted_youtube_channel_latest_entry(cache_key, allow_stale=True)
+        latest_source = str((persisted_entry or {}).get("latest_source", "") or "").strip()
+        if latest_source:
+            source_counter[latest_source] = source_counter.get(latest_source, 0) + 1
+        if not isinstance(latest_video, dict) or not str(latest_video.get("video_id", "") or "").strip():
+            continue
+        latest_items.append(dict(latest_video))
+        found += 1
+    preferred_source = "none"
+    if source_counter:
+        preferred_source = sorted(source_counter.items(), key=lambda item: (-int(item[1] or 0), item[0]))[0][0]
+    clear_persisted_youtube_section_feed_cache(keys=[_youtube_section_feed_cache_key(section_name)])
+    return {
+        "attempted": True,
+        "section_name": canonical_section_name(section_name),
+        "group_name": pockettube_context.get("group_name", "") or canonical_section_name(section_name),
+        "channel_count": len(channels),
+        "channels_requested": len(target_channels),
+        "channels_fetched": fetched,
+        "latest_videos_found": found,
+        "source_used": preferred_source,
+        "fallback_reason": "" if found else ("latest_fetch_unavailable" if preferred_source == "none" else "no_latest_items_found"),
+        "fetched_at": current_timestamp(),
+        "cache_keys": cache_keys,
+        "latest_items": latest_items[:24],
+    }
+
+
 def build_youtube_section_feed_context(section_name, admin_data=None, limit=24, force_refresh=False):
     admin_data = admin_data if isinstance(admin_data, dict) else load_admin_data()
     section_key = _youtube_section_feed_cache_key(section_name)
@@ -8168,6 +11606,8 @@ def build_youtube_section_feed_context(section_name, admin_data=None, limit=24, 
         feed_count = int(payload.get("feed_count", payload.get("video_count", 0)) or 0)
         channel_count = int(payload.get("channel_count", 0) or 0)
         page_items = payload.get("feed_page_items") or payload.get("feed_items") or payload.get("feed_preview") or []
+        if channel_count > 0 and feed_count <= 0 and not page_items:
+            return False
         return bool(feed_count or channel_count or page_items)
 
     with RUNTIME_CACHE_LOCK:
@@ -8199,7 +11639,7 @@ def build_youtube_section_feed_context(section_name, admin_data=None, limit=24, 
     channels = list(pockettube_context.get("channels", []) or [])
     if not channels:
         empty_context = {
-            "name": section_name,
+            "name": canonical_section_name(section_name),
             "slug": section_slug(section_name),
             "section_kind": section_profile.get("section_kind", ""),
             "section_scope": section_profile.get("section_scope", ""),
@@ -8222,6 +11662,8 @@ def build_youtube_section_feed_context(section_name, admin_data=None, limit=24, 
             "fingerprint": pockettube_context.get("fingerprint", ""),
             "matched_sections": pockettube_context.get("matched_sections", 0),
             "pockettube_group_visible": False,
+            "empty_reason": "no_channels",
+            "available_video_count": 0,
         }
         with RUNTIME_CACHE_LOCK:
             RUNTIME_CACHE.setdefault("youtube_section_feeds", {})[section_key] = json.loads(json.dumps(empty_context))
@@ -8236,20 +11678,55 @@ def build_youtube_section_feed_context(section_name, admin_data=None, limit=24, 
     })
 
     per_channel_limit = 1
+    local_video_lookup, local_video_diagnostics = _build_local_pockettube_channel_video_lookup(
+        channels,
+        per_channel_limit=per_channel_limit,
+    )
+    feed_source_used = "local_playlist_cache" if int(local_video_diagnostics.get("local_matched_video_count", 0) or 0) > 0 else "none"
+    with RUNTIME_CACHE_LOCK:
+        latest_fetch_diagnostics = json.loads(json.dumps(
+            (RUNTIME_CACHE.setdefault("youtube_channel_debug", {}) or {}).get(
+                f"pockettube_latest:{section_key}",
+                {},
+            ) or {}
+        ))
+    if not latest_fetch_diagnostics:
+        latest_fetch_diagnostics = {
+        "attempted": False,
+        "channels_requested": 0,
+        "channels_fetched": 0,
+        "latest_videos_found": 0,
+        "source_used": "none",
+        "fallback_reason": "not_requested",
+        "fetched_at": "",
+        }
 
     feed_items = []
     channel_groups = []
     seen_video_ids = set()
     feed_order_index = 0
+    latest_cached_count = 0
+    latest_source_counter = {}
     for record in channels:
         channel_id = str(record.get("channel_id", "") or "").strip()
         if not channel_id:
             continue
-        recent_videos = fetch_youtube_channel_group_feed_videos(
+        recent_videos = []
+        latest_video = _youtube_channel_latest_video_summary(
             channel_id,
             channel_name=record.get("channel_name", ""),
-            limit=per_channel_limit,
+            fallback_video=None,
+            fetch_live=False,
         )
+        if isinstance(latest_video, dict) and str(latest_video.get("video_id", "") or "").strip():
+            recent_videos = [latest_video]
+            latest_cached_count += 1
+            cache_key = _youtube_channel_latest_video_cache_key(channel_id)
+            persisted_entry, _persisted_stale = get_persisted_youtube_channel_latest_entry(cache_key, allow_stale=True)
+            latest_source = str((persisted_entry or {}).get("latest_source", "") or "").strip() or "persisted_latest"
+            latest_source_counter[latest_source] = latest_source_counter.get(latest_source, 0) + 1
+        else:
+            recent_videos = list(local_video_lookup.get(channel_id, []) or [])
         channel_videos = []
         for video in recent_videos:
             if not isinstance(video, dict):
@@ -8292,6 +11769,17 @@ def build_youtube_section_feed_context(section_name, admin_data=None, limit=24, 
             "source": record.get("source", "pockettube"),
         })
 
+    if latest_cached_count > 0:
+        preferred_latest_source = sorted(
+            latest_source_counter.items(),
+            key=lambda item: (-int(item[1] or 0), item[0]),
+        )[0][0] if latest_source_counter else "persisted_latest"
+        feed_source_used = preferred_latest_source or "persisted_latest"
+    elif int(local_video_diagnostics.get("local_matched_video_count", 0) or 0) > 0:
+        feed_source_used = "local_playlist_cache"
+    else:
+        feed_source_used = "none"
+
     feed_items.sort(key=_pockettube_feed_sort_key)
     feed_items = _enrich_pockettube_feed_videos(feed_items, fetch_missing=True)
     feed_context = {
@@ -8318,6 +11806,11 @@ def build_youtube_section_feed_context(section_name, admin_data=None, limit=24, 
         "fingerprint": pockettube_context.get("fingerprint", ""),
         "matched_sections": pockettube_context.get("matched_sections", 0),
         "pockettube_group_visible": True,
+        "empty_reason": "no_local_videos" if not feed_items else "",
+        "available_video_count": len(feed_items),
+        "feed_source_used": feed_source_used or "none",
+        "local_video_diagnostics": local_video_diagnostics,
+        "latest_fetch_diagnostics": latest_fetch_diagnostics,
     }
     with RUNTIME_CACHE_LOCK:
         RUNTIME_CACHE.setdefault("youtube_section_feeds", {})[section_key] = json.loads(json.dumps(feed_context))
@@ -9169,7 +12662,7 @@ def refresh_film_cache_from_source():
     return [dict(film) for film in films]
 
 
-def refresh_all_cached_data(refresh_films=True, refresh_youtube=True):
+def refresh_all_cached_data(refresh_films=True, refresh_youtube=True, pockettube_section_name="", pockettube_max_channels=200):
     if refresh_films:
         refresh_film_cache_from_source()
     if not refresh_youtube:
@@ -9182,6 +12675,16 @@ def refresh_all_cached_data(refresh_films=True, refresh_youtube=True):
         for playlist in section_playlists:
             if playlist.get("id"):
                 get_all_playlist_videos(playlist["id"], force_refresh=True)
+    hydrate_cached_youtube_playlist_channel_ids(fetch_missing=True)
+    if pockettube_section_name:
+        latest_result = refresh_pockettube_section_latest_uploads(
+            pockettube_section_name,
+            max_channels=pockettube_max_channels,
+        )
+        with RUNTIME_CACHE_LOCK:
+            RUNTIME_CACHE.setdefault("youtube_channel_debug", {})[
+                f"pockettube_latest:{_youtube_section_feed_cache_key(pockettube_section_name)}"
+            ] = json.loads(json.dumps(latest_result))
     clear_persisted_youtube_section_feed_cache()
 
 # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
@@ -13859,11 +17362,12 @@ def _build_pockettube_shuffle_pool(feed_context):
 def _enrich_pockettube_feed_videos(videos, fetch_missing=True):
     items = [dict(video) for video in (videos or []) if isinstance(video, dict)]
     video_ids = [str(item.get("video_id", "") or "").strip() for item in items if str(item.get("video_id", "") or "").strip()]
-    if fetch_missing and video_ids and YOUTUBE_API_KEY:
+    if fetch_missing and video_ids and (YOUTUBE_API_KEY or youtube_oauth_ready()):
         missing_video_ids = [
             video_id for video_id in video_ids
             if not isinstance(YOUTUBE_DURATION_CACHE.get(video_id, {}), dict)
             or "live_broadcast_content" not in (YOUTUBE_DURATION_CACHE.get(video_id, {}) or {})
+            or "channel_id" not in (YOUTUBE_DURATION_CACHE.get(video_id, {}) or {})
         ]
         if missing_video_ids:
             fetch_youtube_video_metadata(missing_video_ids)
@@ -13883,6 +17387,10 @@ def _enrich_pockettube_feed_videos(videos, fetch_missing=True):
         item["duration_seconds"] = duration_info.get("seconds", item.get("duration_seconds", 0))
         if not item.get("duration"):
             item["duration"] = duration_info.get("display", item.get("duration", "0:00"))
+        if not item.get("channel_id"):
+            item["channel_id"] = str(duration_info.get("channel_id", "") or "").strip()
+        if not item.get("channel_name"):
+            item["channel_name"] = str(duration_info.get("channel_name", "") or "").strip()
         published_at = str(item.get("published_at", "") or "").strip()
         item["published_at"] = published_at
         item["published_display"] = str(item.get("published_display", "") or "").strip() or format_timestamp_label(published_at, default="")
@@ -13902,23 +17410,45 @@ def _enrich_pockettube_feed_videos(videos, fetch_missing=True):
 
 
 def fetch_youtube_video_metadata(video_ids):
-    missing = [video_id for video_id in video_ids if video_id and video_id not in YOUTUBE_DURATION_CACHE]
+    missing = []
+    for video_id in video_ids:
+        if not video_id:
+            continue
+        cached = YOUTUBE_DURATION_CACHE.get(video_id, {})
+        if not isinstance(cached, dict):
+            missing.append(video_id)
+            continue
+        if (
+            "seconds" not in cached
+            or "live_broadcast_content" not in cached
+            or "channel_id" not in cached
+        ):
+            missing.append(video_id)
     if not missing:
+        return
+    service = None if YOUTUBE_API_KEY else build_youtube_service()
+    if not YOUTUBE_API_KEY and not service:
         return
     for start in range(0, len(missing), 50):
         chunk = missing[start:start + 50]
-        params = {
-            "part": "contentDetails,snippet,liveStreamingDetails",
-            "id": ",".join(chunk),
-            "key": YOUTUBE_API_KEY
-        }
-        try:
-            response = requests.get("https://www.googleapis.com/youtube/v3/videos", params=params, timeout=15)
-        except Exception:
-            continue
-        if response.status_code != 200:
-            continue
-        data = response.json()
+        if YOUTUBE_API_KEY:
+            params = {
+                "part": "contentDetails,snippet,liveStreamingDetails",
+                "id": ",".join(chunk),
+                "key": YOUTUBE_API_KEY
+            }
+            try:
+                response = requests.get("https://www.googleapis.com/youtube/v3/videos", params=params, timeout=15)
+            except Exception:
+                continue
+            if response.status_code != 200:
+                continue
+            data = response.json()
+        else:
+            try:
+                data = service.videos().list(part="contentDetails,snippet,liveStreamingDetails", id=",".join(chunk)).execute() or {}
+            except Exception:
+                continue
         found = set()
         for item in data.get("items", []):
             snippet = item.get("snippet", {}) or {}
@@ -13929,6 +17459,8 @@ def fetch_youtube_video_metadata(video_ids):
                 "display": format_duration(duration_seconds),
                 "live_broadcast_content": str(snippet.get("liveBroadcastContent", "") or "").strip().lower(),
                 "published_at": str(snippet.get("publishedAt", "") or "").strip(),
+                "channel_id": str(snippet.get("channelId", "") or "").strip(),
+                "channel_name": str(snippet.get("channelTitle", "") or "").strip(),
                 "scheduled_start_time": str(live_details.get("scheduledStartTime", "") or "").strip(),
                 "actual_start_time": str(live_details.get("actualStartTime", "") or "").strip(),
                 "video_type": _classify_pockettube_feed_video_type(
@@ -13947,6 +17479,152 @@ def fetch_youtube_video_metadata(video_ids):
             if video_id not in found:
                 YOUTUBE_DURATION_CACHE[video_id] = {"seconds": 0, "display": "0:00"}
     save_duration_cache()
+
+
+def _iter_local_cached_youtube_playlist_videos(cache_data=None):
+    cache_payload = cache_data if isinstance(cache_data, dict) else load_cache_data()
+    youtube_playlists = cache_payload.get("youtube_playlists", {}) if isinstance(cache_payload, dict) else {}
+    if not isinstance(youtube_playlists, dict):
+        return
+    for playlist_id, entry in youtube_playlists.items():
+        payload = entry if isinstance(entry, dict) else {}
+        videos = payload.get("data", [])
+        if not isinstance(videos, list):
+            continue
+        updated_at = str(payload.get("updated_at", "") or "").strip()
+        for index, video in enumerate(videos):
+            if not isinstance(video, dict):
+                continue
+            yield playlist_id, updated_at, index, video
+
+
+def hydrate_cached_youtube_playlist_channel_ids(limit=2500, fetch_missing=False):
+    cache_data = load_cache_data()
+    missing_video_ids = []
+    scanned_videos = 0
+    matched_channel_id_count = 0
+    changed = False
+    last_cache_update = ""
+
+    for _, updated_at, _, video in _iter_local_cached_youtube_playlist_videos(cache_data):
+        scanned_videos += 1
+        if updated_at and (not last_cache_update or updated_at > last_cache_update):
+            last_cache_update = updated_at
+        current_channel_id = str(video.get("channel_id", "") or "").strip()
+        cached_meta = YOUTUBE_DURATION_CACHE.get(str(video.get("video_id", "") or "").strip(), {})
+        if not current_channel_id and isinstance(cached_meta, dict):
+            hydrated_channel_id = str(cached_meta.get("channel_id", "") or "").strip()
+            if hydrated_channel_id:
+                video["channel_id"] = hydrated_channel_id
+                if not video.get("channel_name") and cached_meta.get("channel_name"):
+                    video["channel_name"] = str(cached_meta.get("channel_name", "") or "").strip()
+                current_channel_id = hydrated_channel_id
+                changed = True
+        if current_channel_id:
+            matched_channel_id_count += 1
+            continue
+        video_id = str(video.get("video_id", "") or "").strip()
+        if video_id and len(missing_video_ids) < limit:
+            missing_video_ids.append(video_id)
+
+    missing_video_ids = list(dict.fromkeys(missing_video_ids))
+    if missing_video_ids and fetch_missing:
+        fetch_youtube_video_metadata(missing_video_ids)
+        for _, updated_at, _, video in _iter_local_cached_youtube_playlist_videos(cache_data):
+            if updated_at and (not last_cache_update or updated_at > last_cache_update):
+                last_cache_update = updated_at
+            current_channel_id = str(video.get("channel_id", "") or "").strip()
+            if current_channel_id:
+                continue
+            cached_meta = YOUTUBE_DURATION_CACHE.get(str(video.get("video_id", "") or "").strip(), {})
+            if not isinstance(cached_meta, dict):
+                continue
+            hydrated_channel_id = str(cached_meta.get("channel_id", "") or "").strip()
+            if not hydrated_channel_id:
+                continue
+            video["channel_id"] = hydrated_channel_id
+            if not video.get("channel_name") and cached_meta.get("channel_name"):
+                video["channel_name"] = str(cached_meta.get("channel_name", "") or "").strip()
+            matched_channel_id_count += 1
+            changed = True
+
+    if changed:
+        try:
+            save_cache_data(cache_data)
+            clear_youtube_runtime_cache()
+        except PermissionError:
+            pass
+
+    return {
+        "scanned_videos": scanned_videos,
+        "hydration_candidate_count": len(missing_video_ids),
+        "matched_channel_id_count": matched_channel_id_count,
+        "cache_changed": changed,
+        "last_cache_update": last_cache_update,
+        "oauth_ready": bool(youtube_oauth_ready()),
+        "api_key_ready": bool(YOUTUBE_API_KEY),
+        "fetch_missing_attempted": bool(fetch_missing and missing_video_ids),
+    }
+
+
+def _build_local_pockettube_channel_video_lookup(channels, per_channel_limit=1):
+    channel_id_set = {
+        str(record.get("channel_id", "") or "").strip()
+        for record in (channels or [])
+        if str(record.get("channel_id", "") or "").strip()
+    }
+    diagnostics = hydrate_cached_youtube_playlist_channel_ids(fetch_missing=False)
+    cache_data = load_cache_data()
+    local_lookup = {channel_id: [] for channel_id in channel_id_set}
+    matched_video_count = 0
+    local_playlist_ids = set()
+
+    for playlist_id, _, index, raw_video in _iter_local_cached_youtube_playlist_videos(cache_data):
+        video = dict(raw_video)
+        cached_meta = YOUTUBE_DURATION_CACHE.get(str(video.get("video_id", "") or "").strip(), {})
+        if not video.get("channel_id") and isinstance(cached_meta, dict):
+            video["channel_id"] = str(cached_meta.get("channel_id", "") or "").strip()
+        if not video.get("channel_name") and isinstance(cached_meta, dict):
+            video["channel_name"] = str(cached_meta.get("channel_name", "") or "").strip()
+        channel_id = str(video.get("channel_id", "") or "").strip()
+        if channel_id not in channel_id_set:
+            continue
+        matched_video_count += 1
+        local_playlist_ids.add(playlist_id)
+        video.setdefault("source", "local_cache")
+        video.setdefault("feed_order_index", index)
+        local_lookup.setdefault(channel_id, []).append(video)
+
+    for channel_id, videos in list(local_lookup.items()):
+        deduped = []
+        seen_video_keys = set()
+        for index, video in enumerate(videos):
+            video_id = str(video.get("video_id", "") or "").strip()
+            playlist_item_id = str(video.get("playlist_item_id", "") or "").strip()
+            unique_key = video_id or playlist_item_id or f"{channel_id}:{index}"
+            if unique_key in seen_video_keys:
+                continue
+            seen_video_keys.add(unique_key)
+            video.setdefault("feed_order_index", index)
+            deduped.append(video)
+        deduped.sort(key=_pockettube_feed_sort_key)
+        local_lookup[channel_id] = apply_cached_durations(deduped[:max(int(per_channel_limit or 1), 1)])
+
+    diagnostics.update({
+        "local_playlist_count": len(local_playlist_ids),
+        "local_matched_video_count": matched_video_count,
+        "cache_source_used": "local_playlist_cache",
+        "group_match_reason": (
+            "matched_local_cache"
+            if matched_video_count
+            else (
+                "local_cache_missing_channel_ids"
+                if int(diagnostics.get("hydration_candidate_count", 0) or 0) > 0
+                else "no_local_channel_matches"
+            )
+        ),
+    })
+    return local_lookup, diagnostics
 
 def get_youtube_duration(video_id):
     if video_id not in YOUTUBE_DURATION_CACHE:
@@ -14755,11 +18433,8 @@ def get_best_thumbnail(snippet, video_id=""):
         return f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg"
     return ""
 
-def fetch_playlist_videos_from_youtube(playlist_id, max_total=5000):
-    """
-    EXACT SAME LOGIC AS THE DIAGNOSTIC SCRIPT â€“ PROVEN TO WORK
-    """
-    if not playlist_id or playlist_id == "PASTE_PLAYLIST_ID_HERE":
+def _fetch_playlist_videos_via_requests(playlist_id, max_total=5000):
+    if not playlist_id or playlist_id == "PASTE_PLAYLIST_ID_HERE" or not YOUTUBE_API_KEY:
         return []
     all_videos = []
     locally_deleted_items = load_deleted_video_lookup()
@@ -14771,7 +18446,7 @@ def fetch_playlist_videos_from_youtube(playlist_id, max_total=5000):
             "playlistId": playlist_id,
             "maxResults": max(1, min(50, max_total - len(all_videos))),
             "key": YOUTUBE_API_KEY,
-            "pageToken": next_page_token
+            "pageToken": next_page_token,
         }
         try:
             r = requests.get(url, params=params, timeout=10)
@@ -14792,12 +18467,13 @@ def fetch_playlist_videos_from_youtube(playlist_id, max_total=5000):
                 all_videos.append({
                     "title": sn.get("title", "Unavailable video"),
                     "channel_name": sn.get("videoOwnerChannelTitle") or sn.get("channelTitle", ""),
+                    "channel_id": sn.get("videoOwnerChannelId") or sn.get("channelId", ""),
                     "thumb": thumb,
                     "video_id": vid,
                     "playlist_id": playlist_id,
                     "playlist_item_id": playlist_item_id,
                     "published_at": sn.get("publishedAt", ""),
-                    "url": f"https://www.youtube.com/watch?v={vid}&list={playlist_id}"
+                    "url": f"https://www.youtube.com/watch?v={vid}&list={playlist_id}",
                 })
             next_page_token = data.get("nextPageToken")
             print(f"[Playlist {playlist_id[:10]}...] Fetched {len(all_videos)} videos so far...")
@@ -14810,29 +18486,113 @@ def fetch_playlist_videos_from_youtube(playlist_id, max_total=5000):
     return all_videos
 
 
+def _fetch_playlist_videos_via_oauth(playlist_id, max_total=5000):
+    if not playlist_id or playlist_id == "PASTE_PLAYLIST_ID_HERE":
+        return []
+    service = build_youtube_service()
+    if not service:
+        return []
+    all_videos = []
+    locally_deleted_items = load_deleted_video_lookup()
+    next_page_token = None
+    while len(all_videos) < max_total:
+        try:
+            response = service.playlistItems().list(
+                part="snippet",
+                playlistId=playlist_id,
+                maxResults=max(1, min(50, max_total - len(all_videos))),
+                pageToken=next_page_token,
+            ).execute()
+        except Exception as exc:
+            print(f"OAuth playlist fetch failed for {playlist_id}: {type(exc).__name__}: {exc}")
+            break
+        for item in response.get("items", []):
+            playlist_item_id = item.get("id", "")
+            if playlist_item_id and playlist_item_id in locally_deleted_items:
+                continue
+            sn = item.get("snippet", {}) or {}
+            resource = sn.get("resourceId") or {}
+            vid = resource.get("videoId", "")
+            if not vid:
+                continue
+            thumb = get_best_thumbnail(sn, vid)
+            all_videos.append({
+                "title": sn.get("title", "Unavailable video"),
+                "channel_name": sn.get("videoOwnerChannelTitle") or sn.get("channelTitle", ""),
+                "channel_id": sn.get("videoOwnerChannelId") or sn.get("channelId", ""),
+                "thumb": thumb,
+                "video_id": vid,
+                "playlist_id": playlist_id,
+                "playlist_item_id": playlist_item_id,
+                "published_at": sn.get("publishedAt", ""),
+                "url": f"https://www.youtube.com/watch?v={vid}&list={playlist_id}",
+            })
+        next_page_token = response.get("nextPageToken")
+        print(f"[Playlist {playlist_id[:10]}...] OAuth fetched {len(all_videos)} videos so far...")
+        if not next_page_token:
+            break
+    print(f"OAuth final count for {playlist_id}: {len(all_videos)} videos")
+    return all_videos
+
+
+def fetch_playlist_videos_from_youtube(playlist_id, max_total=5000):
+    """
+    Fetch playlist videos with a safe fallback order:
+    1) public API key request
+    2) authenticated OAuth request when available
+    """
+    if not playlist_id or playlist_id == "PASTE_PLAYLIST_ID_HERE":
+        return []
+    videos = _fetch_playlist_videos_via_requests(playlist_id, max_total=max_total)
+    if videos:
+        return videos
+    oauth_videos = _fetch_playlist_videos_via_oauth(playlist_id, max_total=max_total)
+    if oauth_videos:
+        return oauth_videos
+    return []
+
+
 def get_all_playlist_videos(playlist_id, max_total=5000, force_refresh=False):
     if not playlist_id or playlist_id == "PASTE_PLAYLIST_ID_HERE":
         return []
 
     cache_data = load_cache_data()
     playlist_entry = cache_data.get("youtube_playlists", {}).get(playlist_id, {})
+    cached_videos = []
+    if isinstance(playlist_entry, dict):
+        maybe_cached = playlist_entry.get("data", [])
+        if isinstance(maybe_cached, list):
+            cached_videos = [dict(video) for video in maybe_cached if isinstance(video, dict)]
+    has_cached_videos = bool(cached_videos)
     with RUNTIME_CACHE_LOCK:
         runtime_entry = RUNTIME_CACHE["youtube_playlists"].get(playlist_id)
-        if runtime_entry is not None and not force_refresh and not is_cache_entry_stale(playlist_entry):
+        if runtime_entry is not None and not force_refresh and not is_cache_entry_stale(playlist_entry) and has_cached_videos:
             return apply_cached_durations([dict(video) for video in runtime_entry])
 
-    if not force_refresh and not is_cache_entry_stale(playlist_entry):
-        videos = playlist_entry.get("data", []) or []
+    if not force_refresh and not is_cache_entry_stale(playlist_entry) and has_cached_videos:
+        videos = cached_videos
         with RUNTIME_CACHE_LOCK:
             RUNTIME_CACHE["youtube_playlists"][playlist_id] = [dict(video) for video in videos]
         return apply_cached_durations([dict(video) for video in videos])
 
     videos = fetch_playlist_videos_from_youtube(playlist_id, max_total=max_total)
-    set_playlist_cache_entry(cache_data, playlist_id, videos)
+    if videos:
+        set_playlist_cache_entry(cache_data, playlist_id, videos)
+        save_cache_data(cache_data)
+        with RUNTIME_CACHE_LOCK:
+            RUNTIME_CACHE["youtube_playlists"][playlist_id] = [dict(video) for video in videos]
+        return apply_cached_durations([dict(video) for video in videos])
+
+    if cached_videos:
+        with RUNTIME_CACHE_LOCK:
+            RUNTIME_CACHE["youtube_playlists"][playlist_id] = [dict(video) for video in cached_videos]
+        return apply_cached_durations([dict(video) for video in cached_videos])
+
+    set_playlist_cache_entry(cache_data, playlist_id, [])
     save_cache_data(cache_data)
     with RUNTIME_CACHE_LOCK:
-        RUNTIME_CACHE["youtube_playlists"][playlist_id] = [dict(video) for video in videos]
-    return apply_cached_durations([dict(video) for video in videos])
+        RUNTIME_CACHE["youtube_playlists"][playlist_id] = []
+    return []
 
 def yts_url(title):
     encoded = urllib.parse.quote(title.strip(), safe="")
@@ -14914,6 +18674,7 @@ def build_youtube_channel_video_summary(video):
         "playlist_item_id": playlist_item_id,
         "playlist_name": playlist_name,
         "channel_name": channel_name,
+        "channel_id": str(video.get("channel_id", "") or "").strip(),
         "thumb": thumb,
         "thumbnail_url": thumbnail_url,
         "thumbnail": thumbnail,
@@ -18043,7 +21804,13 @@ def get_gemini_system_instruction(chat_mode="cinematic"):
 
 
 def get_gemini_model(chat_mode="cinematic"):
-    global GEMINI_MODEL_NAME_CACHE
+    global GEMINI_MODEL_NAME_CACHE, genai
+    if genai is None:
+        try:
+            import google.generativeai as genai_module
+        except ImportError as exc:
+            raise RuntimeError("google-generativeai is not installed. Install it to enable Gemini chat.") from exc
+        genai = genai_module
     if genai is None:
         raise RuntimeError("google-generativeai is not installed. Install it to enable Gemini chat.")
     api_key = (GEMINI_API_KEY or "").strip()
@@ -18405,6 +22172,20 @@ def refresh():
     scope = (request.args.get("scope") or "all").strip().lower()
     refresh_films = scope in {"all", "films", "movies", "movie"}
     refresh_youtube = scope in {"all", "youtube", "playlists"}
+    next_url = request.args.get("next") or url_for("home")
+    pockettube_section_name = ""
+    if refresh_youtube:
+        try:
+            parsed_next = urllib.parse.urlparse(next_url)
+            next_path = str(parsed_next.path or "").strip()
+        except Exception:
+            next_path = str(next_url or "").strip()
+        section_match = re.fullmatch(r"/section/([^/?#]+)", next_path)
+        if section_match:
+            section_slug_value = str(section_match.group(1) or "").strip()
+            pockettube_section = _pockettube_section_membership_context(section_slug_value, admin_data=load_admin_data())
+            if pockettube_section.get("channel_count", 0):
+                pockettube_section_name = pockettube_section.get("section_name", section_slug_value) or section_slug_value
     if refresh_films:
         clear_film_cache_entry()
     if refresh_films and (TMDB_API_KEY or "").strip() and (NOTION_TOKEN or "").strip() and (NOTION_DATABASE_ID or "").strip():
@@ -18413,15 +22194,18 @@ def refresh():
         except Exception:
             pass
     reset_playlists_metadata()
-    refresh_all_cached_data(refresh_films=refresh_films, refresh_youtube=refresh_youtube)
-    next_url = request.args.get("next") or url_for("home")
+    refresh_all_cached_data(
+        refresh_films=refresh_films,
+        refresh_youtube=refresh_youtube,
+        pockettube_section_name=pockettube_section_name,
+    )
     return redirect(next_url)
 
 
 def render_section_page(section_name, title=None, quick_delete_enabled=False):
     admin_data = load_admin_data()
     playlists_with_videos, default_limit, section_channel_groups = build_youtube_section_playlists(section_name, admin_data=admin_data)
-    section_title = title or section_name
+    section_title = canonical_section_name(title or section_name)
     section_profile = youtube_section_blueprint(section_name)
     section_curation_context = build_youtube_channel_curation_context(section_name, admin_data=admin_data)
     section_feed_context = build_youtube_section_feed_context(section_name, admin_data=admin_data)
@@ -19322,7 +23106,7 @@ def reading_article_audio(entry_id):
     tts_payload = build_reading_tts_payload(entry)
     if not tts_payload["available"]:
         return Response(tts_payload["status_message"], status=422, mimetype="text/plain")
-    if edge_tts is None:
+    if _get_edge_tts_module() is None:
         app.logger.warning("reading_tts unavailable: edge_tts missing entry_id=%s", entry_id)
         response = Response("Audio generation is unavailable right now.", status=503, mimetype="text/plain")
         response.headers["X-Reading-TTS-Error"] = "backend_unavailable"
@@ -20078,6 +23862,31 @@ def build_lotus_chess_context(active_key="home"):
     review_snapshot = build_chess_review_queue_snapshot(chess_data)
     progress_summary = build_chess_progress(chess_data)
     opening_line_summary = build_opening_line_summary(chess_data)
+    drill_candidates = build_drill_candidates(chess_data)
+    puzzle_seed_snapshot = build_chess_puzzle_seeds_snapshot(chess_data)
+    auto_puzzle_snapshot = build_auto_puzzle_candidates_snapshot(chess_data)
+    lichess_puzzle_source_status = get_lichess_puzzle_source_status() if active_key == "puzzles" else {
+        "available": False,
+        "availability_label": "Missing",
+        "count": 0,
+        "status_line": "Local source not imported yet.",
+        "warning": "",
+        "error": "",
+        "missing_columns": [],
+        "rating_range_label": "Preview",
+        "top_themes_label": "Preview",
+        "sample_rows": [],
+        "skipped_rows": 0,
+        "expected_file": str(LICHESS_PUZZLE_SAMPLE_PATH),
+        "expected_paths": [str(LICHESS_PUZZLE_SAMPLE_PATH), str(LICHESS_PUZZLE_SAMPLE_DATA_PATH)],
+        "file_path": "",
+    }
+    train_today_focus = build_chess_train_today_focus(
+        chess_data,
+        auto_snapshot=auto_puzzle_snapshot,
+        review_snapshot=review_snapshot,
+        opening_line_summary=opening_line_summary,
+    )
 
     nav_items = [
         {"key": "home", "label": "Home", "href": url_for("chess"), "icon": "layout-dashboard"},
@@ -20086,6 +23895,8 @@ def build_lotus_chess_context(active_key="home"):
         {"key": "openings", "label": "Openings", "href": url_for("chess_openings"), "icon": "waypoints"},
         {"key": "branches", "label": "Branches", "href": url_for("chess_branches"), "icon": "git-branch"},
         {"key": "train", "label": "Train", "href": url_for("chess_train"), "icon": "target"},
+        {"key": "drills", "label": "Drills", "href": url_for("chess_drills"), "icon": "swords"},
+        {"key": "puzzles", "label": "Puzzles", "href": url_for("chess_puzzles"), "icon": "sparkles"},
         {"key": "progress", "label": "Progress", "href": url_for("chess_progress"), "icon": "activity"},
         {"key": "courses", "label": "Courses", "href": url_for("chess_courses"), "icon": "graduation-cap"},
     ]
@@ -20102,6 +23913,8 @@ def build_lotus_chess_context(active_key="home"):
                 review_queue_count=review_snapshot.get("active_count", 0),
                 progress_score_percent=progress_summary.get("overall", {}).get("score_percent", 0.0),
                 courses_saved_count=len(courses),
+                drills_count=len(drill_candidates),
+                puzzle_seeds_count=puzzle_seed_snapshot.get("total_count", 0),
             ),
             "sections": [
                 {
@@ -20123,6 +23936,18 @@ def build_lotus_chess_context(active_key="home"):
                     "description": f"{opening_line_summary.get('tracked', 0)} recurring branches grouped from your own first moves.",
                     "href": url_for("chess_branches"),
                     "link_label": "Open branch map",
+                },
+                {
+                    "title": "Drills",
+                    "description": f"{len(drill_candidates)} local drill positions ready from your own stored games.",
+                    "href": url_for("chess_drills"),
+                    "link_label": "Start drills",
+                },
+                {
+                    "title": "Puzzle seeds",
+                    "description": f"{puzzle_seed_snapshot.get('total_count', 0)} saved personal positions ready for future training.",
+                    "href": url_for("chess_puzzles"),
+                    "link_label": "Open puzzle seeds",
                 },
             ],
         },
@@ -20201,23 +24026,92 @@ def build_lotus_chess_context(active_key="home"):
         },
         "train": {
             "eyebrow": "Train",
-            "title": "Review what actually matters.",
-            "summary": "Result-based training from your imported games. Engine analysis comes later.",
+            "title": "Train Today",
+            "summary": "Lotus Chess chooses the most useful next thing to train from your own games. Engine analysis comes later.",
             "cards": [
-                {"label": "Train today", "value": str(training_recommendations.get("train_today_count", 0)) if training_recommendations.get("train_today_count", 0) else "0"},
-                {"label": "Weak openings", "value": str(len(training_recommendations.get("weak_openings", []) or [])) if training_recommendations.get("weak_openings") else "0"},
-                {"label": "Recurring lines", "value": str(opening_line_summary.get("tracked", 0)) if opening_line_summary.get("tracked", 0) else "0"},
-                {"label": "Recent losses", "value": str(len(training_recommendations.get("recent_losses", []) or [])) if training_recommendations.get("recent_losses") else "0"},
-                {"label": "Openings tracked", "value": str(training_recommendations.get("openings_count", 0)) if training_recommendations.get("openings_count", 0) else "0"},
+                {"label": "Queued training", "value": str(int((auto_puzzle_snapshot.get("counts", {}) or {}).get("queued", 0) or 0) + int((auto_puzzle_snapshot.get("counts", {}) or {}).get("training", 0) or 0))},
+                {"label": "Top weak candidates", "value": str(auto_puzzle_snapshot.get("visible_count", 0) or 0)},
+                {"label": "Review items", "value": str(review_snapshot.get("active_count", 0) or 0)},
+                {"label": "Recurring lines", "value": str(opening_line_summary.get("tracked", 0) or 0)},
             ],
             "sections": [
                 {
-                    "title": "Weak spots V0",
-                    "description": "Result-based only. Engine analysis comes later.",
+                    "title": "Train Today",
+                    "description": "One recommendation, one main action, then quiet access to the deeper tools.",
                 },
                 {
-                    "title": "Review queue",
-                    "description": "Saved training actions come next. For now, this page turns your imported games into practical next steps.",
+                    "title": "Advanced tools",
+                    "description": "Candidates, puzzles, branches, and review are still here when you want them, but they no longer compete at the top.",
+                },
+            ],
+        },
+        "drills": {
+            "eyebrow": "Drills",
+            "title": "Train from your own games.",
+            "summary": "Guess your next move from stored positions. No engine analysis.",
+            "cta_primary": {"label": "Start weak-line drills", "href": url_for("chess_drills", source="weak_lines")},
+            "cta_secondary": {"label": "Browse games", "href": url_for("chess_games")},
+            "cards": [
+                {"label": "All local drills", "value": str(len(drill_candidates)) if drill_candidates else "0"},
+                {"label": "Review queue drills", "value": str(len([item for item in drill_candidates if item.get('is_review_candidate')])) if drill_candidates else "0"},
+                {"label": "Weak-line drills", "value": str(len([item for item in drill_candidates if item.get('is_weak_line')])) if drill_candidates else "0"},
+                {"label": "Parsed move games", "value": str(sum(1 for game in games if any(str(move or '').strip() for move in (game.get('moves', []) or [])))) if games else "0"},
+            ],
+            "sections": [
+                {
+                    "title": "Your move next",
+                    "description": "Each drill asks what you played next from a stored position in your own game history.",
+                },
+                {
+                    "title": "Result-based only",
+                    "description": "No best-move judging and no engine layer. Just your own recurring positions.",
+                },
+            ],
+        },
+        "puzzles": {
+            "eyebrow": "My Puzzles",
+            "title": "Start solving from your own games.",
+            "summary": "Personal puzzles come from your imported Chess.com and Lichess games. Engine analysis can layer in later.",
+            "cta_primary": {"label": "Start My Puzzles", "href": url_for("chess_puzzles")},
+            "cta_secondary": {"label": "Train", "href": url_for("chess_train")},
+            "cards": [
+                {"label": "Total seeds", "value": str(puzzle_seed_snapshot.get("total_count", 0)) if puzzle_seed_snapshot.get("total_count", 0) else "0"},
+                {"label": "New", "value": str((puzzle_seed_snapshot.get("counts", {}) or {}).get("new", 0)) if (puzzle_seed_snapshot.get("counts", {}) or {}).get("new", 0) else "0"},
+                {"label": "Training", "value": str((puzzle_seed_snapshot.get("counts", {}) or {}).get("training", 0)) if (puzzle_seed_snapshot.get("counts", {}) or {}).get("training", 0) else "0"},
+                {"label": "Solved", "value": str((puzzle_seed_snapshot.get("counts", {}) or {}).get("solved", 0)) if (puzzle_seed_snapshot.get("counts", {}) or {}).get("solved", 0) else "0"},
+                {"label": "Archived", "value": str((puzzle_seed_snapshot.get("counts", {}) or {}).get("archived", 0)) if (puzzle_seed_snapshot.get("counts", {}) or {}).get("archived", 0) else "0"},
+            ],
+            "sections": [
+                {
+                    "title": "Personal only",
+                    "description": "Seeds come from your own saved positions. Engine-assisted critical moments can plug into this later.",
+                },
+                {
+                    "title": "Foundation only",
+                    "description": "This is a safe local layer for future puzzle work, not a full puzzle trainer yet.",
+                },
+            ],
+        },
+        "lichess_puzzles": {
+            "eyebrow": "Lichess Puzzles",
+            "title": "Lichess puzzle hub, coming soon.",
+            "summary": "Practice tactical puzzles from the Lichess puzzle database later. For V1, this stays a calm local foundation only.",
+            "cta_primary": {"label": "Set up Lichess puzzles", "href": url_for("chess_lichess_puzzles")},
+            "cta_secondary": {"label": "My Puzzles", "href": url_for("chess_puzzles")},
+            "cards": [
+                {"label": "Source", "value": lichess_puzzle_source_status.get("availability_label", "Missing")},
+                {"label": "Puzzles", "value": str(lichess_puzzle_source_status.get("count", 0) or 0)},
+                {"label": "Rating range", "value": lichess_puzzle_source_status.get("rating_range_label", "Preview")},
+                {"label": "Themes", "value": lichess_puzzle_source_status.get("top_themes_label", "Preview")},
+            ],
+            "sections": [
+                {
+                    "title": "Separate source",
+                    "description": "Lichess puzzles will stay separate from My Puzzles so the personal training loop remains clean.",
+                },
+                {
+                    "title": "V1 placeholder",
+                    "description": "No puzzle database import, no solver, and no filtering logic yet. This page only prepares the shape of the hub.",
                 },
             ],
         },
@@ -20306,6 +24200,9 @@ def build_lotus_chess_context(active_key="home"):
         "chess_opening_lines_strong": opening_line_summary.get("strong", []) if isinstance(opening_line_summary, dict) else [],
         "chess_opening_lines_by_opening": opening_line_summary.get("by_opening", {}) if isinstance(opening_line_summary, dict) else {},
         "chess_opening_lines_by_opening_list": opening_line_summary.get("by_opening_list", []) if isinstance(opening_line_summary, dict) else [],
+        "chess_puzzle_seeds_snapshot": puzzle_seed_snapshot,
+        "chess_auto_puzzle_candidates_snapshot": auto_puzzle_snapshot,
+        "chess_train_today_focus": train_today_focus,
         "chess_active_profile": active_profile,
         "chess_import_history": history_items,
         "chess_success_message": str(request.args.get("success", "") or "").strip(),
@@ -20320,6 +24217,599 @@ def build_lotus_chess_context(active_key="home"):
         "chess_review_queue_completed_count": review_snapshot.get("completed_count", 0),
         "chess_progress_summary": progress_summary,
     }
+
+
+def _lichess_sample_paths():
+    return [LICHESS_PUZZLE_SAMPLE_PATH, LICHESS_PUZZLE_SAMPLE_DATA_PATH]
+
+
+def _lichess_row_value(raw_row, *keys):
+    if not isinstance(raw_row, dict):
+        return ""
+    normalized = {}
+    for key, value in raw_row.items():
+        normalized[str(key or "").strip().lower()] = value
+    for key in keys:
+        lookup = str(key or "").strip().lower()
+        if lookup in normalized:
+            return normalized.get(lookup, "")
+    return ""
+
+
+def parse_lichess_puzzle_row(row):
+    if not isinstance(row, dict):
+        return None
+    puzzle_id = str(_lichess_row_value(row, "PuzzleId", "puzzle_id", "id") or "").strip()
+    fen = str(_lichess_row_value(row, "FEN", "fen") or "").strip()
+    moves = str(_lichess_row_value(row, "Moves", "moves") or "").strip()
+    rating = _coerce_int(_lichess_row_value(row, "Rating", "rating"), 0)
+    popularity = _coerce_int(_lichess_row_value(row, "Popularity", "popularity"), 0)
+    nb_plays = _coerce_int(_lichess_row_value(row, "NbPlays", "nbplays", "nb_plays"), 0)
+    game_url = str(_lichess_row_value(row, "GameUrl", "game_url") or "").strip()
+    opening_tags_raw = str(_lichess_row_value(row, "OpeningTags", "opening_tags") or "").strip()
+    themes_raw = str(_lichess_row_value(row, "Themes", "themes") or "").strip()
+    opening_tags = [tag.strip() for tag in re.split(r"[|;,]", opening_tags_raw) if tag and tag.strip()]
+    themes = [theme.strip() for theme in re.split(r"[|;,]", themes_raw) if theme and theme.strip()]
+    if not (puzzle_id or fen or moves):
+        return None
+    return {
+        "puzzle_id": puzzle_id,
+        "fen": fen,
+        "moves": moves,
+        "rating": rating if rating > 0 else None,
+        "themes": themes,
+        "game_url": game_url,
+        "opening_tags": opening_tags,
+        "popularity": popularity if popularity > 0 else None,
+        "nb_plays": nb_plays if nb_plays > 0 else None,
+    }
+
+
+def load_lichess_puzzle_sample(max_rows=5000):
+    expected_paths = _lichess_sample_paths()
+    sample_path = next((path for path in expected_paths if path.exists()), None)
+    status = {
+        "sample_file": str(sample_path) if sample_path else "",
+        "expected_file": str(expected_paths[0]),
+        "expected_paths": [str(path) for path in expected_paths],
+        "available": bool(sample_path),
+        "availability_label": "Available" if sample_path else "Missing",
+        "count": 0,
+        "rows": [],
+        "warning": "",
+        "error": "",
+        "missing_columns": [],
+        "rating_min": None,
+        "rating_max": None,
+        "rating_range_label": "Preview",
+        "top_themes": [],
+        "top_themes_label": "Preview",
+        "skipped_rows": 0,
+    }
+    if not sample_path:
+        status["warning"] = "No local Lichess puzzle source imported yet."
+        return status
+
+    required_columns = {"PuzzleId", "FEN", "Moves", "Rating", "Themes", "GameUrl", "OpeningTags", "Popularity", "NbPlays"}
+    try:
+        with sample_path.open("r", encoding="utf-8-sig", newline="") as handle:
+            reader = csv.DictReader(handle)
+            header_fields = [str(field or "").strip() for field in (reader.fieldnames or []) if str(field or "").strip()]
+            header_lower = {field.lower() for field in header_fields}
+            status["missing_columns"] = sorted(
+                column for column in required_columns
+                if column.lower() not in header_lower
+            )
+            theme_counts = {}
+            ratings = []
+            for raw_row in reader:
+                if len(status["rows"]) >= int(max_rows or 0):
+                    break
+                parsed_row = parse_lichess_puzzle_row(raw_row)
+                if not parsed_row:
+                    status["skipped_rows"] += 1
+                    continue
+                status["rows"].append(parsed_row)
+                rating_value = parsed_row.get("rating")
+                if isinstance(rating_value, int) and rating_value > 0:
+                    ratings.append(rating_value)
+                for theme in parsed_row.get("themes", []) or []:
+                    theme_key = str(theme or "").strip()
+                    if not theme_key:
+                        continue
+                    theme_counts[theme_key] = theme_counts.get(theme_key, 0) + 1
+            status["count"] = len(status["rows"])
+            if ratings:
+                status["rating_min"] = min(ratings)
+                status["rating_max"] = max(ratings)
+                status["rating_range_label"] = f"{status['rating_min']} - {status['rating_max']}"
+            if theme_counts:
+                top_themes = sorted(theme_counts.items(), key=lambda item: (-item[1], item[0]))[:6]
+                status["top_themes"] = [theme for theme, _count in top_themes]
+                status["top_themes_label"] = " · ".join(status["top_themes"])
+            if status["missing_columns"]:
+                status["warning"] = "Some expected columns are missing, but the sample can still be previewed safely."
+    except Exception as exc:
+        status["available"] = False
+        status["availability_label"] = "Missing"
+        status["error"] = f"{type(exc).__name__}: {exc}"
+        status["warning"] = "Malformed CSV file."
+        status["rows"] = []
+        status["count"] = 0
+        status["rating_range_label"] = "Preview"
+        status["top_themes_label"] = "Preview"
+    return status
+
+
+def get_lichess_puzzle_source_status():
+    source = load_lichess_puzzle_sample()
+    if not source.get("available"):
+        return {
+            "available": False,
+            "availability_label": "Missing",
+            "count": 0,
+            "file_path": source.get("expected_file", str(LICHESS_PUZZLE_SAMPLE_PATH)),
+            "expected_file": source.get("expected_file", str(LICHESS_PUZZLE_SAMPLE_PATH)),
+            "expected_paths": source.get("expected_paths", [str(LICHESS_PUZZLE_SAMPLE_PATH)]),
+            "status_line": source.get("warning") or "No local Lichess puzzle source imported yet.",
+            "warning": source.get("warning", ""),
+            "error": source.get("error", ""),
+            "missing_columns": source.get("missing_columns", []),
+            "rating_min": None,
+            "rating_max": None,
+            "rating_range_label": "Preview",
+            "top_themes": [],
+            "top_themes_label": "Preview",
+            "sample_rows": [],
+            "skipped_rows": 0,
+        }
+    return {
+        "available": True,
+        "availability_label": "Available",
+        "count": source.get("count", 0),
+        "file_path": source.get("sample_file", source.get("expected_file", str(LICHESS_PUZZLE_SAMPLE_PATH))),
+        "expected_file": source.get("expected_file", str(LICHESS_PUZZLE_SAMPLE_PATH)),
+        "expected_paths": source.get("expected_paths", [str(LICHESS_PUZZLE_SAMPLE_PATH)]),
+        "status_line": source.get("warning") or "Local source ready.",
+        "warning": source.get("warning", ""),
+        "error": source.get("error", ""),
+        "missing_columns": source.get("missing_columns", []),
+        "rating_min": source.get("rating_min"),
+        "rating_max": source.get("rating_max"),
+        "rating_range_label": source.get("rating_range_label", "Preview"),
+        "top_themes": source.get("top_themes", []),
+        "top_themes_label": source.get("top_themes_label", "Preview"),
+        "sample_rows": source.get("rows", []),
+        "skipped_rows": source.get("skipped_rows", 0),
+    }
+
+
+def build_lichess_puzzle_steps(puzzle_row):
+    if chesslib is None:
+        return {"ok": False, "error": "python-chess is unavailable for local Lichess puzzle solving.", "steps": []}
+    row = dict(puzzle_row or {})
+    fen = str(row.get("fen", "") or "").strip()
+    moves_text = str(row.get("moves", "") or "").strip()
+    if not fen:
+        return {"ok": False, "error": "This Lichess puzzle row is missing a FEN.", "steps": []}
+    if not moves_text:
+        return {"ok": False, "error": "This Lichess puzzle row is missing solution moves.", "steps": []}
+    try:
+        board = chesslib.Board(fen)
+    except Exception:
+        return {"ok": False, "error": "This Lichess puzzle row has an invalid FEN.", "steps": []}
+
+    move_tokens = [token.strip() for token in moves_text.split() if token and token.strip()]
+    if not move_tokens:
+        return {"ok": False, "error": "This Lichess puzzle row does not contain usable solution moves.", "steps": []}
+
+    user_turn = "white" if bool(board.turn) else "black"
+    user_label = user_turn.title()
+    row_themes = [str(item or "").strip() for item in (row.get("themes", []) or []) if str(item or "").strip()]
+    steps = []
+    move_index = 0
+    while move_index < len(move_tokens):
+        if ("white" if bool(board.turn) else "black") != user_turn:
+            return {"ok": False, "error": "This Lichess puzzle row starts with the wrong side to move for the solution line.", "steps": []}
+        fen_before = board.fen()
+        expected_uci = move_tokens[move_index]
+        try:
+            expected_move = chesslib.Move.from_uci(expected_uci)
+        except Exception:
+            return {"ok": False, "error": "This Lichess puzzle row contains a malformed solution move.", "steps": []}
+        if expected_move not in board.legal_moves:
+            return {"ok": False, "error": "This Lichess puzzle row contains an illegal move in the solution line.", "steps": []}
+        expected_san = board.san(expected_move)
+        expected_idea = describe_move_idea(board, expected_move, themes=row_themes)
+        legal_targets_by_source = {}
+        try:
+            board_for_targets = chesslib.Board(fen_before)
+            for legal_move in board_for_targets.legal_moves:
+                uci_text = legal_move.uci()
+                from_square = str(uci_text[:2] or "").strip()
+                to_square = str(uci_text[2:4] or "").strip()
+                if from_square and to_square:
+                    legal_targets_by_source.setdefault(from_square, []).append(to_square)
+        except Exception:
+            legal_targets_by_source = {}
+
+        board.push(expected_move)
+        fen_after_user = board.fen()
+        move_index += 1
+        auto_replies = []
+        while move_index < len(move_tokens) and ("white" if bool(board.turn) else "black") != user_turn:
+            reply_uci = move_tokens[move_index]
+            try:
+                reply_move = chesslib.Move.from_uci(reply_uci)
+            except Exception:
+                return {"ok": False, "error": "This Lichess puzzle row contains a malformed opponent reply.", "steps": []}
+            if reply_move not in board.legal_moves:
+                return {"ok": False, "error": "This Lichess puzzle row contains an illegal opponent reply.", "steps": []}
+            reply_san = board.san(reply_move)
+            board.push(reply_move)
+            auto_replies.append({
+                "move_san": reply_san,
+                "move_uci": reply_uci,
+                "fen_after": board.fen(),
+            })
+            move_index += 1
+
+        steps.append({
+            "step_index": len(steps),
+            "expected_move_uci": expected_uci,
+            "expected_move_san": expected_san,
+            "expected_move_idea": expected_idea,
+            "expected_move_hint": expected_idea,
+            "correct_feedback": f"Correct. {expected_idea}",
+            "fen_before": fen_before,
+            "fen_after_user": fen_after_user,
+            "fen_after_replies": board.fen(),
+            "side_to_move": user_turn,
+            "side_to_move_label": user_label,
+            "move_number_label": build_chess_puzzle_move_label(len(steps) + 1, expected_san),
+            "auto_replies": auto_replies,
+            "legal_targets_by_source": legal_targets_by_source,
+        })
+
+    return {
+        "ok": bool(steps),
+        "error": "" if steps else "This Lichess puzzle row does not have a usable solution sequence.",
+        "steps": steps,
+        "user_turn": user_turn,
+        "user_label": user_label,
+    }
+
+
+def choose_lichess_sample_puzzle(sample_rows, puzzle_id=""):
+    rows = [dict(row) for row in (sample_rows or []) if isinstance(row, dict)]
+    target_id = str(puzzle_id or "").strip()
+    if target_id:
+        for index, row in enumerate(rows):
+            if str(row.get("puzzle_id", "") or "").strip() == target_id:
+                return {"row": row, "index": index}
+        return {"row": None, "index": -1}
+    if not rows:
+        return {"row": None, "index": -1}
+    sorted_rows = sorted(
+        enumerate(rows),
+        key=lambda item: (
+            abs(int(item[1].get("rating") or 1400) - 1400),
+            int(item[1].get("rating") or 0),
+            str(item[1].get("puzzle_id", "") or ""),
+        )
+    )
+    best_index, best_row = sorted_rows[0]
+    return {"row": dict(best_row), "index": best_index}
+
+
+def build_lichess_valid_puzzle_list(sample_rows, filter_payload=None):
+    filter_payload = dict(filter_payload or {})
+    valid_items = []
+    for source_index, row in enumerate(sample_rows or []):
+        if not isinstance(row, dict):
+            continue
+        if filter_payload and not row_matches_lichess_custom_filters(row, filter_payload):
+            continue
+        steps_payload = build_lichess_puzzle_steps(row)
+        if not steps_payload.get("ok"):
+            continue
+        valid_items.append({
+            "row": dict(row),
+            "steps": steps_payload,
+            "source_index": source_index,
+        })
+    return valid_items
+
+
+def build_lichess_solver_query_args(filter_payload=None):
+    filter_payload = dict(filter_payload or {})
+    args = {}
+    rating_preset = str(filter_payload.get("rating_preset", "") or "").strip()
+    if rating_preset:
+        args["rating_preset"] = rating_preset
+    min_rating = filter_payload.get("min_rating")
+    max_rating = filter_payload.get("max_rating")
+    if isinstance(min_rating, int) and min_rating > 0:
+        args["min_rating"] = min_rating
+    if isinstance(max_rating, int) and max_rating > 0:
+        args["max_rating"] = max_rating
+    selected_themes = [str(item or "").strip() for item in (filter_payload.get("selected_themes", []) or []) if str(item or "").strip()]
+    for theme in selected_themes:
+        args.setdefault("theme", []).append(theme)
+    return args
+
+
+def extract_lichess_active_filters(source_status, values=None):
+    values = values or {}
+    has_active_key = False
+    if hasattr(values, "getlist"):
+        has_active_key = bool(
+            str(values.get("rating_preset", "") or "").strip()
+            or str(values.get("min_rating", "") or "").strip()
+            or str(values.get("max_rating", "") or "").strip()
+            or values.getlist("theme")
+        )
+    else:
+        has_active_key = bool(
+            str(values.get("rating_preset", "") or "").strip()
+            or str(values.get("min_rating", "") or "").strip()
+            or str(values.get("max_rating", "") or "").strip()
+            or values.get("theme")
+        )
+    if not has_active_key:
+        return {}
+    return parse_lichess_custom_filters(source_status, values)
+
+
+LICHESS_RATING_PRESETS = [
+    {"key": "800-1200", "label": "800-1200", "min": 800, "max": 1200},
+    {"key": "1200-1600", "label": "1200-1600", "min": 1200, "max": 1600},
+    {"key": "1600-2000", "label": "1600-2000", "min": 1600, "max": 2000},
+    {"key": "2000+", "label": "2000+", "min": 2000, "max": None},
+]
+
+LICHESS_THEME_FALLBACKS = [
+    "mate",
+    "fork",
+    "pin",
+    "endgame",
+    "discovered attack",
+    "back rank",
+    "sacrifice",
+    "opening",
+]
+
+
+def normalize_lichess_theme_token(value):
+    normalized = re.sub(r"\s+", " ", str(value or "").strip().lower())
+    return normalized
+
+
+def build_lichess_theme_options(source_status):
+    rows = [dict(row) for row in (source_status.get("sample_rows", []) or []) if isinstance(row, dict)]
+    theme_counts = {}
+    display_lookup = {}
+    for row in rows:
+        for raw_theme in row.get("themes", []) or []:
+            display_value = str(raw_theme or "").strip()
+            normalized = normalize_lichess_theme_token(display_value)
+            if not normalized:
+                continue
+            display_lookup.setdefault(normalized, display_value)
+            theme_counts[normalized] = theme_counts.get(normalized, 0) + 1
+    ordered = []
+    for fallback in LICHESS_THEME_FALLBACKS:
+        normalized = normalize_lichess_theme_token(fallback)
+        ordered.append({
+            "key": normalized,
+            "label": display_lookup.get(normalized, fallback),
+            "count": theme_counts.get(normalized, 0),
+            "available": normalized in theme_counts,
+        })
+    for normalized, count in sorted(theme_counts.items(), key=lambda item: (-item[1], item[0])):
+        if normalized in {item["key"] for item in ordered}:
+            continue
+        ordered.append({
+            "key": normalized,
+            "label": display_lookup.get(normalized, normalized),
+            "count": count,
+            "available": True,
+        })
+    return ordered
+
+
+def parse_lichess_custom_filters(source_status, values):
+    values = values or {}
+    preset_lookup = {item["key"]: dict(item) for item in LICHESS_RATING_PRESETS}
+    preset_key = str(values.get("rating_preset", "") or "").strip()
+    if preset_key not in preset_lookup:
+        preset_key = "1200-1600"
+    preset = dict(preset_lookup[preset_key])
+    min_raw = str(values.get("min_rating", "") or "").strip()
+    max_raw = str(values.get("max_rating", "") or "").strip()
+    min_rating = _coerce_int(min_raw, preset.get("min", 0) or 0)
+    max_default = preset.get("max")
+    max_rating = _coerce_int(max_raw, max_default if isinstance(max_default, int) else 0) if max_raw else max_default
+    if min_rating <= 0:
+        min_rating = preset.get("min")
+    if isinstance(max_rating, int) and max_rating <= 0:
+        max_rating = None
+    if isinstance(min_rating, int) and isinstance(max_rating, int) and max_rating < min_rating:
+        min_rating, max_rating = max_rating, min_rating
+    theme_options = build_lichess_theme_options(source_status)
+    allowed_themes = {item["key"] for item in theme_options}
+    selected_theme_values = values.getlist("theme") if hasattr(values, "getlist") else values.get("theme", [])
+    if not isinstance(selected_theme_values, (list, tuple)):
+        selected_theme_values = [selected_theme_values]
+    selected_themes = []
+    for raw_theme in selected_theme_values:
+        normalized = normalize_lichess_theme_token(raw_theme)
+        if not normalized or normalized == "all":
+            continue
+        if normalized in allowed_themes and normalized not in selected_themes:
+            selected_themes.append(normalized)
+    return {
+        "rating_preset": preset_key,
+        "min_rating": min_rating if isinstance(min_rating, int) and min_rating > 0 else None,
+        "max_rating": max_rating if isinstance(max_rating, int) and max_rating > 0 else None,
+        "selected_themes": selected_themes,
+        "theme_options": theme_options,
+    }
+
+
+def row_matches_lichess_custom_filters(row, filter_payload):
+    row = dict(row or {})
+    filter_payload = dict(filter_payload or {})
+    rating_value = row.get("rating")
+    min_rating = filter_payload.get("min_rating")
+    max_rating = filter_payload.get("max_rating")
+    if isinstance(min_rating, int) and min_rating > 0:
+        if not isinstance(rating_value, int) or rating_value < min_rating:
+            return False
+    if isinstance(max_rating, int) and max_rating > 0:
+        if not isinstance(rating_value, int) or rating_value > max_rating:
+            return False
+    selected_themes = list(filter_payload.get("selected_themes", []) or [])
+    if selected_themes:
+        row_themes = {normalize_lichess_theme_token(item) for item in (row.get("themes", []) or []) if normalize_lichess_theme_token(item)}
+        if not row_themes.intersection(selected_themes):
+            return False
+    return True
+
+
+def choose_filtered_lichess_puzzle(sample_rows, filter_payload):
+    filter_payload = dict(filter_payload or {})
+    matches = []
+    target_rating = None
+    min_rating = filter_payload.get("min_rating")
+    max_rating = filter_payload.get("max_rating")
+    if isinstance(min_rating, int) and isinstance(max_rating, int):
+        target_rating = (min_rating + max_rating) / 2
+    elif isinstance(min_rating, int):
+        target_rating = float(min_rating)
+    elif isinstance(max_rating, int):
+        target_rating = float(max_rating)
+    else:
+        target_rating = 1400.0
+    for row in sample_rows or []:
+        if not isinstance(row, dict):
+            continue
+        if not row_matches_lichess_custom_filters(row, filter_payload):
+            continue
+        steps_payload = build_lichess_puzzle_steps(row)
+        if not steps_payload.get("ok"):
+            continue
+        matches.append(dict(row))
+    if not matches:
+        return {"row": None, "count": 0, "items": []}
+    chosen = sorted(
+        matches,
+        key=lambda item: (
+            abs(float(int(item.get("rating") or 1400)) - target_rating),
+            -int(item.get("popularity") or 0),
+            -int(item.get("nb_plays") or 0),
+            str(item.get("puzzle_id", "") or ""),
+        ),
+    )[0]
+    return {"row": chosen, "count": len(matches), "items": matches}
+
+
+def build_lichess_puzzle_solver_payload(puzzle_id="", filter_payload=None):
+    source_status = get_lichess_puzzle_source_status()
+    active_filter_payload = extract_lichess_active_filters(source_status, filter_payload)
+    base_payload = {
+        "available": False,
+        "empty_state": True,
+        "message": "",
+        "current_item": None,
+        "steps": [],
+        "step_count": 0,
+        "next_puzzle_href": url_for("chess_lichess_puzzle_solve"),
+        "hub_href": url_for("chess_lichess_puzzles"),
+        "source_status": source_status,
+        "filter_query": build_lichess_solver_query_args(active_filter_payload),
+    }
+    if not source_status.get("available"):
+        base_payload["message"] = "No local Lichess puzzle source imported yet."
+        return base_payload
+
+    rows = [dict(row) for row in (source_status.get("sample_rows", []) or []) if isinstance(row, dict)]
+    valid_items = build_lichess_valid_puzzle_list(rows, filter_payload=active_filter_payload)
+    if not valid_items:
+        if str(puzzle_id or "").strip():
+            base_payload["message"] = "That local Lichess puzzle could not be prepared safely."
+        else:
+            base_payload["message"] = "No valid local Lichess puzzles are available yet."
+        return base_payload
+
+    current_item_index = -1
+    current_row = {}
+    step_payload = {}
+    target_id = str(puzzle_id or "").strip()
+    if target_id:
+        for index, item in enumerate(valid_items):
+            row = dict(item.get("row") or {})
+            if str(row.get("puzzle_id", "") or "").strip() != target_id:
+                continue
+            current_item_index = index
+            current_row = row
+            step_payload = dict(item.get("steps") or {})
+            break
+        if current_item_index < 0:
+            base_payload["message"] = "That local Lichess puzzle could not be found."
+            return base_payload
+    else:
+        sorted_candidates = sorted(
+            enumerate(valid_items),
+            key=lambda item: (
+                abs(int(item[1].get("row", {}).get("rating") or 1400) - 1400),
+                int(item[1].get("row", {}).get("rating") or 0),
+                str(item[1].get("row", {}).get("puzzle_id", "") or ""),
+            )
+        )
+        best_valid_index, best_item = sorted_candidates[0]
+        current_item_index = best_valid_index
+        current_row = dict(best_item.get("row") or {})
+        step_payload = dict(best_item.get("steps") or {})
+
+    next_puzzle_id = ""
+    if len(valid_items) > 1 and current_item_index >= 0:
+        next_valid_index = (current_item_index + 1) % len(valid_items)
+        next_row = dict(valid_items[next_valid_index].get("row") or {})
+        next_puzzle_id = str(next_row.get("puzzle_id", "") or "").strip()
+    elif len(valid_items) == 1 and current_row:
+        next_puzzle_id = str(current_row.get("puzzle_id", "") or "").strip()
+
+    current_item = {
+        "id": str(current_row.get("puzzle_id", "") or "").strip(),
+        "puzzle_id": str(current_row.get("puzzle_id", "") or "").strip(),
+        "fen": str(current_row.get("fen", "") or "").strip(),
+        "rating": current_row.get("rating"),
+        "rating_label": f"Rated {int(current_row.get('rating') or 0)}" if int(current_row.get("rating") or 0) > 0 else "Rating unavailable",
+        "themes": list(current_row.get("themes", []) or []),
+        "themes_label": " · ".join(list(current_row.get("themes", []) or [])[:4]) or "Theme unavailable",
+        "opening_tags": list(current_row.get("opening_tags", []) or []),
+        "opening_label": " · ".join(list(current_row.get("opening_tags", []) or [])[:2]) or "Lichess Puzzle",
+        "reason": "Solve the expected move sequence from the local Lichess sample.",
+        "goal_message": describe_theme_goal(current_row.get("themes", []) or []),
+        "user_color": step_payload.get("user_turn", "white"),
+        "user_color_label": step_payload.get("user_label", "White"),
+        "game_url": str(current_row.get("game_url", "") or "").strip(),
+        "position_label": f"{current_item_index + 1} / {len(valid_items)}" if valid_items else "Local sample",
+    }
+    next_query = build_lichess_solver_query_args(active_filter_payload)
+    base_payload.update({
+        "available": True,
+        "empty_state": False,
+        "message": "",
+        "current_item": current_item,
+        "steps": step_payload.get("steps", []),
+        "step_count": len(step_payload.get("steps", []) or []),
+        "next_puzzle_href": url_for("chess_lichess_puzzle_solve_by_id", puzzle_id=next_puzzle_id, **next_query) if next_puzzle_id else url_for("chess_lichess_puzzle_solve", **next_query),
+        "valid_count": len(valid_items),
+        "valid_items": valid_items,
+    })
+    return base_payload
 
 
 def render_lotus_chess_page(active_key="home"):
@@ -20411,10 +24901,22 @@ def chess_game_detail(game_id):
         {"key": "openings", "label": "Openings", "href": url_for("chess_openings"), "icon": "waypoints"},
         {"key": "branches", "label": "Branches", "href": url_for("chess_branches"), "icon": "git-branch"},
         {"key": "train", "label": "Train", "href": url_for("chess_train"), "icon": "target"},
+        {"key": "drills", "label": "Drills", "href": url_for("chess_drills"), "icon": "swords"},
+        {"key": "puzzles", "label": "Puzzles", "href": url_for("chess_puzzles"), "icon": "sparkles"},
         {"key": "progress", "label": "Progress", "href": url_for("chess_progress"), "icon": "activity"},
         {"key": "courses", "label": "Courses", "href": url_for("chess_courses"), "icon": "graduation-cap"},
     ]
     detail = build_chess_game_detail_payload(game, review_snapshot=review_snapshot)
+    try:
+        initial_ply = max(0, int(request.args.get("ply", 0) or 0))
+    except Exception:
+        initial_ply = 0
+    replay_positions = list((detail.get("replay", {}) or {}).get("positions", []) or [])
+    if replay_positions:
+        initial_ply = min(initial_ply, max(0, len(replay_positions) - 1))
+    else:
+        initial_ply = 0
+    detail["replay_initial_ply"] = initial_ply
     detail["review_queue_active"] = bool(detail.get("review_queue_active", False))
     detail["review_queue_item_id"] = str(detail.get("review_queue_item_id", "") or "").strip()
     detail["review_queue_context"] = review_queue_item if review_id and review_queue_item and review_queue_item.get("id") == review_id else None
@@ -20448,18 +24950,26 @@ def chess_line_detail(line_key):
         {"key": "openings", "label": "Openings", "href": url_for("chess_openings"), "icon": "waypoints"},
         {"key": "branches", "label": "Branches", "href": url_for("chess_branches"), "icon": "git-branch"},
         {"key": "train", "label": "Train", "href": url_for("chess_train"), "icon": "target"},
+        {"key": "drills", "label": "Drills", "href": url_for("chess_drills"), "icon": "swords"},
+        {"key": "puzzles", "label": "Puzzles", "href": url_for("chess_puzzles"), "icon": "sparkles"},
         {"key": "progress", "label": "Progress", "href": url_for("chess_progress"), "icon": "activity"},
         {"key": "courses", "label": "Courses", "href": url_for("chess_courses"), "icon": "graduation-cap"},
     ]
+    active_key = "branches" if str(request.path or "").startswith("/chess/branch/") else "openings"
     return render_template(
         "chess_line_detail.html",
         chess_nav_items=nav_items,
-        chess_active_key="openings",
+        chess_active_key=active_key,
         chess_line=line_payload,
         title=f"Lotus Chess | {line_payload['line_label']}",
         ai_default_mode="study",
         ai_page_context="general",
     )
+
+
+@app.route("/chess/branch/<path:line_key>", endpoint="chess_branch_detail")
+def chess_branch_detail(line_key):
+    return chess_line_detail(line_key)
 
 
 @app.route("/chess/branches", endpoint="chess_branches")
@@ -20490,6 +25000,381 @@ def chess_branches():
     base_context["chess_branch_opening_filter"] = branch_map.get("opening_filter_label", "")
     base_context["title"] = "Lotus Chess | Branches"
     return render_template("chess_branches.html", **base_context)
+
+
+@app.route("/chess/drills", endpoint="chess_drills")
+def chess_drills():
+    chess_data = load_chess_data()
+    filters = {
+        "source": str(request.args.get("source", "all_lines") or "all_lines").strip().lower() or "all_lines",
+        "opening_key": normalize_chess_opening_token(request.args.get("opening_key", "")),
+        "line_key": normalize_chess_opening_token(request.args.get("line_key", "")),
+        "offset": str(request.args.get("offset", "0") or "0").strip(),
+    }
+    if filters["source"] not in {"weak_lines", "review_queue", "all_lines"}:
+        filters["source"] = "all_lines"
+    candidates = build_drill_candidates(chess_data)
+    choice = choose_drill_candidate(candidates, filters)
+    candidate = choice.get("candidate")
+    board_payload = build_drill_board_payload(candidate) if candidate else {"available": False}
+    review_snapshot = build_chess_review_queue_snapshot(chess_data)
+    opening_filter_label = ""
+    line_filter_label = ""
+    if filters["opening_key"]:
+        opening_match = next(
+            (
+                item for item in build_opening_summary(chess_data)
+                if normalize_chess_opening_token(item.get("key", "")) == filters["opening_key"]
+            ),
+            None,
+        )
+        opening_filter_label = str((opening_match or {}).get("label", "") or "").strip() or filters["opening_key"]
+    if filters["line_key"]:
+        game_match = next(
+            (
+                game for game in (chess_data.get("games", []) or [])
+                if isinstance(game, dict) and normalize_chess_opening_token(get_game_line_key(game, ply_count=8)) == filters["line_key"]
+            ),
+            None,
+        )
+        line_filter_label = get_game_line_label(game_match, ply_count=8) if game_match else filters["line_key"]
+    next_params = {"source": filters["source"]}
+    if filters["opening_key"]:
+        next_params["opening_key"] = filters["opening_key"]
+    if filters["line_key"]:
+        next_params["line_key"] = filters["line_key"]
+    next_params["offset"] = (choice.get("offset", 0) + 1) if choice.get("count", 0) else 0
+    next_href = url_for("chess_drills", **next_params)
+    context = build_lotus_chess_context("drills")
+    context["chess_drill_filters"] = filters
+    context["chess_drill_candidates_count"] = choice.get("count", 0)
+    context["chess_drill_candidate"] = candidate
+    context["chess_drill_board"] = board_payload
+    context["chess_drill_next_href"] = next_href
+    context["chess_drill_opening_filter"] = opening_filter_label
+    context["chess_drill_line_filter"] = line_filter_label
+    context["chess_drill_review_snapshot"] = review_snapshot
+    context["title"] = "Lotus Chess | Drills"
+    return render_template("chess_drills.html", **context)
+
+
+@app.route("/chess/puzzles", endpoint="chess_puzzles")
+def chess_puzzles():
+    chess_data = load_chess_data()
+    snapshot = build_chess_puzzle_seeds_snapshot(chess_data)
+    auto_snapshot = build_auto_puzzle_candidates_snapshot(chess_data)
+    my_puzzles_status = build_my_puzzles_status(chess_data, auto_snapshot=auto_snapshot)
+    context = build_lotus_chess_context("puzzles")
+    context["chess_puzzle_seeds"] = snapshot
+    context["chess_puzzle_seed_items"] = snapshot.get("seed_items", []) if isinstance(snapshot, dict) else []
+    context["chess_auto_puzzle_candidates"] = auto_snapshot
+    context["chess_auto_puzzle_candidate_items"] = auto_snapshot.get("candidate_items", []) if isinstance(auto_snapshot, dict) else []
+    context["chess_my_puzzles_status"] = my_puzzles_status
+    context["title"] = "Lotus Chess | My Puzzles"
+    return render_template("chess_puzzles.html", **context)
+
+
+@app.route("/chess/lichess-puzzles", endpoint="chess_lichess_puzzles")
+def chess_lichess_puzzles():
+    context = build_lotus_chess_context("puzzles")
+    lichess_source_status = get_lichess_puzzle_source_status()
+    custom_filters = parse_lichess_custom_filters(lichess_source_status, request.args)
+    selected_puzzle = {"row": None, "count": 0, "items": []}
+    custom_start_url = ""
+    custom_status_line = "Choose a local rating range and theme mix."
+    custom_warning = ""
+    if lichess_source_status.get("available"):
+        selected_puzzle = choose_filtered_lichess_puzzle(
+            lichess_source_status.get("sample_rows", []),
+            custom_filters,
+        )
+        if selected_puzzle.get("row"):
+            chosen_id = str((selected_puzzle.get("row") or {}).get("puzzle_id", "") or "").strip()
+            if chosen_id:
+                custom_start_url = url_for("chess_lichess_puzzle_solve_by_id", puzzle_id=chosen_id, **build_lichess_solver_query_args(custom_filters))
+            custom_status_line = f"{int(selected_puzzle.get('count', 0) or 0)} matching local puzzle{'s' if int(selected_puzzle.get('count', 0) or 0) != 1 else ''}."
+        else:
+            custom_status_line = "No local puzzles match this filter yet."
+            custom_warning = "Try widening the rating range or removing a theme."
+    context["chess_lichess_puzzles_status"] = {
+        "badge": lichess_source_status.get("availability_label", "Coming soon") if lichess_source_status.get("available") else "Coming soon",
+        "title": "Lichess puzzles",
+        "summary": "Practice tactical puzzles from the Lichess puzzle database without mixing them into My Puzzles.",
+        "status_line": (
+            f"{lichess_source_status.get('count', 0)} local puzzles loaded"
+            if lichess_source_status.get("available")
+            else "Local source not imported yet."
+        ),
+        "primary_label": "Coming later" if not lichess_source_status.get("available") else "Solve puzzles",
+        "primary_url": url_for("chess_puzzles") if not lichess_source_status.get("available") else url_for("chess_lichess_puzzle_solve"),
+        "secondary_label": "Back to My Puzzles",
+        "secondary_url": url_for("chess_puzzles"),
+        "sections": [
+            {
+                "title": "Solve Puzzles",
+                "description": (
+                    "Coming soon. This hub will eventually launch structured Lichess puzzle solving without mixing into My Puzzles."
+                    if not lichess_source_status.get("available")
+                    else f"{lichess_source_status.get('count', 0)} local sample puzzles are loaded and ready for future solving."
+                ),
+                "status": "Coming soon" if not lichess_source_status.get("available") else "Sample loaded",
+            },
+            {
+                "title": "Custom",
+                "description": "Use the local sample to narrow by rating and theme, then launch one matching puzzle.",
+                "status": "Ready" if lichess_source_status.get("available") else "Waiting on sample",
+            },
+        ],
+        "source_path": lichess_source_status.get("file_path", ""),
+        "expected_path": lichess_source_status.get("expected_file", str(LICHESS_PUZZLE_SAMPLE_PATH)),
+        "available": lichess_source_status.get("available", False),
+        "count": lichess_source_status.get("count", 0),
+        "warning": lichess_source_status.get("warning", ""),
+        "error": lichess_source_status.get("error", ""),
+        "missing_columns": lichess_source_status.get("missing_columns", []),
+        "rating_min": lichess_source_status.get("rating_min"),
+        "rating_max": lichess_source_status.get("rating_max"),
+        "rating_range_label": lichess_source_status.get("rating_range_label", "Preview"),
+        "top_themes": lichess_source_status.get("top_themes", []),
+        "top_themes_label": lichess_source_status.get("top_themes_label", "Preview"),
+        "sample_rows": lichess_source_status.get("sample_rows", []),
+        "skipped_rows": lichess_source_status.get("skipped_rows", 0),
+        "rating_filters": [dict(item) for item in LICHESS_RATING_PRESETS],
+        "theme_filters": custom_filters.get("theme_options", []),
+        "custom_filters": custom_filters,
+        "custom_match_count": int(selected_puzzle.get("count", 0) or 0),
+        "custom_match_status": custom_status_line,
+        "custom_match_warning": custom_warning,
+        "custom_start_url": custom_start_url,
+        "custom_preview_puzzle": dict(selected_puzzle.get("row") or {}) if isinstance(selected_puzzle.get("row"), dict) else None,
+    }
+    context["title"] = "Lotus Chess | Lichess Puzzles"
+    return render_template("chess_lichess_puzzles.html", **context)
+
+
+@app.route("/chess/lichess-puzzles/solve", endpoint="chess_lichess_puzzle_solve")
+@app.route("/chess/lichess-puzzles/solve/<path:puzzle_id>", endpoint="chess_lichess_puzzle_solve_by_id")
+def chess_lichess_puzzle_solve(puzzle_id=""):
+    payload = build_lichess_puzzle_solver_payload(puzzle_id=puzzle_id, filter_payload=request.args)
+    context = build_lotus_chess_context("puzzles")
+    context["chess_lichess_puzzle_solver"] = payload
+    context["title"] = "Lotus Chess | Solve Lichess Puzzle"
+    return render_template("chess_lichess_puzzle_solve.html", **context)
+
+
+@app.route("/chess/engine", methods=["GET", "POST"], endpoint="chess_engine")
+def chess_engine():
+    context = build_lotus_chess_context("train")
+    engine_status = get_engine_status()
+    default_fen = chesslib.STARTING_FEN if chesslib is not None else ""
+    request_values = request.form if request.method == "POST" else request.args
+    requested_fen = str(request_values.get("fen", default_fen) or default_fen).strip()
+    requested_depth = str(request_values.get("depth", engine_status.get("default_depth", 12)) or engine_status.get("default_depth", 12)).strip()
+    requested_time_ms = str(request_values.get("time_ms", engine_status.get("default_time_ms", 1200)) or engine_status.get("default_time_ms", 1200)).strip()
+    analysis_requested = request.method == "POST" or bool(str(request.args.get("analyze", "") or "").strip())
+    analysis_result = None
+    if analysis_requested:
+        analysis_result = analyze_fen_with_stockfish(
+            requested_fen,
+            depth=requested_depth,
+            time_ms=requested_time_ms,
+        )
+    context["title"] = "Lotus Chess | Engine"
+    return render_template(
+        "chess_engine.html",
+        **context,
+        chess_engine_status=engine_status,
+        chess_engine_analysis=analysis_result,
+        chess_engine_form={
+            "fen": requested_fen,
+            "depth": requested_depth,
+            "time_ms": requested_time_ms,
+        },
+    )
+
+
+@app.route("/chess/puzzles/start-my-puzzles", methods=["POST"], endpoint="chess_puzzles_start_my_puzzles")
+def chess_puzzles_start_my_puzzles():
+    chess_data = load_chess_data()
+    next_url = str(request.form.get("next", "") or "").strip()
+    if not next_url.startswith("/"):
+        next_url = url_for("chess_puzzles")
+    snapshot = build_auto_puzzle_candidates_snapshot(chess_data)
+    ready_items = [
+        dict(item) for item in (snapshot.get("all_items", []) or [])
+        if isinstance(item, dict) and str(item.get("status", "") or "").strip().lower() in {"queued", "training"}
+    ]
+    if ready_items:
+        return redirect(url_for("chess_training_puzzle"))
+    candidate_items = [
+        dict(item) for item in (snapshot.get("candidate_items", []) or [])
+        if isinstance(item, dict) and str(item.get("status", "") or "").strip().lower() == "candidate"
+    ]
+    if candidate_items:
+        result = add_top_auto_candidates_to_training_queue(chess_data, limit=3)
+        if result.get("changed"):
+            save_chess_data(chess_data)
+        return redirect(url_for("chess_training_puzzle"))
+
+    restart_items = [
+        dict(item) for item in (snapshot.get("candidate_items", []) or [])
+        if isinstance(item, dict) and str(item.get("status", "") or "").strip().lower() != "archived"
+    ]
+    added = 0
+    for item in restart_items:
+        result = upsert_auto_puzzle_candidate_state(
+            chess_data,
+            item.get("id", ""),
+            status="queued",
+            saved_seed_id=str(item.get("saved_seed_id", "") or "").strip(),
+        )
+        if result.get("changed"):
+            added += 1
+        if added >= 3:
+            break
+    if added > 0:
+        save_chess_data(chess_data)
+        return redirect(url_for("chess_training_puzzle"))
+
+    games_count = len([item for item in (chess_data.get("games", []) or []) if isinstance(item, dict)])
+    if games_count <= 0:
+        return redirect(build_chess_redirect_with_message(next_url, error="Import games first so Lotus Chess can build personal puzzles."))
+    if int(snapshot.get("visible_count", 0) or 0) > 0:
+        return redirect(url_for("chess_training_puzzle"))
+    return redirect(build_chess_redirect_with_message(next_url, error="No personal puzzles are ready yet. Import more games or review recent games first."))
+
+
+@app.route("/chess/puzzles/save", methods=["POST"], endpoint="chess_puzzles_save")
+def chess_puzzles_save():
+    chess_data = load_chess_data()
+    game_id = str(request.form.get("game_id", "") or "").strip()
+    try:
+        ply_index = int(request.form.get("ply_index", 0) or 0)
+    except Exception:
+        ply_index = -1
+    fen = str(request.form.get("fen", "") or "").strip()
+    side_to_move = str(request.form.get("side_to_move", "") or "").strip().lower()
+    user_note = str(request.form.get("user_note", "") or "").strip()
+    next_url = str(request.form.get("next", "") or "").strip()
+    if not next_url.startswith("/"):
+        next_url = url_for("chess_games")
+    game = find_chess_game(chess_data, game_id)
+    if not game:
+        return redirect(build_chess_redirect_with_message(next_url, error="Game unavailable for this puzzle seed."))
+    result = create_chess_puzzle_seed(
+        chess_data,
+        game,
+        ply_index=ply_index,
+        fen=fen,
+        side_to_move=side_to_move,
+        user_note=user_note,
+    )
+    if result.get("duplicate"):
+        return redirect(build_chess_redirect_with_message(next_url, success="Position already saved as a puzzle seed."))
+    if not result.get("created"):
+        return redirect(build_chess_redirect_with_message(next_url, error=result.get("error") or "Could not save puzzle seed."))
+    save_chess_data(chess_data)
+    return redirect(build_chess_redirect_with_message(next_url, success="Saved as puzzle seed."))
+
+
+@app.route("/chess/puzzles/status", methods=["POST"], endpoint="chess_puzzles_status")
+def chess_puzzles_status():
+    chess_data = load_chess_data()
+    seed_id = str(request.form.get("seed_id", "") or "").strip()
+    status = str(request.form.get("status", "") or "").strip()
+    next_url = str(request.form.get("next", "") or "").strip()
+    if not next_url.startswith("/"):
+        next_url = url_for("chess_puzzles")
+    result = update_chess_puzzle_seed_status(chess_data, seed_id, status)
+    if not result.get("changed"):
+        return redirect(build_chess_redirect_with_message(next_url, error=result.get("error") or "Could not update puzzle seed."))
+    save_chess_data(chess_data)
+    return redirect(build_chess_redirect_with_message(next_url, success=f"Marked {normalize_chess_puzzle_seed_status(status)}."))
+
+
+@app.route("/chess/puzzles/auto/save", methods=["POST"], endpoint="chess_puzzles_auto_save")
+def chess_puzzles_auto_save():
+    chess_data = load_chess_data()
+    candidate_id = str(request.form.get("candidate_id", "") or "").strip()
+    next_url = str(request.form.get("next", "") or "").strip()
+    if not next_url.startswith("/"):
+        next_url = url_for("chess_puzzles")
+    auto_snapshot = build_auto_puzzle_candidates_snapshot(chess_data)
+    candidate = next((item for item in (auto_snapshot.get("all_items", []) or []) if str(item.get("id", "") or "").strip() == candidate_id), None)
+    if not isinstance(candidate, dict):
+        return redirect(build_chess_redirect_with_message(next_url, error="Auto candidate unavailable."))
+    game = find_chess_game(chess_data, candidate.get("game_id", ""))
+    if not game:
+        return redirect(build_chess_redirect_with_message(next_url, error="Game unavailable for this training candidate."))
+    result = create_chess_puzzle_seed(
+        chess_data,
+        game,
+        ply_index=int(candidate.get("ply_index", 0) or 0),
+        fen=str(candidate.get("fen", "") or "").strip(),
+        side_to_move=str(candidate.get("side_to_move", "") or "").strip(),
+        user_note=str(candidate.get("reason", "") or "").strip(),
+    )
+    seed_id = str(((result.get("seed") or {}) if isinstance(result.get("seed"), dict) else {}).get("id", "") or "").strip()
+    upsert_auto_puzzle_candidate_state(chess_data, candidate_id, status="training", saved_seed_id=seed_id)
+    save_chess_data(chess_data)
+    if result.get("duplicate"):
+        return redirect(build_chess_redirect_with_message(next_url, success="Position already saved as a training seed."))
+    if not result.get("created"):
+        return redirect(build_chess_redirect_with_message(next_url, error=result.get("error") or "Could not save training seed."))
+    return redirect(build_chess_redirect_with_message(next_url, success="Saved to training seeds."))
+
+
+@app.route("/chess/puzzles/auto/queue", methods=["POST"], endpoint="chess_puzzles_auto_queue")
+def chess_puzzles_auto_queue():
+    chess_data = load_chess_data()
+    candidate_id = str(request.form.get("candidate_id", "") or "").strip()
+    next_url = str(request.form.get("next", "") or "").strip()
+    if not next_url.startswith("/"):
+        next_url = url_for("chess_puzzles")
+    auto_snapshot = build_auto_puzzle_candidates_snapshot(chess_data)
+    candidate = next((item for item in (auto_snapshot.get("all_items", []) or []) if str(item.get("id", "") or "").strip() == candidate_id), None)
+    if not isinstance(candidate, dict):
+        return redirect(build_chess_redirect_with_message(next_url, error="Auto candidate unavailable."))
+    current_status = str(candidate.get("status", "") or "").strip().lower()
+    if current_status in {"queued", "training", "done"}:
+        return redirect(build_chess_redirect_with_message(next_url, success="Already in training queue."))
+    result = upsert_auto_puzzle_candidate_state(chess_data, candidate_id, status="queued", saved_seed_id=str(candidate.get("saved_seed_id", "") or "").strip())
+    if not result.get("changed"):
+        return redirect(build_chess_redirect_with_message(next_url, error=result.get("error") or "Could not queue training candidate."))
+    save_chess_data(chess_data)
+    return redirect(build_chess_redirect_with_message(next_url, success="Added to training queue."))
+
+
+@app.route("/chess/puzzles/auto/queue-top", methods=["POST"], endpoint="chess_puzzles_auto_queue_top")
+def chess_puzzles_auto_queue_top():
+    chess_data = load_chess_data()
+    next_url = str(request.form.get("next", "") or "").strip()
+    if not next_url.startswith("/"):
+        next_url = url_for("chess_puzzles")
+    result = add_top_auto_candidates_to_training_queue(chess_data, limit=3)
+    if result.get("changed"):
+        save_chess_data(chess_data)
+        return redirect(build_chess_redirect_with_message(next_url, success=f"Added {int(result.get('added', 0) or 0)} weak candidates to training queue."))
+    return redirect(build_chess_redirect_with_message(next_url, success="No new weak candidates were added."))
+
+
+@app.route("/chess/puzzles/auto/status", methods=["POST"], endpoint="chess_puzzles_auto_status")
+def chess_puzzles_auto_status():
+    chess_data = load_chess_data()
+    candidate_id = str(request.form.get("candidate_id", "") or "").strip()
+    status = str(request.form.get("status", "") or "").strip()
+    next_url = str(request.form.get("next", "") or "").strip()
+    if not next_url.startswith("/"):
+        next_url = url_for("chess_puzzles")
+    auto_snapshot = build_auto_puzzle_candidates_snapshot(chess_data)
+    candidate = next((item for item in (auto_snapshot.get("all_items", []) or []) if str(item.get("id", "") or "").strip() == candidate_id), None)
+    if not isinstance(candidate, dict):
+        return redirect(build_chess_redirect_with_message(next_url, error="Auto candidate unavailable."))
+    result = upsert_auto_puzzle_candidate_state(chess_data, candidate_id, status=status, saved_seed_id=str(candidate.get("saved_seed_id", "") or "").strip())
+    if not result.get("changed"):
+        return redirect(build_chess_redirect_with_message(next_url, error=result.get("error") or "Could not update training candidate."))
+    save_chess_data(chess_data)
+    return redirect(build_chess_redirect_with_message(next_url, success=f"Marked {normalize_chess_auto_candidate_status(status)}."))
 
 
 @app.route("/chess/openings", endpoint="chess_openings")
@@ -20755,6 +25640,7 @@ def chess_review_add_line():
     line_label = str(request.form.get("line_label", "") or "").strip()
     opening_key = normalize_chess_opening_token(request.form.get("opening_key", ""))
     reason = str(request.form.get("reason", "") or "").strip()
+    next_url = str(request.form.get("next", "") or "").strip()
     if not line_key:
         return redirect(build_chess_redirect_with_message(url_for("chess_openings"), error="Missing line key."))
     if not line_label:
@@ -20769,13 +25655,67 @@ def chess_review_add_line():
         line_key=line_key,
         line_label=line_label,
     )
-    redirect_url = url_for("chess_line_detail", line_key=line_key, opening_key=opening_key) if opening_key else url_for("chess_line_detail", line_key=line_key)
+    redirect_url = next_url if next_url.startswith("/") else ""
+    if not redirect_url:
+        redirect_url = url_for("chess_line_detail", line_key=line_key, opening_key=opening_key) if opening_key else url_for("chess_line_detail", line_key=line_key)
     if result.get("duplicate"):
         return redirect(build_chess_redirect_with_message(redirect_url, success="Already in review queue."))
     if not result.get("created"):
         return redirect(build_chess_redirect_with_message(redirect_url, error=result.get("error") or "Could not add line to review queue."))
     save_chess_data(chess_data)
     return redirect(build_chess_redirect_with_message(redirect_url, success="Added to review queue."))
+
+
+@app.route("/chess/drill/line/<path:line_key>", endpoint="chess_line_drill")
+def chess_line_drill(line_key):
+    chess_data = load_chess_data()
+    decoded_line_key = urllib.parse.unquote(str(line_key or "").strip())
+    opening_key = normalize_chess_opening_token(request.args.get("opening_key", ""))
+    candidate_id = str(request.args.get("candidate_id", "") or "").strip()
+    drill_payload = build_chess_line_drill_payload(chess_data, decoded_line_key, opening_key=opening_key)
+    auto_snapshot = build_auto_puzzle_candidates_snapshot(chess_data)
+    candidate_context = None
+    if candidate_id:
+        for raw_item in auto_snapshot.get("all_items", []) or []:
+            if not isinstance(raw_item, dict):
+                continue
+            if str(raw_item.get("id", "") or "").strip() != candidate_id:
+                continue
+            if normalize_chess_opening_token(raw_item.get("line_key", "")) != normalize_chess_opening_token(drill_payload.get("line_key", "")):
+                continue
+            candidate_context = dict(raw_item)
+            break
+    if candidate_context:
+        candidate_context["status_label"] = str(candidate_context.get("status", "") or "").strip().replace("_", " ").title() or "Candidate"
+        candidate_context["back_to_session_href"] = url_for("chess_training_session", candidate_id=candidate_context.get("id", ""))
+        candidate_context["mark_done_href"] = url_for("chess_puzzles_auto_status")
+    drill_payload["candidate_context"] = candidate_context
+    drill_payload["back_to_session_href"] = str((candidate_context or {}).get("back_to_session_href", "") or "").strip()
+    nav_items = [
+        {"key": "home", "label": "Home", "href": url_for("chess"), "icon": "layout-dashboard"},
+        {"key": "import", "label": "Import", "href": url_for("chess_import"), "icon": "download"},
+        {"key": "games", "label": "Games", "href": url_for("chess_games"), "icon": "library-big"},
+        {"key": "openings", "label": "Openings", "href": url_for("chess_openings"), "icon": "waypoints"},
+        {"key": "branches", "label": "Branches", "href": url_for("chess_branches"), "icon": "git-branch"},
+        {"key": "train", "label": "Train", "href": url_for("chess_train"), "icon": "target"},
+        {"key": "drills", "label": "Drills", "href": url_for("chess_drills"), "icon": "swords"},
+        {"key": "puzzles", "label": "Puzzles", "href": url_for("chess_puzzles"), "icon": "sparkles"},
+        {"key": "progress", "label": "Progress", "href": url_for("chess_progress"), "icon": "chart-column"},
+        {"key": "courses", "label": "Courses", "href": url_for("chess_courses"), "icon": "graduation-cap"},
+    ]
+    if not drill_payload.get("total", 0):
+        drill_payload["drill"]["error"] = drill_payload.get("drill_error") or "Not enough line data to drill."
+    return render_template(
+        "chess_line_drill.html",
+        chess_nav_items=nav_items,
+        chess_active_key="drills",
+        chess_line=drill_payload,
+        chess_success_message=str(request.args.get("success", "") or "").strip(),
+        chess_error_message=str(request.args.get("error", "") or "").strip(),
+        title="Lotus Chess | Line Drill",
+        ai_default_mode="study",
+        ai_page_context="general",
+    )
 
 
 @app.route("/chess/review/complete", methods=["POST"], endpoint="chess_review_complete")
@@ -20790,6 +25730,375 @@ def chess_review_complete():
         return redirect(build_chess_redirect_with_message(next_url, error=result.get("error") or "Could not mark review item done."))
     save_chess_data(chess_data)
     return redirect(build_chess_redirect_with_message(next_url, success="Marked as done."))
+
+
+@app.route("/chess/review/session", endpoint="chess_review_session")
+def chess_review_session():
+    chess_data = load_chess_data()
+    try:
+        offset = int(request.args.get("offset", 0) or 0)
+    except Exception:
+        offset = 0
+    queue_id = str(request.args.get("queue_id", "") or "").strip()
+    session_payload = build_chess_review_session_payload(chess_data, offset=offset, queue_id=queue_id)
+    nav_items = [
+        {"key": "home", "label": "Home", "href": url_for("chess"), "icon": "layout-dashboard"},
+        {"key": "import", "label": "Import", "href": url_for("chess_import"), "icon": "download"},
+        {"key": "games", "label": "Games", "href": url_for("chess_games"), "icon": "library-big"},
+        {"key": "openings", "label": "Openings", "href": url_for("chess_openings"), "icon": "waypoints"},
+        {"key": "branches", "label": "Branches", "href": url_for("chess_branches"), "icon": "git-branch"},
+        {"key": "train", "label": "Train", "href": url_for("chess_train"), "icon": "target"},
+        {"key": "drills", "label": "Drills", "href": url_for("chess_drills"), "icon": "swords"},
+        {"key": "puzzles", "label": "Puzzles", "href": url_for("chess_puzzles"), "icon": "sparkles"},
+        {"key": "progress", "label": "Progress", "href": url_for("chess_progress"), "icon": "activity"},
+        {"key": "courses", "label": "Courses", "href": url_for("chess_courses"), "icon": "graduation-cap"},
+    ]
+    return render_template(
+        "chess_review_session.html",
+        chess_nav_items=nav_items,
+        chess_active_key="train",
+        chess_review_session=session_payload,
+        chess_success_message=str(request.args.get("success", "") or "").strip(),
+        chess_error_message=str(request.args.get("error", "") or "").strip(),
+        title="Lotus Chess | Review Session",
+        ai_default_mode="study",
+        ai_page_context="general",
+    )
+
+
+@app.route("/chess/training/session", endpoint="chess_training_session")
+def chess_training_session():
+    chess_data = load_chess_data()
+    try:
+        offset = int(request.args.get("offset", 0) or 0)
+    except Exception:
+        offset = 0
+    candidate_id = str(request.args.get("candidate_id", "") or "").strip()
+    session_payload = build_auto_training_session_payload(chess_data, offset=offset, candidate_id=candidate_id)
+    nav_items = [
+        {"key": "home", "label": "Home", "href": url_for("chess"), "icon": "layout-dashboard"},
+        {"key": "import", "label": "Import", "href": url_for("chess_import"), "icon": "download"},
+        {"key": "games", "label": "Games", "href": url_for("chess_games"), "icon": "library-big"},
+        {"key": "openings", "label": "Openings", "href": url_for("chess_openings"), "icon": "waypoints"},
+        {"key": "branches", "label": "Branches", "href": url_for("chess_branches"), "icon": "git-branch"},
+        {"key": "train", "label": "Train", "href": url_for("chess_train"), "icon": "target"},
+        {"key": "drills", "label": "Drills", "href": url_for("chess_drills"), "icon": "swords"},
+        {"key": "puzzles", "label": "Puzzles", "href": url_for("chess_puzzles"), "icon": "sparkles"},
+        {"key": "progress", "label": "Progress", "href": url_for("chess_progress"), "icon": "activity"},
+        {"key": "courses", "label": "Courses", "href": url_for("chess_courses"), "icon": "graduation-cap"},
+    ]
+    return render_template(
+        "chess_training_session.html",
+        chess_nav_items=nav_items,
+        chess_active_key="train",
+        chess_training_session=session_payload,
+        chess_success_message=str(request.args.get("success", "") or "").strip(),
+        chess_error_message=str(request.args.get("error", "") or "").strip(),
+        title="Lotus Chess | Auto Training Session",
+        ai_default_mode="study",
+        ai_page_context="general",
+    )
+
+
+@app.route("/chess/training/puzzle/analyze", methods=["POST"], endpoint="chess_training_puzzle_analyze")
+def chess_training_puzzle_analyze():
+    chess_data = load_chess_data()
+    candidate_id = str(request.form.get("candidate_id", "") or "").strip()
+    preset_info = resolve_chess_puzzle_engine_preset(request.form.get("engine_preset", "balanced"))
+    selected_preset = dict(preset_info.get("selected", {}) or {})
+    depth = selected_preset.get("depth")
+    time_ms = selected_preset.get("time_ms")
+    puzzle_payload = build_auto_training_puzzle_payload(chess_data, candidate_id=candidate_id)
+    nav_items = [
+        {"key": "home", "label": "Home", "href": url_for("chess"), "icon": "layout-dashboard"},
+        {"key": "import", "label": "Import", "href": url_for("chess_import"), "icon": "download"},
+        {"key": "games", "label": "Games", "href": url_for("chess_games"), "icon": "library-big"},
+        {"key": "openings", "label": "Openings", "href": url_for("chess_openings"), "icon": "waypoints"},
+        {"key": "branches", "label": "Branches", "href": url_for("chess_branches"), "icon": "git-branch"},
+        {"key": "train", "label": "Train", "href": url_for("chess_train"), "icon": "target"},
+        {"key": "drills", "label": "Drills", "href": url_for("chess_drills"), "icon": "swords"},
+        {"key": "puzzles", "label": "Puzzles", "href": url_for("chess_puzzles"), "icon": "sparkles"},
+        {"key": "progress", "label": "Progress", "href": url_for("chess_progress"), "icon": "activity"},
+        {"key": "courses", "label": "Courses", "href": url_for("chess_courses"), "icon": "graduation-cap"},
+    ]
+    return render_template(
+        "chess_training_puzzle.html",
+        chess_nav_items=nav_items,
+        chess_active_key="train",
+        chess_training_puzzle=puzzle_payload,
+        chess_training_puzzle_engine_check=build_training_puzzle_engine_check(puzzle_payload, depth=depth, time_ms=time_ms),
+        chess_training_puzzle_critical_check=None,
+        chess_training_puzzle_engine_preset=preset_info,
+        chess_success_message="",
+        chess_error_message="",
+        title="Lotus Chess | Weak-Line Trainer",
+        ai_default_mode="study",
+        ai_page_context="general",
+    )
+
+
+@app.route("/chess/training/puzzle/analyze.json", methods=["POST"], endpoint="chess_training_puzzle_analyze_json")
+def chess_training_puzzle_analyze_json():
+    chess_data = load_chess_data()
+    candidate_id = str(request.form.get("candidate_id", "") or "").strip()
+    preset_info = resolve_chess_puzzle_engine_preset(request.form.get("engine_preset", "balanced"))
+    selected_preset = dict(preset_info.get("selected", {}) or {})
+    depth = selected_preset.get("depth")
+    time_ms = selected_preset.get("time_ms")
+    puzzle_payload = build_auto_training_puzzle_payload(chess_data, candidate_id=candidate_id)
+    engine_check = build_training_puzzle_engine_check(puzzle_payload, depth=depth, time_ms=time_ms)
+    return jsonify({"ok": True, "engine_check": engine_check, "engine_preset": preset_info})
+
+
+@app.route("/chess/training/puzzle/tutor-feedback.json", methods=["POST"], endpoint="chess_training_puzzle_tutor_feedback_json")
+def chess_training_puzzle_tutor_feedback_json():
+    candidate_id = str(request.form.get("candidate_id", "") or "").strip()
+    fen_value = str(request.form.get("fen", "") or "").strip()
+    attempted_move = str(request.form.get("attempted_move", "") or "").strip()
+    expected_move = str(request.form.get("expected_move", "") or "").strip()
+    expected_move_san = str(request.form.get("expected_move_san", "") or "").strip()
+    user_color = str(request.form.get("user_color", "") or "").strip()
+    tutor_feedback = build_engine_tutor_feedback(
+        fen_value,
+        attempted_move,
+        expected_move=expected_move,
+        expected_move_san=expected_move_san,
+        user_color=user_color,
+    )
+    tutor_feedback["candidate_id"] = candidate_id
+    return jsonify({"ok": True, "tutor_feedback": tutor_feedback})
+
+
+def _jsonify_puzzle_attempt_result(result, status_code=200):
+    if not isinstance(result, dict):
+        return jsonify({"ok": False, "error": "Puzzle attempt update failed."}), status_code
+    attempt = dict(result.get("attempt", {}) or {}) if isinstance(result.get("attempt"), dict) else {}
+    return jsonify({
+        "ok": bool(result.get("ok")),
+        "error": str(result.get("error", "") or "").strip(),
+        "attempt": attempt,
+        "attempt_summary": build_puzzle_attempt_summary(attempt),
+    }), status_code
+
+
+@app.route("/chess/training/puzzle/attempt/move.json", methods=["POST"], endpoint="chess_training_puzzle_attempt_move_json")
+def chess_training_puzzle_attempt_move_json():
+    chess_data = load_chess_data()
+    result_type = str(request.form.get("result", "") or "").strip().lower()
+    attempt_id = str(request.form.get("attempt_id", "") or "").strip()
+    step_index = safe_puzzle_attempt_int(request.form.get("step_index", "0"), 0)
+    if result_type == "correct":
+        result = record_puzzle_correct_move(chess_data, attempt_id, step_index=step_index + 1)
+    else:
+        result = record_puzzle_wrong_move(
+            chess_data,
+            attempt_id,
+            step_index=step_index + 1,
+            fen=str(request.form.get("fen", "") or "").strip(),
+            attempted_move_uci=str(request.form.get("attempted_move_uci", "") or "").strip(),
+            attempted_move_san=str(request.form.get("attempted_move_san", "") or "").strip(),
+            expected_move_uci=str(request.form.get("expected_move_uci", "") or "").strip(),
+            engine_move_uci=str(request.form.get("engine_move_uci", "") or "").strip(),
+        )
+    if result.get("ok"):
+        save_chess_data(chess_data)
+        return _jsonify_puzzle_attempt_result(result)
+    return _jsonify_puzzle_attempt_result(result, 400)
+
+
+@app.route("/chess/training/puzzle/attempt/reveal.json", methods=["POST"], endpoint="chess_training_puzzle_attempt_reveal_json")
+def chess_training_puzzle_attempt_reveal_json():
+    chess_data = load_chess_data()
+    result = record_puzzle_reveal(chess_data, str(request.form.get("attempt_id", "") or "").strip())
+    if result.get("ok"):
+        save_chess_data(chess_data)
+        return _jsonify_puzzle_attempt_result(result)
+    return _jsonify_puzzle_attempt_result(result, 400)
+
+
+@app.route("/chess/training/puzzle/attempt/engine-check.json", methods=["POST"], endpoint="chess_training_puzzle_attempt_engine_check_json")
+def chess_training_puzzle_attempt_engine_check_json():
+    chess_data = load_chess_data()
+    result = record_puzzle_engine_check(chess_data, str(request.form.get("attempt_id", "") or "").strip())
+    if result.get("ok"):
+        save_chess_data(chess_data)
+        return _jsonify_puzzle_attempt_result(result)
+    return _jsonify_puzzle_attempt_result(result, 400)
+
+
+@app.route("/chess/training/puzzle/attempt/critical-moment.json", methods=["POST"], endpoint="chess_training_puzzle_attempt_critical_moment_json")
+def chess_training_puzzle_attempt_critical_moment_json():
+    chess_data = load_chess_data()
+    result = record_puzzle_critical_moment_check(chess_data, str(request.form.get("attempt_id", "") or "").strip())
+    if result.get("ok"):
+        save_chess_data(chess_data)
+        return _jsonify_puzzle_attempt_result(result)
+    return _jsonify_puzzle_attempt_result(result, 400)
+
+
+@app.route("/chess/training/puzzle/attempt/skip.json", methods=["POST"], endpoint="chess_training_puzzle_attempt_skip_json")
+def chess_training_puzzle_attempt_skip_json():
+    chess_data = load_chess_data()
+    result = skip_puzzle_attempt(
+        chess_data,
+        str(request.form.get("attempt_id", "") or "").strip(),
+        final_step=safe_puzzle_attempt_int(request.form.get("final_step", "0"), 0),
+        total_steps=safe_puzzle_attempt_int(request.form.get("total_steps", "0"), 0),
+    )
+    if result.get("ok"):
+        save_chess_data(chess_data)
+        return _jsonify_puzzle_attempt_result(result)
+    return _jsonify_puzzle_attempt_result(result, 400)
+
+
+@app.route("/chess/training/puzzle/attempt/complete.json", methods=["POST"], endpoint="chess_training_puzzle_attempt_complete_json")
+def chess_training_puzzle_attempt_complete_json():
+    chess_data = load_chess_data()
+    result = complete_puzzle_attempt(
+        chess_data,
+        str(request.form.get("attempt_id", "") or "").strip(),
+        final_step=safe_puzzle_attempt_int(request.form.get("final_step", "0"), 0),
+        total_steps=safe_puzzle_attempt_int(request.form.get("total_steps", "0"), 0),
+    )
+    if result.get("ok"):
+        save_chess_data(chess_data)
+        return _jsonify_puzzle_attempt_result(result)
+    return _jsonify_puzzle_attempt_result(result, 400)
+
+
+@app.route("/chess/training/puzzle/critical-moment", methods=["POST"], endpoint="chess_training_puzzle_critical_moment")
+def chess_training_puzzle_critical_moment():
+    chess_data = load_chess_data()
+    candidate_id = str(request.form.get("candidate_id", "") or "").strip()
+    preset_info = resolve_chess_puzzle_engine_preset(request.form.get("engine_preset", "balanced"))
+    selected_preset = dict(preset_info.get("selected", {}) or {})
+    depth = selected_preset.get("depth")
+    time_ms = selected_preset.get("time_ms")
+    puzzle_payload = build_auto_training_puzzle_payload(chess_data, candidate_id=candidate_id)
+    nav_items = [
+        {"key": "home", "label": "Home", "href": url_for("chess"), "icon": "layout-dashboard"},
+        {"key": "import", "label": "Import", "href": url_for("chess_import"), "icon": "download"},
+        {"key": "games", "label": "Games", "href": url_for("chess_games"), "icon": "library-big"},
+        {"key": "openings", "label": "Openings", "href": url_for("chess_openings"), "icon": "waypoints"},
+        {"key": "branches", "label": "Branches", "href": url_for("chess_branches"), "icon": "git-branch"},
+        {"key": "train", "label": "Train", "href": url_for("chess_train"), "icon": "target"},
+        {"key": "drills", "label": "Drills", "href": url_for("chess_drills"), "icon": "swords"},
+        {"key": "puzzles", "label": "Puzzles", "href": url_for("chess_puzzles"), "icon": "sparkles"},
+        {"key": "progress", "label": "Progress", "href": url_for("chess_progress"), "icon": "activity"},
+        {"key": "courses", "label": "Courses", "href": url_for("chess_courses"), "icon": "graduation-cap"},
+    ]
+    return render_template(
+        "chess_training_puzzle.html",
+        chess_nav_items=nav_items,
+        chess_active_key="train",
+        chess_training_puzzle=puzzle_payload,
+        chess_training_puzzle_engine_check=None,
+        chess_training_puzzle_critical_check=build_training_puzzle_critical_moment_check(chess_data, puzzle_payload, depth=depth, time_ms=time_ms),
+        chess_training_puzzle_engine_preset=preset_info,
+        chess_success_message="",
+        chess_error_message="",
+        title="Lotus Chess | Weak-Line Trainer",
+        ai_default_mode="study",
+        ai_page_context="general",
+    )
+
+
+@app.route("/chess/training/puzzle/critical-moment.json", methods=["POST"], endpoint="chess_training_puzzle_critical_moment_json")
+def chess_training_puzzle_critical_moment_json():
+    chess_data = load_chess_data()
+    candidate_id = str(request.form.get("candidate_id", "") or "").strip()
+    preset_info = resolve_chess_puzzle_engine_preset(request.form.get("engine_preset", "balanced"))
+    selected_preset = dict(preset_info.get("selected", {}) or {})
+    depth = selected_preset.get("depth")
+    time_ms = selected_preset.get("time_ms")
+    puzzle_payload = build_auto_training_puzzle_payload(chess_data, candidate_id=candidate_id)
+    critical_check = build_training_puzzle_critical_moment_check(chess_data, puzzle_payload, depth=depth, time_ms=time_ms)
+    return jsonify({"ok": True, "critical_check": critical_check, "engine_preset": preset_info})
+
+
+@app.route("/chess/training/puzzle/use-engine-moment.json", methods=["POST"], endpoint="chess_training_puzzle_use_engine_moment_json")
+def chess_training_puzzle_use_engine_moment_json():
+    chess_data = load_chess_data()
+    candidate_id = str(request.form.get("candidate_id", "") or "").strip()
+    preset_info = resolve_chess_puzzle_engine_preset(request.form.get("engine_preset", "balanced"))
+    selected_preset = dict(preset_info.get("selected", {}) or {})
+    depth = selected_preset.get("depth")
+    time_ms = selected_preset.get("time_ms")
+    puzzle_payload = build_auto_training_puzzle_payload(chess_data, candidate_id=candidate_id)
+    critical_check = build_training_puzzle_critical_moment_check(chess_data, puzzle_payload, depth=depth, time_ms=time_ms)
+    suggested = dict((critical_check or {}).get("suggested_position", {}) or {})
+    if not suggested:
+        return jsonify({"ok": False, "error": critical_check.get("error") or critical_check.get("message") or "No stronger nearby moment found."})
+    derived_candidate = build_engine_nearby_candidate(chess_data, puzzle_payload, critical_check)
+    if not isinstance(derived_candidate, dict):
+        return jsonify({"ok": False, "error": "Could not build an engine-derived puzzle candidate."})
+    save_result = save_engine_nearby_candidate(chess_data, derived_candidate)
+    if not save_result.get("item"):
+        return jsonify({"ok": False, "error": save_result.get("error") or "Could not save the engine-derived candidate."})
+    saved_item = dict(save_result.get("item", {}) or {})
+    if str(saved_item.get("status", "") or "").strip().lower() not in {"queued", "training"}:
+        saved_item["status"] = "queued"
+    upsert_auto_puzzle_candidate_state(
+        chess_data,
+        saved_item.get("id", ""),
+        status=str(saved_item.get("status", "queued") or "queued").strip().lower() or "queued",
+        saved_seed_id=str(saved_item.get("saved_seed_id", "") or "").strip(),
+    )
+    save_chess_data(chess_data)
+    return jsonify({
+        "ok": True,
+        "message": "Engine found a nearby training moment.",
+        "created": bool(save_result.get("created")),
+        "candidate_id": str(saved_item.get("id", "") or "").strip(),
+        "next_url": url_for("chess_training_puzzle", candidate_id=str(saved_item.get("id", "") or "").strip()),
+    })
+
+
+@app.route("/chess/training/puzzle", endpoint="chess_training_puzzle")
+def chess_training_puzzle():
+    chess_data = load_chess_data()
+    candidate_id = str(request.args.get("candidate_id", "") or "").strip()
+    preset_info = resolve_chess_puzzle_engine_preset(request.args.get("engine_preset", "balanced"))
+    puzzle_payload = build_auto_training_puzzle_payload(chess_data, candidate_id=candidate_id)
+    attempt_result = {"attempt": None, "changed": False, "created": False}
+    if puzzle_payload.get("available") and isinstance(puzzle_payload.get("current_item"), dict):
+        attempt_result = get_or_create_active_puzzle_attempt(
+            chess_data,
+            puzzle_payload.get("current_item", {}),
+            total_steps=int(puzzle_payload.get("step_count", 0) or 0),
+        )
+        if attempt_result.get("changed"):
+            save_chess_data(chess_data)
+    current_attempt = dict(attempt_result.get("attempt", {}) or {}) if isinstance(attempt_result.get("attempt"), dict) else {}
+    attempt_summary = build_puzzle_attempt_summary(current_attempt)
+    nav_items = [
+        {"key": "home", "label": "Home", "href": url_for("chess"), "icon": "layout-dashboard"},
+        {"key": "import", "label": "Import", "href": url_for("chess_import"), "icon": "download"},
+        {"key": "games", "label": "Games", "href": url_for("chess_games"), "icon": "library-big"},
+        {"key": "openings", "label": "Openings", "href": url_for("chess_openings"), "icon": "waypoints"},
+        {"key": "branches", "label": "Branches", "href": url_for("chess_branches"), "icon": "git-branch"},
+        {"key": "train", "label": "Train", "href": url_for("chess_train"), "icon": "target"},
+        {"key": "drills", "label": "Drills", "href": url_for("chess_drills"), "icon": "swords"},
+        {"key": "puzzles", "label": "Puzzles", "href": url_for("chess_puzzles"), "icon": "sparkles"},
+        {"key": "progress", "label": "Progress", "href": url_for("chess_progress"), "icon": "activity"},
+        {"key": "courses", "label": "Courses", "href": url_for("chess_courses"), "icon": "graduation-cap"},
+    ]
+    return render_template(
+        "chess_training_puzzle.html",
+        chess_nav_items=nav_items,
+        chess_active_key="train",
+        chess_training_puzzle=puzzle_payload,
+        chess_training_puzzle_attempt=current_attempt,
+        chess_training_puzzle_attempt_summary=attempt_summary,
+        chess_training_puzzle_engine_check=None,
+        chess_training_puzzle_critical_check=None,
+        chess_training_puzzle_engine_preset=preset_info,
+        chess_success_message=str(request.args.get("success", "") or "").strip(),
+        chess_error_message=str(request.args.get("error", "") or "").strip(),
+        title="Lotus Chess | Weak-Line Trainer",
+        ai_default_mode="study",
+        ai_page_context="general",
+    )
 
 
 @app.route("/chess/import/prepare", methods=["POST"], endpoint="chess_import_prepare")
@@ -21003,5 +26312,6 @@ def proxy_notebook():
 if __name__ == "__main__":
     debug_enabled = config_flag("FLASK_DEBUG", False) and not IS_PRODUCTION
     port = int(config_value("PORT", "5000") or "5000")
+    print(f"Running on http://127.0.0.1:{port}")
     app.run(host="0.0.0.0", port=port, debug=debug_enabled)
 

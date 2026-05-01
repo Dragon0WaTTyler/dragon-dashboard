@@ -1,0 +1,1226 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="page-hero chess-hero">
+    <div class="hero-meta">
+        <span class="hero-badge matte-tag">Lotus Chess</span>
+        <span>Lichess Puzzle</span>
+    </div>
+    <h2>Solve one local Lichess puzzle.</h2>
+    <p class="subhead">This stays separate from My Puzzles and uses only the local sample CSV solution line.</p>
+    <div class="chess-hero-actions">
+        <a class="btn" href="{{ url_for('chess_lichess_puzzles') }}"><i data-lucide="sparkles"></i><span>Back to Lichess hub</span></a>
+        <a class="btn chess-inline-btn" href="{{ url_for('chess_puzzles') }}"><i data-lucide="arrow-left"></i><span>Back to My Puzzles</span></a>
+    </div>
+</section>
+
+<nav class="surface-card chess-subnav" aria-label="Lotus Chess areas">
+    {% for item in chess_nav_items %}
+    <a class="chess-subnav-link {{ 'active' if item.key == chess_active_key else '' }}" href="{{ item.href }}">
+        <i data-lucide="{{ item.icon }}"></i>
+        <span>{{ item.label }}</span>
+    </a>
+    {% endfor %}
+</nav>
+
+<section class="chess-main chess-line-drill-page">
+    {% if chess_lichess_puzzle_solver.empty_state %}
+    <section class="surface-card section-card chess-empty-state">
+        <div class="hero-meta">
+            <span class="hero-badge matte-tag">Lichess Puzzle</span>
+            <span>Source unavailable</span>
+        </div>
+        <p class="chess-summary-note">{{ chess_lichess_puzzle_solver.message or 'No local Lichess puzzle source imported yet.' }}</p>
+        <div class="chess-review-queue-actions">
+            <a class="btn chess-inline-btn" href="{{ url_for('chess_lichess_puzzles') }}"><i data-lucide="sparkles"></i><span>Open Lichess hub</span></a>
+            <a class="btn chess-inline-btn" href="{{ url_for('chess_puzzles') }}"><i data-lucide="arrow-left"></i><span>Back to My Puzzles</span></a>
+        </div>
+    </section>
+    {% else %}
+    <section class="surface-card section-card chess-focus-card chess-puzzle-session">
+        <div class="chess-puzzle-session-layout">
+            <section class="chess-puzzle-board-column">
+                <div class="hero-meta chess-puzzle-board-meta">
+                    <span class="hero-badge matte-tag">Lichess Puzzle</span>
+                    <span>{{ chess_lichess_puzzle_solver.current_item.position_label }}</span>
+                </div>
+                <div class="chess-board-stage chess-puzzle-board-stage">
+                    <div class="chess-board chess-trainer-board" id="chess-lichess-puzzle-board" aria-label="Lichess puzzle board" data-board-interaction-version="lichess-board-fix-2026-04-30"></div>
+                </div>
+                <div class="chess-board-status chess-puzzle-board-status">
+                    <strong id="chess-lichess-puzzle-move-label">Your side to move</strong>
+                    <span id="chess-lichess-puzzle-counter">Step 1 / {{ chess_lichess_puzzle_solver.step_count }}</span>
+                    <span id="chess-lichess-puzzle-turn-label">{{ chess_lichess_puzzle_solver.current_item.user_color_label }} to move</span>
+                </div>
+                <div class="chess-puzzle-board-summary">
+                    <span class="chess-puzzle-status-pill">{{ chess_lichess_puzzle_solver.current_item.rating_label }}</span>
+                    <span class="chess-puzzle-status-pill">{{ chess_lichess_puzzle_solver.current_item.themes|length }} theme{{ '' if chess_lichess_puzzle_solver.current_item.themes|length == 1 else 's' }}</span>
+                    <span class="chess-puzzle-status-pill">{{ chess_lichess_puzzle_solver.step_count }} move{{ '' if chess_lichess_puzzle_solver.step_count == 1 else 's' }}</span>
+                </div>
+            </section>
+
+            <aside class="chess-puzzle-coach-panel">
+                <div class="chess-puzzle-coach-head">
+                    <div class="hero-meta">
+                        <span class="hero-badge matte-tag">Coach</span>
+                        <span>Lichess Puzzle</span>
+                    </div>
+                    <h3 class="title-scaled chess-section-title">{{ chess_lichess_puzzle_solver.current_item.rating_label }}</h3>
+                    <p class="chess-summary-note">{{ chess_lichess_puzzle_solver.current_item.opening_label }}</p>
+                    <p class="chess-summary-note chess-muted-note">{{ chess_lichess_puzzle_solver.current_item.themes_label }}</p>
+                </div>
+
+                <div class="surface-card chess-trainer-feedback-card chess-puzzle-coach-bubble" id="chess-lichess-puzzle-feedback-card" data-feedback-state="idle">
+                    <span class="chess-mini-label">Coach</span>
+                    <strong id="chess-lichess-puzzle-feedback-title">Ready</strong>
+                    <p class="chess-summary-note" id="chess-lichess-puzzle-feedback-text">{{ chess_lichess_puzzle_solver.current_item.goal_message or 'Look for forcing moves: checks, captures, and threats.' }}</p>
+                </div>
+
+                <div class="surface-card chess-puzzle-move-compare" id="chess-lichess-puzzle-compare-card" hidden>
+                    <div class="chess-puzzle-move-compare-row" id="chess-lichess-puzzle-compare-attempted" hidden>
+                        <span class="chess-puzzle-move-compare-label attempted">Your move</span>
+                        <strong id="chess-lichess-puzzle-compare-attempted-value">-</strong>
+                    </div>
+                    <div class="chess-puzzle-move-compare-row" id="chess-lichess-puzzle-compare-expected" hidden>
+                        <span class="chess-puzzle-move-compare-label expected">Solution move</span>
+                        <strong id="chess-lichess-puzzle-compare-expected-value">-</strong>
+                    </div>
+                </div>
+
+                <div class="surface-card chess-drill-answer-card chess-puzzle-coach-bubble" id="chess-lichess-puzzle-answer-card" hidden>
+                    <span class="chess-mini-label">Reveal</span>
+                    <strong id="chess-lichess-puzzle-answer-move">Hidden</strong>
+                    <p class="chess-summary-note chess-muted-note" id="chess-lichess-puzzle-answer-note">This shows the next solution move only.</p>
+                </div>
+
+                <div class="surface-card chess-puzzle-context-card">
+                    <span class="chess-mini-label">Context</span>
+                    <p class="chess-board-context">{{ chess_lichess_puzzle_solver.current_item.themes_label }}</p>
+                    <p class="chess-board-context">{{ chess_lichess_puzzle_solver.current_item.rating_label }}</p>
+                    {% if chess_lichess_puzzle_solver.current_item.game_url %}
+                    <p class="chess-summary-note"><a href="{{ chess_lichess_puzzle_solver.current_item.game_url }}" target="_blank" rel="noopener">Open source game</a></p>
+                    {% endif %}
+                </div>
+
+                <div class="chess-puzzle-controls">
+                    <button type="button" class="btn chess-inline-btn" data-puzzle-action="reveal"><i data-lucide="eye"></i><span>Reveal move</span></button>
+                    <button type="button" class="btn chess-inline-btn" data-puzzle-action="reset"><i data-lucide="refresh-cw"></i><span>Reset</span></button>
+                    <button type="button" class="btn chess-inline-btn" data-puzzle-action="clear-marks"><i data-lucide="eraser"></i><span>Clear marks</span></button>
+                    <button type="button" class="btn chess-inline-btn" data-puzzle-action="flip"><i data-lucide="refresh-ccw"></i><span>Flip board</span></button>
+                    <a class="btn chess-inline-btn" href="{{ chess_lichess_puzzle_solver.next_puzzle_href }}"><i data-lucide="skip-forward"></i><span>Next puzzle</span></a>
+                </div>
+                <p class="chess-summary-note chess-muted-note chess-puzzle-drawing-note">Right-click squares to draw study marks.</p>
+
+                <div class="chess-board-moves-head">
+                    <strong>Move list</strong>
+                    <span>{{ chess_lichess_puzzle_solver.step_count }} step{{ '' if chess_lichess_puzzle_solver.step_count == 1 else 's' }}</span>
+                </div>
+                <div class="chess-board-moves-list chess-puzzle-moves-list" id="chess-lichess-puzzle-steps-list">
+                    {% for step in chess_lichess_puzzle_solver.steps %}
+                    <div class="chess-board-move-row" data-puzzle-step-row>
+                        <span class="chess-board-move-number">{{ loop.index }}.</span>
+                        <button type="button" class="chess-board-move-jump" data-puzzle-step="{{ loop.index0 }}">
+                            <span class="chess-board-move-side">{{ chess_lichess_puzzle_solver.current_item.user_color_label[:1] }}</span>
+                            <span class="chess-board-move-san">{{ step.expected_move_san }}</span>
+                        </button>
+                        <div class="chess-board-move-empty">
+                            <span class="chess-board-move-side">Ctx</span>
+                            <span class="chess-board-move-san">{{ step.move_number_label }}</span>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+
+                <div class="surface-card chess-board-review-card" id="chess-lichess-puzzle-complete-card" hidden>
+                    <div class="hero-meta">
+                        <span class="hero-badge matte-tag">Puzzle complete</span>
+                        <span>Lichess sample</span>
+                    </div>
+                    <strong>You completed this Lichess puzzle.</strong>
+                    <p class="chess-summary-note">Move to the next local sample puzzle when you are ready.</p>
+                    <div class="chess-board-review-actions">
+                        <button type="button" class="btn chess-inline-btn" data-puzzle-action="repeat"><i data-lucide="rotate-ccw"></i><span>Repeat puzzle</span></button>
+                        <a class="btn chess-inline-btn" href="{{ chess_lichess_puzzle_solver.next_puzzle_href }}"><i data-lucide="skip-forward"></i><span>Continue</span></a>
+                    </div>
+                </div>
+            </aside>
+        </div>
+        <script id="chess-lichess-puzzle-data" type="application/json">{{ chess_lichess_puzzle_solver.steps|tojson }}</script>
+    </section>
+    {% endif %}
+</section>
+
+{% if chess_lichess_puzzle_solver.available %}
+<script>
+(() => {
+  const boardNode = document.getElementById("chess-lichess-puzzle-board");
+  const dataNode = document.getElementById("chess-lichess-puzzle-data");
+  const stepsNode = document.getElementById("chess-lichess-puzzle-steps-list");
+  const labelNode = document.getElementById("chess-lichess-puzzle-move-label");
+  const counterNode = document.getElementById("chess-lichess-puzzle-counter");
+  const turnNode = document.getElementById("chess-lichess-puzzle-turn-label");
+  const feedbackCard = document.getElementById("chess-lichess-puzzle-feedback-card");
+  const feedbackTitle = document.getElementById("chess-lichess-puzzle-feedback-title");
+  const feedbackText = document.getElementById("chess-lichess-puzzle-feedback-text");
+  const compareCard = document.getElementById("chess-lichess-puzzle-compare-card");
+  const compareAttemptedRow = document.getElementById("chess-lichess-puzzle-compare-attempted");
+  const compareExpectedRow = document.getElementById("chess-lichess-puzzle-compare-expected");
+  const compareAttemptedValue = document.getElementById("chess-lichess-puzzle-compare-attempted-value");
+  const compareExpectedValue = document.getElementById("chess-lichess-puzzle-compare-expected-value");
+  const answerCard = document.getElementById("chess-lichess-puzzle-answer-card");
+  const answerMoveNode = document.getElementById("chess-lichess-puzzle-answer-move");
+  const answerNoteNode = document.getElementById("chess-lichess-puzzle-answer-note");
+  const completionCard = document.getElementById("chess-lichess-puzzle-complete-card");
+  const boardInteractionVersion = String(boardNode && boardNode.dataset.boardInteractionVersion || "unknown");
+  if (!boardNode || !dataNode || !stepsNode || !labelNode || !counterNode || !turnNode || !feedbackCard || !feedbackTitle || !feedbackText || !answerCard || !answerMoveNode || !answerNoteNode || !completionCard) return;
+
+  let steps = [];
+  try { steps = JSON.parse(dataNode.textContent || "[]"); } catch (error) { return; }
+  if (!Array.isArray(steps) || !steps.length) return;
+
+  const files = ["a", "b", "c", "d", "e", "f", "g", "h"];
+  const ranks = ["8", "7", "6", "5", "4", "3", "2", "1"];
+  const pieceAssetMap = {
+    P: "{{ url_for('static', filename='chess/pieces/cburnett/wP.svg') }}",
+    N: "{{ url_for('static', filename='chess/pieces/cburnett/wN.svg') }}",
+    B: "{{ url_for('static', filename='chess/pieces/cburnett/wB.svg') }}",
+    R: "{{ url_for('static', filename='chess/pieces/cburnett/wR.svg') }}",
+    Q: "{{ url_for('static', filename='chess/pieces/cburnett/wQ.svg') }}",
+    K: "{{ url_for('static', filename='chess/pieces/cburnett/wK.svg') }}",
+    p: "{{ url_for('static', filename='chess/pieces/cburnett/bP.svg') }}",
+    n: "{{ url_for('static', filename='chess/pieces/cburnett/bN.svg') }}",
+    b: "{{ url_for('static', filename='chess/pieces/cburnett/bB.svg') }}",
+    r: "{{ url_for('static', filename='chess/pieces/cburnett/bR.svg') }}",
+    q: "{{ url_for('static', filename='chess/pieces/cburnett/bQ.svg') }}",
+    k: "{{ url_for('static', filename='chess/pieces/cburnett/bK.svg') }}",
+  };
+
+  let currentStep = 0;
+  let currentFen = steps[0].fen_before;
+  let selectedSquare = "";
+  let revealMove = false;
+  let flipped = {{ 'true' if chess_lichess_puzzle_solver.current_item.user_color == 'black' else 'false' }};
+  let completionTimer = null;
+  let manualArrowMarks = [];
+  let manualHighlightSquares = new Set();
+  let manualDrawStartSquare = "";
+  let manualDrawActive = false;
+  let manualDrawPointerId = null;
+  let tutorHighlights = { attempted: { from: "", to: "" }, expected: { from: "", to: "" }, engine: { from: "", to: "" } };
+  let renderedFen = "";
+  let renderedFlipped = null;
+  let lastTutorArrowSignature = "";
+  let dragSourceSquare = "";
+  let dragPointerId = null;
+  let dragMoved = false;
+  let dragStartClientX = 0;
+  let dragStartClientY = 0;
+  let dragCurrentClientX = 0;
+  let dragCurrentClientY = 0;
+  let dragHoverSquare = "";
+  let dragGhostNode = null;
+  let dragGhostMarkup = "";
+  let suppressNextSquareClick = false;
+  const dragMoveThreshold = 6;
+  const settingsStorageKey = "lotusChessSettings";
+  const legacyMoveMethodStorageKey = "lotusChessMoveMethod";
+  const defaultSettings = {
+    move_method: "drag-or-click",
+    show_coordinates: true,
+    highlight_moves: true,
+    enable_right_click_marks: true,
+    clear_marks_on_left_click: true,
+  };
+  let settings = { ...defaultSettings };
+  const boardDebug = {
+    version: boardInteractionVersion,
+    handlersAttached: false,
+    lastPointerDown: "",
+    lastPointerUp: "",
+    lastButton: "",
+    lastSquare: "",
+    moveMethod: defaultSettings.move_method,
+    enableRightClickMarks: defaultSettings.enable_right_click_marks,
+    clearMarksOnLeftClick: defaultSettings.clear_marks_on_left_click,
+    manualArrowCount: 0,
+    manualHighlightCount: 0,
+    dragStarted: false,
+    dragReleased: false,
+    rightDrawStarted: false,
+    rightDrawReleased: false,
+    usingMouseFallback: true,
+    selectedSquare: "",
+    dragSourceSquare: "",
+    errors: [],
+  };
+  const initialCoachGoal = {{ (chess_lichess_puzzle_solver.current_item.goal_message or 'Look for forcing moves: checks, captures, and threats.')|tojson }};
+
+  function syncBoardDebug(extra = {}) {
+    Object.assign(boardDebug, {
+      version: boardInteractionVersion,
+      moveMethod: settings.move_method,
+      enableRightClickMarks: Boolean(settings.enable_right_click_marks),
+      clearMarksOnLeftClick: Boolean(settings.clear_marks_on_left_click),
+      manualArrowCount: manualArrowMarks.length,
+      manualHighlightCount: manualHighlightSquares.size,
+      selectedSquare,
+      dragSourceSquare,
+    }, extra || {});
+    window.lotusChessLichessBoardDebug = boardDebug;
+    window.lotusChessLichessBoardState = {
+      get settings() { return { ...settings }; },
+      get manualArrowMarks() { return manualArrowMarks.slice(); },
+      get manualHighlightSquares() { return Array.from(manualHighlightSquares); },
+    };
+  }
+
+  function normalizeMoveMethod(value) {
+    return value === "click-only" ? "click-only" : "drag-or-click";
+  }
+
+  function normalizeBoolean(value, fallback) {
+    if (typeof value === "boolean") return value;
+    if (value === "true" || value === "1" || value === 1) return true;
+    if (value === "false" || value === "0" || value === 0) return false;
+    return Boolean(fallback);
+  }
+
+  function normalizeSettings(input = {}) {
+    const payload = (input && typeof input === "object") ? input : {};
+    return {
+      move_method: normalizeMoveMethod(payload.move_method),
+      show_coordinates: normalizeBoolean(payload.show_coordinates, defaultSettings.show_coordinates),
+      highlight_moves: normalizeBoolean(payload.highlight_moves, defaultSettings.highlight_moves),
+      enable_right_click_marks: normalizeBoolean(payload.enable_right_click_marks, defaultSettings.enable_right_click_marks),
+      clear_marks_on_left_click: normalizeBoolean(payload.clear_marks_on_left_click, defaultSettings.clear_marks_on_left_click),
+    };
+  }
+
+  function loadSettings() {
+    let stored = null;
+    try {
+      stored = window.localStorage.getItem(settingsStorageKey);
+    } catch (error) {
+      stored = null;
+    }
+    let parsed = {};
+    if (stored) {
+      try {
+        parsed = JSON.parse(stored) || {};
+      } catch (error) {
+        parsed = {};
+      }
+    } else {
+      let legacyMoveMethod = "";
+      try {
+        legacyMoveMethod = String(window.localStorage.getItem(legacyMoveMethodStorageKey) || "").trim();
+      } catch (error) {
+        legacyMoveMethod = "";
+      }
+      if (legacyMoveMethod) parsed.move_method = legacyMoveMethod;
+    }
+    settings = normalizeSettings({ ...defaultSettings, ...parsed });
+    syncBoardDebug({ moveMethod: settings.move_method });
+  }
+
+  function isDragOrClickMode() {
+    return normalizeMoveMethod(settings.move_method) === "drag-or-click";
+  }
+
+  function setCompletionVisible(visible) {
+    completionCard.hidden = !visible;
+    if (visible) {
+      completionCard.removeAttribute("hidden");
+      completionCard.style.display = "";
+      return;
+    }
+    completionCard.setAttribute("hidden", "hidden");
+    completionCard.style.display = "none";
+  }
+
+  function setAnswerVisible(visible) {
+    answerCard.hidden = !visible;
+    if (visible) {
+      answerCard.removeAttribute("hidden");
+      answerCard.style.display = "";
+      return;
+    }
+    answerCard.setAttribute("hidden", "hidden");
+    answerCard.style.display = "none";
+  }
+
+  function parseFenPlacement(fen) {
+    const placement = String(fen || "").split(" ")[0] || "";
+    const rows = placement.split("/");
+    if (rows.length !== 8) return {};
+    const pieces = {};
+    rows.forEach((row, rowIndex) => {
+      let fileIndex = 0;
+      for (const token of row) {
+        const count = Number.parseInt(token, 10);
+        if (!Number.isNaN(count)) {
+          fileIndex += count;
+          continue;
+        }
+        const file = files[fileIndex];
+        const rank = ranks[rowIndex];
+        if (file && rank) {
+          pieces[file + rank] = token;
+        }
+        fileIndex += 1;
+      }
+    });
+    return pieces;
+  }
+
+  function boardSquares() {
+    const squareNames = [];
+    const fileOrder = flipped ? [...files].reverse() : files;
+    const rankOrder = flipped ? [...ranks].reverse() : ranks;
+    rankOrder.forEach((rank) => fileOrder.forEach((file) => squareNames.push(file + rank)));
+    return squareNames;
+  }
+
+  function clearTutorHighlights() {
+    tutorHighlights = { attempted: { from: "", to: "" }, expected: { from: "", to: "" }, engine: { from: "", to: "" } };
+  }
+
+  function clearComparison() {
+    compareCard.hidden = true;
+    compareAttemptedRow.hidden = true;
+    compareExpectedRow.hidden = true;
+  }
+
+  function setComparison(attemptedSan, expectedSan) {
+    compareCard.hidden = false;
+    compareAttemptedRow.hidden = !attemptedSan;
+    compareExpectedRow.hidden = !expectedSan;
+    compareAttemptedValue.textContent = attemptedSan || "-";
+    compareExpectedValue.textContent = expectedSan || "-";
+  }
+
+  function setFeedback(state, title, text) {
+    feedbackCard.dataset.feedbackState = state;
+    feedbackTitle.textContent = title;
+    feedbackText.textContent = text;
+  }
+
+  function boardMapFromFen(fen) {
+    return parseFenPlacement(fen);
+  }
+
+  function buildPieceNode(piece) {
+    if (!piece || !pieceAssetMap[piece]) return null;
+    const wrapper = document.createElement("div");
+    wrapper.className = "chess-board-piece";
+    const img = document.createElement("img");
+    img.className = "chess-board-piece-img";
+    img.src = pieceAssetMap[piece];
+    img.alt = piece;
+    img.loading = "eager";
+    img.decoding = "async";
+    img.draggable = false;
+    wrapper.appendChild(img);
+    return wrapper;
+  }
+
+  function applyBoardPieces(boardMap) {
+    boardNode.querySelectorAll(".chess-board-square").forEach((squareNode) => {
+      const squareName = String(squareNode.dataset.square || "");
+      const piece = boardMap[squareName] || "";
+      const currentWrapper = squareNode.querySelector(".chess-board-piece");
+      if (!piece) {
+        if (currentWrapper) currentWrapper.remove();
+        return;
+      }
+      if (currentWrapper) {
+        const currentImg = currentWrapper.querySelector(".chess-board-piece-img");
+        if (currentImg) {
+          currentImg.src = pieceAssetMap[piece];
+          currentImg.alt = piece;
+        }
+        return;
+      }
+      const wrapper = buildPieceNode(piece);
+      if (wrapper) squareNode.appendChild(wrapper);
+    });
+  }
+
+  function squareCenter(squareName) {
+    if (!boardNode || !squareName || squareName.length !== 2) return null;
+    const file = squareName[0];
+    const rank = squareName[1];
+    const boardFiles = flipped ? [...files].reverse() : files;
+    const boardRanks = flipped ? [...ranks].reverse() : ranks;
+    const fileIndex = boardFiles.indexOf(file);
+    const rankIndex = boardRanks.indexOf(rank);
+    if (fileIndex < 0 || rankIndex < 0) return null;
+    const size = boardNode.clientWidth || 0;
+    if (!size) return null;
+    const cell = size / 8;
+    return { x: (fileIndex * cell) + (cell / 2), y: (rankIndex * cell) + (cell / 2) };
+  }
+
+  function buildArrowLine(fromSquare, toSquare, cssClass) {
+    const fromPoint = squareCenter(fromSquare);
+    const toPoint = squareCenter(toSquare);
+    if (!fromPoint || !toPoint) return "";
+    return `<line class="${cssClass}" x1="${fromPoint.x}" y1="${fromPoint.y}" x2="${toPoint.x}" y2="${toPoint.y}" marker-end="url(#${cssClass}-head)"></line>`;
+  }
+
+  function buildTutorArrowSignature() {
+    return JSON.stringify({
+      attempted: tutorHighlights.attempted || {},
+      expected: tutorHighlights.expected || {},
+      manual: manualArrowMarks || [],
+      flipped: Boolean(flipped),
+      width: boardNode ? (boardNode.clientWidth || 0) : 0,
+      height: boardNode ? (boardNode.clientHeight || 0) : 0,
+    });
+  }
+
+  function renderTutorArrows() {
+    const signature = buildTutorArrowSignature();
+    if (signature === lastTutorArrowSignature) return;
+    const existing = boardNode.querySelector(".chess-board-arrows");
+    if (existing) existing.remove();
+    const arrows = [
+      buildArrowLine(tutorHighlights.attempted && tutorHighlights.attempted.from, tutorHighlights.attempted && tutorHighlights.attempted.to, "chess-arrow-attempted"),
+      buildArrowLine(tutorHighlights.expected && tutorHighlights.expected.from, tutorHighlights.expected && tutorHighlights.expected.to, "chess-arrow-expected"),
+      ...manualArrowMarks.map((item) => buildArrowLine(item.from, item.to, "chess-arrow-manual")),
+    ].filter(Boolean);
+    if (!arrows.length) {
+      lastTutorArrowSignature = signature;
+      return;
+    }
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("class", "chess-board-arrows");
+    svg.setAttribute("viewBox", `0 0 ${boardNode.clientWidth || 100} ${boardNode.clientHeight || 100}`);
+    svg.setAttribute("preserveAspectRatio", "none");
+    svg.innerHTML = `
+      <defs>
+        <marker id="chess-arrow-attempted-head" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto" markerUnits="strokeWidth">
+          <path d="M0,0 L8,4 L0,8 z" class="chess-arrow-attempted-fill"></path>
+        </marker>
+        <marker id="chess-arrow-expected-head" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto" markerUnits="strokeWidth">
+          <path d="M0,0 L8,4 L0,8 z" class="chess-arrow-expected-fill"></path>
+        </marker>
+        <marker id="chess-arrow-manual-head" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto" markerUnits="strokeWidth">
+          <path d="M0,0 L8,4 L0,8 z" class="chess-arrow-manual-fill"></path>
+        </marker>
+      </defs>
+      ${arrows.join("")}
+    `;
+    boardNode.appendChild(svg);
+    lastTutorArrowSignature = signature;
+  }
+
+  function applyBoardSquareState(legalTargetsBySource) {
+    const activeLegalTargets = new Set(Array.isArray((legalTargetsBySource || {})[selectedSquare]) ? (legalTargetsBySource || {})[selectedSquare] : []);
+    boardNode.querySelectorAll(".chess-board-square").forEach((square) => {
+      const squareName = String(square.dataset.square || "");
+      square.classList.toggle("selected", Boolean(settings.highlight_moves && selectedSquare === squareName));
+      square.classList.toggle("drag-source", Boolean(dragSourceSquare === squareName));
+      square.classList.toggle("legal-target", Boolean(settings.highlight_moves && activeLegalTargets.has(squareName)));
+      square.classList.toggle("tutor-attempted-from", Boolean(tutorHighlights.attempted && tutorHighlights.attempted.from === squareName));
+      square.classList.toggle("tutor-attempted-to", Boolean(tutorHighlights.attempted && tutorHighlights.attempted.to === squareName));
+      square.classList.toggle("tutor-expected-from", Boolean(tutorHighlights.expected && tutorHighlights.expected.from === squareName));
+      square.classList.toggle("tutor-expected-to", Boolean(tutorHighlights.expected && tutorHighlights.expected.to === squareName));
+      square.classList.toggle("manual-marked", manualHighlightSquares.has(squareName));
+      square.classList.toggle("manual-mark-from", manualArrowMarks.some((item) => item.from === squareName));
+      square.classList.toggle("manual-mark-to", manualArrowMarks.some((item) => item.to === squareName));
+      const wrapper = square.querySelector(".chess-board-piece");
+      if (wrapper) wrapper.classList.toggle("dragging-origin", Boolean(dragMoved && dragSourceSquare === squareName));
+    });
+  }
+
+  function renderBoard(fen, legalTargetsBySource = {}, { forceBoard = false, refreshArrows = true } = {}) {
+    currentFen = fen;
+    const shouldRebuildBoard = forceBoard || renderedFlipped !== Boolean(flipped) || boardNode.querySelectorAll(".chess-board-square").length !== 64;
+    if (shouldRebuildBoard) {
+      const boardMap = boardMapFromFen(fen);
+      boardNode.innerHTML = "";
+      boardSquares().forEach((squareName, index) => {
+        const square = document.createElement("div");
+        const isLight = ((Math.floor(index / 8) + (index % 8)) % 2) === 0;
+        square.className = "chess-board-square " + (isLight ? "light" : "dark");
+        square.dataset.square = squareName;
+        square.setAttribute("aria-label", squareName);
+        const piece = boardMap[squareName];
+        const wrapper = buildPieceNode(piece);
+        if (wrapper) square.appendChild(wrapper);
+        if (settings.show_coordinates && squareName[1] === "1") {
+          const coord = document.createElement("span");
+          coord.className = "chess-board-coordinate file";
+          coord.textContent = squareName[0];
+          square.appendChild(coord);
+        }
+        if (settings.show_coordinates && squareName[0] === "a") {
+          const coord = document.createElement("span");
+          coord.className = "chess-board-coordinate rank";
+          coord.textContent = squareName[1];
+          square.appendChild(coord);
+        }
+        square.addEventListener("click", () => {
+          if (suppressNextSquareClick) {
+            suppressNextSquareClick = false;
+            return;
+          }
+          handleSquareClick(squareName);
+        });
+        boardNode.appendChild(square);
+      });
+      renderedFen = fen;
+      renderedFlipped = Boolean(flipped);
+      lastTutorArrowSignature = "";
+    } else if (renderedFen !== fen) {
+      applyBoardPieces(boardMapFromFen(fen));
+      renderedFen = fen;
+    }
+    applyBoardSquareState(legalTargetsBySource);
+    if (refreshArrows) renderTutorArrows();
+  }
+
+  function updateMoveList() {
+    stepsNode.querySelectorAll("[data-puzzle-step]").forEach((button) => {
+      const index = Number.parseInt(button.dataset.puzzleStep || "-1", 10);
+      button.classList.toggle("active", index === currentStep);
+    });
+  }
+
+  function updateStatus() {
+    const step = steps[currentStep];
+    labelNode.textContent = step ? "Your side to move" : "Puzzle complete";
+    counterNode.textContent = step ? `Step ${currentStep + 1} / ${steps.length}` : `Step ${steps.length} / ${steps.length}`;
+    turnNode.textContent = "{{ chess_lichess_puzzle_solver.current_item.user_color_label }} to move";
+    updateMoveList();
+  }
+
+  function showReveal() {
+    const step = steps[currentStep];
+    if (!step) return;
+    revealMove = true;
+    setAnswerVisible(true);
+    answerMoveNode.textContent = step.expected_move_san || step.expected_move_uci || "Unavailable";
+    answerNoteNode.textContent = "This is the next solution move from the local Lichess sample.";
+    setComparison("", step.expected_move_san || step.expected_move_uci || "");
+    tutorHighlights = {
+      attempted: { from: "", to: "" },
+      expected: { from: String(step.expected_move_uci || "").slice(0, 2), to: String(step.expected_move_uci || "").slice(2, 4) },
+      engine: { from: "", to: "" },
+    };
+    setFeedback("hint", "Reveal", `This is the next solution move. ${step.expected_move_hint || "Try to understand the forcing idea, then repeat the puzzle."}`);
+    refreshCurrentBoard({ refreshArrows: true });
+  }
+
+  function resetPuzzle() {
+    currentStep = 0;
+    currentFen = steps[0].fen_before;
+    selectedSquare = "";
+    revealMove = false;
+    if (completionTimer) {
+      window.clearTimeout(completionTimer);
+      completionTimer = null;
+    }
+    setAnswerVisible(false);
+    setCompletionVisible(false);
+    clearComparison();
+    clearTutorHighlights();
+    clearManualStudyMarks(true);
+    clearBoardSelectionMarks();
+    setFeedback("idle", "Ready", initialCoachGoal);
+    updateStatus();
+    renderBoard(steps[0].fen_before, steps[0].legal_targets_by_source || {}, { forceBoard: false, refreshArrows: true });
+  }
+
+  function completePuzzle() {
+    selectedSquare = "";
+    clearManualStudyMarks(true);
+    clearBoardSelectionMarks();
+    clearTutorHighlights();
+    updateStatus();
+    setCompletionVisible(true);
+    setFeedback("success", "Complete", "You completed the full local Lichess solution sequence.");
+    clearComparison();
+    refreshCurrentBoard({ refreshArrows: true });
+  }
+
+  function refreshCurrentBoard({ refreshArrows = true } = {}) {
+    const complete = currentStep >= steps.length;
+    const step = steps[Math.max(0, Math.min(currentStep, steps.length - 1))] || null;
+    const fen = complete ? String((steps[steps.length - 1] || {}).fen_after_replies || "") : String((step || {}).fen_before || "");
+    const legalTargets = complete ? {} : ((step || {}).legal_targets_by_source || {});
+    renderBoard(fen, legalTargets, { forceBoard: false, refreshArrows });
+  }
+
+  function advanceAfterCorrect(step) {
+    renderBoard(step.fen_after_user, {}, { forceBoard: false, refreshArrows: false });
+    const correctMessage = String(step.correct_feedback || "Correct. This keeps the solution line moving.");
+    setFeedback("success", "Correct", step.auto_replies && step.auto_replies.length ? `${correctMessage} The puzzle reply will play now.` : correctMessage);
+    if (step.auto_replies && step.auto_replies.length) {
+      completionTimer = window.setTimeout(() => {
+        renderBoard(step.fen_after_replies || step.fen_after_user, {}, { forceBoard: false, refreshArrows: false });
+        currentStep += 1;
+        selectedSquare = "";
+        if (currentStep >= steps.length) {
+          completePuzzle();
+          return;
+        }
+        updateStatus();
+        clearComparison();
+        clearTutorHighlights();
+        setFeedback("idle", "Keep going", initialCoachGoal);
+        refreshCurrentBoard({ refreshArrows: true });
+      }, 220);
+      return;
+    }
+    currentStep += 1;
+    selectedSquare = "";
+    if (currentStep >= steps.length) {
+      completePuzzle();
+      return;
+    }
+    updateStatus();
+    clearComparison();
+    clearTutorHighlights();
+    setFeedback("idle", "Keep going", initialCoachGoal);
+    refreshCurrentBoard({ refreshArrows: true });
+  }
+
+  function uciToSan(step, uci) {
+    if (!step || !uci) return uci || "";
+    const pieces = parseFenPlacement(step.fen_before);
+    const source = uci.slice(0, 2);
+    const target = uci.slice(2, 4);
+    const piece = pieces[source] || "";
+    const label = (piece && piece.toLowerCase() !== "p" ? piece.toUpperCase() : "") + target;
+    return label || uci;
+  }
+
+  function normalizedAttemptedMove(fromSquare, toSquare, expectedUci) {
+    const basic = `${fromSquare}${toSquare}`;
+    if (String(expectedUci || "").length === 5 && basic === String(expectedUci).slice(0, 4)) {
+      return String(expectedUci);
+    }
+    return basic;
+  }
+
+  function attemptMove(sourceSquare, targetSquare) {
+    const step = steps[currentStep];
+    if (!step) return;
+    const attemptedUci = normalizedAttemptedMove(sourceSquare, targetSquare, step.expected_move_uci);
+    const expectedUci = String(step.expected_move_uci || "");
+    const attemptedSan = uciToSan(step, attemptedUci);
+    const expectedSan = step.expected_move_san || expectedUci || "";
+    if (attemptedUci === expectedUci) {
+      revealMove = false;
+      setAnswerVisible(false);
+      setComparison(attemptedSan, expectedSan);
+      tutorHighlights = {
+        attempted: { from: attemptedUci.slice(0, 2), to: attemptedUci.slice(2, 4) },
+        expected: { from: expectedUci.slice(0, 2), to: expectedUci.slice(2, 4) },
+        engine: { from: "", to: "" },
+      };
+      advanceAfterCorrect(step);
+      return;
+    }
+    setComparison(attemptedSan, expectedSan);
+    tutorHighlights = {
+      attempted: { from: attemptedUci.slice(0, 2), to: attemptedUci.slice(2, 4) },
+      expected: { from: expectedUci.slice(0, 2), to: expectedUci.slice(2, 4) },
+      engine: { from: "", to: "" },
+    };
+    setFeedback("error", "Not the idea", `That is not the solution move. ${step.expected_move_hint || "Look for a more forcing idea."} Try again.`);
+    selectedSquare = "";
+    renderBoard(step.fen_before, step.legal_targets_by_source || {}, { forceBoard: false, refreshArrows: true });
+  }
+
+  function canMoveFromSquare(squareName, step = steps[Math.max(0, Math.min(currentStep, steps.length - 1))] || null) {
+    if (!step || !squareName) return false;
+    const legalTargetsBySource = step.legal_targets_by_source || {};
+    return Array.isArray(legalTargetsBySource[squareName]) && legalTargetsBySource[squareName].length > 0;
+  }
+
+  function clearBoardSelectionMarks(resetState = true) {
+    if (resetState) selectedSquare = "";
+    dragSourceSquare = "";
+    dragPointerId = null;
+    if (!boardNode) return;
+    boardNode.querySelectorAll(".chess-board-square.selected, .chess-board-square.legal-target, .chess-board-square.drag-source").forEach((square) => {
+      square.classList.remove("selected", "legal-target", "drag-source");
+    });
+    syncBoardDebug({ selectedSquare, dragSourceSquare: "" });
+  }
+
+  function clearManualStudyMarks(skipRender = false) {
+    manualArrowMarks = [];
+    manualHighlightSquares = new Set();
+    manualDrawStartSquare = "";
+    manualDrawActive = false;
+    manualDrawPointerId = null;
+    if (boardNode) {
+      boardNode.querySelectorAll(".chess-board-square.manual-marked, .chess-board-square.manual-mark-from, .chess-board-square.manual-mark-to").forEach((square) => {
+        square.classList.remove("manual-marked", "manual-mark-from", "manual-mark-to");
+      });
+      renderTutorArrows();
+    }
+    syncBoardDebug({ rightDrawStarted: false, rightDrawReleased: false });
+    if (!skipRender) refreshCurrentBoard({ refreshArrows: true });
+  }
+
+  function normalizeManualArrow(fromSquare, toSquare) {
+    return { from: String(fromSquare || "").trim(), to: String(toSquare || "").trim() };
+  }
+
+  function toggleManualSquareHighlight(squareName) {
+    if (!settings.enable_right_click_marks) return;
+    const square = String(squareName || "").trim();
+    if (!square) return;
+    if (manualHighlightSquares.has(square)) manualHighlightSquares.delete(square);
+    else manualHighlightSquares.add(square);
+  }
+
+  function toggleManualArrow(fromSquare, toSquare) {
+    if (!settings.enable_right_click_marks) return;
+    const arrow = normalizeManualArrow(fromSquare, toSquare);
+    if (!arrow.from || !arrow.to) return;
+    const existingIndex = manualArrowMarks.findIndex((item) => item.from === arrow.from && item.to === arrow.to);
+    if (existingIndex >= 0) manualArrowMarks.splice(existingIndex, 1);
+    else manualArrowMarks = [...manualArrowMarks, arrow];
+  }
+
+  function getBoardSquareFromClientPoint(clientX, clientY) {
+    if (!boardNode || typeof clientX !== "number" || typeof clientY !== "number") return "";
+    if (document.elementFromPoint) {
+      const pointedNode = document.elementFromPoint(clientX, clientY);
+      const pointedSquare = pointedNode && typeof pointedNode.closest === "function" ? pointedNode.closest(".chess-board-square") : null;
+      if (pointedSquare && boardNode.contains(pointedSquare)) return pointedSquare.dataset.square || "";
+    }
+    return "";
+  }
+
+  function getBoardSquareFromEvent(event) {
+    if (!event) return "";
+    if (typeof event.clientX === "number" && typeof event.clientY === "number") return getBoardSquareFromClientPoint(event.clientX, event.clientY);
+    const target = event.target && typeof event.target.closest === "function" ? event.target.closest("[data-square]") : null;
+    if (!target || !boardNode.contains(target)) return "";
+    return String(target.dataset.square || "").trim();
+  }
+
+  function startManualDraw(squareName, pointerId) {
+    if (!settings.enable_right_click_marks) return;
+    const square = String(squareName || "").trim();
+    if (!square) return;
+    manualDrawStartSquare = square;
+    manualDrawActive = true;
+    manualDrawPointerId = pointerId == null ? null : pointerId;
+    syncBoardDebug({ lastSquare: square, lastButton: "right", rightDrawStarted: true, rightDrawReleased: false });
+  }
+
+  function finishManualDraw(squareName) {
+    const endSquare = String(squareName || "").trim();
+    if (!manualDrawActive || !manualDrawStartSquare) {
+      cancelManualDraw();
+      return;
+    }
+    if (!endSquare) {
+      cancelManualDraw();
+      return;
+    }
+    if (endSquare === manualDrawStartSquare) toggleManualSquareHighlight(endSquare);
+    else toggleManualArrow(manualDrawStartSquare, endSquare);
+    manualDrawActive = false;
+    manualDrawStartSquare = "";
+    manualDrawPointerId = null;
+    syncBoardDebug({ lastSquare: endSquare, rightDrawStarted: false, rightDrawReleased: true });
+    refreshCurrentBoard({ refreshArrows: true });
+  }
+
+  function cancelManualDraw() {
+    manualDrawActive = false;
+    manualDrawStartSquare = "";
+    manualDrawPointerId = null;
+    syncBoardDebug({ rightDrawStarted: false });
+  }
+
+  function updateDragGhostPosition(clientX, clientY) {
+    if (!dragGhostNode || typeof clientX !== "number" || typeof clientY !== "number") return;
+    dragGhostNode.style.left = `${clientX}px`;
+    dragGhostNode.style.top = `${clientY}px`;
+  }
+
+  function ensureDragGhost() {
+    if (!dragGhostMarkup || dragGhostNode) return;
+    const ghost = document.createElement("div");
+    ghost.className = "chess-drag-ghost";
+    ghost.innerHTML = dragGhostMarkup;
+    const sourceSquareNode = dragSourceSquare ? boardNode.querySelector(`[data-square="${dragSourceSquare}"]`) : null;
+    if (sourceSquareNode) {
+      const rect = sourceSquareNode.getBoundingClientRect();
+      if (rect.width > 0 && rect.height > 0) {
+        ghost.style.width = `${rect.width}px`;
+        ghost.style.height = `${rect.height}px`;
+      }
+    }
+    document.body.appendChild(ghost);
+    dragGhostNode = ghost;
+    updateDragGhostPosition(dragCurrentClientX, dragCurrentClientY);
+  }
+
+  function removeDragGhost() {
+    if (dragGhostNode && dragGhostNode.parentNode) dragGhostNode.parentNode.removeChild(dragGhostNode);
+    dragGhostNode = null;
+  }
+
+  function releaseDragPointerCapture(pointerId) {
+    if (!boardNode || typeof boardNode.releasePointerCapture !== "function" || pointerId == null) return;
+    try {
+      if (typeof boardNode.hasPointerCapture !== "function" || boardNode.hasPointerCapture(pointerId)) {
+        boardNode.releasePointerCapture(pointerId);
+      }
+    } catch (error) {
+      // ignore
+    }
+  }
+
+  function setDragSourceVisualState(active) {
+    if (!boardNode || !dragSourceSquare) return;
+    const sourceSquareNode = boardNode.querySelector(`[data-square="${dragSourceSquare}"]`);
+    if (!sourceSquareNode) return;
+    sourceSquareNode.classList.toggle("drag-source", Boolean(active));
+    const pieceNode = sourceSquareNode.querySelector(".chess-board-piece");
+    if (pieceNode) pieceNode.classList.toggle("dragging-origin", Boolean(active));
+  }
+
+  function startPieceDrag(squareName, pointerId, event) {
+    if (!isDragOrClickMode() || !canMoveFromSquare(squareName)) return false;
+    dragSourceSquare = String(squareName || "").trim();
+    if (!dragSourceSquare) return false;
+    dragPointerId = pointerId == null ? null : pointerId;
+    dragMoved = false;
+    dragHoverSquare = dragSourceSquare;
+    dragCurrentClientX = event && typeof event.clientX === "number" ? event.clientX : 0;
+    dragCurrentClientY = event && typeof event.clientY === "number" ? event.clientY : 0;
+    const sourceSquareNode = dragSourceSquare ? boardNode.querySelector(`[data-square="${dragSourceSquare}"]`) : null;
+    const pieceNode = sourceSquareNode ? sourceSquareNode.querySelector(".chess-board-piece") : null;
+    dragGhostMarkup = pieceNode ? pieceNode.outerHTML : "";
+    syncBoardDebug({ dragStarted: true, dragReleased: false, lastSquare: dragSourceSquare, lastButton: "left", dragSourceSquare });
+    return true;
+  }
+
+  function cancelPieceDrag() {
+    setDragSourceVisualState(false);
+    releaseDragPointerCapture(dragPointerId);
+    removeDragGhost();
+    dragSourceSquare = "";
+    dragPointerId = null;
+    dragMoved = false;
+    dragStartClientX = 0;
+    dragStartClientY = 0;
+    dragCurrentClientX = 0;
+    dragCurrentClientY = 0;
+    dragHoverSquare = "";
+    dragGhostMarkup = "";
+    syncBoardDebug({ dragStarted: false, dragSourceSquare: "" });
+  }
+
+  function eventMatchesActivePointer(event, pointerId) {
+    if (!event) return false;
+    if (pointerId == null) return true;
+    return event.pointerId === pointerId;
+  }
+
+  function releasePieceDrag(event) {
+    if (!dragSourceSquare) return false;
+    const releaseSquare = event ? getBoardSquareFromEvent(event) : "";
+    const endSquare = releaseSquare || (!event ? dragHoverSquare : "");
+    const sourceSquare = dragSourceSquare;
+    const shouldAttemptDragMove = isDragOrClickMode() && dragMoved && sourceSquare && endSquare && sourceSquare !== endSquare;
+    const shouldTreatAsClick = isDragOrClickMode() && !dragMoved && sourceSquare && (!endSquare || endSquare === sourceSquare);
+    const shouldSuppressClick = dragMoved;
+    cancelPieceDrag();
+    syncBoardDebug({
+      dragReleased: true,
+      lastPointerUp: event ? `${event.type}:${event.pointerType || "mouse"}:${sourceSquare}->${endSquare || ""}` : "release",
+      lastSquare: endSquare || sourceSquare,
+    });
+    if (shouldSuppressClick) {
+      suppressNextSquareClick = true;
+      window.setTimeout(() => {
+        suppressNextSquareClick = false;
+      }, 0);
+    }
+    if (shouldAttemptDragMove) {
+      if (event) event.preventDefault();
+      selectedSquare = "";
+      attemptMove(sourceSquare, endSquare);
+      return true;
+    }
+    if (shouldTreatAsClick) {
+      suppressNextSquareClick = true;
+      window.setTimeout(() => {
+        suppressNextSquareClick = false;
+      }, 0);
+      handleSquareClick(sourceSquare);
+    }
+    return false;
+  }
+
+  function handlePieceDragMove(event) {
+    if (!dragSourceSquare) return;
+    if (!event || typeof event.clientX !== "number" || typeof event.clientY !== "number") return;
+    dragCurrentClientX = event.clientX;
+    dragCurrentClientY = event.clientY;
+    dragHoverSquare = getBoardSquareFromEvent(event);
+    syncBoardDebug({ lastSquare: dragHoverSquare || dragSourceSquare });
+    const deltaX = Math.abs(event.clientX - dragStartClientX);
+    const deltaY = Math.abs(event.clientY - dragStartClientY);
+    if (!dragMoved) {
+      if (Math.max(deltaX, deltaY) < dragMoveThreshold) return;
+      dragMoved = true;
+      setDragSourceVisualState(true);
+      ensureDragGhost();
+      updateDragGhostPosition(event.clientX, event.clientY);
+      return;
+    }
+    ensureDragGhost();
+    updateDragGhostPosition(event.clientX, event.clientY);
+  }
+
+  function beginLeftBoardInteraction(event) {
+    if (!event) return;
+    if (event.pointerType !== "touch" && event.button !== 0) return;
+    const squareName = getBoardSquareFromEvent(event);
+    syncBoardDebug({ lastPointerDown: `${event.type}:${event.pointerType || "mouse"}:${squareName || ""}`, lastButton: "left", lastSquare: squareName || "", dragReleased: false });
+    const canStartDrag = isDragOrClickMode() && canMoveFromSquare(squareName);
+    const hasManualMarks = Boolean(manualArrowMarks.length || manualHighlightSquares.size);
+    const hasSelectionMarks = Boolean(selectedSquare || dragSourceSquare);
+    if (hasManualMarks && settings.clear_marks_on_left_click) clearManualStudyMarks(true);
+    if (hasSelectionMarks) clearBoardSelectionMarks(!selectedSquare || canStartDrag);
+    if (canStartDrag && !dragSourceSquare && startPieceDrag(squareName, event.pointerId, event)) {
+      if (typeof event.preventDefault === "function") event.preventDefault();
+      dragStartClientX = typeof event.clientX === "number" ? event.clientX : 0;
+      dragStartClientY = typeof event.clientY === "number" ? event.clientY : 0;
+      if (typeof boardNode.setPointerCapture === "function" && event.pointerId != null) {
+        try {
+          boardNode.setPointerCapture(event.pointerId);
+        } catch (error) {
+          dragPointerId = event.pointerId;
+        }
+      }
+    }
+  }
+
+  function handleSquareClick(squareName) {
+    if (!completionCard.hidden) return;
+    const step = steps[currentStep];
+    if (!step) return;
+    const legalTargetsBySource = step.legal_targets_by_source || {};
+    if (!selectedSquare) {
+      if (legalTargetsBySource[squareName] && legalTargetsBySource[squareName].length) {
+        selectedSquare = squareName;
+        syncBoardDebug({ selectedSquare });
+        refreshCurrentBoard({ refreshArrows: true });
+      }
+      return;
+    }
+    if (selectedSquare === squareName) {
+      selectedSquare = "";
+      syncBoardDebug({ selectedSquare: "" });
+      refreshCurrentBoard({ refreshArrows: true });
+      return;
+    }
+    attemptMove(selectedSquare, squareName);
+  }
+
+  document.querySelectorAll("[data-puzzle-action]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const action = button.dataset.puzzleAction;
+      if (action === "reveal") {
+        showReveal();
+      } else if (action === "reset" || action === "repeat") {
+        resetPuzzle();
+      } else if (action === "clear-marks") {
+        clearManualStudyMarks();
+      } else if (action === "flip") {
+        flipped = !flipped;
+        refreshCurrentBoard({ refreshArrows: true });
+      }
+    });
+  });
+
+  stepsNode.querySelectorAll("[data-puzzle-step]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const stepIndex = Number.parseInt(button.dataset.puzzleStep || "-1", 10);
+      if (Number.isNaN(stepIndex) || stepIndex < 0 || stepIndex >= steps.length) return;
+      currentStep = stepIndex;
+      selectedSquare = "";
+      revealMove = false;
+      setAnswerVisible(false);
+      setCompletionVisible(false);
+      clearManualStudyMarks(true);
+      clearTutorHighlights();
+      clearComparison();
+      updateStatus();
+      refreshCurrentBoard({ refreshArrows: true });
+      setFeedback("idle", "Review", stepIndex === 0 ? initialCoachGoal : "Review this step, then find the next solution move.");
+    });
+  });
+
+  if (boardNode) {
+    boardNode.addEventListener("dragstart", (event) => {
+      event.preventDefault();
+    });
+
+    boardNode.addEventListener("auxclick", (event) => {
+      const squareName = getBoardSquareFromEvent(event);
+      if (squareName) event.preventDefault();
+    });
+
+    boardNode.addEventListener("contextmenu", (event) => {
+      const squareName = getBoardSquareFromEvent(event);
+      if (manualDrawActive || squareName) event.preventDefault();
+    });
+
+    boardNode.addEventListener("pointerdown", (event) => {
+      if (event.pointerType !== "touch") return;
+      beginLeftBoardInteraction(event);
+    }, true);
+
+    boardNode.addEventListener("pointermove", (event) => {
+      if (event.pointerType !== "touch") return;
+      handlePieceDragMove(event);
+    });
+
+    boardNode.addEventListener("pointerdown", (event) => {
+      if (event.pointerType !== "touch") return;
+      if (event.button !== 2) return;
+      event.preventDefault();
+      const squareName = getBoardSquareFromEvent(event);
+      if (!squareName) return;
+      startManualDraw(squareName, event.pointerId);
+      if (typeof boardNode.setPointerCapture === "function") {
+        try {
+          boardNode.setPointerCapture(event.pointerId);
+        } catch (error) {
+          manualDrawPointerId = event.pointerId;
+        }
+      }
+    });
+
+    boardNode.addEventListener("pointerup", (event) => {
+      if (event.pointerType !== "touch") return;
+      if (!dragSourceSquare) return;
+      if (!eventMatchesActivePointer(event, dragPointerId)) return;
+      releasePieceDrag(event);
+    });
+
+    boardNode.addEventListener("pointerup", (event) => {
+      if (event.pointerType !== "touch") return;
+      if (!manualDrawActive) return;
+      if (!eventMatchesActivePointer(event, manualDrawPointerId)) return;
+      event.preventDefault();
+      finishManualDraw(getBoardSquareFromEvent(event));
+      if (typeof boardNode.releasePointerCapture === "function") {
+        try {
+          boardNode.releasePointerCapture(event.pointerId);
+        } catch (error) {
+          manualDrawPointerId = null;
+        }
+      }
+    });
+
+    boardNode.addEventListener("pointercancel", (event) => {
+      if (event.pointerType !== "touch") return;
+      if (dragSourceSquare) {
+        cancelPieceDrag();
+        refreshCurrentBoard({ refreshArrows: false });
+      }
+      if (dragPointerId != null && event.pointerId === dragPointerId) dragPointerId = null;
+      if (manualDrawPointerId != null && event.pointerId !== manualDrawPointerId) return;
+      cancelManualDraw();
+    });
+
+    boardNode.addEventListener("lostpointercapture", (event) => {
+      if (event.pointerType !== "touch") return;
+      if (dragPointerId != null && event.pointerId === dragPointerId && !dragSourceSquare) dragPointerId = null;
+      if (manualDrawPointerId != null && event.pointerId !== manualDrawPointerId) return;
+      if (!manualDrawActive) manualDrawPointerId = null;
+    });
+
+    boardNode.addEventListener("mousedown", (event) => {
+      if (event.button === 0) {
+        beginLeftBoardInteraction(event);
+        return;
+      }
+      if (event.button !== 2) return;
+      event.preventDefault();
+      const squareName = getBoardSquareFromEvent(event);
+      syncBoardDebug({ lastPointerDown: `mousedown:mouse:${squareName || ""}`, lastButton: "right", lastSquare: squareName || "" });
+      if (!squareName) return;
+      startManualDraw(squareName, null);
+    }, true);
+
+    boardDebug.handlersAttached = true;
+    syncBoardDebug({ handlersAttached: true });
+  }
+
+  window.addEventListener("pointerup", (event) => {
+    if (event.pointerType !== "touch") return;
+    if (dragSourceSquare && eventMatchesActivePointer(event, dragPointerId)) releasePieceDrag(event);
+    if (!manualDrawActive) return;
+    if (!eventMatchesActivePointer(event, manualDrawPointerId)) return;
+    const squareName = getBoardSquareFromEvent(event);
+    if (squareName) {
+      finishManualDraw(squareName);
+      return;
+    }
+    cancelManualDraw();
+  });
+
+  window.addEventListener("pointermove", (event) => {
+    if (event.pointerType !== "touch") return;
+    handlePieceDragMove(event);
+  });
+
+  window.addEventListener("mousemove", (event) => {
+    if (!dragSourceSquare) return;
+    handlePieceDragMove(event);
+  });
+
+  window.addEventListener("mouseup", (event) => {
+    const squareName = getBoardSquareFromEvent(event);
+    syncBoardDebug({ lastPointerUp: `mouseup:mouse:${squareName || ""}`, lastButton: event.button === 2 ? "right" : "left", lastSquare: squareName || "" });
+    if (dragSourceSquare && event.button === 0) releasePieceDrag(event);
+    if (!manualDrawActive || event.button !== 2) return;
+    if (squareName) {
+      finishManualDraw(squareName);
+      return;
+    }
+    cancelManualDraw();
+  });
+
+  window.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    if (!manualArrowMarks.length && !manualHighlightSquares.size) return;
+    clearManualStudyMarks();
+  });
+
+  window.addEventListener("error", (event) => {
+    const message = event && event.message ? String(event.message) : "Unknown error";
+    boardDebug.errors = [...boardDebug.errors.slice(-4), message];
+    syncBoardDebug({ errors: boardDebug.errors.slice() });
+  });
+
+  window.addEventListener("resize", () => {
+    window.requestAnimationFrame(() => {
+      refreshCurrentBoard({ refreshArrows: true });
+    });
+  });
+
+  loadSettings();
+  resetPuzzle();
+  syncBoardDebug({ handlersAttached: Boolean(boardDebug.handlersAttached) });
+})();
+</script>
+{% endif %}
+{% endblock %}

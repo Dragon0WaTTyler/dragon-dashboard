@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="page-hero chess-hero">
+    <div class="hero-meta">
+        <span class="hero-badge matte-tag">Lotus Chess</span>
+        <span>Auto training session</span>
+    </div>
+    <h2>Work through your weakest lines.</h2>
+    <p class="subhead">A simple local session built from weak-line candidates in your own games. No engine analysis.</p>
+    <div class="chess-hero-actions">
+        <a class="btn" href="{{ url_for('chess_train') }}"><i data-lucide="target"></i><span>Back to Train</span></a>
+        <a class="btn" href="{{ url_for('chess_puzzles') }}"><i data-lucide="sparkles"></i><span>View candidates</span></a>
+    </div>
+</section>
+
+<nav class="surface-card chess-subnav" aria-label="Lotus Chess areas">
+    {% for item in chess_nav_items %}
+    <a class="chess-subnav-link {{ 'active' if item.key == chess_active_key else '' }}" href="{{ item.href }}">
+        <i data-lucide="{{ item.icon }}"></i>
+        <span>{{ item.label }}</span>
+    </a>
+    {% endfor %}
+</nav>
+
+<section class="chess-main chess-review-session-page">
+    {% if chess_success_message %}
+    <div class="chess-banner chess-banner-success">{{ chess_success_message }}</div>
+    {% endif %}
+    {% if chess_error_message %}
+    <div class="chess-banner chess-banner-error">{{ chess_error_message }}</div>
+    {% endif %}
+
+    {% if chess_training_session.empty_state %}
+    <section class="surface-card section-card chess-empty-state">
+        <div class="hero-meta">
+            <span class="hero-badge matte-tag">Training queue complete</span>
+            <span>No queued weak-line candidates</span>
+        </div>
+        <h3 class="chess-section-title">Nothing queued right now.</h3>
+        <p class="chess-summary-note">
+            {% if chess_training_session.total_candidates %}
+            Add candidates to training queue.
+            {% else %}
+            No weak-line candidates yet.
+            {% endif %}
+        </p>
+        <div class="chess-review-queue-actions">
+            <a class="btn chess-inline-btn" href="{{ url_for('chess_puzzles') }}"><i data-lucide="sparkles"></i><span>View candidates</span></a>
+            <a class="btn chess-inline-btn" href="{{ url_for('chess_branches') }}"><i data-lucide="git-branch"></i><span>Browse branches</span></a>
+        </div>
+    </section>
+    {% else %}
+    <section class="surface-card section-card chess-focus-card">
+        <div class="hero-meta">
+            <span class="hero-badge matte-tag">Auto training queue</span>
+            <span>{{ chess_training_session.current_position_label }} current</span>
+        </div>
+        <section class="chess-overview-grid chess-review-session-overview-grid">
+            <article class="surface-card chess-overview-card">
+                <span class="chess-card-label">Auto candidates</span>
+                <strong class="chess-card-value">{{ chess_training_session.total_candidates }}</strong>
+            </article>
+            <article class="surface-card chess-overview-card">
+                <span class="chess-card-label">Queued</span>
+                <strong class="chess-card-value">{{ chess_training_session.queued_count }}</strong>
+            </article>
+            <article class="surface-card chess-overview-card">
+                <span class="chess-card-label">Training</span>
+                <strong class="chess-card-value">{{ chess_training_session.training_count }}</strong>
+            </article>
+            <article class="surface-card chess-overview-card">
+                <span class="chess-card-label">Done</span>
+                <strong class="chess-card-value">{{ chess_training_session.done_count }}</strong>
+            </article>
+        </section>
+    </section>
+
+    <section class="surface-card section-card chess-review-session-card">
+        <div class="hero-meta">
+            <span class="hero-badge matte-tag">{{ chess_training_session.current_item.status_label }}</span>
+            <span>{{ chess_training_session.current_item.position_label }}</span>
+        </div>
+        <h3 class="title-scaled chess-section-title">{{ chess_training_session.current_item.opening_label or 'Unknown opening' }}</h3>
+        <p class="chess-summary-note">{{ chess_training_session.current_item.line_label or 'Line pending' }}</p>
+        <p class="chess-summary-note">{{ chess_training_session.current_item.priority_label or 'Low' }} priority · {{ chess_training_session.current_item.priority_score or 0 }}</p>
+        {% if chess_training_session.current_item.priority_reasons %}
+        <p class="chess-summary-note">{{ chess_training_session.current_item.priority_reasons[:3] | join(' · ') }}</p>
+        {% endif %}
+        <p class="chess-summary-note">{{ chess_training_session.current_item.reason or 'Weak line from your games.' }}</p>
+        <div class="chess-review-session-context">
+            <p class="chess-summary-note">{{ chess_training_session.current_item.record_label or 'Record unavailable' }} · {{ chess_training_session.current_item.score_percent_label or '0%' }}</p>
+            <p class="chess-summary-note">{{ chess_training_session.current_item.game_label or 'Game unavailable' }} · {{ chess_training_session.current_item.game_context or 'Game unavailable' }}</p>
+            <p class="chess-summary-note">{{ chess_training_session.current_item.move_number_label or 'Position' }} · {{ chess_training_session.current_item.side_to_move_label or 'Unknown' }} to move</p>
+            {% if chess_training_session.current_item.next_move_label %}
+            <p class="chess-summary-note">Next stored move after this position: {{ chess_training_session.current_item.next_move_label }}</p>
+            {% endif %}
+        </div>
+        <div class="chess-review-queue-actions">
+            {% if chess_training_session.current_item.practice_url %}
+            <a class="btn chess-inline-btn" href="{{ chess_training_session.current_item.practice_url }}"><i data-lucide="swords"></i><span>Practice puzzle</span></a>
+            {% endif %}
+            {% if chess_training_session.current_item.branch_url %}
+            <a class="btn chess-inline-btn" href="{{ chess_training_session.current_item.branch_url }}"><i data-lucide="git-branch"></i><span>Open branch</span></a>
+            {% endif %}
+            {% if chess_training_session.current_item.game_url %}
+            <a class="btn chess-inline-btn" href="{{ chess_training_session.current_item.game_url }}"><i data-lucide="arrow-up-right"></i><span>Open related game</span></a>
+            {% endif %}
+        </div>
+        <div class="chess-review-queue-actions">
+            <form method="post" action="{{ url_for('chess_puzzles_auto_status') }}">
+                <input type="hidden" name="candidate_id" value="{{ chess_training_session.current_item.id }}">
+                <input type="hidden" name="status" value="done">
+                <input type="hidden" name="next" value="{{ chess_training_session.current_item.mark_done_next_href }}">
+                <button type="submit" class="btn chess-mini-action-btn"><i data-lucide="check-circle-2"></i><span>Mark done</span></button>
+            </form>
+            <a class="btn chess-mini-action-btn" href="{{ chess_training_session.skip_href }}"><i data-lucide="skip-forward"></i><span>Skip / Next</span></a>
+            <form method="post" action="{{ url_for('chess_puzzles_auto_status') }}">
+                <input type="hidden" name="candidate_id" value="{{ chess_training_session.current_item.id }}">
+                <input type="hidden" name="status" value="archived">
+                <input type="hidden" name="next" value="{{ chess_training_session.current_item.archive_next_href }}">
+                <button type="submit" class="btn chess-mini-action-btn"><i data-lucide="archive"></i><span>Archive</span></button>
+            </form>
+        </div>
+    </section>
+    {% endif %}
+</section>
+{% endblock %}
