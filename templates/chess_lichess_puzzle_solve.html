@@ -197,6 +197,7 @@
   const drawingNoteNodes = Array.from(document.querySelectorAll(".chess-puzzle-drawing-note"));
   const boardInteractionVersion = String(boardNode && boardNode.dataset.boardInteractionVersion || "unknown");
   if (!boardNode || !dataNode || !stepsNode || !labelNode || !counterNode || !turnNode || !feedbackCard || !feedbackTitleNodes.length || !feedbackTextNodes.length || !answerCard || !answerMoveNode || !answerNoteNode || !completionCard || !reviewStatusNode) return;
+  const LICHESS_INPUT_ISOLATION_MODE = true;
 
   let steps = [];
   try { steps = JSON.parse(dataNode.textContent || "[]"); } catch (error) { return; }
@@ -249,6 +250,7 @@
   let suppressNextSquareClick = false;
   let suppressTouchClickUntil = 0;
   let activePointerId = null;
+  let pendingTapSquare = "";
   let isTouchDevice = false;
   const dragMoveThreshold = 6;
   const settingsStorageKey = "lotusChessSettings";
@@ -275,6 +277,11 @@
     touchAction: "",
     isTouchDevice: false,
     manualMarksEnabled: false,
+    inputIsolationMode: LICHESS_INPUT_ISOLATION_MODE,
+    arrowsEnabled: false,
+    clickLaneEnabled: false,
+    pointerLaneEnabled: true,
+    ignoredClickCount: 0,
     overlayPointerEvents: "",
     enableRightClickMarks: defaultSettings.enable_right_click_marks,
     clearMarksOnLeftClick: defaultSettings.clear_marks_on_left_click,
@@ -289,6 +296,9 @@
     dragSourceSquare: "",
     currentStep: 0,
     reviewMode: false,
+    lastPointerMove: "",
+    lastMoveAttemptSource: "",
+    lastMoveAttemptTarget: "",
     lastAction: "init",
     errors: [],
   };
@@ -322,7 +332,12 @@
   }
 
   function manualMarksEnabled() {
+    if (LICHESS_INPUT_ISOLATION_MODE) return false;
     return Boolean(settings.enable_right_click_marks) && !isTouchDevice;
+  }
+
+  function arrowsEnabled() {
+    return !LICHESS_INPUT_ISOLATION_MODE;
   }
 
   function overlayPointerEventsSummary() {
@@ -341,7 +356,11 @@
       moveMethod: settings.move_method,
       touchAction: boardNode ? String(boardNode.style.touchAction || window.getComputedStyle(boardNode).touchAction || "") : "",
       isTouchDevice,
+      inputIsolationMode: LICHESS_INPUT_ISOLATION_MODE,
+      arrowsEnabled: arrowsEnabled(),
       manualMarksEnabled: manualMarksEnabled(),
+      clickLaneEnabled: !LICHESS_INPUT_ISOLATION_MODE,
+      pointerLaneEnabled: true,
       overlayPointerEvents: overlayPointerEventsSummary(),
       enableRightClickMarks: Boolean(settings.enable_right_click_marks),
       clearMarksOnLeftClick: Boolean(settings.clear_marks_on_left_click),
@@ -744,6 +763,10 @@
     if (signature === lastTutorArrowSignature) return;
     const existing = boardNode.querySelector(".chess-board-arrows");
     if (existing) existing.remove();
+    if (!arrowsEnabled()) {
+      lastTutorArrowSignature = signature;
+      return;
+    }
     const arrows = [
       buildArrowLine(tutorHighlights.attempted && tutorHighlights.attempted.from, tutorHighlights.attempted && tutorHighlights.attempted.to, "chess-arrow-attempted"),
       buildArrowLine(tutorHighlights.expected && tutorHighlights.expected.from, tutorHighlights.expected && tutorHighlights.expected.to, "chess-arrow-expected"),
@@ -778,18 +801,20 @@
 
   function applyBoardSquareState(legalTargetsBySource) {
     const activeLegalTargets = new Set(Array.isArray((legalTargetsBySource || {})[selectedSquare]) ? (legalTargetsBySource || {})[selectedSquare] : []);
+    const showTutorVisuals = !LICHESS_INPUT_ISOLATION_MODE;
+    const showManualVisuals = manualMarksEnabled();
     boardNode.querySelectorAll(".chess-board-square").forEach((square) => {
       const squareName = String(square.dataset.square || "");
       square.classList.toggle("selected", Boolean(settings.highlight_moves && selectedSquare === squareName));
       square.classList.toggle("drag-source", Boolean(dragSourceSquare === squareName));
       square.classList.toggle("legal-target", Boolean(settings.highlight_moves && activeLegalTargets.has(squareName)));
-      square.classList.toggle("tutor-attempted-from", Boolean(tutorHighlights.attempted && tutorHighlights.attempted.from === squareName));
-      square.classList.toggle("tutor-attempted-to", Boolean(tutorHighlights.attempted && tutorHighlights.attempted.to === squareName));
-      square.classList.toggle("tutor-expected-from", Boolean(tutorHighlights.expected && tutorHighlights.expected.from === squareName));
-      square.classList.toggle("tutor-expected-to", Boolean(tutorHighlights.expected && tutorHighlights.expected.to === squareName));
-      square.classList.toggle("manual-marked", manualHighlightSquares.has(squareName));
-      square.classList.toggle("manual-mark-from", manualArrowMarks.some((item) => item.from === squareName));
-      square.classList.toggle("manual-mark-to", manualArrowMarks.some((item) => item.to === squareName));
+      square.classList.toggle("tutor-attempted-from", Boolean(showTutorVisuals && tutorHighlights.attempted && tutorHighlights.attempted.from === squareName));
+      square.classList.toggle("tutor-attempted-to", Boolean(showTutorVisuals && tutorHighlights.attempted && tutorHighlights.attempted.to === squareName));
+      square.classList.toggle("tutor-expected-from", Boolean(showTutorVisuals && tutorHighlights.expected && tutorHighlights.expected.from === squareName));
+      square.classList.toggle("tutor-expected-to", Boolean(showTutorVisuals && tutorHighlights.expected && tutorHighlights.expected.to === squareName));
+      square.classList.toggle("manual-marked", Boolean(showManualVisuals && manualHighlightSquares.has(squareName)));
+      square.classList.toggle("manual-mark-from", Boolean(showManualVisuals && manualArrowMarks.some((item) => item.from === squareName)));
+      square.classList.toggle("manual-mark-to", Boolean(showManualVisuals && manualArrowMarks.some((item) => item.to === squareName)));
       const wrapper = square.querySelector(".chess-board-piece");
       if (wrapper) wrapper.classList.toggle("dragging-origin", Boolean(dragMoved && dragSourceSquare === squareName));
     });
@@ -1142,9 +1167,11 @@
   function cancelActiveBoardInteraction(reason = "cancelled") {
     const hadDrag = Boolean(dragSourceSquare);
     const hadManual = Boolean(manualDrawActive);
-    if (!hadDrag && !hadManual) return;
+    const hadTap = Boolean(pendingTapSquare || activePointerId != null);
+    if (!hadDrag && !hadManual && !hadTap) return;
     cancelPieceDrag();
     cancelManualDraw();
+    pendingTapSquare = "";
     activePointerId = null;
     blockSyntheticTouchClick(300);
     refreshCurrentBoard({ refreshArrows: false });
@@ -1230,6 +1257,7 @@
     dragCurrentClientY = 0;
     dragHoverSquare = "";
     dragGhostMarkup = "";
+    pendingTapSquare = "";
     activePointerId = null;
     syncBoardDebug({ dragStarted: false, dragSourceSquare: "", activePointerId: null, lastAction: "drag:cancel" });
   }
@@ -1255,6 +1283,8 @@
       lastPointerUp: event ? `${event.type}:${event.pointerType || "mouse"}:${sourceSquare}->${endSquare || ""}` : "release",
       lastSquare: endSquare || sourceSquare,
       activePointerId: null,
+      lastMoveAttemptSource: shouldAttemptDragMove ? sourceSquare : "",
+      lastMoveAttemptTarget: shouldAttemptDragMove ? (endSquare || "") : "",
       lastAction: "pointerup:left",
     });
     if (shouldSuppressClick) {
@@ -1286,7 +1316,7 @@
     dragCurrentClientX = event.clientX;
     dragCurrentClientY = event.clientY;
     dragHoverSquare = getBoardSquareFromEvent(event);
-    syncBoardDebug({ lastSquare: dragHoverSquare || dragSourceSquare });
+    syncBoardDebug({ lastSquare: dragHoverSquare || dragSourceSquare, lastPointerMove: `${event.type}:${event.pointerType || "mouse"}:${dragSourceSquare}->${dragHoverSquare || ""}` });
     const deltaX = Math.abs(event.clientX - dragStartClientX);
     const deltaY = Math.abs(event.clientY - dragStartClientY);
     if (!dragMoved) {
@@ -1303,16 +1333,15 @@
 
   function beginLeftBoardInteraction(event) {
     if (!event) return;
-    if (event.pointerType !== "touch" && event.button !== 0) return;
+    if (event.button !== 0) return;
     if (!ensureLiveInteraction()) {
       if (typeof event.preventDefault === "function") event.preventDefault();
       return;
     }
     const squareName = getBoardSquareFromEvent(event);
-    if (event.pointerType === "touch") {
-      activePointerId = event.pointerId == null ? null : event.pointerId;
-      blockSyntheticTouchClick(900);
-    }
+    activePointerId = event.pointerId == null ? null : event.pointerId;
+    pendingTapSquare = squareName || "";
+    if (event.pointerType === "touch") blockSyntheticTouchClick(900);
     syncBoardDebug({ lastPointerDown: `${event.type}:${event.pointerType || "mouse"}:${squareName || ""}`, lastButton: "left", lastSquare: squareName || "", dragReleased: false, activePointerId, lastAction: "pointerdown:left" });
     const canStartDrag = isDragOrClickMode() && canMoveFromSquare(squareName);
     const hasManualMarks = Boolean(manualArrowMarks.length || manualHighlightSquares.size);
@@ -1331,6 +1360,22 @@
         }
       }
     }
+  }
+
+  function handlePointerTapRelease(event) {
+    if (activePointerId != null && event && event.pointerId != null && event.pointerId !== activePointerId) return false;
+    const releaseSquare = getBoardSquareFromEvent(event);
+    const squareName = releaseSquare || "";
+    pendingTapSquare = "";
+    activePointerId = null;
+    syncBoardDebug({
+      lastPointerUp: event ? `${event.type}:${event.pointerType || "mouse"}:${squareName || ""}` : "release",
+      activePointerId: null,
+      lastAction: squareName ? "pointerup:tap" : "pointerup:cancel",
+    });
+    if (!squareName) return false;
+    handleSquareClick(squareName);
+    return true;
   }
 
   function handleSquareClick(squareName) {
@@ -1355,6 +1400,7 @@
       refreshCurrentBoard({ refreshArrows: true });
       return;
     }
+    syncBoardDebug({ lastMoveAttemptSource: selectedSquare || "", lastMoveAttemptTarget: squareName || "" });
     attemptMove(selectedSquare, squareName);
   }
 
@@ -1437,19 +1483,13 @@
     });
 
     boardNode.addEventListener("click", (event) => {
-      const squareName = getBoardSquareFromEvent(event);
-      if (!squareName) return;
-      if (suppressNextSquareClick) {
-        suppressNextSquareClick = false;
-        event.preventDefault();
-        return;
-      }
-      if (Date.now() < suppressTouchClickUntil) {
-        event.preventDefault();
-        syncBoardDebug({ lastAction: "click:suppressed-touch" });
-        return;
-      }
-      handleSquareClick(squareName);
+      event.preventDefault();
+      event.stopPropagation();
+      if (suppressNextSquareClick) suppressNextSquareClick = false;
+      syncBoardDebug({
+        ignoredClickCount: Number(boardDebug.ignoredClickCount || 0) + 1,
+        lastAction: "click:ignored",
+      });
     });
 
     boardNode.addEventListener("auxclick", (event) => {
@@ -1458,32 +1498,31 @@
     });
 
     boardNode.addEventListener("pointerdown", (event) => {
-      if (event.pointerType !== "touch") return;
       beginLeftBoardInteraction(event);
     }, true);
 
     boardNode.addEventListener("pointermove", (event) => {
-      if (event.pointerType !== "touch") return;
       handlePieceDragMove(event);
     });
 
     boardNode.addEventListener("pointerup", (event) => {
-      if (event.pointerType !== "touch") return;
-      if (!dragSourceSquare) return;
-      if (!eventMatchesActivePointer(event, dragPointerId)) return;
-      if (typeof event.preventDefault === "function") event.preventDefault();
-      releasePieceDrag(event);
+      if (event.button !== 0) return;
+      if (dragSourceSquare) {
+        if (!eventMatchesActivePointer(event, dragPointerId)) return;
+        if (typeof event.preventDefault === "function") event.preventDefault();
+        releasePieceDrag(event);
+        return;
+      }
+      handlePointerTapRelease(event);
     });
 
     boardNode.addEventListener("pointercancel", (event) => {
-      if (event.pointerType !== "touch") return;
       if (dragPointerId != null && event.pointerId === dragPointerId) dragPointerId = null;
       if (manualMarksEnabled() && manualDrawPointerId != null && event.pointerId !== manualDrawPointerId) return;
       cancelActiveBoardInteraction("pointercancel");
     });
 
     boardNode.addEventListener("lostpointercapture", (event) => {
-      if (event.pointerType !== "touch") return;
       if (dragPointerId != null && event.pointerId === dragPointerId && !dragSourceSquare) dragPointerId = null;
       if (manualMarksEnabled() && manualDrawPointerId != null && event.pointerId !== manualDrawPointerId) return;
       if (!manualDrawActive) manualDrawPointerId = null;
@@ -1492,13 +1531,6 @@
         syncBoardDebug({ activePointerId: null, lastAction: "lostpointercapture" });
       }
     });
-
-    boardNode.addEventListener("mousedown", (event) => {
-      if (event.button === 0) {
-        beginLeftBoardInteraction(event);
-        return;
-      }
-    }, true);
 
     if (manualMarksEnabled()) {
       boardNode.addEventListener("contextmenu", (event) => {
@@ -1558,21 +1590,15 @@
   }
 
   window.addEventListener("pointerup", (event) => {
-    if (event.pointerType !== "touch") return;
-    if (dragSourceSquare && eventMatchesActivePointer(event, dragPointerId)) releasePieceDrag(event);
-    if (!manualMarksEnabled()) return;
-    if (!manualDrawActive) return;
-    if (!eventMatchesActivePointer(event, manualDrawPointerId)) return;
-    const squareName = getBoardSquareFromEvent(event);
-    if (squareName) {
-      finishManualDraw(squareName);
+    if (event.button !== 0) return;
+    if (dragSourceSquare && eventMatchesActivePointer(event, dragPointerId)) {
+      releasePieceDrag(event);
       return;
     }
-    cancelManualDraw();
+    handlePointerTapRelease(event);
   });
 
   window.addEventListener("pointermove", (event) => {
-    if (event.pointerType !== "touch") return;
     handlePieceDragMove(event);
   });
 
@@ -1588,24 +1614,6 @@
     if (document.visibilityState === "hidden") {
       cancelActiveBoardInteraction("visibility-hidden");
     }
-  });
-
-  window.addEventListener("mousemove", (event) => {
-    if (!dragSourceSquare) return;
-    handlePieceDragMove(event);
-  });
-
-  window.addEventListener("mouseup", (event) => {
-    const squareName = getBoardSquareFromEvent(event);
-    syncBoardDebug({ lastPointerUp: `mouseup:mouse:${squareName || ""}`, lastButton: event.button === 2 ? "right" : "left", lastSquare: squareName || "" });
-    if (dragSourceSquare && event.button === 0) releasePieceDrag(event);
-    if (!manualMarksEnabled()) return;
-    if (!manualDrawActive || event.button !== 2) return;
-    if (squareName) {
-      finishManualDraw(squareName);
-      return;
-    }
-    cancelManualDraw();
   });
 
   window.addEventListener("keydown", (event) => {
