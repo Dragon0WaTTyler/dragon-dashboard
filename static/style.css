@@ -1278,6 +1278,21 @@ h2{font-size:clamp(2.2rem,4vw,3.6rem);margin-top:14px;letter-spacing:-.03em}.det
   font-weight:700;
 }
 
+.chess-puzzle-input-debug-grid{
+  display:grid;
+  gap:6px 12px;
+  grid-template-columns:repeat(auto-fit, minmax(160px, 1fr));
+}
+
+.chess-puzzle-input-debug-trace{
+  display:grid;
+  gap:4px;
+  font-size:.78rem;
+  color:var(--text-2);
+  white-space:pre-wrap;
+  word-break:break-word;
+}
+
 .chess-puzzle-secondary-links{
   align-items:stretch;
 }
