@@ -1012,6 +1012,7 @@ def default_chess_data():
         "puzzle_seeds": [],
         "auto_puzzle_candidates": [],
         "puzzle_attempts": [],
+        "lichess_puzzle_progress": {},
         "settings": {
             "active_profile_id": None,
         },
@@ -1027,6 +1028,13 @@ def load_chess_data():
     for key in ("profiles", "imports", "games", "openings", "review_queue", "puzzle_seeds", "auto_puzzle_candidates", "puzzle_attempts"):
         value = raw.get(key, [])
         data[key] = [dict(item) for item in value if isinstance(item, dict)] if isinstance(value, list) else []
+    progress_map = raw.get("lichess_puzzle_progress", {})
+    if isinstance(progress_map, dict):
+        data["lichess_puzzle_progress"] = {
+            str(key or "").strip(): dict(value)
+            for key, value in progress_map.items()
+            if str(key or "").strip() and isinstance(value, dict)
+        }
     settings = raw.get("settings", {})
     if not isinstance(settings, dict):
         settings = {}
@@ -1044,6 +1052,13 @@ def save_chess_data(data):
     for key in ("profiles", "imports", "games", "openings", "review_queue", "puzzle_seeds", "auto_puzzle_candidates", "puzzle_attempts"):
         value = incoming.get(key, [])
         payload[key] = [dict(item) for item in value if isinstance(item, dict)] if isinstance(value, list) else []
+    progress_map = incoming.get("lichess_puzzle_progress", {})
+    if isinstance(progress_map, dict):
+        payload["lichess_puzzle_progress"] = {
+            str(key or "").strip(): dict(value)
+            for key, value in progress_map.items()
+            if str(key or "").strip() and isinstance(value, dict)
+        }
     settings = incoming.get("settings", {})
     if not isinstance(settings, dict):
         settings = {}
@@ -1596,6 +1611,195 @@ def complete_puzzle_attempt(data, attempt_id, final_step=0, total_steps=0):
     attempt["mastered"] = bool(schedule["mastered"])
     attempt["updated_at"] = current_timestamp()
     return {"ok": True, "error": "", "attempt": dict(attempt)}
+
+
+def normalize_lichess_progress_status(value):
+    normalized = str(value or "").strip().lower()
+    if normalized in {"solved", "missed", "skipped", "started"}:
+        return normalized
+    return "started"
+
+
+def _empty_lichess_progress_entry(puzzle_id=""):
+    return {
+        "puzzle_id": str(puzzle_id or "").strip(),
+        "status": "started",
+        "times_seen": 0,
+        "times_solved": 0,
+        "times_missed": 0,
+        "last_seen_at": "",
+        "solved_at": "",
+        "last_wrong_move": "",
+        "reveal_used": False,
+        "completed_clean": False,
+        "created_at": "",
+        "updated_at": "",
+    }
+
+
+def _coerce_lichess_progress_entry(puzzle_id, raw_entry):
+    puzzle_id_value = str(puzzle_id or "").strip()
+    payload = _empty_lichess_progress_entry(puzzle_id_value)
+    source = dict(raw_entry or {}) if isinstance(raw_entry, dict) else {}
+    payload["status"] = normalize_lichess_progress_status(source.get("status"))
+    for field_name in ("last_seen_at", "solved_at", "last_wrong_move", "created_at", "updated_at"):
+        payload[field_name] = str(source.get(field_name, "") or "").strip()
+    payload["times_seen"] = max(0, int(source.get("times_seen", 0) or 0))
+    payload["times_solved"] = max(0, int(source.get("times_solved", 0) or 0))
+    payload["times_missed"] = max(0, int(source.get("times_missed", 0) or 0))
+    payload["reveal_used"] = bool(source.get("reveal_used", False))
+    payload["completed_clean"] = bool(source.get("completed_clean", False))
+    return payload
+
+
+def get_lichess_puzzle_progress_map(data):
+    payload = data if isinstance(data, dict) else default_chess_data()
+    source = payload.get("lichess_puzzle_progress", {})
+    progress_map = {}
+    if not isinstance(source, dict):
+        payload["lichess_puzzle_progress"] = progress_map
+        return progress_map
+    for puzzle_id, raw_entry in source.items():
+        puzzle_key = str(puzzle_id or "").strip()
+        if not puzzle_key:
+            continue
+        progress_map[puzzle_key] = _coerce_lichess_progress_entry(puzzle_key, raw_entry)
+    payload["lichess_puzzle_progress"] = progress_map
+    return progress_map
+
+
+def get_lichess_puzzle_progress_entry(data, puzzle_id="", create=False):
+    puzzle_key = str(puzzle_id or "").strip()
+    if not puzzle_key:
+        return None
+    progress_map = get_lichess_puzzle_progress_map(data)
+    entry = progress_map.get(puzzle_key)
+    if entry is None and create:
+        now = current_timestamp()
+        entry = _empty_lichess_progress_entry(puzzle_key)
+        entry["created_at"] = now
+        entry["updated_at"] = now
+        progress_map[puzzle_key] = entry
+    return entry
+
+
+def _mark_lichess_progress_missed(entry):
+    if not isinstance(entry, dict):
+        return
+    current_status = normalize_lichess_progress_status(entry.get("status"))
+    if current_status not in {"missed", "skipped"}:
+        entry["times_missed"] = max(0, int(entry.get("times_missed", 0) or 0)) + 1
+    entry["status"] = "missed"
+    entry["completed_clean"] = False
+
+
+def record_lichess_puzzle_started(data, puzzle_id=""):
+    entry = get_lichess_puzzle_progress_entry(data, puzzle_id, create=True)
+    if not isinstance(entry, dict):
+        return {"ok": False, "error": "Lichess puzzle unavailable.", "progress": None}
+    now = current_timestamp()
+    increment_seen = True
+    last_seen_at = str(entry.get("last_seen_at", "") or "").strip()
+    if last_seen_at:
+        try:
+            last_seen_dt = datetime.fromisoformat(last_seen_at)
+            now_dt = datetime.fromisoformat(now)
+            increment_seen = (now_dt - last_seen_dt).total_seconds() > 600
+        except Exception:
+            increment_seen = True
+    if increment_seen:
+        entry["times_seen"] = max(0, int(entry.get("times_seen", 0) or 0)) + 1
+    entry["last_seen_at"] = now
+    if normalize_lichess_progress_status(entry.get("status")) != "solved":
+        entry["status"] = "started"
+    if not str(entry.get("created_at", "") or "").strip():
+        entry["created_at"] = now
+    entry["updated_at"] = now
+    return {"ok": True, "error": "", "progress": dict(entry)}
+
+
+def record_lichess_puzzle_wrong_move(data, puzzle_id="", attempted_move=""):
+    entry = get_lichess_puzzle_progress_entry(data, puzzle_id, create=True)
+    if not isinstance(entry, dict):
+        return {"ok": False, "error": "Lichess puzzle unavailable.", "progress": None}
+    _mark_lichess_progress_missed(entry)
+    entry["last_wrong_move"] = str(attempted_move or "").strip()
+    entry["updated_at"] = current_timestamp()
+    return {"ok": True, "error": "", "progress": dict(entry)}
+
+
+def record_lichess_puzzle_reveal(data, puzzle_id=""):
+    entry = get_lichess_puzzle_progress_entry(data, puzzle_id, create=True)
+    if not isinstance(entry, dict):
+        return {"ok": False, "error": "Lichess puzzle unavailable.", "progress": None}
+    entry["reveal_used"] = True
+    _mark_lichess_progress_missed(entry)
+    entry["updated_at"] = current_timestamp()
+    return {"ok": True, "error": "", "progress": dict(entry)}
+
+
+def record_lichess_puzzle_skipped(data, puzzle_id=""):
+    entry = get_lichess_puzzle_progress_entry(data, puzzle_id, create=True)
+    if not isinstance(entry, dict):
+        return {"ok": False, "error": "Lichess puzzle unavailable.", "progress": None}
+    current_status = normalize_lichess_progress_status(entry.get("status"))
+    if current_status not in {"skipped", "missed"}:
+        entry["times_missed"] = max(0, int(entry.get("times_missed", 0) or 0)) + 1
+    entry["status"] = "skipped"
+    entry["completed_clean"] = False
+    entry["updated_at"] = current_timestamp()
+    return {"ok": True, "error": "", "progress": dict(entry)}
+
+
+def record_lichess_puzzle_complete(data, puzzle_id="", completed_clean=True):
+    entry = get_lichess_puzzle_progress_entry(data, puzzle_id, create=True)
+    if not isinstance(entry, dict):
+        return {"ok": False, "error": "Lichess puzzle unavailable.", "progress": None}
+    now = current_timestamp()
+    previous_status = normalize_lichess_progress_status(entry.get("status"))
+    clean_value = bool(completed_clean) and previous_status not in {"missed", "skipped"} and not bool(entry.get("reveal_used", False))
+    entry["status"] = "solved"
+    entry["times_solved"] = max(0, int(entry.get("times_solved", 0) or 0)) + 1
+    entry["solved_at"] = now
+    entry["completed_clean"] = clean_value
+    if not clean_value:
+        entry["times_missed"] = max(0, int(entry.get("times_missed", 0) or 0)) + (0 if previous_status in {"missed", "skipped"} else 1)
+    entry["updated_at"] = now
+    return {"ok": True, "error": "", "progress": dict(entry)}
+
+
+def classify_lichess_progress_bucket(progress_entry):
+    if not isinstance(progress_entry, dict):
+        return 0
+    status_value = normalize_lichess_progress_status(progress_entry.get("status"))
+    if status_value == "solved" and bool(progress_entry.get("completed_clean", False)):
+        return 2
+    return 1
+
+
+def build_lichess_progress_snapshot(data, valid_items=None):
+    progress_map = get_lichess_puzzle_progress_map(data)
+    valid_puzzle_ids = [
+        str((item.get("row", {}) or {}).get("puzzle_id", "") or "").strip()
+        for item in (valid_items or [])
+        if isinstance(item, dict)
+    ]
+    valid_puzzle_ids = [item for item in valid_puzzle_ids if item]
+    relevant_entries = [progress_map.get(puzzle_id) for puzzle_id in valid_puzzle_ids if progress_map.get(puzzle_id)]
+    solved_clean_count = sum(1 for entry in relevant_entries if classify_lichess_progress_bucket(entry) == 2)
+    solved_count = sum(1 for entry in relevant_entries if normalize_lichess_progress_status((entry or {}).get("status")) == "solved")
+    review_needed_count = sum(1 for entry in relevant_entries if classify_lichess_progress_bucket(entry) == 1)
+    total_count = len(valid_puzzle_ids)
+    remaining_count = max(0, total_count - solved_clean_count)
+    all_clean_solved = bool(total_count) and solved_clean_count >= total_count
+    return {
+        "total_count": total_count,
+        "solved_count": solved_count,
+        "solved_clean_count": solved_clean_count,
+        "remaining_count": remaining_count,
+        "review_needed_count": review_needed_count,
+        "all_clean_solved": all_clean_solved,
+    }
 
 
 def default_chess_courses():
@@ -24521,6 +24725,37 @@ def build_lichess_valid_puzzle_list(sample_rows, filter_payload=None):
     return valid_items
 
 
+def build_ordered_lichess_valid_items(valid_items, progress_map=None):
+    progress_map = progress_map if isinstance(progress_map, dict) else {}
+    ordered = []
+    for index, item in enumerate(valid_items or []):
+        if not isinstance(item, dict):
+            continue
+        row = dict(item.get("row") or {})
+        puzzle_id = str(row.get("puzzle_id", "") or "").strip()
+        progress_entry = progress_map.get(puzzle_id)
+        ordered.append({
+            "sort_bucket": classify_lichess_progress_bucket(progress_entry),
+            "times_seen": max(0, int((progress_entry or {}).get("times_seen", 0) or 0)),
+            "times_missed": max(0, int((progress_entry or {}).get("times_missed", 0) or 0)),
+            "source_index": int(item.get("source_index", index) or index),
+            "rating_distance": abs(int(row.get("rating") or 1400) - 1400),
+            "puzzle_id": puzzle_id,
+            "item": item,
+        })
+    ordered.sort(
+        key=lambda item: (
+            item["sort_bucket"],
+            item["times_seen"],
+            -item["times_missed"],
+            item["rating_distance"],
+            item["source_index"],
+            item["puzzle_id"],
+        )
+    )
+    return [entry["item"] for entry in ordered]
+
+
 def build_lichess_solver_query_args(filter_payload=None):
     filter_payload = dict(filter_payload or {})
     args = {}
@@ -24715,6 +24950,7 @@ def choose_filtered_lichess_puzzle(sample_rows, filter_payload):
 
 
 def build_lichess_puzzle_solver_payload(puzzle_id="", filter_payload=None):
+    chess_data = load_chess_data()
     source_status = get_lichess_puzzle_source_status()
     active_filter_payload = extract_lichess_active_filters(source_status, filter_payload)
     base_payload = {
@@ -24728,6 +24964,8 @@ def build_lichess_puzzle_solver_payload(puzzle_id="", filter_payload=None):
         "hub_href": url_for("chess_lichess_puzzles"),
         "source_status": source_status,
         "filter_query": build_lichess_solver_query_args(active_filter_payload),
+        "progress": build_lichess_progress_snapshot(chess_data, valid_items=[]),
+        "show_cycle_note": False,
     }
     if not source_status.get("available"):
         base_payload["message"] = "No local Lichess puzzle source imported yet."
@@ -24735,6 +24973,9 @@ def build_lichess_puzzle_solver_payload(puzzle_id="", filter_payload=None):
 
     rows = [dict(row) for row in (source_status.get("sample_rows", []) or []) if isinstance(row, dict)]
     valid_items = build_lichess_valid_puzzle_list(rows, filter_payload=active_filter_payload)
+    progress_map = get_lichess_puzzle_progress_map(chess_data)
+    progress_snapshot = build_lichess_progress_snapshot(chess_data, valid_items=valid_items)
+    base_payload["progress"] = progress_snapshot
     if not valid_items:
         if str(puzzle_id or "").strip():
             base_payload["message"] = "That local Lichess puzzle could not be prepared safely."
@@ -24745,6 +24986,7 @@ def build_lichess_puzzle_solver_payload(puzzle_id="", filter_payload=None):
     current_item_index = -1
     current_row = {}
     step_payload = {}
+    ordered_valid_items = build_ordered_lichess_valid_items(valid_items, progress_map=progress_map)
     target_id = str(puzzle_id or "").strip()
     if target_id:
         for index, item in enumerate(valid_items):
@@ -24759,26 +25001,41 @@ def build_lichess_puzzle_solver_payload(puzzle_id="", filter_payload=None):
             base_payload["message"] = "That local Lichess puzzle could not be found."
             return base_payload
     else:
-        sorted_candidates = sorted(
-            enumerate(valid_items),
-            key=lambda item: (
-                abs(int(item[1].get("row", {}).get("rating") or 1400) - 1400),
-                int(item[1].get("row", {}).get("rating") or 0),
-                str(item[1].get("row", {}).get("puzzle_id", "") or ""),
-            )
+        best_item = dict((ordered_valid_items or [valid_items[0]])[0])
+        best_puzzle_id = str((best_item.get("row", {}) or {}).get("puzzle_id", "") or "").strip()
+        best_valid_index = next(
+            (
+                index for index, item in enumerate(valid_items)
+                if str((item.get("row", {}) or {}).get("puzzle_id", "") or "").strip() == best_puzzle_id
+            ),
+            0,
         )
-        best_valid_index, best_item = sorted_candidates[0]
         current_item_index = best_valid_index
         current_row = dict(best_item.get("row") or {})
         step_payload = dict(best_item.get("steps") or {})
 
     next_puzzle_id = ""
-    if len(valid_items) > 1 and current_item_index >= 0:
+    current_puzzle_id = str(current_row.get("puzzle_id", "") or "").strip()
+    ordered_ids = [
+        str((item.get("row", {}) or {}).get("puzzle_id", "") or "").strip()
+        for item in ordered_valid_items
+        if isinstance(item, dict)
+    ]
+    current_ordered_index = ordered_ids.index(current_puzzle_id) if current_puzzle_id in ordered_ids else -1
+    if len(ordered_ids) > 1 and current_ordered_index >= 0:
+        next_puzzle_id = ordered_ids[(current_ordered_index + 1) % len(ordered_ids)]
+    elif len(ordered_ids) == 1 and current_puzzle_id:
+        next_puzzle_id = current_puzzle_id
+    elif len(valid_items) == 1 and current_row:
+        next_puzzle_id = str(current_row.get("puzzle_id", "") or "").strip()
+    if progress_snapshot.get("all_clean_solved") and not target_id:
+        base_payload["show_cycle_note"] = True
+    current_progress = progress_map.get(current_puzzle_id)
+    current_solved_clean = classify_lichess_progress_bucket(current_progress) == 2
+    if len(valid_items) > 1 and current_item_index >= 0 and not next_puzzle_id:
         next_valid_index = (current_item_index + 1) % len(valid_items)
         next_row = dict(valid_items[next_valid_index].get("row") or {})
         next_puzzle_id = str(next_row.get("puzzle_id", "") or "").strip()
-    elif len(valid_items) == 1 and current_row:
-        next_puzzle_id = str(current_row.get("puzzle_id", "") or "").strip()
 
     current_item = {
         "id": str(current_row.get("puzzle_id", "") or "").strip(),
@@ -24796,6 +25053,9 @@ def build_lichess_puzzle_solver_payload(puzzle_id="", filter_payload=None):
         "user_color_label": step_payload.get("user_label", "White"),
         "game_url": str(current_row.get("game_url", "") or "").strip(),
         "position_label": f"{current_item_index + 1} / {len(valid_items)}" if valid_items else "Local sample",
+        "already_solved": current_solved_clean,
+        "progress_status": normalize_lichess_progress_status((current_progress or {}).get("status")) if current_progress else "",
+        "progress_status_label": "Solved clean" if current_solved_clean else ("Needs another try" if current_progress else "Unseen"),
     }
     next_query = build_lichess_solver_query_args(active_filter_payload)
     base_payload.update({
@@ -24808,6 +25068,7 @@ def build_lichess_puzzle_solver_payload(puzzle_id="", filter_payload=None):
         "next_puzzle_href": url_for("chess_lichess_puzzle_solve_by_id", puzzle_id=next_puzzle_id, **next_query) if next_puzzle_id else url_for("chess_lichess_puzzle_solve", **next_query),
         "valid_count": len(valid_items),
         "valid_items": valid_items,
+        "ordered_valid_ids": ordered_ids,
     })
     return base_payload
 
@@ -25078,11 +25339,14 @@ def chess_puzzles():
 def chess_lichess_puzzles():
     context = build_lotus_chess_context("puzzles")
     lichess_source_status = get_lichess_puzzle_source_status()
+    chess_data = load_chess_data()
     custom_filters = parse_lichess_custom_filters(lichess_source_status, request.args)
     selected_puzzle = {"row": None, "count": 0, "items": []}
     custom_start_url = ""
     custom_status_line = "Choose a local rating range and theme mix."
     custom_warning = ""
+    valid_items = build_lichess_valid_puzzle_list(lichess_source_status.get("sample_rows", []), filter_payload={}) if lichess_source_status.get("available") else []
+    progress_snapshot = build_lichess_progress_snapshot(chess_data, valid_items=valid_items)
     if lichess_source_status.get("available"):
         selected_puzzle = choose_filtered_lichess_puzzle(
             lichess_source_status.get("sample_rows", []),
@@ -25139,6 +25403,7 @@ def chess_lichess_puzzles():
         "top_themes_label": lichess_source_status.get("top_themes_label", "Preview"),
         "sample_rows": lichess_source_status.get("sample_rows", []),
         "skipped_rows": lichess_source_status.get("skipped_rows", 0),
+        "progress": progress_snapshot,
         "rating_filters": [dict(item) for item in LICHESS_RATING_PRESETS],
         "theme_filters": custom_filters.get("theme_options", []),
         "custom_filters": custom_filters,
@@ -25160,6 +25425,75 @@ def chess_lichess_puzzle_solve(puzzle_id=""):
     context["chess_lichess_puzzle_solver"] = payload
     context["title"] = "Lotus Chess | Solve Lichess Puzzle"
     return render_template("chess_lichess_puzzle_solve.html", **context)
+
+
+def _jsonify_lichess_progress_result(result, status_code=200):
+    payload = dict(result or {}) if isinstance(result, dict) else {}
+    progress = payload.get("progress")
+    return jsonify({
+        "ok": bool(payload.get("ok")),
+        "error": str(payload.get("error", "") or ""),
+        "progress": dict(progress) if isinstance(progress, dict) else None,
+    }), status_code
+
+
+@app.route("/chess/lichess-puzzles/progress/start.json", methods=["POST"], endpoint="chess_lichess_puzzle_progress_start_json")
+def chess_lichess_puzzle_progress_start_json():
+    chess_data = load_chess_data()
+    result = record_lichess_puzzle_started(chess_data, str(request.form.get("puzzle_id", "") or "").strip())
+    if result.get("ok"):
+        save_chess_data(chess_data)
+        return _jsonify_lichess_progress_result(result)
+    return _jsonify_lichess_progress_result(result, 400)
+
+
+@app.route("/chess/lichess-puzzles/progress/wrong.json", methods=["POST"], endpoint="chess_lichess_puzzle_progress_wrong_json")
+def chess_lichess_puzzle_progress_wrong_json():
+    chess_data = load_chess_data()
+    result = record_lichess_puzzle_wrong_move(
+        chess_data,
+        str(request.form.get("puzzle_id", "") or "").strip(),
+        attempted_move=str(request.form.get("attempted_move", "") or "").strip(),
+    )
+    if result.get("ok"):
+        save_chess_data(chess_data)
+        return _jsonify_lichess_progress_result(result)
+    return _jsonify_lichess_progress_result(result, 400)
+
+
+@app.route("/chess/lichess-puzzles/progress/reveal.json", methods=["POST"], endpoint="chess_lichess_puzzle_progress_reveal_json")
+def chess_lichess_puzzle_progress_reveal_json():
+    chess_data = load_chess_data()
+    result = record_lichess_puzzle_reveal(chess_data, str(request.form.get("puzzle_id", "") or "").strip())
+    if result.get("ok"):
+        save_chess_data(chess_data)
+        return _jsonify_lichess_progress_result(result)
+    return _jsonify_lichess_progress_result(result, 400)
+
+
+@app.route("/chess/lichess-puzzles/progress/complete.json", methods=["POST"], endpoint="chess_lichess_puzzle_progress_complete_json")
+def chess_lichess_puzzle_progress_complete_json():
+    chess_data = load_chess_data()
+    completed_clean = str(request.form.get("completed_clean", "true") or "true").strip().lower() in {"1", "true", "yes", "on"}
+    result = record_lichess_puzzle_complete(
+        chess_data,
+        str(request.form.get("puzzle_id", "") or "").strip(),
+        completed_clean=completed_clean,
+    )
+    if result.get("ok"):
+        save_chess_data(chess_data)
+        return _jsonify_lichess_progress_result(result)
+    return _jsonify_lichess_progress_result(result, 400)
+
+
+@app.route("/chess/lichess-puzzles/progress/skip.json", methods=["POST"], endpoint="chess_lichess_puzzle_progress_skip_json")
+def chess_lichess_puzzle_progress_skip_json():
+    chess_data = load_chess_data()
+    result = record_lichess_puzzle_skipped(chess_data, str(request.form.get("puzzle_id", "") or "").strip())
+    if result.get("ok"):
+        save_chess_data(chess_data)
+        return _jsonify_lichess_progress_result(result)
+    return _jsonify_lichess_progress_result(result, 400)
 
 
 @app.route("/chess/engine", methods=["GET", "POST"], endpoint="chess_engine")

@@ -722,6 +722,11 @@ h2{font-size:clamp(2.2rem,4vw,3.6rem);margin-top:14px;letter-spacing:-.03em}.det
   box-shadow:0 20px 60px rgba(0,0,0,.35);
 }
 
+.chess-trainer-board{
+  touch-action:none;
+  -ms-touch-action:none;
+}
+
 .chess-board-arrows{
   position:absolute;
   inset:0;

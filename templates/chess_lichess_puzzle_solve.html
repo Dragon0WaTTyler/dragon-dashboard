@@ -44,7 +44,7 @@
                     <span>{{ chess_lichess_puzzle_solver.current_item.position_label }}</span>
                 </div>
                 <div class="chess-board-stage chess-puzzle-board-stage">
-                    <div class="chess-board chess-trainer-board" id="chess-lichess-puzzle-board" aria-label="Lichess puzzle board" data-board-interaction-version="lichess-board-fix-2026-04-30"></div>
+                    <div class="chess-board chess-trainer-board" id="chess-lichess-puzzle-board" aria-label="Lichess puzzle board" data-board-interaction-version="lichess-board-fix-2026-05-01"></div>
                 </div>
                 <div class="chess-board-status chess-puzzle-board-status">
                     <strong id="chess-lichess-puzzle-move-label">Your side to move</strong>
@@ -55,6 +55,7 @@
                     <span class="chess-puzzle-status-pill">{{ chess_lichess_puzzle_solver.current_item.rating_label }}</span>
                     <span class="chess-puzzle-status-pill">{{ chess_lichess_puzzle_solver.current_item.themes|length }} theme{{ '' if chess_lichess_puzzle_solver.current_item.themes|length == 1 else 's' }}</span>
                     <span class="chess-puzzle-status-pill">{{ chess_lichess_puzzle_solver.step_count }} move{{ '' if chess_lichess_puzzle_solver.step_count == 1 else 's' }}</span>
+                    <span class="chess-puzzle-status-pill">{{ chess_lichess_puzzle_solver.current_item.progress_status_label }}</span>
                 </div>
             </section>
 
@@ -74,6 +75,9 @@
                     <strong id="chess-lichess-puzzle-feedback-title">Ready</strong>
                     <p class="chess-summary-note" id="chess-lichess-puzzle-feedback-text">{{ chess_lichess_puzzle_solver.current_item.goal_message or 'Look for forcing moves: checks, captures, and threats.' }}</p>
                 </div>
+                {% if chess_lichess_puzzle_solver.show_cycle_note %}
+                <p class="chess-summary-note chess-muted-note">All local puzzles have been solved cleanly once, so Lotus Chess is cycling them again.</p>
+                {% endif %}
 
                 <div class="surface-card chess-puzzle-move-compare" id="chess-lichess-puzzle-compare-card" hidden>
                     <div class="chess-puzzle-move-compare-row" id="chess-lichess-puzzle-compare-attempted" hidden>
@@ -96,6 +100,7 @@
                     <span class="chess-mini-label">Context</span>
                     <p class="chess-board-context">{{ chess_lichess_puzzle_solver.current_item.themes_label }}</p>
                     <p class="chess-board-context">{{ chess_lichess_puzzle_solver.current_item.rating_label }}</p>
+                    <p class="chess-summary-note chess-muted-note">{{ chess_lichess_puzzle_solver.progress.solved_clean_count or 0 }} solved clean · {{ chess_lichess_puzzle_solver.progress.remaining_count or 0 }} remaining</p>
                     {% if chess_lichess_puzzle_solver.current_item.game_url %}
                     <p class="chess-summary-note"><a href="{{ chess_lichess_puzzle_solver.current_item.game_url }}" target="_blank" rel="noopener">Open source game</a></p>
                     {% endif %}
@@ -106,7 +111,7 @@
                     <button type="button" class="btn chess-inline-btn" data-puzzle-action="reset"><i data-lucide="refresh-cw"></i><span>Reset</span></button>
                     <button type="button" class="btn chess-inline-btn" data-puzzle-action="clear-marks"><i data-lucide="eraser"></i><span>Clear marks</span></button>
                     <button type="button" class="btn chess-inline-btn" data-puzzle-action="flip"><i data-lucide="refresh-ccw"></i><span>Flip board</span></button>
-                    <a class="btn chess-inline-btn" href="{{ chess_lichess_puzzle_solver.next_puzzle_href }}"><i data-lucide="skip-forward"></i><span>Next puzzle</span></a>
+                    <a class="btn chess-inline-btn" href="{{ chess_lichess_puzzle_solver.next_puzzle_href }}" data-puzzle-nav="next"><i data-lucide="skip-forward"></i><span>Next puzzle</span></a>
                 </div>
                 <p class="chess-summary-note chess-muted-note chess-puzzle-drawing-note">Right-click squares to draw study marks.</p>
 
@@ -139,7 +144,7 @@
                     <p class="chess-summary-note">Move to the next local sample puzzle when you are ready.</p>
                     <div class="chess-board-review-actions">
                         <button type="button" class="btn chess-inline-btn" data-puzzle-action="repeat"><i data-lucide="rotate-ccw"></i><span>Repeat puzzle</span></button>
-                        <a class="btn chess-inline-btn" href="{{ chess_lichess_puzzle_solver.next_puzzle_href }}"><i data-lucide="skip-forward"></i><span>Continue</span></a>
+                        <a class="btn chess-inline-btn" href="{{ chess_lichess_puzzle_solver.next_puzzle_href }}" data-puzzle-nav="next"><i data-lucide="skip-forward"></i><span>Continue</span></a>
                     </div>
                 </div>
             </aside>
@@ -253,6 +258,18 @@
     errors: [],
   };
   const initialCoachGoal = {{ (chess_lichess_puzzle_solver.current_item.goal_message or 'Look for forcing moves: checks, captures, and threats.')|tojson }};
+  const puzzleId = {{ (chess_lichess_puzzle_solver.current_item.puzzle_id or '')|tojson }};
+  const progressUrls = {
+    start: {{ url_for('chess_lichess_puzzle_progress_start_json')|tojson }},
+    wrong: {{ url_for('chess_lichess_puzzle_progress_wrong_json')|tojson }},
+    reveal: {{ url_for('chess_lichess_puzzle_progress_reveal_json')|tojson }},
+    complete: {{ url_for('chess_lichess_puzzle_progress_complete_json')|tojson }},
+    skip: {{ url_for('chess_lichess_puzzle_progress_skip_json')|tojson }},
+  };
+  let currentProgressStatus = {{ (chess_lichess_puzzle_solver.current_item.progress_status or '')|tojson }};
+  let currentProgressCompletedClean = {{ 'true' if chess_lichess_puzzle_solver.current_item.already_solved else 'false' }};
+  let progressStartedSent = false;
+  let skipSent = false;
 
   function syncBoardDebug(extra = {}) {
     Object.assign(boardDebug, {
@@ -324,6 +341,45 @@
 
   function isDragOrClickMode() {
     return normalizeMoveMethod(settings.move_method) === "drag-or-click";
+  }
+
+  function buildProgressForm(extra = {}) {
+    const params = new URLSearchParams();
+    params.set("puzzle_id", puzzleId);
+    Object.entries(extra || {}).forEach(([key, value]) => {
+      if (value == null) return;
+      params.set(key, String(value));
+    });
+    return params;
+  }
+
+  function postProgress(url, extra = {}) {
+    if (!puzzleId || !url || typeof window.fetch !== "function") return Promise.resolve(null);
+    return window.fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+        "X-Requested-With": "fetch",
+      },
+      body: buildProgressForm(extra).toString(),
+      credentials: "same-origin",
+      keepalive: true,
+    }).then((response) => {
+      if (!response.ok) return null;
+      return response.json().catch(() => null);
+    }).then((payload) => {
+      if (payload && payload.progress) {
+        currentProgressStatus = String(payload.progress.status || currentProgressStatus || "");
+        currentProgressCompletedClean = Boolean(payload.progress.completed_clean);
+      }
+      return payload;
+    }).catch(() => null);
+  }
+
+  function ensureProgressStarted() {
+    if (progressStartedSent || !puzzleId) return;
+    progressStartedSent = true;
+    postProgress(progressUrls.start);
   }
 
   function setCompletionVisible(visible) {
@@ -599,6 +655,7 @@
     const step = steps[currentStep];
     if (!step) return;
     revealMove = true;
+    postProgress(progressUrls.reveal);
     setAnswerVisible(true);
     answerMoveNode.textContent = step.expected_move_san || step.expected_move_uci || "Unavailable";
     answerNoteNode.textContent = "This is the next solution move from the local Lichess sample.";
@@ -617,6 +674,7 @@
     currentFen = steps[0].fen_before;
     selectedSquare = "";
     revealMove = false;
+    skipSent = false;
     if (completionTimer) {
       window.clearTimeout(completionTimer);
       completionTimer = null;
@@ -634,12 +692,14 @@
 
   function completePuzzle() {
     selectedSquare = "";
+    skipSent = true;
     clearManualStudyMarks(true);
     clearBoardSelectionMarks();
     clearTutorHighlights();
     updateStatus();
     setCompletionVisible(true);
     setFeedback("success", "Complete", "You completed the full local Lichess solution sequence.");
+    postProgress(progressUrls.complete, { completed_clean: revealMove ? "false" : "true" });
     clearComparison();
     refreshCurrentBoard({ refreshArrows: true });
   }
@@ -707,6 +767,20 @@
   function attemptMove(sourceSquare, targetSquare) {
     const step = steps[currentStep];
     if (!step) return;
+    const legalTargetsBySource = step.legal_targets_by_source || {};
+    const legalTargets = Array.isArray(legalTargetsBySource[sourceSquare]) ? legalTargetsBySource[sourceSquare] : [];
+    if (!legalTargets.includes(targetSquare)) {
+      tutorHighlights = {
+        attempted: { from: sourceSquare || "", to: targetSquare || "" },
+        expected: { from: "", to: "" },
+        engine: { from: "", to: "" },
+      };
+      setComparison(uciToSan(step, `${sourceSquare}${targetSquare}`), "");
+      selectedSquare = "";
+      setFeedback("error", "Illegal move", "That move is not legal in this position. Try again.");
+      renderBoard(step.fen_before, step.legal_targets_by_source || {}, { forceBoard: false, refreshArrows: true });
+      return;
+    }
     const attemptedUci = normalizedAttemptedMove(sourceSquare, targetSquare, step.expected_move_uci);
     const expectedUci = String(step.expected_move_uci || "");
     const attemptedSan = uciToSan(step, attemptedUci);
@@ -723,13 +797,14 @@
       advanceAfterCorrect(step);
       return;
     }
-    setComparison(attemptedSan, expectedSan);
+    setComparison(attemptedSan, "");
     tutorHighlights = {
       attempted: { from: attemptedUci.slice(0, 2), to: attemptedUci.slice(2, 4) },
-      expected: { from: expectedUci.slice(0, 2), to: expectedUci.slice(2, 4) },
+      expected: { from: "", to: "" },
       engine: { from: "", to: "" },
     };
-    setFeedback("error", "Not the idea", `That is not the solution move. ${step.expected_move_hint || "Look for a more forcing idea."} Try again.`);
+    postProgress(progressUrls.wrong, { attempted_move: attemptedUci });
+    setFeedback("error", "Not quite", `Not quite. Try again. ${step.expected_move_hint || "Look for checks, captures, or threats."}`);
     selectedSquare = "";
     renderBoard(step.fen_before, step.legal_targets_by_source || {}, { forceBoard: false, refreshArrows: true });
   }
@@ -968,6 +1043,7 @@
   function handlePieceDragMove(event) {
     if (!dragSourceSquare) return;
     if (!event || typeof event.clientX !== "number" || typeof event.clientY !== "number") return;
+    if (event.pointerType === "touch" && typeof event.preventDefault === "function") event.preventDefault();
     dragCurrentClientX = event.clientX;
     dragCurrentClientY = event.clientY;
     dragHoverSquare = getBoardSquareFromEvent(event);
@@ -1048,6 +1124,14 @@
     });
   });
 
+  document.querySelectorAll('[data-puzzle-nav="next"]').forEach((link) => {
+    link.addEventListener("click", () => {
+      if (skipSent || completionCard.hidden === false || currentStep >= steps.length) return;
+      skipSent = true;
+      postProgress(progressUrls.skip);
+    });
+  });
+
   stepsNode.querySelectorAll("[data-puzzle-step]").forEach((button) => {
     button.addEventListener("click", () => {
       const stepIndex = Number.parseInt(button.dataset.puzzleStep || "-1", 10);
@@ -1111,6 +1195,7 @@
       if (event.pointerType !== "touch") return;
       if (!dragSourceSquare) return;
       if (!eventMatchesActivePointer(event, dragPointerId)) return;
+      if (typeof event.preventDefault === "function") event.preventDefault();
       releasePieceDrag(event);
     });
 
@@ -1219,6 +1304,7 @@
 
   loadSettings();
   resetPuzzle();
+  ensureProgressStarted();
   syncBoardDebug({ handlersAttached: Boolean(boardDebug.handlersAttached) });
 })();
 </script>

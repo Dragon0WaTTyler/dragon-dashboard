@@ -47,6 +47,8 @@
         <div class="chess-review-queue-meta">
             <span>Rating range: {{ chess_lichess_puzzles_status.rating_range_label or 'Preview' }}</span>
             <span>Themes: {{ chess_lichess_puzzles_status.top_themes_label or 'Preview' }}</span>
+            <span>{{ chess_lichess_puzzles_status.progress.solved_clean_count or 0 }} solved clean</span>
+            <span>{{ chess_lichess_puzzles_status.progress.remaining_count or 0 }} remaining</span>
         </div>
         {% if chess_lichess_puzzles_status.warning %}
         <p class="chess-summary-note chess-muted-note">{{ chess_lichess_puzzles_status.warning }}</p>
