@@ -2304,9 +2304,9 @@
       expected_move_san: String((step && step.expected_move_san) || ""),
       engine_move_uci: "",
       engine_move_san: "",
-      title: illegalMove ? "Illegal move" : (attempted === expectedMove ? "Correct" : "Not this line"),
+      title: illegalMove ? "Move not available" : (attempted === expectedMove ? "Correct" : "Not this line"),
       text: illegalMove
-        ? "That move cannot be played in this position. Try again."
+        ? "That move is not available here. Try another move."
         : (attempted === expectedMove
             ? (String((step && step.correct_feedback) || "") || "Correct. This keeps the line idea.")
             : `Not this move. ${String((step && step.expected_move_hint) || "Look for the move that keeps the line idea.").trim()} Try again.`),
@@ -2327,7 +2327,7 @@
     const tutorFeedbackPromise = shouldFetchDetailedTutorFeedback ? fetchTutorFeedback(step, attemptedMove) : Promise.resolve(null);
     if (immediateFeedback.illegal_move) {
       selectedSquare = "";
-      applyTutorFeedback(immediateFeedback, "error", "Illegal move", "That move cannot be played in this position. Try again.");
+      applyTutorFeedback(immediateFeedback, "error", "Move not available", "That move is not available here. Try another move.");
       refreshCurrentBoard({ refreshArrows: true });
       return;
     }

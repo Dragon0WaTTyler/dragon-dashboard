@@ -66,6 +66,16 @@
                     <span id="chess-lichess-puzzle-counter">Step 1 / {{ chess_lichess_puzzle_solver.step_count }}</span>
                     <span id="chess-lichess-puzzle-turn-label">{{ chess_lichess_puzzle_solver.current_item.user_color_label }} to move</span>
                 </div>
+                <div class="surface-card chess-puzzle-review-controls" id="chess-lichess-puzzle-review-controls">
+                    <div class="chess-puzzle-review-buttons">
+                        <button type="button" class="btn chess-inline-btn chess-review-nav-btn" data-review-nav="first" aria-label="Go to first position"><span>|&lt;</span></button>
+                        <button type="button" class="btn chess-inline-btn chess-review-nav-btn" data-review-nav="prev" aria-label="Go to previous position"><span>&lt;</span></button>
+                        <button type="button" class="btn chess-inline-btn chess-review-nav-btn" data-review-nav="live" aria-label="Return to live position"><span>&#9654;</span><span>Live</span></button>
+                        <button type="button" class="btn chess-inline-btn chess-review-nav-btn" data-review-nav="next" aria-label="Go to next position"><span>&gt;</span></button>
+                        <button type="button" class="btn chess-inline-btn chess-review-nav-btn" data-review-nav="last" aria-label="Go to latest position"><span>&gt;|</span></button>
+                    </div>
+                    <p class="chess-summary-note chess-muted-note chess-puzzle-review-status" id="chess-lichess-puzzle-review-status">Live position</p>
+                </div>
                 <details class="chess-puzzle-tech-details chess-puzzle-input-debug" id="chess-lichess-puzzle-input-debug" hidden>
                     <summary>Input debug</summary>
                     <div class="chess-puzzle-input-debug-grid">
@@ -155,7 +165,7 @@
                     <summary class="chess-openings-toggle">
                         <div>
                             <strong>Puzzle details</strong>
-                            <span>Rating, themes, review navigation, and move list.</span>
+                            <span>Rating, themes, and move list.</span>
                         </div>
                     </summary>
                     <div class="chess-puzzle-board-summary">
@@ -172,16 +182,6 @@
                         {% if chess_lichess_puzzle_solver.current_item.game_url %}
                         <p class="chess-summary-note"><a href="{{ chess_lichess_puzzle_solver.current_item.game_url }}" target="_blank" rel="noopener">Open source game</a></p>
                         {% endif %}
-                    </div>
-                    <div class="surface-card chess-puzzle-review-controls" id="chess-lichess-puzzle-review-controls">
-                        <div class="chess-puzzle-review-buttons">
-                            <button type="button" class="btn chess-inline-btn chess-review-nav-btn" data-review-nav="first" aria-label="Go to first position"><span>|&lt;</span></button>
-                            <button type="button" class="btn chess-inline-btn chess-review-nav-btn" data-review-nav="prev" aria-label="Go to previous position"><span>&lt;</span></button>
-                            <button type="button" class="btn chess-inline-btn chess-review-nav-btn" data-review-nav="live" aria-label="Return to live position"><span>&#9654;</span><span>Live</span></button>
-                            <button type="button" class="btn chess-inline-btn chess-review-nav-btn" data-review-nav="next" aria-label="Go to next position"><span>&gt;</span></button>
-                            <button type="button" class="btn chess-inline-btn chess-review-nav-btn" data-review-nav="last" aria-label="Go to latest position"><span>&gt;|</span></button>
-                        </div>
-                        <p class="chess-summary-note chess-muted-note chess-puzzle-review-status" id="chess-lichess-puzzle-review-status">Live position</p>
                     </div>
                     <div class="chess-board-moves-head">
                         <strong>Move list</strong>
@@ -1483,11 +1483,11 @@
       setComparison(uciToSan(step, `${sourceSquare}${targetSquare}`), "");
       selectedSquare = "";
       pendingTapSquare = "";
-      recordPointerTrace("attempt-move", null, { sourceSquare, targetSquare, result: "illegal" });
-      setFeedback("error", "Illegal move", "That move is not legal in this position. Try again.");
-      removeAllDragGhosts("attempt-illegal");
+      recordPointerTrace("attempt-move", null, { sourceSquare, targetSquare, result: "blocked" });
+      setFeedback("error", "Move not available", "That move is not available here. Try another move.");
+      removeAllDragGhosts("attempt-blocked");
       renderBoard(step.fen_before, step.legal_targets_by_source || {}, { forceBoard: false, refreshArrows: true });
-      syncBoardDebug({ lastAction: "attempt:illegal" });
+      syncBoardDebug({ lastAction: "attempt:blocked" });
       return;
     }
     const attemptedUci = normalizedAttemptedMove(sourceSquare, targetSquare, step.expected_move_uci);
