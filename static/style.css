@@ -997,6 +997,13 @@ h2{font-size:clamp(2.2rem,4vw,3.6rem);margin-top:14px;letter-spacing:-.03em}.det
   background:rgba(255,255,255,.02);
 }
 
+.chess-puzzle-input-debug-inline{
+  display:flex;
+  flex-wrap:wrap;
+  gap:10px 14px;
+  font-size:.78rem;
+}
+
 .chess-puzzle-board-status{
   justify-content:flex-start;
 }
