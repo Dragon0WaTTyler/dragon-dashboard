@@ -1600,8 +1600,8 @@
         ghost.style.height = `${rect.height}px`;
       }
     }
-    ghost.style.left = `${Math.round(dragCurrentClientX)}px`;
-    ghost.style.top = `${Math.round(dragCurrentClientY)}px`;
+    ghost.style.left = `${dragCurrentClientX}px`;
+    ghost.style.top = `${dragCurrentClientY}px`;
     document.body.appendChild(ghost);
     dragGhostNode = ghost;
     updateDragGhostPosition(dragCurrentClientX, dragCurrentClientY);
@@ -1641,7 +1641,6 @@
     const liveBoardNode = refreshBoardNode();
     dragSourceSquare = String(squareName || "").trim();
     if (!dragSourceSquare) return false;
-    selectedSquare = dragSourceSquare;
     dragPointerId = pointerId == null ? null : pointerId;
     dragMoved = false;
     dragHoverSquare = dragSourceSquare;
