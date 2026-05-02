@@ -289,6 +289,8 @@
   let reviewIndex = 0;
   let selectedSquare = "";
   let revealMove = false;
+  let liveLastMoveSquares = { from: "", to: "" };
+  let moveOutcomeMarker = { square: "", state: "" };
   let flipped = {{ 'true' if chess_lichess_puzzle_solver.current_item.user_color == 'black' else 'false' }};
   let completionTimer = null;
   let manualArrowMarks = [];
@@ -907,6 +909,34 @@
     tutorHighlights = { attempted: { from: "", to: "" }, expected: { from: "", to: "" }, engine: { from: "", to: "" } };
   }
 
+  function clearMoveOutcomeMarker() {
+    moveOutcomeMarker = { square: "", state: "" };
+  }
+
+  function setMoveOutcomeMarker(squareName, state) {
+    moveOutcomeMarker = {
+      square: String(squareName || "").trim(),
+      state: String(state || "").trim(),
+    };
+  }
+
+  function lastMoveSquaresForDisplay() {
+    if (reviewModeActive()) {
+      const reviewEntry = historyPositions[Math.max(0, Math.min(reviewIndex, liveHistoryIndex()))] || null;
+      if (reviewEntry && reviewEntry.lastMove) {
+        return {
+          from: String(reviewEntry.lastMove.from || ""),
+          to: String(reviewEntry.lastMove.to || ""),
+        };
+      }
+      return { from: "", to: "" };
+    }
+    return {
+      from: String(liveLastMoveSquares.from || ""),
+      to: String(liveLastMoveSquares.to || ""),
+    };
+  }
+
   function clearComparison() {
     compareCard.hidden = true;
     compareAttemptedRow.hidden = true;
@@ -1023,13 +1053,14 @@
       label: "Initial position",
       source: "initial",
       stepIndex: 0,
+      lastMove: { from: "", to: "" },
     }];
     reviewIndex = 0;
     updateReviewControls();
     syncBoardDebug({ lastAction: "history:reset" });
   }
 
-  function appendHistoryPosition(fen, label, source, stepIndex = currentStep) {
+  function appendHistoryPosition(fen, label, source, stepIndex = currentStep, lastMove = { from: "", to: "" }) {
     const normalizedFen = String(fen || "").trim();
     if (!normalizedFen) return;
     const entry = {
@@ -1037,6 +1068,10 @@
       label: String(label || "").trim() || "Position",
       source: String(source || "position").trim() || "position",
       stepIndex: Math.max(0, Number(stepIndex) || 0),
+      lastMove: {
+        from: String((lastMove || {}).from || "").trim(),
+        to: String((lastMove || {}).to || "").trim(),
+      },
     };
     const previous = historyPositions[historyPositions.length - 1];
     if (!previous || previous.fen !== entry.fen || previous.label !== entry.label || previous.source !== entry.source) {
@@ -1254,8 +1289,10 @@
     const showManualVisuals = manualMarksEnabled();
     const manualFromSquares = new Set(manualArrowMarks.map((item) => item.from));
     const manualToSquares = new Set(manualArrowMarks.map((item) => item.to));
+    const lastMoveSquares = lastMoveSquaresForDisplay();
     boardSquareNodes.forEach((square) => {
       const squareName = String(square.dataset.square || "");
+      square.classList.toggle("last-move", Boolean(squareName && (lastMoveSquares.from === squareName || lastMoveSquares.to === squareName)));
       square.classList.toggle("selected", Boolean(settings.highlight_moves && selectedSquare === squareName));
       square.classList.toggle("drag-source", Boolean(dragSourceSquare === squareName));
       square.classList.toggle("legal-target", Boolean(settings.highlight_moves && activeLegalTargets.has(squareName)));
@@ -1263,6 +1300,8 @@
       square.classList.toggle("tutor-attempted-to", Boolean(showTutorVisuals && tutorHighlights.attempted && tutorHighlights.attempted.to === squareName));
       square.classList.toggle("tutor-expected-from", Boolean(showTutorVisuals && tutorHighlights.expected && tutorHighlights.expected.from === squareName));
       square.classList.toggle("tutor-expected-to", Boolean(showTutorVisuals && tutorHighlights.expected && tutorHighlights.expected.to === squareName));
+      square.classList.toggle("move-outcome-wrong", Boolean(!reviewModeActive() && moveOutcomeMarker.state === "wrong" && moveOutcomeMarker.square === squareName));
+      square.classList.toggle("move-outcome-correct", Boolean(!reviewModeActive() && moveOutcomeMarker.state === "correct" && moveOutcomeMarker.square === squareName));
       square.classList.toggle("manual-marked", Boolean(showManualVisuals && manualHighlightSquares.has(squareName)));
       square.classList.toggle("manual-mark-from", Boolean(showManualVisuals && manualFromSquares.has(squareName)));
       square.classList.toggle("manual-mark-to", Boolean(showManualVisuals && manualToSquares.has(squareName)));
@@ -1346,6 +1385,7 @@
     if (!step) return;
     clearActivePieceInteraction("reveal");
     revealMove = true;
+    clearMoveOutcomeMarker();
     postProgress(progressUrls.reveal);
     setAnswerVisible(true);
     answerMoveNode.textContent = step.expected_move_san || step.expected_move_uci || "Unavailable";
@@ -1366,6 +1406,7 @@
     cancelManualDraw();
     currentStep = 0;
     currentFen = steps[0].fen_before;
+    liveLastMoveSquares = { from: "", to: "" };
     revealMove = false;
     skipSent = false;
     if (completionTimer) {
@@ -1376,6 +1417,7 @@
     setCompletionVisible(false);
     clearComparison();
     clearTutorHighlights();
+    clearMoveOutcomeMarker();
     clearManualStudyMarks(true);
     clearBoardSelectionMarks();
     resetHistory();
@@ -1391,6 +1433,7 @@
     clearManualStudyMarks(true);
     clearBoardSelectionMarks();
     clearTutorHighlights();
+    clearMoveOutcomeMarker();
     updateStatus();
     setCompletionVisible(true);
     setFeedback("success", "Solved", "You found the full solution. Continue to the next puzzle when you are ready.");
@@ -1412,41 +1455,63 @@
   function advanceAfterCorrect(step) {
     removeAllDragGhosts("correct-move");
     const userMoveLabel = step.expected_move_san || step.expected_move_uci || "Your move";
-    appendHistoryPosition(step.fen_after_user, userMoveLabel, "user-move", currentStep);
+    liveLastMoveSquares = {
+      from: String(step.expected_move_uci || "").slice(0, 2),
+      to: String(step.expected_move_uci || "").slice(2, 4),
+    };
+    setMoveOutcomeMarker(liveLastMoveSquares.to, "correct");
+    appendHistoryPosition(step.fen_after_user, userMoveLabel, "user-move", currentStep, liveLastMoveSquares);
     renderBoard(step.fen_after_user, {}, { forceBoard: false, refreshArrows: false });
-    const correctMessage = String(step.correct_feedback || "Correct. This keeps the solution line moving.");
-    setFeedback("success", "Correct", step.auto_replies && step.auto_replies.length ? `${correctMessage} The opponent reply will play automatically.` : correctMessage);
+    const correctMessage = String(step.correct_feedback || "Nice. That's the move.");
+    setFeedback("success", "Correct", step.auto_replies && step.auto_replies.length ? `${correctMessage} The reply plays automatically.` : correctMessage);
     if (step.auto_replies && step.auto_replies.length) {
       completionTimer = window.setTimeout(() => {
+        clearMoveOutcomeMarker();
+        let lastReplyMove = { from: "", to: "" };
         (step.auto_replies || []).forEach((reply, replyIndex) => {
-          appendHistoryPosition(reply.fen_after || step.fen_after_replies || step.fen_after_user, reply.move_san || reply.move_uci || `Reply ${replyIndex + 1}`, "opponent-reply", currentStep);
+          lastReplyMove = {
+            from: String(reply.move_uci || "").slice(0, 2),
+            to: String(reply.move_uci || "").slice(2, 4),
+          };
+          appendHistoryPosition(reply.fen_after || step.fen_after_replies || step.fen_after_user, reply.move_san || reply.move_uci || `Reply ${replyIndex + 1}`, "opponent-reply", currentStep, lastReplyMove);
         });
+        if (lastReplyMove.from && lastReplyMove.to) {
+          liveLastMoveSquares = lastReplyMove;
+        }
         renderBoard(step.fen_after_replies || step.fen_after_user, {}, { forceBoard: false, refreshArrows: false });
         currentStep += 1;
         selectedSquare = "";
         if (currentStep >= steps.length) {
+          completionTimer = null;
           completePuzzle();
           return;
         }
         updateStatus();
         clearComparison();
         clearTutorHighlights();
+        clearMoveOutcomeMarker();
         setFeedback("idle", "Keep going", initialCoachGoal);
         refreshCurrentBoard({ refreshArrows: true });
+        completionTimer = null;
       }, 220);
       return;
     }
-    currentStep += 1;
-    selectedSquare = "";
-    if (currentStep >= steps.length) {
-      completePuzzle();
-      return;
-    }
-    updateStatus();
-    clearComparison();
-    clearTutorHighlights();
-    setFeedback("idle", "Keep going", initialCoachGoal);
-    refreshCurrentBoard({ refreshArrows: true });
+    completionTimer = window.setTimeout(() => {
+      clearMoveOutcomeMarker();
+      currentStep += 1;
+      selectedSquare = "";
+      if (currentStep >= steps.length) {
+        completionTimer = null;
+        completePuzzle();
+        return;
+      }
+      updateStatus();
+      clearComparison();
+      clearTutorHighlights();
+      setFeedback("idle", "Keep going", initialCoachGoal);
+      refreshCurrentBoard({ refreshArrows: true });
+      completionTimer = null;
+    }, 220);
   }
 
   function uciToSan(step, uci) {
@@ -1475,16 +1540,12 @@
     removeAllDragGhosts("attempt-start");
     const legalTargets = Array.isArray(legalTargetsBySource[sourceSquare]) ? legalTargetsBySource[sourceSquare] : [];
     if (!legalTargets.includes(targetSquare)) {
-      tutorHighlights = {
-        attempted: { from: sourceSquare || "", to: targetSquare || "" },
-        expected: { from: "", to: "" },
-        engine: { from: "", to: "" },
-      };
-      setComparison(uciToSan(step, `${sourceSquare}${targetSquare}`), "");
+      clearTutorHighlights();
+      clearComparison();
+      clearMoveOutcomeMarker();
       selectedSquare = "";
       pendingTapSquare = "";
       recordPointerTrace("attempt-move", null, { sourceSquare, targetSquare, result: "blocked" });
-      setFeedback("error", "Move not available", "That move is not available here. Try another move.");
       removeAllDragGhosts("attempt-blocked");
       renderBoard(step.fen_before, step.legal_targets_by_source || {}, { forceBoard: false, refreshArrows: true });
       syncBoardDebug({ lastAction: "attempt:blocked" });
@@ -1503,6 +1564,7 @@
         expected: { from: expectedUci.slice(0, 2), to: expectedUci.slice(2, 4) },
         engine: { from: "", to: "" },
       };
+      clearMoveOutcomeMarker();
       pendingTapSquare = "";
       recordPointerTrace("attempt-move", null, { sourceSquare, targetSquare, result: "correct" });
       advanceAfterCorrect(step);
@@ -1515,8 +1577,9 @@
       expected: { from: "", to: "" },
       engine: { from: "", to: "" },
     };
+    setMoveOutcomeMarker(attemptedUci.slice(2, 4), "wrong");
     postProgress(progressUrls.wrong, { attempted_move: attemptedUci });
-    setFeedback("error", "Wrong move", `Wrong move. Try again. ${step.expected_move_hint || "Look for checks, captures, or threats."}`);
+    setFeedback("error", "Try again", `That's not the move. Try another one. ${step.expected_move_hint || "Look for checks, captures, or threats."}`);
     selectedSquare = "";
     pendingTapSquare = "";
     recordPointerTrace("attempt-move", null, { sourceSquare, targetSquare, result: "wrong" });
@@ -2050,6 +2113,7 @@
     const legalTargetsBySource = step.legal_targets_by_source || {};
     if (!selectedSquare) {
       if (legalTargetsBySource[squareName] && legalTargetsBySource[squareName].length) {
+        clearMoveOutcomeMarker();
         selectedSquare = squareName;
         recordPointerTrace("select-source", null, { square: squareName, sourceSquare: squareName, result: "selected" });
         syncBoardDebug({ selectedSquare });
@@ -2063,6 +2127,14 @@
     if (selectedSquare === squareName) {
       recordPointerTrace("cancel", null, { square: squareName, sourceSquare: squareName, result: "cancelled" });
       clearActivePieceInteraction("same-square-click");
+      refreshCurrentBoard({ refreshArrows: true });
+      return;
+    }
+    if (legalTargetsBySource[squareName] && legalTargetsBySource[squareName].length) {
+      clearMoveOutcomeMarker();
+      selectedSquare = squareName;
+      recordPointerTrace("select-source", null, { square: squareName, sourceSquare: squareName, result: "reselected" });
+      syncBoardDebug({ selectedSquare, lastAction: "click:reselected-piece" });
       refreshCurrentBoard({ refreshArrows: true });
       return;
     }
