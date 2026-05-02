@@ -1234,6 +1234,7 @@
     }
     const step = steps[currentStep];
     if (!step) return;
+    cancelPieceDrag();
     selectedSquare = "";
     dragSourceSquare = "";
     pendingTapSquare = "";
@@ -1287,6 +1288,7 @@
   }
 
   function completePuzzle() {
+    cancelPieceDrag();
     selectedSquare = "";
     dragSourceSquare = "";
     pendingTapSquare = "";
@@ -1434,6 +1436,7 @@
   }
 
   function clearBoardSelectionMarks(resetState = true) {
+    clearDragVisualState();
     if (resetState) selectedSquare = "";
     dragSourceSquare = "";
     dragPointerId = null;
@@ -1446,6 +1449,11 @@
       square.classList.remove("selected", "legal-target", "drag-source");
     });
     syncBoardDebug({ selectedSquare, dragSourceSquare: "" });
+  }
+
+  function clearDragVisualState() {
+    setDragSourceVisualState(false);
+    removeDragGhost();
   }
 
   function clearManualStudyMarks(skipRender = false) {
@@ -1581,6 +1589,7 @@
     const ghost = document.createElement("div");
     ghost.className = "chess-drag-ghost";
     ghost.style.pointerEvents = "none";
+    ghost.setAttribute("aria-hidden", "true");
     ghost.innerHTML = dragGhostMarkup;
     const liveBoardNode = refreshBoardNode();
     const sourceSquareNode = dragSourceSquare && liveBoardNode ? liveBoardNode.querySelector(`[data-square="${dragSourceSquare}"]`) : null;
@@ -1591,6 +1600,8 @@
         ghost.style.height = `${rect.height}px`;
       }
     }
+    ghost.style.left = `${Math.round(dragCurrentClientX)}px`;
+    ghost.style.top = `${Math.round(dragCurrentClientY)}px`;
     document.body.appendChild(ghost);
     dragGhostNode = ghost;
     updateDragGhostPosition(dragCurrentClientX, dragCurrentClientY);
@@ -1620,7 +1631,9 @@
     if (!sourceSquareNode) return;
     sourceSquareNode.classList.toggle("drag-source", Boolean(active));
     const pieceNode = sourceSquareNode.querySelector(".chess-board-piece");
-    if (pieceNode) pieceNode.classList.toggle("dragging-origin", Boolean(active));
+    if (pieceNode) {
+      pieceNode.classList.toggle("dragging-origin", Boolean(active));
+    }
   }
 
   function startPieceDrag(squareName, pointerId, event) {
@@ -1644,9 +1657,8 @@
   }
 
   function cancelPieceDrag() {
-    setDragSourceVisualState(false);
+    clearDragVisualState();
     releaseDragPointerCapture(dragPointerId);
-    removeDragGhost();
     dragSourceSquare = "";
     dragPointerId = null;
     dragMoved = false;
@@ -1937,6 +1949,7 @@
 
   document.querySelectorAll('[data-puzzle-nav="next"]').forEach((link) => {
     link.addEventListener("click", () => {
+      clearDragVisualState();
       if (skipSent || completionCard.hidden === false || currentStep >= steps.length) return;
       skipSent = true;
       postProgress(progressUrls.skip);

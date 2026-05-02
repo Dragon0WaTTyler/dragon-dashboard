@@ -856,10 +856,10 @@ h2{font-size:clamp(2.2rem,4vw,3.6rem);margin-top:14px;letter-spacing:-.03em}.det
 }
 
 .chess-board-piece.dragging-origin{
-  opacity:.28;
-  transform:scale(.96);
-  transition:opacity .08s ease, transform .08s ease;
-}
+    opacity:0;
+    transform:none;
+    transition:opacity .08s ease;
+  }
 
 .chess-board-piece.animating-origin{
   opacity:.24;
@@ -886,19 +886,19 @@ h2{font-size:clamp(2.2rem,4vw,3.6rem);margin-top:14px;letter-spacing:-.03em}.det
 }
 
 .chess-drag-ghost{
-  position:fixed;
-  left:0;
-  top:0;
+    position:fixed;
+    left:0;
+    top:0;
   width:min(12vw, 84px);
   height:min(12vw, 84px);
   display:flex;
   align-items:center;
-  justify-content:center;
-  pointer-events:none;
-  transform:translate(-50%, -50%);
-  z-index:1200;
-  filter:drop-shadow(0 10px 24px rgba(0,0,0,.45));
-}
+    justify-content:center;
+    pointer-events:none;
+    transform:translate(-50%, -50%);
+    z-index:24;
+    filter:drop-shadow(0 10px 24px rgba(0,0,0,.45));
+  }
 
 .chess-move-anim-piece{
   position:fixed;
