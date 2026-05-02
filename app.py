@@ -9153,18 +9153,29 @@ def reading_source_health(source, known_entries=0):
     content_type = str(source.get("last_sync_content_type", "") or "").strip().lower()
     raw_count = int(source.get("last_sync_raw_count", 0) or source.get("last_sync_count", 0) or 0)
     normalized_count = int(source.get("last_sync_normalized_count", 0) or 0)
+    imported_count = int(source.get("last_sync_imported_count", 0) or 0)
     missing_key_count = int(source.get("last_sync_missing_key_count", 0) or 0)
     zero_import_streak = int(source.get("last_sync_zero_import_streak", 0) or 0)
+    last_synced_at = parse_timestamp(source.get("last_synced_at", ""))
+    if last_synced_at:
+        now = datetime.now().astimezone()
+        if last_synced_at.tzinfo is None:
+            last_synced_at = last_synced_at.replace(tzinfo=now.tzinfo)
+        age_days = max((now - last_synced_at.astimezone()).total_seconds() / 86400.0, 0.0)
+    else:
+        age_days = None
     if not source.get("active", True):
         return "paused"
     if not str(source.get("url", "") or "").strip() or not source.get("last_synced_at"):
         return "warning"
     if status == "error":
         return "failing"
+    if age_days is not None and age_days >= 7:
+        return "warning"
     if zero_import_streak >= 3:
         return "warning"
-    if raw_count == 0:
-        return "warning" if int(known_entries or 0) else "empty"
+    if raw_count == 0 and imported_count == 0 and not known_entries:
+        return "healthy"
     if normalized_count == 0 or feed_kind == "unknown" or "html" in content_type:
         return "warning"
     if missing_key_count:
@@ -9173,14 +9184,146 @@ def reading_source_health(source, known_entries=0):
 
 
 def reading_source_health_label(source, known_entries=0):
-    health = reading_source_health(source, known_entries=known_entries)
+    status = reading_source_admin_status(source, known_entries=known_entries)
+    return status.get("label", "Needs review")
+
+
+def reading_source_sync_age_label(source):
+    last_synced_at = parse_timestamp((source or {}).get("last_synced_at", ""))
+    if not last_synced_at:
+        return "Never"
+    now = datetime.now().astimezone()
+    if last_synced_at.tzinfo is None:
+        last_synced_at = last_synced_at.replace(tzinfo=now.tzinfo)
+    delta = now - last_synced_at.astimezone()
+    total_hours = max(int(delta.total_seconds() // 3600), 0)
+    if total_hours < 24:
+        return f"{max(total_hours, 1)}h ago"
+    total_days = max(int(delta.total_seconds() // 86400), 0)
+    if total_days < 7:
+        return f"{max(total_days, 1)}d ago"
+    total_weeks = max(int(total_days // 7), 1)
+    return f"{total_weeks}w ago"
+
+
+def reading_source_admin_status(source, known_entries=0):
+    source = source if isinstance(source, dict) else {}
+    health_state = reading_source_health(source, known_entries=known_entries)
+    status = str(source.get("last_sync_status", "") or "").strip().lower()
+    error = str(source.get("last_sync_error", "") or "").strip()
+    feed_kind = str(source.get("last_sync_feed_kind", "") or "").strip().lower()
+    content_type = str(source.get("last_sync_content_type", "") or "").strip().lower()
+    raw_count = int(source.get("last_sync_raw_count", 0) or source.get("last_sync_count", 0) or 0)
+    normalized_count = int(source.get("last_sync_normalized_count", 0) or 0)
+    imported_count = int(source.get("last_sync_imported_count", 0) or 0)
+    already_had_count = int(source.get("last_sync_already_had_count", 0) or 0)
+    missing_key_count = int(source.get("last_sync_missing_key_count", 0) or 0)
+    zero_import_streak = int(source.get("last_sync_zero_import_streak", 0) or 0)
+    last_synced_at = parse_timestamp(source.get("last_synced_at", ""))
+    age_days = None
+    if last_synced_at:
+        now = datetime.now().astimezone()
+        if last_synced_at.tzinfo is None:
+            last_synced_at = last_synced_at.replace(tzinfo=now.tzinfo)
+        age_days = max((now - last_synced_at.astimezone()).total_seconds() / 86400.0, 0.0)
+
+    reason = reading_source_sync_reason(source)
+    last_sync_age_label = reading_source_sync_age_label(source)
+    if not source.get("active", True):
+        return {
+            "state": "paused",
+            "label": "Inactive",
+            "note": "Source is paused.",
+            "detail": reason,
+            "age_label": last_sync_age_label,
+        }
+    if not str(source.get("url", "") or "").strip():
+        return {
+            "state": "warning",
+            "label": "Needs review",
+            "note": "Missing feed URL.",
+            "detail": "Add a feed URL before the next sync.",
+            "age_label": last_sync_age_label,
+        }
+    if status == "error" or feed_kind == "error" or error:
+        return {
+            "state": "failing",
+            "label": "Fetch error",
+            "note": error or "The feed fetch failed.",
+            "detail": reason,
+            "age_label": last_sync_age_label,
+        }
+    if not last_synced_at:
+        return {
+            "state": "warning",
+            "label": "Needs review",
+            "note": "Not synced yet.",
+            "detail": "Run a sync to collect diagnostics.",
+            "age_label": last_sync_age_label,
+        }
+    if zero_import_streak >= 3:
+        return {
+            "state": "warning",
+            "label": "Repeated zero imports",
+            "note": f"{zero_import_streak} zero-import runs in a row.",
+            "detail": reason,
+            "age_label": last_sync_age_label,
+        }
+    if age_days is not None and age_days >= 7:
+        return {
+            "state": "warning",
+            "label": "Needs review",
+            "note": f"Last sync was {last_sync_age_label}.",
+            "detail": reason,
+            "age_label": last_sync_age_label,
+        }
+    if health_state == "warning":
+        return {
+            "state": "warning",
+            "label": "Needs review",
+            "note": "The feed needs a quick look.",
+            "detail": reason,
+            "age_label": last_sync_age_label,
+        }
+    if normalized_count == 0 and raw_count > 0:
+        return {
+            "state": "warning",
+            "label": "Needs review",
+            "note": "The feed parsed poorly.",
+            "detail": reason,
+            "age_label": last_sync_age_label,
+        }
+    if missing_key_count:
+        return {
+            "state": "warning",
+            "label": "Needs review",
+            "note": f"{missing_key_count} item(s) lacked a stable key.",
+            "detail": reason,
+            "age_label": last_sync_age_label,
+        }
+    if imported_count > 0:
+        return {
+            "state": "healthy",
+            "label": "Healthy",
+            "note": f"Imported {imported_count} new item(s).",
+            "detail": reason,
+            "age_label": last_sync_age_label,
+        }
+    if imported_count == 0 and (already_had_count >= normalized_count or raw_count == 0):
+        return {
+            "state": "healthy",
+            "label": "No new items",
+            "note": "All feed items were already known.",
+            "detail": reason,
+            "age_label": last_sync_age_label,
+        }
     return {
-        "healthy": "OK",
-        "warning": "Warning",
-        "failing": "Error",
-        "empty": "Empty",
-        "paused": "Inactive",
-    }.get(health, health.title() if isinstance(health, str) else "Warning")
+        "state": "healthy",
+        "label": "Healthy",
+        "note": "Source synced cleanly.",
+        "detail": reason,
+        "age_label": last_sync_age_label,
+    }
 
 
 def reading_is_rss_source(source):
@@ -10749,6 +10892,7 @@ def build_reading_admin_context():
     for entry in entries:
         key = entry.get("source_id") or entry.get("source", "")
         source_entry_count[key] = source_entry_count.get(key, 0) + 1
+    health_counts = {"healthy": 0, "warning": 0, "failing": 0, "paused": 0}
     for source in sources:
         known_entries = int(source_entry_count.get(source.get("id", ""), 0) or source_entry_count.get(source.get("name", ""), 0) or 0)
         source["known_entries_count"] = known_entries
@@ -10756,6 +10900,9 @@ def build_reading_admin_context():
         source["health"] = reading_source_health(source, known_entries=known_entries)
         source["health_label"] = reading_source_health_label(source, known_entries=known_entries)
         source["last_synced_display"] = format_timestamp_label(source.get("last_synced_at", ""), default="Never")
+        source["last_sync_age_display"] = reading_source_sync_age_label(source)
+        source["health_summary"] = reading_source_admin_status(source, known_entries=known_entries)
+        health_counts[source["health"]] = health_counts.get(source["health"], 0) + 1
     for source in rss_sources:
         source["rss_known_entries_count"] = int(source.get("known_entries_count", 0) or 0)
     backup_files = list_reading_backup_files()
@@ -10767,6 +10914,10 @@ def build_reading_admin_context():
         "reading_rss_source_count": len(rss_sources),
         "reading_active_source_count": len([source for source in sources if source.get("active", True) and source.get("url")]),
         "reading_rss_active_source_count": len([source for source in rss_sources if source.get("active", True) and source.get("url")]),
+        "reading_rss_healthy_count": health_counts.get("healthy", 0),
+        "reading_rss_warning_count": health_counts.get("warning", 0),
+        "reading_rss_failing_count": health_counts.get("failing", 0),
+        "reading_rss_inactive_count": health_counts.get("paused", 0),
         "reading_source_entry_count": source_entry_count,
         "reading_category_options": [(category, reading_category_label(category)) for category in READING_CATEGORIES],
         "reading_summary": {
@@ -23241,64 +23392,96 @@ def build_admin_hub_context():
     combined_sections = shared["combined_sections"]
     playlist_rows = shared["playlist_rows"]
     pockettube_import_count = int(shared.get("pockettube_import_count", 0) or 0)
+    admin_card_groups = [
+        {
+            "title": "Content",
+            "description": "Quick access to the main project surfaces.",
+            "cards": [
+                {
+                    "key": "movies",
+                    "label": "Movies",
+                    "title": "Movies Review",
+                    "description": "Review the movie queue and correction workflow.",
+                    "href": url_for("admin_review_movies"),
+                    "meta": ["Movie moderation"],
+                    "icon": "film",
+                },
+                {
+                    "key": "reading",
+                    "label": "Reading",
+                    "title": "Reading RSS",
+                    "description": "Manage RSS sources and inspect sync diagnostics.",
+                    "href": url_for("admin_reading"),
+                    "meta": [
+                        f"{reading_admin['reading_rss_source_count']} RSS sources",
+                        f"{reading_admin['reading_rss_active_source_count']} active",
+                    ],
+                    "icon": "rss",
+                },
+                {
+                    "key": "youtube",
+                    "label": "YouTube / German",
+                    "title": "YouTube & German",
+                    "description": "Edit playlist placement and section curation.",
+                    "href": url_for("admin_playlists"),
+                    "meta": [f"{len(playlist_rows)} playlists"],
+                    "icon": "youtube",
+                },
+                {
+                    "key": "chess",
+                    "label": "Chess",
+                    "title": "Chess Workspace",
+                    "description": "Open the chess area and its training tools.",
+                    "href": url_for("chess"),
+                    "meta": ["Board and training"],
+                    "icon": "chess",
+                },
+            ],
+        },
+        {
+            "title": "System",
+            "description": "Project-wide utilities and diagnostics.",
+            "cards": [
+                {
+                    "key": "sections",
+                    "label": "Sections",
+                    "title": "Section Management",
+                    "description": "Add, rename, and prune dashboard categories.",
+                    "href": url_for("admin_sections"),
+                    "meta": [f"{len(combined_sections)} categories"],
+                    "icon": "folder-tree",
+                },
+                {
+                    "key": "io",
+                    "label": "Backups",
+                    "title": "Imports / Exports / Backups",
+                    "description": "Handle Reading JSON backups and import flows.",
+                    "href": url_for("admin_io"),
+                    "meta": [
+                        f"{reading_admin['reading_backup_count']} backups",
+                        f"{pockettube_import_count} PocketTube imports",
+                    ],
+                    "icon": "download",
+                },
+                {
+                    "key": "diagnostics",
+                    "label": "Diagnostics",
+                    "title": "System Diagnostics",
+                    "description": "Inspect source health, sync notes, and recovery hints.",
+                    "href": url_for("admin_diagnostics"),
+                    "meta": [
+                        f"{reading_admin['reading_recovery_hit_count']} recovery hints",
+                        f"Last sync {reading_admin['reading_last_sync_at_display']}",
+                    ],
+                    "icon": "activity",
+                },
+            ],
+        },
+    ]
     return {
         **shared,
-        "admin_cards": [
-            {
-                "key": "sections",
-                "label": "Sections",
-                "title": "Category / Section Management",
-                "description": "Add, rename, and prune the dashboard categories that hold playlists.",
-                "href": url_for("admin_sections"),
-                "meta": [f"{len(combined_sections)} categories"],
-                "icon": "folder-tree",
-            },
-            {
-                "key": "playlists",
-                "label": "Playlists",
-                "title": "Playlist Management",
-                "description": "Edit playlist names, URLs, and category placement from one focused page.",
-                "href": url_for("admin_playlists"),
-                "meta": [f"{len(playlist_rows)} playlists"],
-                "icon": "list-video",
-            },
-            {
-                "key": "reading",
-                "label": "Reading",
-                "title": "Reading RSS Management",
-                "description": "Keep RSS sources, sync controls, and source diagnostics in one place.",
-                "href": url_for("admin_reading"),
-                "meta": [
-                    f"{reading_admin['reading_rss_source_count']} RSS sources",
-                    f"{reading_admin['reading_rss_active_source_count']} active",
-                ],
-                "icon": "rss",
-            },
-            {
-                "key": "io",
-                "label": "Imports / Exports / Backups",
-                "title": "Imports / Exports / Backups",
-                "description": "Handle Reading JSON backups, PocketTube imports, and export flows.",
-                "href": url_for("admin_io"),
-                "meta": [
-                    f"{reading_admin['reading_backup_count']} backups",
-                    f"{pockettube_import_count} PocketTube imports",
-                ],
-                "icon": "download",
-            },
-            {
-                "key": "diagnostics",
-                "label": "Diagnostics",
-                "title": "Diagnostics",
-                "description": "Inspect source health, sync notes, and recovery hints without the noise.",
-                "href": url_for("admin_diagnostics"),
-                "meta": [
-                    f"{reading_admin['reading_recovery_hit_count']} recovery hints",
-                    f"Last sync {reading_admin['reading_last_sync_at_display']}",
-                ],
-                "icon": "activity",
-            },
-        ],
+        "admin_cards": [card for group in admin_card_groups for card in group["cards"]],
+        "admin_card_groups": admin_card_groups,
     }
 
 
@@ -23314,8 +23497,8 @@ def build_admin_panel_context(panel_key):
         title = "Playlist Management"
         description = "Edit playlist names, URLs, and category placement from a focused page."
     elif panel_key == "reading":
-        title = "Reading RSS Management"
-        description = "Manage RSS sources, sync them, and inspect source-level diagnostics."
+        title = "Reading RSS Diagnostics"
+        description = "Manage RSS sources, sync them, and inspect health signals at a glance."
     elif panel_key == "io":
         title = "Imports / Exports / Backups"
         description = "Handle JSON backups, export flows, and PocketTube import data."
@@ -23333,6 +23516,10 @@ def build_admin_panel_context(panel_key):
         "panel_back_url": url_for("admin"),
         "panel_source_count": reading_admin["reading_rss_source_count"],
         "panel_active_source_count": reading_admin["reading_rss_active_source_count"],
+        "panel_healthy_source_count": reading_admin["reading_rss_healthy_count"],
+        "panel_warning_source_count": reading_admin["reading_rss_warning_count"],
+        "panel_failing_source_count": reading_admin["reading_rss_failing_count"],
+        "panel_inactive_source_count": reading_admin["reading_rss_inactive_count"],
         "panel_section_count": len(combined_sections),
         "panel_playlist_count": len(playlist_rows),
     }

@@ -1,6 +1,12 @@
 {% extends "base.html" %}
 {% block content %}
 <style>
+    .admin-hub-shell{display:grid;gap:18px}
+    .admin-hub-groups{display:grid;gap:20px}
+    .admin-hub-group{display:grid;gap:12px}
+    .admin-hub-group-head{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap}
+    .admin-hub-group-title{font-size:.74rem;letter-spacing:.14em;text-transform:uppercase;color:var(--text-2)}
+    .admin-hub-group-description{color:var(--text-2);font-size:.8rem;line-height:1.45}
     .admin-hub-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px}
     .admin-hub-card{display:grid;gap:12px;padding:16px 18px;min-height:168px;text-decoration:none;color:inherit}
     .admin-hub-card:hover{border-color:rgba(255,255,255,.14)}
@@ -28,27 +34,37 @@
 </section>
 {% endif %}
 
-<section class="surface-card section-card">
+<section class="surface-card section-card admin-hub-shell">
     <div class="hero-meta">
         <span class="hero-badge">Launcher</span>
         <span>{{ admin_cards|length }} admin areas</span>
     </div>
-    <div class="admin-hub-grid" style="margin-top:18px;">
-        {% for card in admin_cards %}
-            <a class="surface-card admin-hub-card" href="{{ card.href }}">
-                <div class="admin-hub-meta">
-                <span class="hero-badge">{{ card.label }}</span>
-                {% for meta in card.meta %}
-                <span>{{ meta }}</span>
+    <div class="admin-hub-groups" style="margin-top:18px;">
+        {% for group in admin_card_groups %}
+        <div class="admin-hub-group">
+            <div class="admin-hub-group-head">
+                <div class="admin-hub-group-title">{{ group.title }}</div>
+                <div class="admin-hub-group-description">{{ group.description }}</div>
+            </div>
+            <div class="admin-hub-grid">
+                {% for card in group.cards %}
+                <a class="surface-card admin-hub-card" href="{{ card.href }}">
+                    <div class="admin-hub-meta">
+                        <span class="hero-badge">{{ card.label }}</span>
+                        {% for meta in card.meta %}
+                        <span>{{ meta }}</span>
+                        {% endfor %}
+                    </div>
+                    <h3>{{ card.title }}</h3>
+                    <p>{{ card.description }}</p>
+                    <div class="admin-hub-cta">
+                        <span>Open section</span>
+                        <i data-lucide="{{ card.icon }}"></i>
+                    </div>
+                </a>
                 {% endfor %}
             </div>
-            <h3>{{ card.title }}</h3>
-            <p>{{ card.description }}</p>
-            <div class="admin-hub-cta">
-                <span>Open section</span>
-                <i data-lucide="{{ card.icon }}"></i>
-            </div>
-        </a>
+        </div>
         {% endfor %}
     </div>
 </section>
