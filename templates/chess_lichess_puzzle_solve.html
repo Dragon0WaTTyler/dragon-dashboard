@@ -82,6 +82,9 @@
                         <p class="chess-summary-note"><strong>Last action</strong> <span id="chess-lichess-input-debug-last-action">-</span></p>
                         <p class="chess-summary-note"><strong>Selected</strong> <span id="chess-lichess-input-debug-selected-square">-</span></p>
                         <p class="chess-summary-note"><strong>Drag started</strong> <span id="chess-lichess-input-debug-drag-started">false</span></p>
+                        <p class="chess-summary-note"><strong>Ghost count</strong> <span id="chess-lichess-input-debug-ghost-count">0</span></p>
+                        <p class="chess-summary-note"><strong>Last cleanup</strong> <span id="chess-lichess-input-debug-last-cleanup">-</span></p>
+                        <p class="chess-summary-note"><strong>Native drag blocked</strong> <span id="chess-lichess-input-debug-native-drag-blocked">0</span></p>
                         <p class="chess-summary-note"><strong>Move source</strong> <span id="chess-lichess-input-debug-source">-</span></p>
                         <p class="chess-summary-note"><strong>Move target</strong> <span id="chess-lichess-input-debug-target">-</span></p>
                         <p class="chess-summary-note"><strong>Ignored clicks</strong> <span id="chess-lichess-input-debug-ignored-clicks">0</span></p>
@@ -222,6 +225,9 @@
   const inputDebugLastActionNode = document.getElementById("chess-lichess-input-debug-last-action");
   const inputDebugSelectedSquareNode = document.getElementById("chess-lichess-input-debug-selected-square");
   const inputDebugDragStartedNode = document.getElementById("chess-lichess-input-debug-drag-started");
+  const inputDebugGhostCountNode = document.getElementById("chess-lichess-input-debug-ghost-count");
+  const inputDebugLastCleanupNode = document.getElementById("chess-lichess-input-debug-last-cleanup");
+  const inputDebugNativeDragBlockedNode = document.getElementById("chess-lichess-input-debug-native-drag-blocked");
   const inputDebugSourceNode = document.getElementById("chess-lichess-input-debug-source");
   const inputDebugTargetNode = document.getElementById("chess-lichess-input-debug-target");
   const inputDebugIgnoredClicksNode = document.getElementById("chess-lichess-input-debug-ignored-clicks");
@@ -289,6 +295,8 @@
   let dragGhostNode = null;
   let dragGhostMarkup = "";
   let dragStartedFromSelectedSquare = false;
+  let lastDragCleanupReason = "";
+  let nativeDragPreventedCount = 0;
   let suppressNextSquareClick = false;
   let suppressTouchClickUntil = 0;
   let activePointerId = null;
@@ -337,6 +345,9 @@
     manualHighlightCount: 0,
     dragStarted: false,
     dragReleased: false,
+    ghostCount: 0,
+    lastDragCleanupReason: "",
+    nativeDragPreventedCount: 0,
     rightDrawStarted: false,
     rightDrawReleased: false,
     usingMouseFallback: true,
@@ -531,6 +542,9 @@
     inputDebugLastActionNode.textContent = String(boardDebug.lastAction || "-");
     inputDebugSelectedSquareNode.textContent = String(selectedSquare || "-");
     inputDebugDragStartedNode.textContent = String(Boolean(dragMoved));
+    if (inputDebugGhostCountNode) inputDebugGhostCountNode.textContent = String(Number(boardDebug.ghostCount || 0));
+    if (inputDebugLastCleanupNode) inputDebugLastCleanupNode.textContent = String(boardDebug.lastDragCleanupReason || "-");
+    if (inputDebugNativeDragBlockedNode) inputDebugNativeDragBlockedNode.textContent = String(Number(boardDebug.nativeDragPreventedCount || 0));
     inputDebugSourceNode.textContent = String(boardDebug.lastMoveAttemptSource || "-");
     inputDebugTargetNode.textContent = String(boardDebug.lastMoveAttemptTarget || "-");
     inputDebugIgnoredClicksNode.textContent = String(Number(boardDebug.ignoredClickCount || 0));
@@ -650,6 +664,8 @@
   function ensureBoardDebugApi() {
     boardDebug.pointerTrace = pointerTrace;
     boardDebug.dumpPointerTrace = () => pointerTrace.map(pointerTraceRowToText).join("\n");
+    boardDebug.countDragGhosts = () => countDragGhosts();
+    boardDebug.removeAllDragGhosts = (reason = "debug") => removeAllDragGhosts(reason);
     boardDebug.clearPointerTrace = () => {
       clearPointerTraceInternal();
       syncBoardDebug({ lastAction: "trace:cleared" });
@@ -680,6 +696,9 @@
       clearMarksOnLeftClick: Boolean(settings.clear_marks_on_left_click),
       manualArrowCount: manualArrowMarks.length,
       manualHighlightCount: manualHighlightSquares.size,
+      ghostCount: countDragGhosts(),
+      lastDragCleanupReason,
+      nativeDragPreventedCount,
       selectedSquare,
       dragSourceSquare,
       activePointerId,
@@ -900,11 +919,33 @@
     if (liveBoardNode) {
       liveBoardNode.style.touchAction = "none";
       liveBoardNode.style.msTouchAction = "none";
+      liveBoardNode.style.userSelect = "none";
+      liveBoardNode.style.webkitUserSelect = "none";
+      liveBoardNode.style.webkitUserDrag = "none";
     }
     if (inputRootNode) {
       inputRootNode.style.touchAction = "none";
       inputRootNode.style.msTouchAction = "none";
+      inputRootNode.style.userSelect = "none";
+      inputRootNode.style.webkitUserSelect = "none";
+      inputRootNode.style.webkitUserDrag = "none";
     }
+  }
+
+  function eventIsInsideSolverBoard(event) {
+    const liveBoardNode = refreshBoardNode();
+    if (!event || !liveBoardNode) return false;
+    const target = event.target;
+    return Boolean(target && typeof liveBoardNode.contains === "function" && liveBoardNode.contains(target));
+  }
+
+  function preventNativeBoardDrag(event, reason = "native-drag") {
+    if (!eventIsInsideSolverBoard(event)) return false;
+    if (typeof event.preventDefault === "function") event.preventDefault();
+    if (typeof event.stopPropagation === "function") event.stopPropagation();
+    nativeDragPreventedCount += 1;
+    syncBoardDebug({ nativeDragPreventedCount, lastAction: `native-drag:${reason}` });
+    return true;
   }
 
   function setBoardScrollLock(active) {
@@ -1042,6 +1083,8 @@
     if (!piece || !pieceAssetMap[piece]) return null;
     const wrapper = document.createElement("div");
     wrapper.className = "chess-board-piece";
+    wrapper.draggable = false;
+    wrapper.setAttribute("draggable", "false");
     const img = document.createElement("img");
     img.className = "chess-board-piece-img";
     img.src = pieceAssetMap[piece];
@@ -1049,6 +1092,10 @@
     img.loading = "eager";
     img.decoding = "async";
     img.draggable = false;
+    img.setAttribute("draggable", "false");
+    img.addEventListener("dragstart", (event) => {
+      event.preventDefault();
+    });
     wrapper.appendChild(img);
     return wrapper;
   }
@@ -1067,7 +1114,11 @@
         if (currentImg) {
           currentImg.src = pieceAssetMap[piece];
           currentImg.alt = piece;
+          currentImg.draggable = false;
+          currentImg.setAttribute("draggable", "false");
         }
+        currentWrapper.draggable = false;
+        currentWrapper.setAttribute("draggable", "false");
         return;
       }
       const wrapper = buildPieceNode(piece);
@@ -1166,7 +1217,11 @@
       square.classList.toggle("manual-mark-from", Boolean(showManualVisuals && manualArrowMarks.some((item) => item.from === squareName)));
       square.classList.toggle("manual-mark-to", Boolean(showManualVisuals && manualArrowMarks.some((item) => item.to === squareName)));
       const wrapper = square.querySelector(".chess-board-piece");
-      if (wrapper) wrapper.classList.toggle("dragging-origin", Boolean(dragMoved && dragSourceSquare === squareName));
+      if (wrapper) {
+        const isActiveDragSource = Boolean(dragMoved && dragSourceSquare === squareName);
+        wrapper.classList.toggle("dragging-origin", isActiveDragSource);
+        wrapper.classList.toggle("is-dragging", isActiveDragSource);
+      }
     });
   }
 
@@ -1181,6 +1236,8 @@
         const square = document.createElement("div");
         const isLight = ((Math.floor(index / 8) + (index % 8)) % 2) === 0;
         square.className = "chess-board-square " + (isLight ? "light" : "dark");
+        square.draggable = false;
+        square.setAttribute("draggable", "false");
         square.dataset.square = squareName;
         square.setAttribute("aria-label", squareName);
         square.style.touchAction = "none";
@@ -1235,13 +1292,7 @@
     }
     const step = steps[currentStep];
     if (!step) return;
-    cancelPieceDrag();
-    selectedSquare = "";
-    dragSourceSquare = "";
-    pendingTapSquare = "";
-    activePointerId = null;
-    activeInteractionToken = null;
-    finalizedInteractionToken = null;
+    clearActivePieceInteraction("reveal");
     revealMove = true;
     postProgress(progressUrls.reveal);
     setAnswerVisible(true);
@@ -1259,16 +1310,10 @@
   }
 
   function resetPuzzle() {
-    cancelPieceDrag();
+    clearActivePieceInteraction("reset");
     cancelManualDraw();
     currentStep = 0;
     currentFen = steps[0].fen_before;
-    selectedSquare = "";
-    dragSourceSquare = "";
-    pendingTapSquare = "";
-    activePointerId = null;
-    activeInteractionToken = null;
-    finalizedInteractionToken = null;
     revealMove = false;
     skipSent = false;
     if (completionTimer) {
@@ -1289,13 +1334,7 @@
   }
 
   function completePuzzle() {
-    cancelPieceDrag();
-    selectedSquare = "";
-    dragSourceSquare = "";
-    pendingTapSquare = "";
-    activePointerId = null;
-    activeInteractionToken = null;
-    finalizedInteractionToken = null;
+    clearActivePieceInteraction("complete");
     skipSent = true;
     clearManualStudyMarks(true);
     clearBoardSelectionMarks();
@@ -1319,6 +1358,7 @@
   }
 
   function advanceAfterCorrect(step) {
+    removeAllDragGhosts("correct-move");
     const userMoveLabel = step.expected_move_san || step.expected_move_uci || "Your move";
     appendHistoryPosition(step.fen_after_user, userMoveLabel, "user-move", currentStep);
     renderBoard(step.fen_after_user, {}, { forceBoard: false, refreshArrows: false });
@@ -1380,6 +1420,7 @@
     const step = steps[currentStep];
     if (!step) return;
     const legalTargetsBySource = step.legal_targets_by_source || {};
+    removeAllDragGhosts("attempt-start");
     const legalTargets = Array.isArray(legalTargetsBySource[sourceSquare]) ? legalTargetsBySource[sourceSquare] : [];
     if (!legalTargets.includes(targetSquare)) {
       tutorHighlights = {
@@ -1392,6 +1433,7 @@
       pendingTapSquare = "";
       recordPointerTrace("attempt-move", null, { sourceSquare, targetSquare, result: "illegal" });
       setFeedback("error", "Illegal move", "That move is not legal in this position. Try again.");
+      removeAllDragGhosts("attempt-illegal");
       renderBoard(step.fen_before, step.legal_targets_by_source || {}, { forceBoard: false, refreshArrows: true });
       syncBoardDebug({ lastAction: "attempt:illegal" });
       return;
@@ -1426,6 +1468,7 @@
     selectedSquare = "";
     pendingTapSquare = "";
     recordPointerTrace("attempt-move", null, { sourceSquare, targetSquare, result: "wrong" });
+    removeAllDragGhosts("attempt-wrong");
     renderBoard(step.fen_before, step.legal_targets_by_source || {}, { forceBoard: false, refreshArrows: true });
     syncBoardDebug({ lastAction: "attempt:wrong" });
   }
@@ -1437,42 +1480,21 @@
   }
 
   function clearBoardSelectionMarks(resetState = true) {
-    clearDragVisualState();
+    removeAllDragGhosts("clear-board-selection");
     if (resetState) selectedSquare = "";
-    releaseDragPointerCapture(dragPointerId);
-    dragSourceSquare = "";
-    dragPointerId = null;
-    pendingTapSquare = "";
-    activePointerId = null;
-    activeInteractionToken = null;
-    finalizedInteractionToken = null;
-    dragStartedFromSelectedSquare = false;
-    setBoardScrollLock(false);
     if (!boardNode) return;
-    boardNode.querySelectorAll(".chess-board-square.selected, .chess-board-square.legal-target, .chess-board-square.drag-source").forEach((square) => {
-      square.classList.remove("selected", "legal-target", "drag-source");
+    boardNode.querySelectorAll(".chess-board-square.selected, .chess-board-square.legal-target").forEach((square) => {
+      square.classList.remove("selected", "legal-target");
     });
-    boardNode.querySelectorAll(".chess-board-piece.dragging-origin").forEach((pieceNode) => {
-      pieceNode.classList.remove("dragging-origin");
-    });
-    syncBoardDebug({ selectedSquare, dragSourceSquare: "" });
+    syncBoardDebug({ selectedSquare, dragSourceSquare: "", lastDragCleanupReason });
   }
 
   function clearDragVisualState() {
-    setDragSourceVisualState(false);
-    if (boardNode) {
-      boardNode.querySelectorAll(".chess-board-square.drag-source").forEach((squareNode) => {
-        squareNode.classList.remove("drag-source");
-      });
-      boardNode.querySelectorAll(".chess-board-piece.dragging-origin").forEach((pieceNode) => {
-        pieceNode.classList.remove("dragging-origin");
-      });
-    }
-    removeDragGhost();
+    removeAllDragGhosts("clear-drag-visual-state");
   }
 
   function clearActivePieceInteraction(reason = "cleared") {
-    cancelPieceDrag();
+    removeAllDragGhosts(reason);
     selectedSquare = "";
     pendingTapSquare = "";
     activePointerId = null;
@@ -1480,7 +1502,7 @@
     finalizedInteractionToken = null;
     dragStartedFromSelectedSquare = false;
     setBoardScrollLock(false);
-    syncBoardDebug({ selectedSquare: "", dragSourceSquare: "", activePointerId: null, lastAction: `piece:${reason}` });
+    syncBoardDebug({ selectedSquare: "", dragSourceSquare: "", activePointerId: null, lastAction: `piece:${reason}`, lastDragCleanupReason });
   }
 
   function clearManualStudyMarks(skipRender = false) {
@@ -1602,6 +1624,61 @@
     syncBoardDebug({ activePointerId: null, lastAction: `cancel:${reason}` });
   }
 
+  function countDragGhosts() {
+    return document.querySelectorAll(".lichess-drag-ghost, .chess-drag-ghost").length;
+  }
+
+  function releaseActivePointerCapture() {
+    releaseDragPointerCapture(dragPointerId);
+    releaseDragPointerCapture(activePointerId);
+  }
+
+  function removeAllDragGhosts(reason = "cleanup") {
+    const liveBoardNode = refreshBoardNode();
+    const inputRootNode = boardInputRoot();
+    releaseActivePointerCapture();
+    document.querySelectorAll(".lichess-drag-ghost, .chess-drag-ghost").forEach((ghostNode) => {
+      ghostNode.remove();
+    });
+    if (liveBoardNode) {
+      liveBoardNode.querySelectorAll(".drag-source, .dragging-origin, .is-dragging").forEach((node) => {
+        node.classList.remove("drag-source", "dragging-origin", "is-dragging");
+        if (node.style) {
+          node.style.visibility = "";
+          node.style.opacity = "";
+          node.style.transform = "";
+        }
+      });
+    }
+    if (inputRootNode) {
+      inputRootNode.querySelectorAll(".drag-source, .dragging-origin, .is-dragging").forEach((node) => {
+        node.classList.remove("drag-source", "dragging-origin", "is-dragging");
+        if (node.style) {
+          node.style.visibility = "";
+          node.style.opacity = "";
+          node.style.transform = "";
+        }
+      });
+    }
+    if (dragGhostNode && dragGhostNode.parentNode) dragGhostNode.parentNode.removeChild(dragGhostNode);
+    dragGhostNode = null;
+    dragGhostMarkup = "";
+    dragSourceSquare = "";
+    pendingTapSquare = "";
+    activePointerId = null;
+    dragPointerId = null;
+    dragMoved = false;
+    dragStartClientX = 0;
+    dragStartClientY = 0;
+    dragCurrentClientX = 0;
+    dragCurrentClientY = 0;
+    dragHoverSquare = "";
+    dragStartedFromSelectedSquare = false;
+    setBoardScrollLock(false);
+    lastDragCleanupReason = String(reason || "cleanup");
+    syncBoardDebug({ ghostCount: 0, lastDragCleanupReason, activePointerId: null, dragSourceSquare: "", lastAction: `cleanup:${lastDragCleanupReason}` });
+  }
+
   function updateDragGhostPosition(clientX, clientY) {
     if (!dragGhostNode || typeof clientX !== "number" || typeof clientY !== "number") return;
     dragGhostNode.style.left = `${clientX}px`;
@@ -1609,31 +1686,12 @@
   }
 
   function ensureDragGhost() {
-    if (!dragGhostMarkup || dragGhostNode) return;
-    const ghost = document.createElement("div");
-    ghost.className = "chess-drag-ghost";
-    ghost.style.pointerEvents = "none";
-    ghost.setAttribute("aria-hidden", "true");
-    ghost.innerHTML = dragGhostMarkup;
-    const liveBoardNode = refreshBoardNode();
-    const sourceSquareNode = dragSourceSquare && liveBoardNode ? liveBoardNode.querySelector(`[data-square="${dragSourceSquare}"]`) : null;
-    if (sourceSquareNode) {
-      const rect = sourceSquareNode.getBoundingClientRect();
-      if (rect.width > 0 && rect.height > 0) {
-        ghost.style.width = `${rect.width}px`;
-        ghost.style.height = `${rect.height}px`;
-      }
-    }
-    ghost.style.left = `${dragCurrentClientX}px`;
-    ghost.style.top = `${dragCurrentClientY}px`;
-    document.body.appendChild(ghost);
-    dragGhostNode = ghost;
-    updateDragGhostPosition(dragCurrentClientX, dragCurrentClientY);
+    removeAllDragGhosts("ghost-disabled");
+    return false;
   }
 
-  function removeDragGhost() {
-    if (dragGhostNode && dragGhostNode.parentNode) dragGhostNode.parentNode.removeChild(dragGhostNode);
-    dragGhostNode = null;
+  function removeDragGhost(reason = "cleanup") {
+    removeAllDragGhosts(reason);
   }
 
   function releaseDragPointerCapture(pointerId) {
@@ -1657,12 +1715,18 @@
     const pieceNode = sourceSquareNode.querySelector(".chess-board-piece");
     if (pieceNode) {
       pieceNode.classList.toggle("dragging-origin", Boolean(active));
+      pieceNode.classList.toggle("is-dragging", Boolean(active));
+      if (pieceNode.style) {
+        pieceNode.style.visibility = active ? "hidden" : "";
+        pieceNode.style.opacity = active ? "0" : "";
+      }
     }
   }
 
   function startPieceDrag(squareName, pointerId, event) {
     if (!isDragOrClickMode() || !canMoveFromSquare(squareName)) return false;
     const liveBoardNode = refreshBoardNode();
+    removeAllDragGhosts("drag-start");
     dragSourceSquare = String(squareName || "").trim();
     if (!dragSourceSquare) return false;
     dragStartedFromSelectedSquare = selectedSquare === dragSourceSquare;
@@ -1681,23 +1745,7 @@
   }
 
   function cancelPieceDrag() {
-    clearDragVisualState();
-    releaseDragPointerCapture(dragPointerId);
-    dragSourceSquare = "";
-    dragPointerId = null;
-    dragMoved = false;
-    dragStartClientX = 0;
-    dragStartClientY = 0;
-    dragCurrentClientX = 0;
-    dragCurrentClientY = 0;
-    dragHoverSquare = "";
-    dragGhostMarkup = "";
-    dragStartedFromSelectedSquare = false;
-    pendingTapSquare = "";
-    activePointerId = null;
-    activeInteractionToken = null;
-    finalizedInteractionToken = null;
-    setBoardScrollLock(false);
+    removeAllDragGhosts("drag-cancel");
     syncBoardDebug({ dragStarted: false, dragSourceSquare: "", activePointerId: null, lastAction: "drag:cancel" });
   }
 
@@ -1812,12 +1860,9 @@
       if (Math.max(deltaX, deltaY) < dragMoveThreshold) return;
       dragMoved = true;
       setDragSourceVisualState(true);
-      ensureDragGhost();
-      updateDragGhostPosition(event.clientX, event.clientY);
       return;
     }
-    ensureDragGhost();
-    updateDragGhostPosition(event.clientX, event.clientY);
+    setDragSourceVisualState(true);
   }
 
   function beginLeftBoardInteraction(event) {
@@ -1864,8 +1909,10 @@
     if (hasManualMarks && settings.clear_marks_on_left_click) clearManualStudyMarks(true);
     if (sameSelectedSquare) {
       if (typeof event.preventDefault === "function") event.preventDefault();
-      recordPointerTrace("select-source", event, { square: squareName, sourceSquare: squareName, result: "await-deselect", sourceCaptureReason: "same-selected-square" });
-      syncBoardDebug({ selectedSquare, lastAction: "pointerdown:await-deselect" });
+      removeAllDragGhosts("same-square-deselect");
+      selectedSquare = "";
+      recordPointerTrace("select-source", event, { square: squareName, sourceSquare: squareName, result: "deselected", sourceCaptureReason: "same-selected-square" });
+      syncBoardDebug({ selectedSquare: "", lastAction: "pointerdown:deselected", lastDragCleanupReason });
       return;
     }
     if (hasSelectionMarks) clearBoardSelectionMarks(!selectedSquare || canStartDrag);
@@ -2050,7 +2097,11 @@
   if (boardShellNode) {
     ensureBoardTouchSurface();
     boardShellNode.addEventListener("dragstart", (event) => {
-      event.preventDefault();
+      preventNativeBoardDrag(event, "shell");
+    }, true);
+
+    boardNode.addEventListener("dragstart", (event) => {
+      preventNativeBoardDrag(event, "board");
     });
 
     boardShellNode.addEventListener("click", (event) => {
@@ -2091,11 +2142,17 @@
       handlePointerTapRelease(event);
     });
 
+    boardShellNode.addEventListener("mouseup", (event) => {
+      if (event.button !== 0) return;
+      removeAllDragGhosts("mouseup");
+    });
+
     boardShellNode.addEventListener("pointercancel", (event) => {
       traceShellEvent("shell-pointercancel", event, { result: "cancelled", sourceSquare: dragSourceSquare || selectedSquare || "" });
       if (dragPointerId != null && event.pointerId === dragPointerId) dragPointerId = null;
       if (manualMarksEnabled() && manualDrawPointerId != null && event.pointerId !== manualDrawPointerId) return;
       recordPointerTrace("pointercancel", event, { result: "cancelled" });
+      removeAllDragGhosts("pointercancel");
       cancelActiveBoardInteraction("pointercancel");
     });
 
@@ -2103,6 +2160,7 @@
       traceShellEvent("lostpointercapture", event, { result: "received", sourceSquare: dragSourceSquare || selectedSquare || "" });
       if (dragSourceSquare && eventMatchesActivePointer(event, dragPointerId)) {
         recordPointerTrace("lostpointercapture", event, { sourceSquare: dragSourceSquare, result: "cancelled" });
+        removeAllDragGhosts("lostpointercapture");
         cancelActiveBoardInteraction("lostpointercapture");
         return;
       }
@@ -2174,6 +2232,18 @@
     syncBoardDebug({ handlersAttached: true, attachCount: boardDebug.attachCount, lastAction: "handlers:attached" });
   }
 
+  document.addEventListener("dragstart", (event) => {
+    if (!eventIsInsideSolverBoard(event)) return;
+    preventNativeBoardDrag(event, "document");
+  }, true);
+
+  document.addEventListener("pointerup", (event) => {
+    if (event.button !== 0) return;
+    if (!eventIsInsideSolverBoard(event)) return;
+    if (!dragSourceSquare && !selectedSquare && !pendingTapSquare) return;
+    removeAllDragGhosts("document-pointerup");
+  });
+
   window.addEventListener("pointerup", (event) => {
     if (event.button !== 0) return;
     if (dragSourceSquare && eventMatchesActivePointer(event, dragPointerId)) {
@@ -2188,18 +2258,27 @@
   });
 
   window.addEventListener("blur", () => {
+    removeAllDragGhosts("window-blur");
     cancelActiveBoardInteraction("window-blur");
   });
 
   window.addEventListener("pagehide", () => {
+    removeAllDragGhosts("pagehide");
     cancelActiveBoardInteraction("pagehide");
   });
 
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "hidden") {
+      removeAllDragGhosts("visibility-hidden");
       cancelActiveBoardInteraction("visibility-hidden");
     }
   });
+
+  window.addEventListener("scroll", () => {
+    if (dragSourceSquare || pendingTapSquare || activePointerId != null) {
+      removeAllDragGhosts("window-scroll");
+    }
+  }, true);
 
   window.addEventListener("keydown", (event) => {
     if (!manualMarksEnabled()) return;

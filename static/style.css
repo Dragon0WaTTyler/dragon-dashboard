@@ -707,6 +707,11 @@ h2{font-size:clamp(2.2rem,4vw,3.6rem);margin-top:14px;letter-spacing:-.03em}.det
 .chess-board-stage{
   width:100%;
   max-width:800px;
+  touch-action:none;
+  -ms-touch-action:none;
+  user-select:none;
+  -webkit-user-select:none;
+  -webkit-user-drag:none;
 }
 
 .chess-board{
@@ -722,9 +727,23 @@ h2{font-size:clamp(2.2rem,4vw,3.6rem);margin-top:14px;letter-spacing:-.03em}.det
   box-shadow:0 20px 60px rgba(0,0,0,.35);
 }
 
+.chess-lichess-solver-board-shell,
 .chess-trainer-board{
   touch-action:none;
   -ms-touch-action:none;
+  user-select:none;
+  -webkit-user-select:none;
+  -webkit-user-drag:none;
+}
+
+.chess-board,
+.chess-board-square,
+.chess-board-piece,
+.chess-board-piece-img{
+  touch-action:none;
+  user-select:none;
+  -webkit-user-select:none;
+  -webkit-user-drag:none;
 }
 
 .chess-board-arrows{
@@ -853,7 +872,7 @@ h2{font-size:clamp(2.2rem,4vw,3.6rem);margin-top:14px;letter-spacing:-.03em}.det
     justify-content:center;
     user-select:none;
     pointer-events:none;
-}
+  }
 
 .chess-board-piece.dragging-origin{
     opacity:0;
@@ -861,6 +880,12 @@ h2{font-size:clamp(2.2rem,4vw,3.6rem);margin-top:14px;letter-spacing:-.03em}.det
     transform:none;
     transition:opacity .08s ease;
   }
+
+.chess-board-piece.is-dragging{
+    opacity:0;
+    visibility:hidden;
+    transform:none;
+}
 
 .chess-board-piece.animating-origin{
   opacity:.24;
@@ -894,6 +919,22 @@ h2{font-size:clamp(2.2rem,4vw,3.6rem);margin-top:14px;letter-spacing:-.03em}.det
   height:min(12vw, 84px);
   display:flex;
   align-items:center;
+    justify-content:center;
+    pointer-events:none;
+    transform:translate(-50%, -50%);
+    z-index:12;
+    will-change:left, top, transform;
+    filter:drop-shadow(0 10px 24px rgba(0,0,0,.45));
+  }
+
+.lichess-drag-ghost{
+    position:fixed;
+    left:0;
+    top:0;
+    width:min(12vw, 84px);
+    height:min(12vw, 84px);
+    display:flex;
+    align-items:center;
     justify-content:center;
     pointer-events:none;
     transform:translate(-50%, -50%);
