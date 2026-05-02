@@ -375,6 +375,44 @@
     return `arrows:${arrowsValue};ghost:${ghostValue};piece:${pieceValue}`;
   }
 
+  function boardRectSnapshot() {
+    if (!boardNode) return { left: 0, top: 0, width: 0, height: 0, right: 0, bottom: 0 };
+    const rect = boardNode.getBoundingClientRect();
+    return {
+      left: Number(rect.left || 0),
+      top: Number(rect.top || 0),
+      width: Number(rect.width || 0),
+      height: Number(rect.height || 0),
+      right: Number(rect.right || 0),
+      bottom: Number(rect.bottom || 0),
+    };
+  }
+
+  function boardRectShortString(rect = boardRectSnapshot()) {
+    return `${Math.round(rect.left)},${Math.round(rect.top)},${Math.round(rect.width)},${Math.round(rect.height)}`;
+  }
+
+  function squareLookupMetadataFromEvent(event) {
+    const targetNode = event && event.target ? event.target : null;
+    const closestSquareNode = targetNode && typeof targetNode.closest === "function" ? targetNode.closest("[data-square]") : null;
+    const closestDataSquare = closestSquareNode && boardNode.contains(closestSquareNode) ? String(closestSquareNode.dataset.square || "").trim() : "";
+    const computedSquare = event && typeof event.clientX === "number" && typeof event.clientY === "number"
+      ? getBoardSquareFromClientPoint(event.clientX, event.clientY)
+      : "";
+    const rect = boardRectSnapshot();
+    const insideBoard = event && typeof event.clientX === "number" && typeof event.clientY === "number"
+      ? event.clientX >= rect.left && event.clientX <= rect.right && event.clientY >= rect.top && event.clientY <= rect.bottom
+      : false;
+    return {
+      boardRectShort: boardRectShortString(rect),
+      insideBoard,
+      eventTargetTag: targetNode && targetNode.tagName ? String(targetNode.tagName).toLowerCase() : "",
+      eventTargetClass: targetNode && typeof targetNode.className === "string" ? targetNode.className : "",
+      closestDataSquare,
+      computedSquare,
+    };
+  }
+
   function traceTimestamp() {
     return new Date().toISOString();
   }
@@ -390,11 +428,16 @@
       item.type,
       `step=${item.currentStep}`,
       `square=${item.square || "-"}`,
+      `computed=${item.computedSquare || "-"}`,
+      `closest=${item.closestDataSquare || "-"}`,
       `src=${item.sourceSquare || "-"}`,
       `target=${item.targetSquare || "-"}`,
       `selected=${item.selectedSquare || "-"}`,
       `drag=${item.dragStarted ? "1" : "0"}`,
       `dist=${item.movementDistance}`,
+      `inside=${item.insideBoard ? "1" : "0"}`,
+      `rect=${item.boardRectShort || "-"}`,
+      `tag=${item.eventTargetTag || "-"}`,
       `result=${item.result || "-"}`,
     ];
     return parts.join(" | ");
@@ -413,7 +456,15 @@
   }
 
   function recordPointerTrace(type, event = null, extra = {}) {
-    const square = extra.square != null ? String(extra.square || "") : getBoardSquareFromEvent(event);
+    const squareMeta = event ? squareLookupMetadataFromEvent(event) : {
+      boardRectShort: boardRectShortString(),
+      insideBoard: false,
+      eventTargetTag: "",
+      eventTargetClass: "",
+      closestDataSquare: "",
+      computedSquare: "",
+    };
+    const square = extra.square != null ? String(extra.square || "") : (event ? getBoardSquareFromEvent(event) : "");
     const sourceSquare = extra.sourceSquare != null ? String(extra.sourceSquare || "") : String(dragSourceSquare || pendingTapSquare || "");
     const targetSquare = extra.targetSquare != null ? String(extra.targetSquare || "") : "";
     const row = {
@@ -431,6 +482,13 @@
       selectedSquare: String(selectedSquare || ""),
       dragStarted: Boolean(dragMoved),
       movementDistance: typeof extra.movementDistance === "number" ? extra.movementDistance : movementDistanceFromStart(event && event.clientX, event && event.clientY),
+      boardRectShort: String(extra.boardRectShort || squareMeta.boardRectShort || ""),
+      insideBoard: typeof extra.insideBoard === "boolean" ? extra.insideBoard : Boolean(squareMeta.insideBoard),
+      eventTargetTag: String(extra.eventTargetTag || squareMeta.eventTargetTag || ""),
+      eventTargetClass: String(extra.eventTargetClass || squareMeta.eventTargetClass || ""),
+      closestDataSquare: String(extra.closestDataSquare || squareMeta.closestDataSquare || ""),
+      computedSquare: String(extra.computedSquare || squareMeta.computedSquare || ""),
+      sourceCaptureReason: String(extra.sourceCaptureReason || ""),
       currentStep,
       reviewMode: reviewModeActive(),
       moveMethod: settings.move_method,
@@ -1245,20 +1303,33 @@
 
   function getBoardSquareFromClientPoint(clientX, clientY) {
     if (!boardNode || typeof clientX !== "number" || typeof clientY !== "number") return "";
-    if (document.elementFromPoint) {
-      const pointedNode = document.elementFromPoint(clientX, clientY);
-      const pointedSquare = pointedNode && typeof pointedNode.closest === "function" ? pointedNode.closest(".chess-board-square") : null;
-      if (pointedSquare && boardNode.contains(pointedSquare)) return pointedSquare.dataset.square || "";
-    }
-    return "";
+    const rect = boardNode.getBoundingClientRect();
+    if (!rect.width || !rect.height) return "";
+    if (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) return "";
+    const relativeX = Math.min(rect.width - 0.001, Math.max(0, clientX - rect.left));
+    const relativeY = Math.min(rect.height - 0.001, Math.max(0, clientY - rect.top));
+    const cellWidth = rect.width / 8;
+    const cellHeight = rect.height / 8;
+    const fileIndexFromLeft = Math.max(0, Math.min(7, Math.floor(relativeX / cellWidth)));
+    const rankIndexFromTop = Math.max(0, Math.min(7, Math.floor(relativeY / cellHeight)));
+    const fileOrder = flipped ? [...files].reverse() : files;
+    const rankOrder = flipped ? [...ranks].reverse() : ranks;
+    const file = fileOrder[fileIndexFromLeft] || "";
+    const rank = rankOrder[rankIndexFromTop] || "";
+    return file && rank ? `${file}${rank}` : "";
   }
 
   function getBoardSquareFromEvent(event) {
     if (!event) return "";
-    if (typeof event.clientX === "number" && typeof event.clientY === "number") return getBoardSquareFromClientPoint(event.clientX, event.clientY);
     const target = event.target && typeof event.target.closest === "function" ? event.target.closest("[data-square]") : null;
-    if (!target || !boardNode.contains(target)) return "";
-    return String(target.dataset.square || "").trim();
+    if (target && boardNode.contains(target)) {
+      const directSquare = String(target.dataset.square || "").trim();
+      if (directSquare) return directSquare;
+    }
+    if (typeof event.clientX === "number" && typeof event.clientY === "number") {
+      return getBoardSquareFromClientPoint(event.clientX, event.clientY);
+    }
+    return "";
   }
 
   function startManualDraw(squareName, pointerId) {
@@ -1485,13 +1556,27 @@
     activePointerId = event.pointerId == null ? null : event.pointerId;
     pendingTapSquare = squareName || "";
     if (event.pointerType === "touch") blockSyntheticTouchClick(900);
-    recordPointerTrace("pointerdown", event, { square: squareName, sourceSquare: squareName, result: squareName ? "" : "ignored" });
-    syncBoardDebug({ lastPointerDown: `${event.type}:${event.pointerType || "mouse"}:${squareName || ""}`, lastButton: "left", lastSquare: squareName || "", dragReleased: false, activePointerId, lastAction: "pointerdown:left" });
     const canStartDrag = isDragOrClickMode() && canMoveFromSquare(squareName);
     const hasManualMarks = Boolean(manualArrowMarks.length || manualHighlightSquares.size);
     const hasSelectionMarks = Boolean(selectedSquare || dragSourceSquare);
+    const sourceCaptureReason = !squareName
+      ? "outside-or-mapping-failed"
+      : (canStartDrag ? "movable-piece" : (selectedSquare ? "empty-with-selection" : "no-movable-piece"));
+    recordPointerTrace("pointerdown", event, {
+      square: squareName,
+      sourceSquare: canStartDrag ? squareName : "",
+      result: squareName ? "" : "ignored",
+      sourceCaptureReason,
+    });
+    syncBoardDebug({ lastPointerDown: `${event.type}:${event.pointerType || "mouse"}:${squareName || ""}`, lastButton: "left", lastSquare: squareName || "", dragReleased: false, activePointerId, lastAction: "pointerdown:left" });
     if (hasManualMarks && settings.clear_marks_on_left_click) clearManualStudyMarks(true);
     if (hasSelectionMarks) clearBoardSelectionMarks(!selectedSquare || canStartDrag);
+    if (!squareName) {
+      pendingTapSquare = "";
+      activePointerId = null;
+      syncBoardDebug({ selectedSquare, lastAction: "pointerdown:ignored-empty" });
+      return;
+    }
     if (canStartDrag && !dragSourceSquare && startPieceDrag(squareName, event.pointerId, event)) {
       if (typeof event.preventDefault === "function") event.preventDefault();
       dragStartClientX = typeof event.clientX === "number" ? event.clientX : 0;
@@ -1503,7 +1588,14 @@
           dragPointerId = event.pointerId;
         }
       }
+      recordPointerTrace("select-source", event, { square: squareName, sourceSquare: squareName, result: "selected", sourceCaptureReason: "pointerdown-started" });
+      return;
     }
+    if (selectedSquare) {
+      recordPointerTrace("select-source", event, { square: squareName, sourceSquare: selectedSquare, targetSquare: squareName, result: "selected", sourceCaptureReason: "await-pointerup-target" });
+      return;
+    }
+    recordPointerTrace("select-source", event, { square: squareName, sourceSquare: "", result: "ignored", sourceCaptureReason: "empty-no-selection" });
   }
 
   function handlePointerTapRelease(event) {
