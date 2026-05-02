@@ -1,15 +1,134 @@
 {% extends "base.html" %}
 {% block content %}
+<style>
+    .chess-training-stage-shell {
+        display: grid;
+        gap: 0.85rem;
+    }
+    .chess-training-stage-pill {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        opacity: 0.72;
+        border: 1px solid rgba(255, 255, 255, 0.10);
+        cursor: default;
+        pointer-events: none;
+        user-select: none;
+        transition: border-color 160ms ease, opacity 160ms ease, transform 160ms ease, box-shadow 160ms ease;
+    }
+    .chess-training-stage-pill[aria-disabled="true"] {
+        cursor: default;
+        pointer-events: none;
+    }
+    .chess-training-stage-pill.is-active {
+        opacity: 1;
+        border-color: rgba(255, 116, 96, 0.72);
+        box-shadow: 0 0 0 1px rgba(255, 116, 96, 0.18), 0 10px 28px rgba(255, 116, 96, 0.08);
+    }
+    .chess-training-stage-pill.is-complete {
+        opacity: 0.92;
+        border-color: rgba(127, 139, 148, 0.34);
+    }
+    .chess-training-stage-panel.is-active {
+        border: 1px solid rgba(255, 116, 96, 0.26);
+        box-shadow: 0 0 0 1px rgba(255, 116, 96, 0.06), 0 18px 36px rgba(0, 0, 0, 0.24);
+    }
+    .chess-training-stage-panel.is-complete {
+        opacity: 0.96;
+    }
+    .chess-training-progress-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem;
+    }
+    .chess-training-progress-strip {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(0.85rem, 1fr));
+        gap: 0.45rem;
+    }
+    .chess-training-progress-dot {
+        height: 0.85rem;
+        border-radius: 999px;
+        background: #202020;
+        border: 1px solid #333;
+    }
+    .chess-training-progress-dot.is-upcoming {
+        background: #171717;
+        border-color: #2b2b2b;
+    }
+    .chess-training-progress-dot.is-current {
+        background: rgba(255, 116, 96, 0.22);
+        border-color: rgba(255, 116, 96, 0.55);
+        box-shadow: 0 0 0 1px rgba(255, 116, 96, 0.14);
+    }
+    .chess-training-progress-dot.is-complete {
+        background: rgba(42, 136, 88, 0.92);
+        border-color: rgba(119, 224, 158, 0.66);
+    }
+    .chess-training-progress-dot.is-difficult {
+        background: rgba(120, 34, 46, 0.92);
+        border-color: rgba(255, 128, 117, 0.72);
+    }
+    .chess-training-stage-copy {
+        margin-top: 0.25rem;
+    }
+    .chess-training-stage-note {
+        margin: 0;
+        color: var(--muted);
+        font-size: 0.82rem;
+        line-height: 1.45;
+    }
+    .chess-training-lesson-grid {
+        display: grid;
+        gap: 10px;
+        margin-top: 0.5rem;
+    }
+    .chess-training-lesson-row {
+        display: grid;
+        grid-template-columns: minmax(110px, 140px) minmax(0, 1fr);
+        gap: 12px;
+        align-items: start;
+        padding: 10px 0;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    }
+    .chess-training-lesson-row:last-child {
+        border-bottom: 0;
+    }
+    .chess-training-lesson-label {
+        color: var(--text-2);
+        font-size: 0.82rem;
+    }
+    .chess-training-lesson-value {
+        color: var(--text);
+        overflow-wrap: anywhere;
+    }
+    .chess-training-lesson-compare .chess-puzzle-move-compare-row strong {
+        font-size: 1.02rem;
+    }
+    .chess-training-lesson-compare .chess-puzzle-move-compare-label.attempted::before {
+        background: rgba(255, 128, 117, 0.88);
+    }
+    .chess-training-lesson-compare .chess-puzzle-move-compare-label.expected::before {
+        background: rgba(119, 224, 158, 0.9);
+    }
+    .chess-training-lesson-compare .chess-puzzle-move-compare-row.is-attempted strong {
+        color: rgba(255, 196, 186, 0.98);
+    }
+    .chess-training-lesson-compare .chess-puzzle-move-compare-row.is-expected strong {
+        color: rgba(188, 255, 219, 0.98);
+    }
+</style>
 <section class="page-hero chess-hero">
     <div class="hero-meta">
         <span class="hero-badge matte-tag">Lotus Chess</span>
-        <span>Weak-line trainer</span>
+        <span>My Training Session</span>
     </div>
-    <h2>Train your weakest line positions.</h2>
-    <p class="subhead">Use your own stored game continuation. Your side to move only. No automatic engine noise.</p>
+    <h2>Learn one line from your own games.</h2>
+    <p class="subhead">Personal opening training: lesson, guided replay, test, then review.</p>
     <div class="chess-hero-actions">
-        <a class="btn" href="{{ url_for('chess_training_session') }}"><i data-lucide="target"></i><span>Back to Training Session</span></a>
-        <a class="btn" href="{{ url_for('chess_puzzles') }}"><i data-lucide="sparkles"></i><span>View candidates</span></a>
+        <a class="btn" href="{{ url_for('chess_train') }}"><i data-lucide="target"></i><span>Back to My Training</span></a>
+        <a class="btn chess-inline-btn" href="{{ url_for('chess_training_session') }}"><i data-lucide="arrow-up-right"></i><span>Session overview</span></a>
     </div>
 </section>
 
@@ -43,7 +162,130 @@
         </div>
     </section>
     {% elif chess_training_puzzle.available %}
-    <section class="surface-card section-card chess-focus-card chess-puzzle-session">
+    <section class="surface-card section-card chess-focus-card chess-puzzle-session chess-training-stage-shell">
+        <section class="surface-card section-card chess-focus-card">
+            <div class="hero-meta">
+                <span class="hero-badge matte-tag">My Training flow</span>
+                <span id="chess-training-stage-status-line">Lesson</span>
+            </div>
+            <div class="chess-review-queue-actions" id="chess-training-stage-pills" aria-label="My Training stages">
+                <span class="btn chess-inline-btn chess-training-stage-pill" data-training-stage-pill="lesson" aria-disabled="true">Lesson</span>
+                <span class="btn chess-inline-btn chess-training-stage-pill" data-training-stage-pill="guided" aria-disabled="true">Guided</span>
+                <span class="btn chess-inline-btn chess-training-stage-pill" data-training-stage-pill="test" aria-disabled="true">Test</span>
+                <span class="btn chess-inline-btn chess-training-stage-pill" data-training-stage-pill="review" aria-disabled="true">Review</span>
+            </div>
+            <p class="chess-training-stage-note">Stages unlock in order. Complete Guided before Test.</p>
+            <div class="chess-training-progress-head">
+                <span class="chess-mini-label">Line progress</span>
+                <span class="chess-summary-note chess-muted-note" id="chess-training-progress-count">Step 1 / {{ chess_training_puzzle.step_count }}</span>
+            </div>
+            <div class="chess-training-progress-strip" id="chess-training-progress-strip" aria-label="Line progress">
+                {% for step in chess_training_puzzle.steps %}
+                <span class="chess-training-progress-dot" data-training-progress-dot data-training-step-index="{{ loop.index0 }}" aria-label="Step {{ loop.index }}"></span>
+                {% endfor %}
+            </div>
+            <section id="chess-training-stage-lesson" class="chess-training-stage-panel" data-training-stage-panel="lesson">
+                <span class="chess-mini-label">Lesson</span>
+                <p class="chess-summary-note chess-training-stage-copy">You reached this opening position. Learn the better continuation first, then replay it with help and test it without help.</p>
+                <h3 class="title-scaled chess-section-title">{{ chess_training_puzzle.current_item.lesson_summary.opening_label or 'Opening lesson' }}</h3>
+                <div class="surface-card chess-puzzle-context-card chess-training-lesson-grid">
+                    <div class="chess-training-lesson-row">
+                        <span class="chess-training-lesson-label">Opening</span>
+                        <span class="chess-training-lesson-value">{{ chess_training_puzzle.current_item.lesson_summary.opening_label or 'Opening context will appear here.' }}</span>
+                    </div>
+                    <div class="chess-training-lesson-row">
+                        <span class="chess-training-lesson-label">Training type</span>
+                        <span class="chess-training-lesson-value">{{ chess_training_puzzle.current_item.lesson_summary.training_type_label or 'Lotus Chess will add stronger engine-backed explanations later.' }}</span>
+                    </div>
+                    <div class="chess-training-lesson-row">
+                        <span class="chess-training-lesson-label">Your side</span>
+                        <span class="chess-training-lesson-value">{{ chess_training_puzzle.current_item.lesson_summary.user_color_label or chess_training_puzzle.current_item.user_color_label or 'Your side will appear here.' }}</span>
+                    </div>
+                    <div class="chess-training-lesson-row">
+                        <span class="chess-training-lesson-label">Line / position</span>
+                        <span class="chess-training-lesson-value">{{ chess_training_puzzle.current_item.lesson_summary.line_label or chess_training_puzzle.current_item.position_label or 'Lotus Chess will add stronger engine-backed explanations later.' }}</span>
+                    </div>
+                    <div class="chess-training-lesson-row">
+                        <span class="chess-training-lesson-label">Your recent move</span>
+                        <span class="chess-training-lesson-value">
+                            {% if chess_training_puzzle.current_item.lesson_summary.your_move_label %}
+                            In your game, you played {{ chess_training_puzzle.current_item.lesson_summary.your_move_label }}.
+                            {% else %}
+                            Lotus Chess will show your recent move here when session history has one saved.
+                            {% endif %}
+                        </span>
+                    </div>
+                    <div class="chess-training-lesson-row">
+                        <span class="chess-training-lesson-label">Training move</span>
+                        <span class="chess-training-lesson-value">
+                            {% if chess_training_puzzle.current_item.lesson_summary.recommended_move_label %}
+                            Train this move/line instead: {{ chess_training_puzzle.current_item.lesson_summary.recommended_move_label }}.
+                            {% else %}
+                            Lotus Chess will add move guidance here once the stored line is ready.
+                            {% endif %}
+                        </span>
+                    </div>
+                    <div class="chess-training-lesson-row">
+                        <span class="chess-training-lesson-label">Why this matters</span>
+                        <span class="chess-training-lesson-value">{{ chess_training_puzzle.current_item.lesson_summary.explanation or chess_training_puzzle.current_item.goal_message or 'Lotus Chess will add stronger engine-backed explanations later.' }}</span>
+                    </div>
+                </div>
+                {% if chess_training_puzzle.current_item.lesson_summary.your_move_label and chess_training_puzzle.current_item.lesson_summary.recommended_move_label %}
+                <div class="surface-card chess-puzzle-move-compare chess-training-lesson-compare">
+                    <div class="chess-puzzle-move-compare-row is-attempted">
+                        <span class="chess-puzzle-move-compare-label attempted">Your move</span>
+                        <strong>{{ chess_training_puzzle.current_item.lesson_summary.your_move_label }}</strong>
+                    </div>
+                    <div class="chess-puzzle-move-compare-row is-expected">
+                        <span class="chess-puzzle-move-compare-label expected">Train instead</span>
+                        <strong>{{ chess_training_puzzle.current_item.lesson_summary.recommended_move_label }}</strong>
+                    </div>
+                </div>
+                {% endif %}
+                <div class="chess-review-queue-meta">
+                    <span>Type: {{ chess_training_puzzle.current_item.lesson_summary.training_type_label }}</span>
+                    <span>Color: {{ chess_training_puzzle.current_item.lesson_summary.user_color_label }}</span>
+                    <span>Mastery: {{ chess_training_puzzle.current_item.lesson_summary.mastery_label }}</span>
+                </div>
+                <div class="chess-hero-actions">
+                    <button type="button" class="btn" id="chess-training-stage-start-guided"><i data-lucide="play-circle"></i><span>Got it</span></button>
+                </div>
+            </section>
+            <section id="chess-training-stage-guided" class="chess-training-stage-panel" data-training-stage-panel="guided" hidden>
+                <span class="chess-mini-label">Guided</span>
+                <p class="chess-summary-note chess-training-stage-copy">Play the indicated move.</p>
+                <h3 class="title-scaled chess-section-title">Guided replay</h3>
+                <p class="chess-summary-note" id="chess-training-stage-guided-note">Follow the line one move at a time.</p>
+                <p class="chess-summary-note chess-muted-note" id="chess-training-stage-guided-line">Expected move will appear here.</p>
+                <div class="chess-hero-actions" id="chess-training-guided-complete-actions" hidden>
+                    <button type="button" class="btn" id="chess-training-complete-next-stage"><i data-lucide="skip-forward"></i><span>Start test</span></button>
+                </div>
+            </section>
+            <section id="chess-training-stage-test" class="chess-training-stage-panel" data-training-stage-panel="test" hidden>
+                <span class="chess-mini-label">Test</span>
+                <p class="chess-summary-note chess-training-stage-copy">Now replay the line without guidance.</p>
+                <h3 class="title-scaled chess-section-title">Test without help</h3>
+                <p class="chess-summary-note" id="chess-training-stage-test-note">Difficult moves from this run will appear in review.</p>
+                <p class="chess-summary-note chess-muted-note" id="chess-training-stage-test-line">Wrong move feedback stays simple and clear.</p>
+            </section>
+            <section id="chess-training-stage-review" class="chess-training-stage-panel" data-training-stage-panel="review" hidden>
+                <span class="chess-mini-label">Review</span>
+                <p class="chess-summary-note chess-training-stage-copy">Let’s review difficult moves.</p>
+                <h3 class="title-scaled chess-section-title">Review difficult moves</h3>
+                <div class="chess-review-queue-meta">
+                    <span id="chess-training-review-completed">Moves completed: 0</span>
+                    <span id="chess-training-review-mistakes">Difficult moves: 0</span>
+                    <span id="chess-training-review-mastery">Mastery: In progress</span>
+                </div>
+                <p class="chess-summary-note" id="chess-training-review-summary">Finish the test to see how many moves were clean, how many were difficult, and the mastery label for this run.</p>
+                <div class="chess-openings-mini-list" id="chess-training-review-list"></div>
+                <div class="chess-hero-actions">
+                    <a class="btn chess-inline-btn" href="{{ url_for('chess_training_puzzle', next='1') }}"><i data-lucide="arrow-right"></i><span>Next training</span></a>
+                    <button type="button" class="btn chess-inline-btn" id="chess-training-review-retry"><i data-lucide="rotate-ccw"></i><span>Repeat this line</span></button>
+                    <button type="button" class="btn chess-inline-btn" id="chess-training-review-finish"><i data-lucide="check-circle-2"></i><span>Back to My Training</span></button>
+                </div>
+            </section>
+        </section>
         <div class="chess-puzzle-session-layout">
             <section class="chess-puzzle-board-column">
                 <div class="hero-meta chess-puzzle-board-meta">
@@ -137,11 +379,17 @@
                     <button type="button" class="btn chess-inline-btn" data-puzzle-action="clear-marks"><i data-lucide="eraser"></i><span>Clear marks</span></button>
                     <button type="button" class="btn chess-inline-btn" data-puzzle-action="flip"><i data-lucide="refresh-ccw"></i><span>Flip board</span></button>
                     <a class="btn chess-inline-btn" href="{{ chess_training_puzzle.skip_href }}" id="chess-training-puzzle-skip-link"><i data-lucide="skip-forward"></i><span>Skip</span></a>
-                    <a class="btn chess-inline-btn" href="{{ chess_training_puzzle.complete_next_href }}"><i data-lucide="fast-forward"></i><span>Next puzzle</span></a>
                 </div>
                 <p class="chess-summary-note chess-muted-note chess-puzzle-drawing-note">Right-click squares to draw study marks.</p>
 
                 <details class="surface-card chess-board-review-card chess-puzzle-settings-card">
+                    <summary class="chess-openings-toggle">
+                        <div>
+                            <strong>Advanced session tools</strong>
+                            <span>Settings, move list, engine checks, and raw links.</span>
+                        </div>
+                    </summary>
+                    <details class="surface-card chess-board-review-card chess-puzzle-settings-card">
                     <summary class="chess-openings-toggle">
                         <div>
                             <strong>Settings</strong>
@@ -228,7 +476,7 @@
                             <button type="button" class="btn chess-inline-btn" id="chess-training-puzzle-settings-reset"><i data-lucide="rotate-ccw"></i><span>Reset defaults</span></button>
                         </div>
                     </div>
-                </details>
+                    </details>
 
                 <div class="chess-board-moves-head">
                     <strong>Move list</strong>
@@ -249,6 +497,33 @@
                     </div>
                     {% endfor %}
                 </div>
+
+                <details class="surface-card chess-board-review-card chess-puzzle-settings-card">
+                    <summary class="chess-openings-toggle">
+                        <div>
+                            <strong>Session details</strong>
+                            <span>Local debug metadata for this training item.</span>
+                        </div>
+                    </summary>
+                    <div class="chess-training-lesson-grid">
+                        <div class="chess-training-lesson-row">
+                            <span class="chess-training-lesson-label">Training key</span>
+                            <span class="chess-training-lesson-value">{{ chess_training_puzzle.current_item.session_debug.training_key or chess_training_puzzle.current_item.id }}</span>
+                        </div>
+                        <div class="chess-training-lesson-row">
+                            <span class="chess-training-lesson-label">Completed count</span>
+                            <span class="chess-training-lesson-value">{{ chess_training_puzzle.current_item.session_debug.completed_count or 0 }}</span>
+                        </div>
+                        <div class="chess-training-lesson-row">
+                            <span class="chess-training-lesson-label">Last completed</span>
+                            <span class="chess-training-lesson-value">{{ chess_training_puzzle.current_item.session_debug.last_completed_at or 'Not completed yet' }}</span>
+                        </div>
+                        <div class="chess-training-lesson-row">
+                            <span class="chess-training-lesson-label">Rotation penalty</span>
+                            <span class="chess-training-lesson-value">{{ chess_training_puzzle.current_item.session_debug.rotation_penalty or 0 }}</span>
+                        </div>
+                    </div>
+                </details>
 
                 <details class="surface-card chess-board-review-card chess-puzzle-engine-panel" id="chess-training-puzzle-engine-panel">
                     <summary class="chess-openings-toggle">
@@ -322,14 +597,13 @@
 
                 <div class="surface-card chess-board-review-card" id="chess-training-puzzle-complete-card" hidden>
                     <div class="hero-meta">
-                        <span class="hero-badge matte-tag">Puzzle complete</span>
-                        <span>Moving to the next candidate</span>
+                        <span class="hero-badge matte-tag" id="chess-training-complete-badge">Guided complete</span>
+                        <span id="chess-training-complete-kicker">Ready for the next stage</span>
                     </div>
-                    <strong>You completed this weak-line sequence.</strong>
-                    <p class="chess-summary-note">Lotus Chess will mark it done and continue if another queued candidate exists.</p>
+                    <strong id="chess-training-complete-title">You completed the guided replay.</strong>
+                    <p class="chess-summary-note" id="chess-training-complete-copy">Now replay the same line without help.</p>
                     <div class="chess-board-review-actions">
-                        <button type="button" class="btn chess-inline-btn" data-puzzle-action="repeat"><i data-lucide="rotate-ccw"></i><span>Repeat puzzle</span></button>
-                        <a class="btn chess-inline-btn" href="{{ chess_training_puzzle.complete_next_href }}"><i data-lucide="skip-forward"></i><span>Next puzzle</span></a>
+                        <button type="button" class="btn chess-inline-btn" data-puzzle-action="repeat"><i data-lucide="rotate-ccw"></i><span id="chess-training-complete-repeat-label">Repeat guided</span></button>
                     </div>
                 </div>
 
@@ -348,11 +622,12 @@
                         <button type="submit" class="btn chess-mini-action-btn"><i data-lucide="archive"></i><span>Archive</span></button>
                     </form>
                 </div>
+                </details>
 
                 <form method="post" action="{{ url_for('chess_puzzles_auto_status') }}" id="chess-training-puzzle-complete-form">
                     <input type="hidden" name="candidate_id" value="{{ chess_training_puzzle.current_item.id }}">
                     <input type="hidden" name="status" value="done">
-                    <input type="hidden" name="next" value="{{ chess_training_puzzle.complete_next_href }}">
+                    <input type="hidden" name="next" value="{{ url_for('chess_train') }}">
                 </form>
             </aside>
         </div>
@@ -413,6 +688,30 @@
   const answerMoveNode = document.getElementById("chess-training-puzzle-answer-move");
   const answerNoteNode = document.getElementById("chess-training-puzzle-answer-note");
   const completionCard = document.getElementById("chess-training-puzzle-complete-card");
+  const stageStatusLineNode = document.getElementById("chess-training-stage-status-line");
+  const stagePillNodes = Array.from(document.querySelectorAll("[data-training-stage-pill]"));
+  const stagePanelNodes = Array.from(document.querySelectorAll("[data-training-stage-panel]"));
+  const startGuidedButton = document.getElementById("chess-training-stage-start-guided");
+  const guidedNoteNode = document.getElementById("chess-training-stage-guided-note");
+  const guidedLineNode = document.getElementById("chess-training-stage-guided-line");
+  const testNoteNode = document.getElementById("chess-training-stage-test-note");
+  const testLineNode = document.getElementById("chess-training-stage-test-line");
+  const reviewCompletedNode = document.getElementById("chess-training-review-completed");
+  const reviewMistakesNode = document.getElementById("chess-training-review-mistakes");
+  const reviewMasteryNode = document.getElementById("chess-training-review-mastery");
+  const reviewSummaryNode = document.getElementById("chess-training-review-summary");
+  const reviewListNode = document.getElementById("chess-training-review-list");
+  const reviewRetryButton = document.getElementById("chess-training-review-retry");
+  const reviewFinishButton = document.getElementById("chess-training-review-finish");
+  const guidedCompleteActionsNode = document.getElementById("chess-training-guided-complete-actions");
+  const completionBadgeNode = document.getElementById("chess-training-complete-badge");
+  const completionKickerNode = document.getElementById("chess-training-complete-kicker");
+  const completionTitleNode = document.getElementById("chess-training-complete-title");
+  const completionCopyNode = document.getElementById("chess-training-complete-copy");
+  const completionRepeatLabelNode = document.getElementById("chess-training-complete-repeat-label");
+  const completionNextStageButton = document.getElementById("chess-training-complete-next-stage");
+  const progressCountNode = document.getElementById("chess-training-progress-count");
+  const progressDotNodes = Array.from(document.querySelectorAll("[data-training-progress-dot]"));
   const completeForm = document.getElementById("chess-training-puzzle-complete-form");
   const attemptSummaryNode = document.getElementById("chess-training-puzzle-attempt-summary");
   const goalNoteNode = document.getElementById("chess-training-puzzle-goal-note");
@@ -464,6 +763,11 @@
   let selectedSquare = "";
   let revealMove = false;
   let completionSubmitted = false;
+  let currentStage = "lesson";
+  let sessionDifficultMoves = [];
+  let sessionDifficultStepIndexes = new Set();
+  let sessionWrongCount = 0;
+  let stageTransitionLocked = false;
   let tutorHighlights = { attempted: { from: "", to: "" }, expected: { from: "", to: "" }, engine: { from: "", to: "" } };
   let manualArrowMarks = [];
   let manualHighlightSquares = new Set();
@@ -489,6 +793,11 @@
   let renderedFen = "";
   let renderedFlipped = null;
   let lastTutorArrowSignature = "";
+  let boardSquareNodes = [];
+  let boardSquareNodeByName = {};
+  let boardPieceWrappersBySquare = {};
+  let boardPieceImagesBySquare = {};
+  let boardArrowsNode = null;
   let advanceTimer = null;
   let attemptId = String(boardNode.dataset.attemptId || "");
   const boardInteractionVersion = String(boardNode.dataset.boardInteractionVersion || "unknown");
@@ -876,42 +1185,57 @@
     return wrapper;
   }
 
+  function resetBoardNodeCaches() {
+    boardSquareNodes = [];
+    boardSquareNodeByName = {};
+    boardPieceWrappersBySquare = {};
+    boardPieceImagesBySquare = {};
+    boardArrowsNode = null;
+  }
+
+  function trackSquareNode(squareName, squareNode) {
+    boardSquareNodes.push(squareNode);
+    boardSquareNodeByName[squareName] = squareNode;
+    const wrapper = squareNode.querySelector(".chess-board-piece");
+    const image = wrapper ? wrapper.querySelector(".chess-board-piece-img") : null;
+    if (wrapper) boardPieceWrappersBySquare[squareName] = wrapper;
+    if (image) boardPieceImagesBySquare[squareName] = image;
+  }
+
   function setSquarePieceAnimationState(squareName, active) {
     if (!boardNode || !squareName) return;
-    const squareNode = boardNode.querySelector(`[data-square="${squareName}"]`);
-    const pieceNode = squareNode ? squareNode.querySelector(".chess-board-piece") : null;
+    const pieceNode = boardPieceWrappersBySquare[squareName] || null;
     if (!pieceNode) return;
     pieceNode.classList.toggle("animating-origin", Boolean(active));
   }
 
   function applyBoardPieces(boardMap) {
     if (!boardNode) return;
-    boardNode.querySelectorAll(".chess-board-square").forEach((squareNode) => {
+    boardSquareNodes.forEach((squareNode) => {
       const squareName = String(squareNode.dataset.square || "");
       const piece = boardMap[squareName] || "";
-      const currentWrapper = squareNode.querySelector(".chess-board-piece");
+      const currentWrapper = boardPieceWrappersBySquare[squareName] || null;
+      const currentImg = boardPieceImagesBySquare[squareName] || null;
       if (!piece) {
         if (currentWrapper) currentWrapper.remove();
+        delete boardPieceWrappersBySquare[squareName];
+        delete boardPieceImagesBySquare[squareName];
         return;
       }
-      if (currentWrapper) {
-        const currentImg = currentWrapper.querySelector(".chess-board-piece-img");
-        if (currentImg && currentImg.alt === piece && currentImg.src === pieceAssetMap[piece]) {
+      const nextSrc = pieceAssetMap[piece] || "";
+      if (currentWrapper && currentImg) {
+        if (currentImg.alt === piece && currentImg.getAttribute("src") === nextSrc) {
           return;
         }
-        currentWrapper.remove();
+        currentImg.src = nextSrc;
+        currentImg.alt = piece;
+        return;
       }
       const nextWrapper = buildPieceNode(piece);
       if (!nextWrapper) return;
-      const fileCoord = squareNode.querySelector(".chess-board-coordinate.file");
-      const rankCoord = squareNode.querySelector(".chess-board-coordinate.rank");
-      if (fileCoord) {
-        squareNode.insertBefore(nextWrapper, fileCoord);
-      } else if (rankCoord) {
-        squareNode.insertBefore(nextWrapper, rankCoord);
-      } else {
-        squareNode.appendChild(nextWrapper);
-      }
+      squareNode.insertBefore(nextWrapper, squareNode.firstChild || null);
+      boardPieceWrappersBySquare[squareName] = nextWrapper;
+      boardPieceImagesBySquare[squareName] = nextWrapper.querySelector(".chess-board-piece-img");
     });
   }
 
@@ -1282,7 +1606,233 @@
         total_steps: steps.length,
       });
     }
-    completeForm.submit();
+  }
+
+  function masteryLabel() {
+    if (sessionWrongCount === 0) return "Clean rep";
+    if (sessionWrongCount <= 2) return "Building";
+    return "Needs review";
+  }
+
+  function stageOrder(stage) {
+    const order = { lesson: 0, guided: 1, test: 2, review: 3 };
+    return Object.prototype.hasOwnProperty.call(order, stage) ? order[stage] : 0;
+  }
+
+  function refreshStageInstructionCopy() {
+    const current = stepData();
+    if (guidedLineNode) {
+      if (currentStage === "guided" && current && currentStep < steps.length) {
+        const expectedMove = current.expected_move_san || current.expected_move_uci || "the line move";
+        guidedLineNode.textContent = currentStep === steps.length - 1
+          ? `Final guided move. Play ${expectedMove}, then you can start the test.`
+          : `Play this guided move: ${expectedMove}.`;
+      } else if (currentStage === "guided" && currentStep >= steps.length) {
+        guidedLineNode.textContent = "Guided replay complete. Start the test when you're ready.";
+      } else {
+        guidedLineNode.textContent = "Expected move will appear here.";
+      }
+    }
+    if (testLineNode) {
+      testLineNode.textContent = isTestComplete()
+        ? "Test complete. Review uses difficult moves from this run."
+        : (sessionWrongCount
+          ? `Wrong moves so far: ${sessionWrongCount}.`
+          : "Wrong move feedback stays simple and clear.");
+    }
+  }
+
+  function updateTrainingProgressStrip() {
+    if (progressCountNode) {
+      if (!steps.length) {
+        progressCountNode.textContent = "No steps";
+      } else if (currentStage === "guided") {
+        progressCountNode.textContent = currentStep >= steps.length
+          ? "Guided replay complete"
+          : `Move ${Math.min(currentStep + 1, steps.length)} of ${steps.length}`;
+      } else if (currentStage === "test") {
+        progressCountNode.textContent = currentStep >= steps.length
+          ? "Test complete"
+          : `Move ${Math.min(currentStep + 1, steps.length)} of ${steps.length}`;
+      } else {
+        progressCountNode.textContent = `Step ${Math.min(currentStep + 1, steps.length)} / ${steps.length}`;
+      }
+    }
+    const difficultIndexes = new Set([
+      ...sessionDifficultStepIndexes,
+      ...sessionDifficultMoves.map((item) => Number(item.stepIndex ?? -1)),
+    ]);
+    progressDotNodes.forEach((dot) => {
+      const index = Number(dot.dataset.trainingStepIndex || 0);
+      dot.classList.toggle("is-complete", index < currentStep && !difficultIndexes.has(index));
+      dot.classList.toggle("is-difficult", difficultIndexes.has(index));
+      dot.classList.toggle("is-current", index === currentStep && currentStage !== "review");
+      dot.classList.toggle("is-upcoming", index > currentStep);
+    });
+  }
+
+  function clearTestRunState() {
+    sessionDifficultMoves = [];
+    sessionDifficultStepIndexes = new Set();
+    sessionWrongCount = 0;
+  }
+
+  function resetSessionBoardForStage(stage, { resetTestRun = false } = {}) {
+    if (advanceTimer) {
+      window.clearTimeout(advanceTimer);
+      advanceTimer = null;
+    }
+    if (resetTestRun) {
+      clearTestRunState();
+    }
+    currentStep = 0;
+    selectedSquare = "";
+    revealMove = stage === "guided";
+    completionSubmitted = false;
+    stageTransitionLocked = false;
+    clearManualStudyMarks(true);
+    clearBoardSelectionMarks();
+    clearTutorHighlights();
+    clearMoveComparison();
+  }
+
+  function isLineComplete() {
+    return currentStep >= steps.length;
+  }
+
+  function isGuidedComplete() {
+    return currentStage === "guided" && currentStep >= steps.length;
+  }
+
+  function isTestComplete() {
+    return currentStage === "test" && currentStep >= steps.length;
+  }
+
+  function startGuided() {
+    resetSessionBoardForStage("guided");
+    setTrainingStage("guided");
+    renderTrainer();
+  }
+
+  function startTest() {
+    resetSessionBoardForStage("test", { resetTestRun: true });
+    setTrainingStage("test");
+    renderTrainer();
+  }
+
+  async function startReview() {
+    if (stageTransitionLocked) return;
+    stageTransitionLocked = true;
+    completionSubmitted = true;
+    await submitPuzzleCompletion();
+    setTrainingStage("review");
+    renderTrainer();
+    stageTransitionLocked = false;
+  }
+
+  function updateReviewSummary() {
+    if (!reviewCompletedNode || !reviewMistakesNode || !reviewMasteryNode || !reviewSummaryNode || !reviewListNode) return;
+    const mastery = masteryLabel();
+    reviewCompletedNode.textContent = `Moves completed: ${steps.length}`;
+    reviewMistakesNode.textContent = `Difficult moves: ${sessionDifficultMoves.length}`;
+    reviewMasteryNode.textContent = `Mastery: ${mastery}`;
+    reviewSummaryNode.textContent = sessionDifficultMoves.length
+      ? `You completed ${steps.length} moves, marked ${sessionDifficultMoves.length} as difficult, and this run is labeled ${mastery}.`
+      : `You completed ${steps.length} moves with no difficult moves, and this run is labeled ${mastery}.`;
+    reviewListNode.innerHTML = "";
+    if (!sessionDifficultMoves.length) {
+      const note = document.createElement("p");
+      note.className = "chess-summary-note chess-muted-note";
+      note.textContent = "No difficult moves were recorded in this session.";
+      reviewListNode.appendChild(note);
+      return;
+    }
+    sessionDifficultMoves.forEach((item) => {
+      const row = document.createElement("article");
+      row.className = "surface-card chess-opening-mini-row";
+      const title = document.createElement("strong");
+      title.textContent = item.move || "Line move";
+      const detail = document.createElement("span");
+      detail.textContent = item.note || "Try this move again in the next run.";
+      row.appendChild(title);
+      row.appendChild(detail);
+      reviewListNode.appendChild(row);
+    });
+    updateTrainingProgressStrip();
+  }
+
+  function setCompletionCardMode(mode) {
+    if (!completionBadgeNode || !completionKickerNode || !completionTitleNode || !completionCopyNode || !completionRepeatLabelNode || !completionNextStageButton) return;
+    if (mode === "guided") {
+      completionBadgeNode.textContent = "Guided complete";
+      completionKickerNode.textContent = "Ready for the next stage";
+      completionTitleNode.textContent = "Guided replay complete.";
+      completionCopyNode.textContent = "Now test the line without help.";
+      completionRepeatLabelNode.textContent = "Repeat guided";
+      completionNextStageButton.hidden = false;
+      return;
+    }
+    completionNextStageButton.hidden = true;
+  }
+
+  function setTrainingStage(stage) {
+    currentStage = stage;
+    stagePillNodes.forEach((node) => {
+      const pillStage = String(node.dataset.trainingStagePill || "");
+      const isActive = pillStage === stage;
+      node.classList.toggle("active", isActive);
+      node.classList.toggle("is-active", isActive);
+      node.classList.toggle("is-complete", stageOrder(pillStage) < stageOrder(stage));
+      node.setAttribute("aria-disabled", "true");
+      if (isActive) {
+        node.setAttribute("aria-current", "step");
+      } else {
+        node.removeAttribute("aria-current");
+      }
+      node.title = "Training stages unlock automatically as you progress.";
+    });
+    stagePanelNodes.forEach((node) => {
+      const panelStage = String(node.dataset.trainingStagePanel || "");
+      node.hidden = panelStage !== stage;
+      node.classList.toggle("is-active", panelStage === stage);
+      node.classList.toggle("is-complete", stageOrder(panelStage) < stageOrder(stage));
+    });
+    if (stageStatusLineNode) {
+      stageStatusLineNode.textContent = stage.charAt(0).toUpperCase() + stage.slice(1);
+    }
+    if (stage === "lesson") {
+      setFeedback("idle", "Lesson", "Learn the idea first.");
+    } else if (stage === "guided") {
+      if (guidedNoteNode) {
+        if (currentStep >= steps.length) {
+          guidedNoteNode.textContent = "Guided replay complete.";
+        } else if (stepData()) {
+          const expectedMove = stepData().expected_move_san || stepData().expected_move_uci || "the line move";
+          guidedNoteNode.textContent = currentStep === steps.length - 1
+            ? `Play the final guided move: ${expectedMove}.`
+            : `Move ${currentStep + 1} of ${steps.length}. Play ${expectedMove} with guidance.`;
+        } else {
+          guidedNoteNode.textContent = "Follow the line one move at a time.";
+        }
+      }
+      if (guidedLineNode && currentStep >= steps.length) {
+        guidedLineNode.textContent = "Now test the line without help.";
+      }
+      if (guidedCompleteActionsNode) {
+        guidedCompleteActionsNode.hidden = currentStep < steps.length;
+      }
+      setFeedback("info", "Guided", currentStep >= steps.length ? "Guided replay complete." : "Play the indicated move.");
+    } else if (stage === "test") {
+      if (testNoteNode) {
+        testNoteNode.textContent = sessionWrongCount ? `This run already has ${sessionWrongCount} difficult move${sessionWrongCount === 1 ? "" : "s"}.` : "Difficult moves from this run will appear in review.";
+      }
+      setFeedback("idle", "Test", "Now replay the line without guidance.");
+    } else if (stage === "review") {
+      updateReviewSummary();
+      setFeedback("success", "Review", "Let’s review difficult moves.");
+    }
+    refreshStageInstructionCopy();
+    updateTrainingProgressStrip();
   }
 
   async function fetchTutorFeedback(step, attemptedMove) {
@@ -1430,8 +1980,10 @@
   function renderTutorArrows() {
     const signature = buildTutorArrowSignature();
     if (signature === lastTutorArrowSignature) return;
-    const existing = boardNode.querySelector(".chess-board-arrows");
-    if (existing) existing.remove();
+    if (boardArrowsNode) {
+      boardArrowsNode.remove();
+      boardArrowsNode = null;
+    }
     const arrows = [
       buildArrowLine(tutorHighlights.attempted && tutorHighlights.attempted.from, tutorHighlights.attempted && tutorHighlights.attempted.to, "chess-arrow-attempted"),
       buildArrowLine(tutorHighlights.expected && tutorHighlights.expected.from, tutorHighlights.expected && tutorHighlights.expected.to, "chess-arrow-expected"),
@@ -1464,12 +2016,15 @@
       ${arrows.join("")}
     `;
     boardNode.appendChild(svg);
+    boardArrowsNode = svg;
     lastTutorArrowSignature = signature;
   }
 
   function applyBoardSquareState(legalTargetsBySource) {
     const activeLegalTargets = new Set(Array.isArray((legalTargetsBySource || {})[selectedSquare]) ? (legalTargetsBySource || {})[selectedSquare] : []);
-    boardNode.querySelectorAll(".chess-board-square").forEach((square) => {
+    const manualFromSquares = new Set(manualArrowMarks.map((item) => item.from));
+    const manualToSquares = new Set(manualArrowMarks.map((item) => item.to));
+    boardSquareNodes.forEach((square) => {
       const squareName = String(square.dataset.square || "");
       square.classList.toggle("selected", Boolean(settings.highlight_moves && selectedSquare === squareName));
       square.classList.toggle("drag-source", Boolean(dragSourceSquare === squareName));
@@ -1481,9 +2036,9 @@
       square.classList.toggle("tutor-engine-from", Boolean(tutorHighlights.engine && tutorHighlights.engine.from === squareName));
       square.classList.toggle("tutor-engine-to", Boolean(tutorHighlights.engine && tutorHighlights.engine.to === squareName));
       square.classList.toggle("manual-marked", manualHighlightSquares.has(squareName));
-      square.classList.toggle("manual-mark-from", manualArrowMarks.some((item) => item.from === squareName));
-      square.classList.toggle("manual-mark-to", manualArrowMarks.some((item) => item.to === squareName));
-      const wrapper = square.querySelector(".chess-board-piece");
+      square.classList.toggle("manual-mark-from", manualFromSquares.has(squareName));
+      square.classList.toggle("manual-mark-to", manualToSquares.has(squareName));
+      const wrapper = boardPieceWrappersBySquare[squareName] || null;
       if (wrapper) {
         wrapper.classList.toggle("dragging-origin", Boolean(dragMoved && dragSourceSquare === squareName));
       }
@@ -1491,10 +2046,11 @@
   }
 
   function renderBoard(fen, legalTargetsBySource, { forceBoard = false, refreshArrows = true } = {}) {
-    const shouldRebuildBoard = forceBoard || renderedFlipped !== Boolean(flipped) || boardNode.querySelectorAll(".chess-board-square").length !== 64;
+    const shouldRebuildBoard = forceBoard || renderedFlipped !== Boolean(flipped) || boardSquareNodes.length !== 64;
     if (shouldRebuildBoard) {
       const boardMap = boardMapFromFen(fen);
       boardNode.innerHTML = "";
+      resetBoardNodeCaches();
       const boardFiles = flipped ? [...files].reverse() : files;
       const boardRanks = flipped ? [...ranks].reverse() : ranks;
       for (const rank of boardRanks) {
@@ -1540,6 +2096,7 @@
             handleSquareClick(squareName);
           });
           boardNode.appendChild(square);
+          trackSquareNode(squareName, square);
         }
       }
       renderedFen = fen;
@@ -1570,13 +2127,33 @@
   }
 
   function renderTrainer({ forceBoard = false, refreshArrows = true } = {}) {
-    const complete = currentStep >= steps.length;
+    const complete = isLineComplete();
+    const guidedComplete = isGuidedComplete();
+    const testComplete = isTestComplete();
     const step = stepData();
+    if (!complete && currentStage === "guided" && step) {
+      tutorHighlights = {
+        attempted: tutorHighlights.attempted || { from: "", to: "" },
+        expected: {
+          from: String(step.expected_move_uci || "").slice(0, 2),
+          to: String(step.expected_move_uci || "").slice(2, 4),
+        },
+        engine: { from: "", to: "" },
+      };
+    }
     const fen = complete ? String((steps[steps.length - 1] || {}).fen_after_replies || "") : String((step || {}).fen_before || "");
     const legalTargets = complete ? {} : ((step || {}).legal_targets_by_source || {});
     renderBoard(fen, legalTargets, { forceBoard, refreshArrows });
-    labelNode.textContent = complete ? "Puzzle complete" : ((step || {}).move_number_label || "Your move");
-    counterNode.textContent = complete ? `Complete · ${steps.length} / ${steps.length}` : `Step ${currentStep + 1} / ${steps.length}`;
+    labelNode.textContent = complete
+      ? (guidedComplete ? "Guided replay complete" : (testComplete ? "Test complete" : "Session complete"))
+      : ((step || {}).move_number_label || "Your move");
+    if (guidedComplete) {
+      counterNode.textContent = "Guided replay complete";
+    } else if (testComplete) {
+      counterNode.textContent = "Test complete";
+    } else {
+      counterNode.textContent = complete ? `Complete · ${steps.length} / ${steps.length}` : `Move ${currentStep + 1} of ${steps.length}`;
+    }
     turnNode.textContent = complete ? "Sequence complete" : `${(step || {}).side_to_move_label || 'Your side'} to move`;
     stepsNode.querySelectorAll("[data-puzzle-step-row]").forEach((row, index) => {
       row.classList.toggle("active", !complete && index === currentStep);
@@ -1585,15 +2162,29 @@
       button.classList.toggle("active", !complete && Number(button.dataset.puzzleStep || 0) === currentStep);
     });
     if (complete) {
-      completionCard.removeAttribute("hidden");
       answerCard.setAttribute("hidden", "hidden");
-      if (!completionSubmitted) {
-        completionSubmitted = true;
-        window.setTimeout(() => { submitPuzzleCompletion(); }, 1100);
+      if (guidedComplete) {
+        if (guidedCompleteActionsNode) {
+          guidedCompleteActionsNode.hidden = false;
+        }
+        completionCard.setAttribute("hidden", "hidden");
+      } else if (testComplete) {
+        completionCard.setAttribute("hidden", "hidden");
+        if (!completionSubmitted && !stageTransitionLocked) {
+          completionSubmitted = true;
+          window.setTimeout(async () => {
+            await startReview();
+          }, 220);
+        }
+      } else {
+        completionCard.setAttribute("hidden", "hidden");
       }
     } else {
       completionCard.setAttribute("hidden", "hidden");
-      if (revealMove && settings.show_chat_hints) {
+      if (guidedCompleteActionsNode) {
+        guidedCompleteActionsNode.hidden = true;
+      }
+      if (revealMove && settings.show_chat_hints && currentStage === "guided") {
         tutorHighlights = {
           attempted: { from: "", to: "" },
           expected: { from: String(step.expected_move_uci || "").slice(0, 2), to: String(step.expected_move_uci || "").slice(2, 4) },
@@ -1612,6 +2203,7 @@
       }
     }
     keepCurrentStepVisible();
+    updateTrainingProgressStrip();
   }
 
   function normalizedAttemptedMove(fromSquare, toSquare, expectedUci) {
@@ -1717,7 +2309,7 @@
         ? "That move cannot be played in this position. Try again."
         : (attempted === expectedMove
             ? (String((step && step.correct_feedback) || "") || "Correct. This keeps the line idea.")
-            : `This move is not the line move. ${String((step && step.expected_move_hint) || "Look for the move that keeps the line idea.").trim()} Try again.`),
+            : `Not this move. ${String((step && step.expected_move_hint) || "Look for the move that keeps the line idea.").trim()} Try again.`),
       highlights: {
         attempted: { from: attempted.slice(0, 2), to: attempted.slice(2, 4) },
         expected: { from: expectedMove.slice(0, 2), to: expectedMove.slice(2, 4) },
@@ -1727,6 +2319,7 @@
   }
 
   async function attemptPuzzleMove(fromSquare, toSquare, step = stepData(), { usedDrag = false } = {}) {
+    if (currentStage !== "guided" && currentStage !== "test") return;
     if (!step) return;
     const attemptedMove = normalizedAttemptedMove(fromSquare, toSquare, step.expected_move_uci);
     const immediateFeedback = buildImmediateTutorFeedback(step, attemptedMove);
@@ -1761,10 +2354,12 @@
         clearMoveComparison();
         const baseMessage = String(step.correct_feedback || `Correct. ${step.expected_move_san} keeps the line idea.`);
         if (repliesText) {
-          setFeedback("success", "Correct", `${baseMessage} Opponent reply: ${repliesText}.`);
+          setFeedback("success", currentStage === "test" ? "Good. Continue." : "Correct", `${baseMessage} Opponent reply: ${repliesText}.`);
         } else {
-          setFeedback("success", "Correct", baseMessage);
+          setFeedback("success", currentStage === "test" ? "Good. Continue." : "Correct", baseMessage);
         }
+        refreshStageInstructionCopy();
+        updateTrainingProgressStrip();
         renderTrainer({ refreshArrows: false });
         window.setTimeout(() => {
           refreshCurrentBoard({ refreshArrows: true });
@@ -1774,12 +2369,25 @@
       return;
     }
     selectedSquare = "";
+    if (currentStage === "test") {
+      sessionWrongCount += 1;
+      sessionDifficultStepIndexes.add(currentStep);
+      const difficultLabel = String(step.expected_move_san || step.expected_move_uci || "Line move");
+      if (!sessionDifficultMoves.some((item) => item.stepIndex === currentStep)) {
+        sessionDifficultMoves.push({
+          stepIndex: currentStep,
+          move: difficultLabel,
+          note: String(step.expected_move_hint || "Review this move again in the next run."),
+        });
+      }
+    }
     if (!usedDrag) {
       await animateRejectedMovePreview(fromSquare, toSquare);
     } else {
       await waitFor(40);
     }
-    applyTutorFeedback(immediateFeedback, "error", "Not this line", "This move is not the line move. Try again.");
+    applyTutorFeedback(immediateFeedback, "error", "Not this move", "Not this move. Try again.");
+    updateTrainingProgressStrip();
     refreshCurrentBoard({ refreshArrows: true });
     queueAttemptUpdate(boardNode.dataset.attemptMoveEndpoint || "", {
       result: "wrong",
@@ -1792,13 +2400,14 @@
     });
     tutorFeedbackPromise.then((tutorFeedback) => {
       if (!tutorFeedback || currentStep >= steps.length || stepData() !== step) return;
-      applyTutorFeedback(tutorFeedback, "error", "Not this line", "This move is not the line move. Try again.");
+      applyTutorFeedback(tutorFeedback, "error", "Not this move", "Not this move. Try again.");
       refreshCurrentBoard({ refreshArrows: true });
     }).catch(() => {});
   }
 
   async function handleSquareClick(squareName) {
     if (advanceTimer) return;
+    if (currentStage === "lesson" || currentStage === "review") return;
     if (currentStep >= steps.length) return;
     const step = stepData();
     if (!step) return;
@@ -1829,6 +2438,7 @@
 
   document.querySelectorAll("[data-puzzle-step]").forEach((button) => {
     button.addEventListener("click", () => {
+      if (currentStage === "lesson" || currentStage === "review") return;
       const requestedStep = Number(button.dataset.puzzleStep || 0);
       currentStep = Math.max(0, Math.min(requestedStep, steps.length - 1));
       if (advanceTimer) {
@@ -1851,6 +2461,10 @@
     button.addEventListener("click", () => {
       const action = button.dataset.puzzleAction;
       if (action === "reveal") {
+        if (currentStage !== "guided") {
+          setFeedback("info", "Guided only", "Hints stay in the guided stage. Switch back if you want help.");
+          return;
+        }
         if (!settings.show_chat_hints) {
           revealMove = false;
           answerCard.setAttribute("hidden", "hidden");
@@ -1868,19 +2482,8 @@
         return;
       }
       if (action === "reset") {
-        if (advanceTimer) {
-          window.clearTimeout(advanceTimer);
-          advanceTimer = null;
-        }
-        currentStep = 0;
-        selectedSquare = "";
-        revealMove = false;
-        completionSubmitted = false;
-        clearManualStudyMarks(true);
-        clearBoardSelectionMarks();
-        clearTutorHighlights();
-        clearMoveComparison();
-        setFeedback("idle", "Reset", initialCoachGoal);
+        resetSessionBoardForStage(currentStage);
+        setFeedback("idle", "Reset", currentStage === "guided" ? "Guided replay reset." : initialCoachGoal);
         renderTrainer();
         return;
       }
@@ -1894,19 +2497,8 @@
         return;
       }
       if (action === "repeat") {
-        if (advanceTimer) {
-          window.clearTimeout(advanceTimer);
-          advanceTimer = null;
-        }
-        currentStep = 0;
-        selectedSquare = "";
-        revealMove = false;
-        completionSubmitted = false;
-        clearManualStudyMarks(true);
-        clearBoardSelectionMarks();
-        clearTutorHighlights();
-        clearMoveComparison();
-        setFeedback("idle", "Ready", initialCoachGoal);
+        resetSessionBoardForStage(currentStage);
+        setFeedback("idle", "Ready", currentStage === "guided" ? "Play the line again with guidance." : initialCoachGoal);
         renderTrainer();
       }
     });
@@ -2195,6 +2787,31 @@
     });
   }
 
+  if (startGuidedButton) {
+    startGuidedButton.addEventListener("click", () => {
+      startGuided();
+    });
+  }
+
+  if (completionNextStageButton) {
+    completionNextStageButton.addEventListener("click", () => {
+      if (!isGuidedComplete()) return;
+      startTest();
+    });
+  }
+
+  if (reviewRetryButton) {
+    reviewRetryButton.addEventListener("click", () => {
+      startTest();
+    });
+  }
+
+  if (reviewFinishButton) {
+    reviewFinishButton.addEventListener("click", () => {
+      completeForm.submit();
+    });
+  }
+
   let resizeRenderFrame = null;
   const initialCoachGoal = {{ (chess_training_puzzle.current_item.goal_message or 'This came from your own game. Focus on finding the move that keeps the line idea.')|tojson }};
   window.addEventListener("resize", () => {
@@ -2205,7 +2822,9 @@
     });
   });
 
-  setFeedback("idle", "Ready", initialCoachGoal);
+  setTrainingStage("lesson");
+  refreshStageInstructionCopy();
+  updateTrainingProgressStrip();
   syncBoardDebug({ handlersAttached: Boolean(boardDebug.handlersAttached) });
   renderTrainer();
 })();

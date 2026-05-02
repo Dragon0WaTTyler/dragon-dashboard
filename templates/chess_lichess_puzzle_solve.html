@@ -3,13 +3,13 @@
 <section class="page-hero chess-hero">
     <div class="hero-meta">
         <span class="hero-badge matte-tag">Lotus Chess</span>
-        <span>Lichess Puzzle</span>
+        <span>Lichess Puzzles</span>
     </div>
-    <h2>Solve one local Lichess puzzle.</h2>
-    <p class="subhead">This stays separate from My Puzzles and uses only the local sample CSV solution line.</p>
+    <h2>Solve a Lichess puzzle.</h2>
+    <p class="subhead">Play the best move, let the reply auto-play, and continue until the tactic is finished.</p>
     <div class="chess-hero-actions">
         <a class="btn" href="{{ url_for('chess_lichess_puzzles') }}"><i data-lucide="sparkles"></i><span>Back to Lichess hub</span></a>
-        <a class="btn chess-inline-btn" href="{{ url_for('chess_puzzles') }}"><i data-lucide="arrow-left"></i><span>Back to My Puzzles</span></a>
+        <a class="btn chess-inline-btn" href="{{ url_for('chess') }}"><i data-lucide="arrow-left"></i><span>Back to Chess</span></a>
     </div>
 </section>
 
@@ -32,7 +32,7 @@
         <p class="chess-summary-note">{{ chess_lichess_puzzle_solver.message or 'No local Lichess puzzle source imported yet.' }}</p>
         <div class="chess-review-queue-actions">
             <a class="btn chess-inline-btn" href="{{ url_for('chess_lichess_puzzles') }}"><i data-lucide="sparkles"></i><span>Open Lichess hub</span></a>
-            <a class="btn chess-inline-btn" href="{{ url_for('chess_puzzles') }}"><i data-lucide="arrow-left"></i><span>Back to My Puzzles</span></a>
+            <a class="btn chess-inline-btn" href="{{ url_for('chess') }}"><i data-lucide="arrow-left"></i><span>Back to Chess</span></a>
         </div>
     </section>
     {% else %}
@@ -62,19 +62,9 @@
                     <span id="chess-lichess-input-debug-inline-pointer">Active pointer: -</span>
                 </p>
                 <div class="chess-board-status chess-puzzle-board-status">
-                    <strong id="chess-lichess-puzzle-move-label">Your side to move</strong>
+                    <strong id="chess-lichess-puzzle-move-label">Find the best move</strong>
                     <span id="chess-lichess-puzzle-counter">Step 1 / {{ chess_lichess_puzzle_solver.step_count }}</span>
                     <span id="chess-lichess-puzzle-turn-label">{{ chess_lichess_puzzle_solver.current_item.user_color_label }} to move</span>
-                </div>
-                <div class="surface-card chess-puzzle-review-controls" id="chess-lichess-puzzle-review-controls">
-                    <div class="chess-puzzle-review-buttons">
-                        <button type="button" class="btn chess-inline-btn chess-review-nav-btn" data-review-nav="first" aria-label="Go to first position"><span>|&lt;</span></button>
-                        <button type="button" class="btn chess-inline-btn chess-review-nav-btn" data-review-nav="prev" aria-label="Go to previous position"><span>&lt;</span></button>
-                        <button type="button" class="btn chess-inline-btn chess-review-nav-btn" data-review-nav="live" aria-label="Return to live position"><span>&#9654;</span><span>Live</span></button>
-                        <button type="button" class="btn chess-inline-btn chess-review-nav-btn" data-review-nav="next" aria-label="Go to next position"><span>&gt;</span></button>
-                        <button type="button" class="btn chess-inline-btn chess-review-nav-btn" data-review-nav="last" aria-label="Go to latest position"><span>&gt;|</span></button>
-                    </div>
-                    <p class="chess-summary-note chess-muted-note chess-puzzle-review-status" id="chess-lichess-puzzle-review-status">Live position</p>
                 </div>
                 <details class="chess-puzzle-tech-details chess-puzzle-input-debug" id="chess-lichess-puzzle-input-debug" hidden>
                     <summary>Input debug</summary>
@@ -91,12 +81,6 @@
                     </div>
                     <div class="chess-puzzle-input-debug-trace" id="chess-lichess-input-debug-trace">No pointer trace yet.</div>
                 </details>
-                <div class="chess-puzzle-board-summary">
-                    <span class="chess-puzzle-status-pill">{{ chess_lichess_puzzle_solver.current_item.rating_label }}</span>
-                    <span class="chess-puzzle-status-pill">{{ chess_lichess_puzzle_solver.current_item.themes|length }} theme{{ '' if chess_lichess_puzzle_solver.current_item.themes|length == 1 else 's' }}</span>
-                    <span class="chess-puzzle-status-pill">{{ chess_lichess_puzzle_solver.step_count }} move{{ '' if chess_lichess_puzzle_solver.step_count == 1 else 's' }}</span>
-                    <span class="chess-puzzle-status-pill">{{ chess_lichess_puzzle_solver.current_item.progress_status_label }}</span>
-                </div>
             </section>
 
             <aside class="chess-puzzle-coach-panel">
@@ -151,42 +135,74 @@
                     <button type="button" class="btn chess-inline-btn" data-puzzle-action="reset"><i data-lucide="refresh-cw"></i><span>Reset</span></button>
                     <button type="button" class="btn chess-inline-btn" data-puzzle-action="clear-marks"><i data-lucide="eraser"></i><span>Clear marks</span></button>
                     <button type="button" class="btn chess-inline-btn" data-puzzle-action="flip"><i data-lucide="refresh-ccw"></i><span>Flip board</span></button>
-                    <a class="btn chess-inline-btn" href="{{ chess_lichess_puzzle_solver.next_puzzle_href }}" data-puzzle-nav="next"><i data-lucide="skip-forward"></i><span>Next puzzle</span></a>
                 </div>
                 <p class="chess-summary-note chess-muted-note chess-puzzle-drawing-note">Right-click squares to draw study marks.</p>
 
-                <div class="chess-board-moves-head">
-                    <strong>Move list</strong>
-                    <span>{{ chess_lichess_puzzle_solver.step_count }} step{{ '' if chess_lichess_puzzle_solver.step_count == 1 else 's' }}</span>
-                </div>
-                <div class="chess-board-moves-list chess-puzzle-moves-list" id="chess-lichess-puzzle-steps-list">
-                    {% for step in chess_lichess_puzzle_solver.steps %}
-                    <div class="chess-board-move-row" data-puzzle-step-row>
-                        <span class="chess-board-move-number">{{ loop.index }}.</span>
-                        <button type="button" class="chess-board-move-jump" data-puzzle-step="{{ loop.index0 }}">
-                            <span class="chess-board-move-side">{{ chess_lichess_puzzle_solver.current_item.user_color_label[:1] }}</span>
-                            <span class="chess-board-move-san">{{ step.expected_move_san }}</span>
-                        </button>
-                        <div class="chess-board-move-empty">
-                            <span class="chess-board-move-side">Ctx</span>
-                            <span class="chess-board-move-san">{{ step.move_number_label }}</span>
-                        </div>
-                    </div>
-                    {% endfor %}
-                </div>
-
                 <div class="surface-card chess-board-review-card" id="chess-lichess-puzzle-complete-card" hidden>
                     <div class="hero-meta">
-                        <span class="hero-badge matte-tag">Puzzle complete</span>
-                        <span>Lichess sample</span>
+                        <span class="hero-badge matte-tag">Solved</span>
+                        <span>Nice work</span>
                     </div>
-                    <strong>You completed this Lichess puzzle.</strong>
-                    <p class="chess-summary-note">Move to the next local sample puzzle when you are ready.</p>
+                    <strong>You solved this puzzle.</strong>
+                    <p class="chess-summary-note">The full tactic is complete. Move on when you are ready.</p>
                     <div class="chess-board-review-actions">
                         <button type="button" class="btn chess-inline-btn" data-puzzle-action="repeat"><i data-lucide="rotate-ccw"></i><span>Repeat puzzle</span></button>
-                        <a class="btn chess-inline-btn" href="{{ chess_lichess_puzzle_solver.next_puzzle_href }}" data-puzzle-nav="next"><i data-lucide="skip-forward"></i><span>Continue</span></a>
+                        <a class="btn" href="{{ chess_lichess_puzzle_solver.next_puzzle_href }}" data-puzzle-nav="next"><i data-lucide="skip-forward"></i><span>Next puzzle</span></a>
                     </div>
                 </div>
+
+                <details class="surface-card chess-train-section">
+                    <summary class="chess-openings-toggle">
+                        <div>
+                            <strong>Puzzle details</strong>
+                            <span>Rating, themes, review navigation, and move list.</span>
+                        </div>
+                    </summary>
+                    <div class="chess-puzzle-board-summary">
+                        <span class="chess-puzzle-status-pill">{{ chess_lichess_puzzle_solver.current_item.rating_label }}</span>
+                        <span class="chess-puzzle-status-pill">{{ chess_lichess_puzzle_solver.current_item.themes|length }} theme{{ '' if chess_lichess_puzzle_solver.current_item.themes|length == 1 else 's' }}</span>
+                        <span class="chess-puzzle-status-pill">{{ chess_lichess_puzzle_solver.step_count }} move{{ '' if chess_lichess_puzzle_solver.step_count == 1 else 's' }}</span>
+                        <span class="chess-puzzle-status-pill">{{ chess_lichess_puzzle_solver.current_item.progress_status_label }}</span>
+                    </div>
+                    <div class="surface-card chess-puzzle-context-card">
+                        <span class="chess-mini-label">Puzzle info</span>
+                        <p class="chess-board-context">{{ chess_lichess_puzzle_solver.current_item.themes_label }}</p>
+                        <p class="chess-board-context">{{ chess_lichess_puzzle_solver.current_item.rating_label }}</p>
+                        <p class="chess-summary-note chess-muted-note">{{ chess_lichess_puzzle_solver.current_item.times_seen or 0 }} seen · {{ chess_lichess_puzzle_solver.current_item.times_missed or 0 }} missed · {{ chess_lichess_puzzle_solver.current_item.times_solved or 0 }} solved</p>
+                        {% if chess_lichess_puzzle_solver.current_item.game_url %}
+                        <p class="chess-summary-note"><a href="{{ chess_lichess_puzzle_solver.current_item.game_url }}" target="_blank" rel="noopener">Open source game</a></p>
+                        {% endif %}
+                    </div>
+                    <div class="surface-card chess-puzzle-review-controls" id="chess-lichess-puzzle-review-controls">
+                        <div class="chess-puzzle-review-buttons">
+                            <button type="button" class="btn chess-inline-btn chess-review-nav-btn" data-review-nav="first" aria-label="Go to first position"><span>|&lt;</span></button>
+                            <button type="button" class="btn chess-inline-btn chess-review-nav-btn" data-review-nav="prev" aria-label="Go to previous position"><span>&lt;</span></button>
+                            <button type="button" class="btn chess-inline-btn chess-review-nav-btn" data-review-nav="live" aria-label="Return to live position"><span>&#9654;</span><span>Live</span></button>
+                            <button type="button" class="btn chess-inline-btn chess-review-nav-btn" data-review-nav="next" aria-label="Go to next position"><span>&gt;</span></button>
+                            <button type="button" class="btn chess-inline-btn chess-review-nav-btn" data-review-nav="last" aria-label="Go to latest position"><span>&gt;|</span></button>
+                        </div>
+                        <p class="chess-summary-note chess-muted-note chess-puzzle-review-status" id="chess-lichess-puzzle-review-status">Live position</p>
+                    </div>
+                    <div class="chess-board-moves-head">
+                        <strong>Move list</strong>
+                        <span>{{ chess_lichess_puzzle_solver.step_count }} step{{ '' if chess_lichess_puzzle_solver.step_count == 1 else 's' }}</span>
+                    </div>
+                    <div class="chess-board-moves-list chess-puzzle-moves-list" id="chess-lichess-puzzle-steps-list">
+                        {% for step in chess_lichess_puzzle_solver.steps %}
+                        <div class="chess-board-move-row" data-puzzle-step-row>
+                            <span class="chess-board-move-number">{{ loop.index }}.</span>
+                            <button type="button" class="chess-board-move-jump" data-puzzle-step="{{ loop.index0 }}">
+                                <span class="chess-board-move-side">{{ chess_lichess_puzzle_solver.current_item.user_color_label[:1] }}</span>
+                                <span class="chess-board-move-san">{{ step.expected_move_san }}</span>
+                            </button>
+                            <div class="chess-board-move-empty">
+                                <span class="chess-board-move-side">Ctx</span>
+                                <span class="chess-board-move-san">{{ step.move_number_label }}</span>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </details>
             </aside>
         </div>
         <script id="chess-lichess-puzzle-data" type="application/json">{{ chess_lichess_puzzle_solver.steps|tojson }}</script>
@@ -284,6 +300,11 @@
   let renderedFen = "";
   let renderedFlipped = null;
   let lastTutorArrowSignature = "";
+  let boardSquareNodes = [];
+  let boardSquareNodeByName = {};
+  let boardPieceWrappersBySquare = {};
+  let boardPieceImagesBySquare = {};
+  let boardArrowsNode = null;
   let dragSourceSquare = "";
   let dragPointerId = null;
   let dragMoved = false;
@@ -1100,19 +1121,39 @@
     return wrapper;
   }
 
+  function resetBoardNodeCaches() {
+    boardSquareNodes = [];
+    boardSquareNodeByName = {};
+    boardPieceWrappersBySquare = {};
+    boardPieceImagesBySquare = {};
+    boardArrowsNode = null;
+  }
+
+  function trackSquareNode(squareName, squareNode) {
+    boardSquareNodes.push(squareNode);
+    boardSquareNodeByName[squareName] = squareNode;
+    const wrapper = squareNode.querySelector(".chess-board-piece");
+    const image = wrapper ? wrapper.querySelector(".chess-board-piece-img") : null;
+    if (wrapper) boardPieceWrappersBySquare[squareName] = wrapper;
+    if (image) boardPieceImagesBySquare[squareName] = image;
+  }
+
   function applyBoardPieces(boardMap) {
-    boardNode.querySelectorAll(".chess-board-square").forEach((squareNode) => {
+    boardSquareNodes.forEach((squareNode) => {
       const squareName = String(squareNode.dataset.square || "");
       const piece = boardMap[squareName] || "";
-      const currentWrapper = squareNode.querySelector(".chess-board-piece");
+      const currentWrapper = boardPieceWrappersBySquare[squareName] || null;
+      const currentImg = boardPieceImagesBySquare[squareName] || null;
       if (!piece) {
         if (currentWrapper) currentWrapper.remove();
+        delete boardPieceWrappersBySquare[squareName];
+        delete boardPieceImagesBySquare[squareName];
         return;
       }
-      if (currentWrapper) {
-        const currentImg = currentWrapper.querySelector(".chess-board-piece-img");
-        if (currentImg) {
-          currentImg.src = pieceAssetMap[piece];
+      const nextSrc = pieceAssetMap[piece] || "";
+      if (currentWrapper && currentImg) {
+        if (currentImg.alt !== piece || currentImg.getAttribute("src") !== nextSrc) {
+          currentImg.src = nextSrc;
           currentImg.alt = piece;
           currentImg.draggable = false;
           currentImg.setAttribute("draggable", "false");
@@ -1122,7 +1163,11 @@
         return;
       }
       const wrapper = buildPieceNode(piece);
-      if (wrapper) squareNode.appendChild(wrapper);
+      if (wrapper) {
+        squareNode.insertBefore(wrapper, squareNode.firstChild || null);
+        boardPieceWrappersBySquare[squareName] = wrapper;
+        boardPieceImagesBySquare[squareName] = wrapper.querySelector(".chess-board-piece-img");
+      }
     });
   }
 
@@ -1162,8 +1207,10 @@
   function renderTutorArrows() {
     const signature = buildTutorArrowSignature();
     if (signature === lastTutorArrowSignature) return;
-    const existing = boardNode.querySelector(".chess-board-arrows");
-    if (existing) existing.remove();
+    if (boardArrowsNode) {
+      boardArrowsNode.remove();
+      boardArrowsNode = null;
+    }
     if (!arrowsEnabled()) {
       lastTutorArrowSignature = signature;
       return;
@@ -1197,6 +1244,7 @@
       ${arrows.join("")}
     `;
     boardNode.appendChild(svg);
+    boardArrowsNode = svg;
     lastTutorArrowSignature = signature;
   }
 
@@ -1204,7 +1252,9 @@
     const activeLegalTargets = new Set(Array.isArray((legalTargetsBySource || {})[selectedSquare]) ? (legalTargetsBySource || {})[selectedSquare] : []);
     const showTutorVisuals = !LICHESS_INPUT_ISOLATION_MODE;
     const showManualVisuals = manualMarksEnabled();
-    boardNode.querySelectorAll(".chess-board-square").forEach((square) => {
+    const manualFromSquares = new Set(manualArrowMarks.map((item) => item.from));
+    const manualToSquares = new Set(manualArrowMarks.map((item) => item.to));
+    boardSquareNodes.forEach((square) => {
       const squareName = String(square.dataset.square || "");
       square.classList.toggle("selected", Boolean(settings.highlight_moves && selectedSquare === squareName));
       square.classList.toggle("drag-source", Boolean(dragSourceSquare === squareName));
@@ -1214,9 +1264,9 @@
       square.classList.toggle("tutor-expected-from", Boolean(showTutorVisuals && tutorHighlights.expected && tutorHighlights.expected.from === squareName));
       square.classList.toggle("tutor-expected-to", Boolean(showTutorVisuals && tutorHighlights.expected && tutorHighlights.expected.to === squareName));
       square.classList.toggle("manual-marked", Boolean(showManualVisuals && manualHighlightSquares.has(squareName)));
-      square.classList.toggle("manual-mark-from", Boolean(showManualVisuals && manualArrowMarks.some((item) => item.from === squareName)));
-      square.classList.toggle("manual-mark-to", Boolean(showManualVisuals && manualArrowMarks.some((item) => item.to === squareName)));
-      const wrapper = square.querySelector(".chess-board-piece");
+      square.classList.toggle("manual-mark-from", Boolean(showManualVisuals && manualFromSquares.has(squareName)));
+      square.classList.toggle("manual-mark-to", Boolean(showManualVisuals && manualToSquares.has(squareName)));
+      const wrapper = boardPieceWrappersBySquare[squareName] || null;
       if (wrapper) {
         const isActiveDragSource = Boolean(dragMoved && dragSourceSquare === squareName);
         wrapper.classList.toggle("dragging-origin", isActiveDragSource);
@@ -1228,10 +1278,11 @@
   function renderBoard(fen, legalTargetsBySource = {}, { forceBoard = false, refreshArrows = true } = {}) {
     currentFen = fen;
     ensureBoardTouchSurface();
-    const shouldRebuildBoard = forceBoard || renderedFlipped !== Boolean(flipped) || boardNode.querySelectorAll(".chess-board-square").length !== 64;
+    const shouldRebuildBoard = forceBoard || renderedFlipped !== Boolean(flipped) || boardSquareNodes.length !== 64;
     if (shouldRebuildBoard) {
       const boardMap = boardMapFromFen(fen);
       boardNode.innerHTML = "";
+      resetBoardNodeCaches();
       boardSquares().forEach((squareName, index) => {
         const square = document.createElement("div");
         const isLight = ((Math.floor(index / 8) + (index % 8)) % 2) === 0;
@@ -1257,6 +1308,7 @@
           square.appendChild(coord);
         }
         boardNode.appendChild(square);
+        trackSquareNode(squareName, square);
       });
       renderedFen = fen;
       renderedFlipped = Boolean(flipped);
@@ -1279,7 +1331,7 @@
 
   function updateStatus() {
     const step = steps[currentStep];
-    labelNode.textContent = step ? "Your side to move" : "Puzzle complete";
+    labelNode.textContent = step ? "Find the best move" : "Puzzle solved";
     counterNode.textContent = step ? `Step ${currentStep + 1} / ${steps.length}` : `Step ${steps.length} / ${steps.length}`;
     turnNode.textContent = "{{ chess_lichess_puzzle_solver.current_item.user_color_label }} to move";
     updateMoveList();
@@ -1341,7 +1393,7 @@
     clearTutorHighlights();
     updateStatus();
     setCompletionVisible(true);
-    setFeedback("success", "Complete", "You completed the full local Lichess solution sequence.");
+    setFeedback("success", "Solved", "You found the full solution. Continue to the next puzzle when you are ready.");
     postProgress(progressUrls.complete, { completed_clean: revealMove ? "false" : "true" });
     clearComparison();
     reviewIndex = liveHistoryIndex();
@@ -1363,7 +1415,7 @@
     appendHistoryPosition(step.fen_after_user, userMoveLabel, "user-move", currentStep);
     renderBoard(step.fen_after_user, {}, { forceBoard: false, refreshArrows: false });
     const correctMessage = String(step.correct_feedback || "Correct. This keeps the solution line moving.");
-    setFeedback("success", "Correct", step.auto_replies && step.auto_replies.length ? `${correctMessage} The puzzle reply will play now.` : correctMessage);
+    setFeedback("success", "Correct", step.auto_replies && step.auto_replies.length ? `${correctMessage} The opponent reply will play automatically.` : correctMessage);
     if (step.auto_replies && step.auto_replies.length) {
       completionTimer = window.setTimeout(() => {
         (step.auto_replies || []).forEach((reply, replyIndex) => {
@@ -1464,7 +1516,7 @@
       engine: { from: "", to: "" },
     };
     postProgress(progressUrls.wrong, { attempted_move: attemptedUci });
-    setFeedback("error", "Not quite", `Not quite. Try again. ${step.expected_move_hint || "Look for checks, captures, or threats."}`);
+    setFeedback("error", "Wrong move", `Wrong move. Try again. ${step.expected_move_hint || "Look for checks, captures, or threats."}`);
     selectedSquare = "";
     pendingTapSquare = "";
     recordPointerTrace("attempt-move", null, { sourceSquare, targetSquare, result: "wrong" });

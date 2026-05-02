@@ -1102,6 +1102,13 @@ def safe_puzzle_attempt_int(value, default=0):
         return int(default)
 
 
+def safe_non_negative_int(value, default=0):
+    try:
+        return max(0, int(value or 0))
+    except Exception:
+        return max(0, int(default or 0))
+
+
 def _safe_attempt_timestamp_value(value):
     return parse_timestamp(value) or None
 
@@ -1257,6 +1264,201 @@ def get_latest_puzzle_attempt_map(data):
         if existing is None or _puzzle_attempt_sort_value(raw_attempt) >= _puzzle_attempt_sort_value(existing):
             latest_map[candidate_id] = raw_attempt
     return latest_map
+
+
+def build_puzzle_attempt_history_map(data):
+    payload = data if isinstance(data, dict) else default_chess_data()
+    history_map = {}
+    for raw_attempt in payload.get("puzzle_attempts", []) or []:
+        if not isinstance(raw_attempt, dict):
+            continue
+        candidate_id = str(raw_attempt.get("candidate_id", "") or "").strip()
+        if not candidate_id:
+            continue
+        entry = history_map.setdefault(candidate_id, {
+            "training_key": candidate_id,
+            "attempt_count": 0,
+            "completed_count": 0,
+            "clean_completed_count": 0,
+            "skipped_count": 0,
+            "difficult_attempt_count": 0,
+            "last_attempt_at": "",
+            "last_completed_at": "",
+            "last_result": "",
+            "last_wrong_count": 0,
+            "last_reveal_used": False,
+        })
+        entry["attempt_count"] += 1
+        status_value = normalize_puzzle_attempt_status(raw_attempt.get("status"))
+        completed_at = str(raw_attempt.get("completed_at", "") or "").strip()
+        updated_at = str(raw_attempt.get("updated_at", "") or "").strip()
+        created_at = str(raw_attempt.get("created_at", "") or "").strip()
+        last_attempt_at = completed_at or updated_at or created_at
+        previous_attempt_at = _safe_attempt_timestamp_value(entry.get("last_attempt_at"))
+        current_attempt_at = _safe_attempt_timestamp_value(last_attempt_at)
+        if current_attempt_at and (previous_attempt_at is None or current_attempt_at >= previous_attempt_at):
+            entry["last_attempt_at"] = last_attempt_at
+            entry["last_result"] = status_value
+            entry["last_wrong_count"] = safe_non_negative_int(raw_attempt.get("wrong_count", 0), 0)
+            entry["last_reveal_used"] = bool(raw_attempt.get("reveal_used", False))
+        if status_value == "completed":
+            entry["completed_count"] += 1
+            if bool(raw_attempt.get("completed_clean", False)):
+                entry["clean_completed_count"] += 1
+        elif status_value == "skipped":
+            entry["skipped_count"] += 1
+        if status_value in {"completed", "skipped"} and latest_puzzle_attempt_needs_repeat(raw_attempt):
+            entry["difficult_attempt_count"] += 1
+        if status_value == "completed" and completed_at:
+            previous_completed_at = _safe_attempt_timestamp_value(entry.get("last_completed_at"))
+            current_completed_at = _safe_attempt_timestamp_value(completed_at)
+            if current_completed_at and (previous_completed_at is None or current_completed_at >= previous_completed_at):
+                entry["last_completed_at"] = completed_at
+    return history_map
+
+
+def normalize_auto_puzzle_progress(raw_state=None, history_entry=None):
+    state = dict(raw_state or {}) if isinstance(raw_state, dict) else {}
+    history = dict(history_entry or {}) if isinstance(history_entry, dict) else {}
+
+    def latest_timestamp_text(*values):
+        best_text = ""
+        best_value = None
+        for value in values:
+            value_text = str(value or "").strip()
+            parsed = _safe_attempt_timestamp_value(value_text)
+            if parsed is None:
+                continue
+            if best_value is None or parsed >= best_value:
+                best_value = parsed
+                best_text = value_text
+        return best_text
+
+    completed_count = max(
+        safe_non_negative_int(state.get("completed_count", 0), 0),
+        safe_non_negative_int(history.get("completed_count", 0), 0),
+    )
+    clean_completed_count = max(
+        safe_non_negative_int(state.get("clean_completed_count", 0), 0),
+        safe_non_negative_int(history.get("clean_completed_count", 0), 0),
+    )
+    skipped_count = max(
+        safe_non_negative_int(state.get("skipped_count", 0), 0),
+        safe_non_negative_int(history.get("skipped_count", 0), 0),
+    )
+    difficult_attempt_count = max(
+        safe_non_negative_int(state.get("difficult_attempt_count", 0), 0),
+        safe_non_negative_int(history.get("difficult_attempt_count", 0), 0),
+    )
+    attempt_count = max(
+        safe_non_negative_int(state.get("attempt_count", 0), 0),
+        safe_non_negative_int(history.get("attempt_count", 0), 0),
+        completed_count + skipped_count,
+    )
+    last_attempt_at = latest_timestamp_text(state.get("last_attempt_at", ""), history.get("last_attempt_at", ""))
+    last_completed_at = latest_timestamp_text(state.get("last_completed_at", ""), history.get("last_completed_at", ""))
+    last_result = str(state.get("last_result", "") or history.get("last_result", "") or "").strip().lower()
+    if last_result not in {"completed", "skipped", "started"}:
+        last_result = ""
+    return {
+        "training_key": str(state.get("training_key", "") or history.get("training_key", "") or state.get("id", "") or "").strip(),
+        "attempt_count": attempt_count,
+        "completed_count": completed_count,
+        "clean_completed_count": clean_completed_count,
+        "skipped_count": skipped_count,
+        "difficult_attempt_count": difficult_attempt_count,
+        "last_attempt_at": last_attempt_at,
+        "last_completed_at": last_completed_at,
+        "last_result": last_result,
+        "last_wrong_count": max(
+            safe_non_negative_int(state.get("last_wrong_count", 0), 0),
+            safe_non_negative_int(history.get("last_wrong_count", 0), 0),
+        ),
+        "last_reveal_used": bool(state.get("last_reveal_used", history.get("last_reveal_used", False))),
+    }
+
+
+def compute_auto_puzzle_rotation_penalty(progress, repeat_needed=False, due_now=False, mastered=False):
+    payload = dict(progress or {}) if isinstance(progress, dict) else {}
+    penalty = 0
+    completed_count = safe_non_negative_int(payload.get("completed_count", 0), 0)
+    clean_completed_count = safe_non_negative_int(payload.get("clean_completed_count", 0), 0)
+    skipped_count = safe_non_negative_int(payload.get("skipped_count", 0), 0)
+    difficult_attempt_count = safe_non_negative_int(payload.get("difficult_attempt_count", 0), 0)
+    attempt_count = safe_non_negative_int(payload.get("attempt_count", 0), 0)
+    recent_text = str(payload.get("last_completed_at", "") or payload.get("last_attempt_at", "") or "").strip()
+    recent_at = _safe_attempt_timestamp_value(recent_text)
+    now = datetime.now(timezone.utc)
+    if recent_at is not None:
+        age_hours = max(0.0, (now - recent_at).total_seconds() / 3600.0)
+        if age_hours < 1:
+            penalty += 130
+        elif age_hours < 6:
+            penalty += 100
+        elif age_hours < 24:
+            penalty += 72
+        elif age_hours < 72:
+            penalty += 44
+        elif age_hours < 168:
+            penalty += 20
+        else:
+            penalty += 8
+    penalty += min(completed_count, 6) * 8
+    penalty += min(clean_completed_count, 4) * 5
+    penalty += min(skipped_count, 4) * 4
+    penalty += min(attempt_count, 6) * 2
+    if mastered:
+        penalty += 24
+    if repeat_needed:
+        penalty = max(12, int(round(penalty * 0.45)))
+        penalty += min(difficult_attempt_count, 4) * 3
+    elif due_now and not mastered:
+        penalty = max(10, int(round(penalty * 0.65)))
+    return max(0, int(penalty))
+
+
+def record_auto_puzzle_candidate_progress(data, candidate_id, result="", attempt=None, status_after=None):
+    payload = data if isinstance(data, dict) else default_chess_data()
+    target_id = str(candidate_id or "").strip()
+    if not target_id:
+        return {"changed": False, "item": None, "error": "Missing auto candidate id."}
+    attempt_payload = dict(attempt or {}) if isinstance(attempt, dict) else {}
+    status_value = normalize_chess_auto_candidate_status(status_after or ("done" if str(result or "").strip().lower() == "completed" else "candidate"))
+    attempt_history = build_puzzle_attempt_history_map(payload).get(target_id, {})
+    progress_fields = normalize_auto_puzzle_progress({
+        "training_key": target_id,
+        "last_result": str(result or "").strip().lower(),
+        "last_completed_at": str(attempt_payload.get("completed_at", "") or "").strip(),
+        "last_attempt_at": str(attempt_payload.get("completed_at", "") or attempt_payload.get("updated_at", "") or attempt_payload.get("created_at", "") or "").strip(),
+        "last_wrong_count": safe_non_negative_int(attempt_payload.get("wrong_count", 0), 0),
+        "last_reveal_used": bool(attempt_payload.get("reveal_used", False)),
+    }, history_entry=attempt_history)
+    for item in payload.get("auto_puzzle_candidates", []) or []:
+        if not isinstance(item, dict):
+            continue
+        if str(item.get("id", "") or "").strip() != target_id:
+            continue
+        changed = False
+        if normalize_chess_auto_candidate_status(item.get("status", "candidate")) != status_value:
+            item["status"] = status_value
+            changed = True
+        for key, value in progress_fields.items():
+            if item.get(key) != value:
+                item[key] = value
+                changed = True
+        if changed:
+            item["updated_at"] = current_timestamp()
+        return {"changed": changed, "item": dict(item), "error": ""}
+    new_item = {
+        "id": target_id,
+        "status": status_value,
+        "saved_seed_id": "",
+        "created_at": current_timestamp(),
+        "updated_at": current_timestamp(),
+    }
+    new_item.update(progress_fields)
+    payload.setdefault("auto_puzzle_candidates", []).append(new_item)
+    return {"changed": True, "item": dict(new_item), "error": ""}
 
 
 def latest_puzzle_attempt_needs_repeat(attempt):
@@ -1580,6 +1782,13 @@ def skip_puzzle_attempt(data, attempt_id, final_step=0, total_steps=0):
     attempt["next_due_at"] = schedule["next_due_at"]
     attempt["mastered"] = False
     attempt["updated_at"] = current_timestamp()
+    record_auto_puzzle_candidate_progress(
+        data,
+        str(attempt.get("candidate_id", "") or "").strip(),
+        result="skipped",
+        attempt=attempt,
+        status_after="candidate",
+    )
     return {"ok": True, "error": "", "attempt": dict(attempt)}
 
 
@@ -1610,6 +1819,13 @@ def complete_puzzle_attempt(data, attempt_id, final_step=0, total_steps=0):
     attempt["next_due_at"] = schedule["next_due_at"]
     attempt["mastered"] = bool(schedule["mastered"])
     attempt["updated_at"] = current_timestamp()
+    record_auto_puzzle_candidate_progress(
+        data,
+        str(attempt.get("candidate_id", "") or "").strip(),
+        result="completed",
+        attempt=attempt,
+        status_after="done",
+    )
     return {"ok": True, "error": "", "attempt": dict(attempt)}
 
 
@@ -3981,18 +4197,99 @@ def build_chess_train_today_focus(chess_data, auto_snapshot=None, review_snapsho
     line_payload = opening_line_summary if isinstance(opening_line_summary, dict) else build_opening_line_summary(payload, ply_count=8)
     games = [dict(item) for item in payload.get("games", []) or [] if isinstance(item, dict)]
 
+    def compose_focus_copy(item, default_why="", default_practice=""):
+        focus_item = item if isinstance(item, dict) else {}
+        opening_label = str(focus_item.get("opening_label", "") or "").strip()
+        line_label = str(focus_item.get("line_label", "") or "").strip()
+        training_type_label = str(focus_item.get("training_type_label", "") or "").strip()
+        user_color_label = str(focus_item.get("user_color_label", "") or "").strip()
+        score_label = str(focus_item.get("score_label", focus_item.get("score_percent_label", "")) or "").strip()
+        focus_reason_label = str(focus_item.get("focus_reason_label", "") or "").strip()
+        if not focus_reason_label:
+            focus_reason_label = str((focus_item.get("priority_reasons", []) or [""])[0] or "").strip()
+        games_count = int(focus_item.get("games_count", 0) or 0)
+        normalized_training_type = training_type_label.strip().lower()
+
+        fallback_message = "Lotus Chess found a training item from your games. More detailed explanations will be added later."
+
+        if normalized_training_type == "opening repair":
+            why_today = f"This opening or line showed up as a weak or recurring pattern in your games."
+            if focus_reason_label and focus_reason_label.lower() not in {"weak line from your own games.", "weak line from your own games"}:
+                why_today = f"{why_today} {focus_reason_label.rstrip('.')}"
+            what_youll_practice = "You’ll learn the line, replay it with help, then test it without help."
+        elif normalized_training_type == "win the position":
+            why_today = "This is a practical chance to convert a position that looks good for you."
+            if focus_reason_label:
+                why_today = f"{why_today} {focus_reason_label.rstrip('.')}"
+            what_youll_practice = "You’ll look for the training move or line that keeps the advantage."
+        elif normalized_training_type == "save the position":
+            why_today = "This is a defensive recovery moment from your games."
+            if focus_reason_label:
+                why_today = f"{why_today} {focus_reason_label.rstrip('.')}"
+            what_youll_practice = "You’ll stay alive, avoid the immediate problem, or find the practical resource."
+        elif normalized_training_type == "avoid the disaster":
+            why_today = "This is a recurring danger pattern that led to a bad result."
+            if focus_reason_label:
+                why_today = f"{why_today} {focus_reason_label.rstrip('.')}"
+            what_youll_practice = "You’ll recognize the danger earlier and choose the safer line."
+        elif normalized_training_type == "review from your games":
+            why_today = "Lotus Chess found a useful review item from your games, but stronger engine-backed explanations will come later."
+            what_youll_practice = "You’ll replay the line and remember the key idea."
+        else:
+            why_bits = []
+            if focus_reason_label:
+                why_bits.append(focus_reason_label.rstrip("."))
+            if score_label and games_count > 0:
+                why_bits.append(f"Score in this pattern: {score_label} across {games_count} games")
+            if not why_bits and score_label:
+                why_bits.append(f"Current score in this pattern: {score_label}")
+            why_today = ". ".join(bit for bit in why_bits if bit).strip(". ")
+            if why_today:
+                why_today = f"{why_today}."
+            else:
+                why_today = default_why or fallback_message
+
+            practice_bits = []
+            if training_type_label:
+                practice_bits.append(training_type_label)
+            if opening_label:
+                practice_bits.append(opening_label)
+            if line_label:
+                practice_bits.append(line_label)
+            practice_subject = " -> ".join(practice_bits[:3]).strip()
+            if practice_subject:
+                color_prefix = f"As {user_color_label}, " if user_color_label else ""
+                what_youll_practice = f"{color_prefix}you'll work through {practice_subject}, then replay it with guidance before testing it without help."
+            else:
+                what_youll_practice = default_practice or fallback_message
+
+        if not why_today:
+            why_today = default_why or fallback_message
+        if not what_youll_practice:
+            what_youll_practice = default_practice or fallback_message
+
+        return {
+            "why_today": why_today,
+            "what_youll_practice": what_youll_practice,
+        }
+
     default_focus = {
         "focus_type": "empty",
-        "title": "No urgent weakness found yet.",
-        "reason": "Import more games or review recent games so Lotus Chess can choose what matters next.",
-        "primary_label": "Import games",
+        "title": "Today’s Focus",
+        "reason": "Import games first, then Lotus Chess will suggest what to train.",
+        "primary_label": "Start today’s training",
         "primary_url": url_for("chess_import"),
-        "secondary_label": "Advanced",
-        "secondary_url": "#chess-train-advanced",
+        "primary_note": "This currently opens imports because no personal training position is ready yet.",
         "priority_label": "",
         "opening_label": "",
         "line_label": "",
         "detail_label": "",
+        "user_color_label": "",
+        "score_label": "",
+        "focus_reason_label": "",
+        "training_type_label": "",
+        "why_today": "",
+        "what_youll_practice": "",
     }
 
     if not games:
@@ -4008,19 +4305,29 @@ def build_chess_train_today_focus(chess_data, auto_snapshot=None, review_snapsho
         line_label = str(current_item.get("line_label", "") or "").strip() or "Line pending"
         is_repeat = bool(current_item.get("repeat_needed", False))
         is_due_review = bool(current_item.get("due_now", False)) and not is_repeat
-        return {
+        focus = {
             "focus_type": "repeat_training" if is_repeat else ("due_review" if is_due_review else "continue_training"),
-            "title": "Try again" if is_repeat else ("Review now" if is_due_review else "Continue training."),
+            "title": "Today’s Focus",
             "reason": "Some puzzles need another try. Start with the positions you missed before." if is_repeat else ("This one is back for review. Keep the line fresh before it fades." if is_due_review else "This is the most useful thing to train now because the line is already queued from your weakest recent patterns."),
-            "primary_label": "Continue training",
-            "primary_url": url_for("chess_training_puzzle", candidate_id=current_item.get("id", "")),
-            "secondary_label": "Details",
-            "secondary_url": url_for("chess_training_session", candidate_id=current_item.get("id", "")),
+            "primary_label": "Start today’s training",
+            "primary_url": url_for("chess_training_puzzle", next="1"),
+            "primary_note": "This opens the current personal training position.",
             "priority_label": str(current_item.get("priority_label", "") or "").strip(),
             "opening_label": opening_label,
             "line_label": line_label,
             "detail_label": f"{opening_label} · {line_label}",
+            "user_color_label": str(current_item.get("user_color_label", "") or "").strip(),
+            "score_label": str(current_item.get("score_percent_label", "") or "").strip(),
+            "focus_reason_label": str((current_item.get("priority_reasons", []) or [""])[0] or "").strip(),
+            "training_type_label": str(current_item.get("training_type_label", "") or "").strip(),
+            "games_count": int(current_item.get("games_count", 0) or 0),
         }
+        focus.update(compose_focus_copy(
+            focus,
+            default_why=focus["reason"],
+            default_practice="You'll revisit the key idea, replay the line with guidance, and then test it cleanly on your own.",
+        ))
+        return focus
 
     top_candidate = dict(auto_payload.get("top_priority_candidate", {}) or {})
     if top_candidate and str(top_candidate.get("status", "") or "").strip().lower() == "candidate":
@@ -4031,36 +4338,55 @@ def build_chess_train_today_focus(chess_data, auto_snapshot=None, review_snapsho
         games_count = int(top_candidate.get("games_count", 0) or 0)
         is_repeat = bool(top_candidate.get("repeat_needed", False))
         is_due_review = bool(top_candidate.get("due_now", False)) and not is_repeat
-        return {
+        focus = {
             "focus_type": "repeat_candidate" if is_repeat else ("due_review" if is_due_review else "start_candidate"),
-            "title": "Try again" if is_repeat else ("Review now" if is_due_review else "Today's focus"),
+            "title": "Today’s Focus",
             "reason": "Some puzzles need another try. Start with the positions you missed before." if is_repeat else ("This one is back for review. Solve it cleanly to keep the idea fresh." if is_due_review else f"Because this line appears in your games and scores badly: {score_label} across {games_count} games."),
-            "primary_label": "Try again" if is_repeat else ("Review now" if is_due_review else "Start training"),
-            "primary_url": url_for("chess_training_puzzle", candidate_id=top_candidate.get("id", "")),
-            "secondary_label": "Details",
-            "secondary_url": url_for("chess_puzzles"),
+            "primary_label": "Start today’s training",
+            "primary_url": url_for("chess_training_puzzle", next="1"),
+            "primary_note": "This opens the best available personal training position.",
             "priority_label": priority_label,
             "opening_label": opening_label,
             "line_label": line_label,
             "detail_label": f"{opening_label} · {line_label}",
+            "user_color_label": str(top_candidate.get("user_color_label", "") or "").strip(),
+            "score_label": score_label,
+            "focus_reason_label": str((top_candidate.get("priority_reasons", []) or [""])[0] or "").strip(),
+            "training_type_label": str(top_candidate.get("training_type_label", "") or "").strip(),
+            "games_count": games_count,
         }
+        focus.update(compose_focus_copy(
+            focus,
+            default_why=focus["reason"],
+            default_practice="You'll learn the idea first, replay the moves with guidance, and then test the line without help.",
+        ))
+        return focus
 
     active_review_items = [dict(item) for item in (review_payload.get("active_items", []) or []) if isinstance(item, dict)]
     if active_review_items:
         review_item = active_review_items[0]
-        return {
+        focus = {
             "focus_type": "review_queue",
-            "title": "Review now",
+            "title": "Today’s Focus",
             "reason": "You have pending review items waiting, so the fastest useful next step is to work through the queue.",
-            "primary_label": "Review now",
+            "primary_label": "Start today’s training",
             "primary_url": url_for("chess_review_session", queue_id=review_item.get("id", "")),
-            "secondary_label": "Details",
-            "secondary_url": url_for("chess_review_session"),
+            "primary_note": "This currently opens your review session because that is the best available training step.",
             "priority_label": "",
             "opening_label": "",
             "line_label": "",
             "detail_label": str(review_item.get("title", "") or "").strip(),
+            "user_color_label": "",
+            "score_label": "",
+            "focus_reason_label": str(review_item.get("reason", "") or "").strip(),
+            "training_type_label": "Review from your games",
         }
+        focus.update(compose_focus_copy(
+            focus,
+            default_why=focus["reason"],
+            default_practice="You'll revisit the saved position, replay the idea with guidance, and review the moves that were hardest to remember.",
+        ))
+        return focus
 
     weak_lines = [dict(item) for item in (line_payload.get("weak", []) or []) if isinstance(item, dict)]
     if weak_lines:
@@ -4070,32 +4396,47 @@ def build_chess_train_today_focus(chess_data, auto_snapshot=None, review_snapsho
         opening_label = str(weak_line.get("opening_label", "") or "").strip() or "Unknown opening"
         line_label = str(weak_line.get("line_label", "") or "").strip() or "Line pending"
         score_label = str(weak_line.get("score_percent_label", "") or "").strip() or format_chess_percent(weak_line.get("score_percent", 0.0))
-        return {
+        focus = {
             "focus_type": "weak_line",
-            "title": "What you should work on now",
+            "title": "Today’s Focus",
             "reason": f"This branch is underperforming in your own games: {score_label} with repeated results worth reviewing.",
-            "primary_label": "View weak line",
+            "primary_label": "Start today’s training",
             "primary_url": url_for("chess_branch_detail", line_key=line_key, opening_key=opening_key) if opening_key else url_for("chess_branch_detail", line_key=line_key),
-            "secondary_label": "Details",
-            "secondary_url": url_for("chess_branches", opening_key=opening_key) if opening_key else url_for("chess_branches"),
+            "primary_note": "This currently opens the weakest known line because no direct guided trainer is ready for it yet.",
             "priority_label": "",
             "opening_label": opening_label,
             "line_label": line_label,
             "detail_label": f"{opening_label} · {line_label}",
+            "user_color_label": str(weak_line.get("user_color_label", "") or "").strip(),
+            "score_label": score_label,
+            "focus_reason_label": "Weak line from your own games.",
+            "training_type_label": "Opening repair",
+            "games_count": int(weak_line.get("total", 0) or 0),
         }
+        focus.update(compose_focus_copy(
+            focus,
+            default_why=focus["reason"],
+            default_practice="You'll review the line idea, replay the branch with guidance, and then test whether the moves feel natural without help.",
+        ))
+        return focus
 
     return {
         "focus_type": "no_urgent_weakness",
-        "title": "No urgent weakness found yet.",
-        "reason": "Review recent games or import more games so Lotus Chess can spot the next line that deserves training.",
-        "primary_label": "Review recent games",
+        "title": "Today’s Focus",
+        "reason": "Lotus Chess found a training item from your games. More detailed explanations will be added later.",
+        "primary_label": "Start today’s training",
         "primary_url": url_for("chess_games"),
-        "secondary_label": "Advanced",
-        "secondary_url": "#chess-train-advanced",
+        "primary_note": "Open your games to review recent material or import more games if you want Lotus Chess to surface a clearer next training step.",
         "priority_label": "",
         "opening_label": "",
         "line_label": "",
         "detail_label": "",
+        "user_color_label": "",
+        "score_label": "",
+        "focus_reason_label": "",
+        "training_type_label": "",
+        "why_today": "Lotus Chess found a training item from your games. More detailed explanations will be added later.",
+        "what_youll_practice": "Lotus Chess found a training item from your games. More detailed explanations will be added later.",
     }
 
 
@@ -4671,6 +5012,10 @@ def build_auto_puzzle_candidate_priority(candidate, opening_summary=None):
         opening_score = float(payload.get("opening_score_percent", opening_payload.get("score_percent", 0.0)) or 0.0)
     except Exception:
         opening_score = 0.0
+    try:
+        user_step_count = max(0, int(payload.get("user_step_count", 0) or 0))
+    except Exception:
+        user_step_count = 0
     status = normalize_chess_auto_candidate_status(payload.get("status", "candidate"))
     reason_bits = []
     score = 0.0
@@ -4727,6 +5072,31 @@ def build_auto_puzzle_candidate_priority(candidate, opening_summary=None):
     if opening_total >= 3 and opening_score <= 45:
         score += 12
         reason_bits.append("Opening family also underperforming")
+
+    start_phase = str(payload.get("start_phase", "") or "").strip().lower()
+    if start_phase == "transition":
+        score += 12
+        reason_bits.append("Opening repair spot")
+    elif start_phase == "opening":
+        score += 8
+    elif start_phase == "late":
+        score -= 16
+        reason_bits.append("Late game tail")
+    if user_step_count >= 3:
+        score += 8
+        reason_bits.append("Teachable continuation")
+    elif user_step_count < 2:
+        score -= 18
+        reason_bits.append("Too short to teach")
+    if bool(payload.get("ends_in_mate_against_user", False)):
+        score -= 22
+        reason_bits.append("Ends in mate against you")
+    if bool(payload.get("immediate_mate_against_user", False)):
+        score -= 18
+    if bool(payload.get("late_game_start", False)):
+        score -= 10
+    if bool(payload.get("very_late_start", False)):
+        score -= 12
 
     if status == "queued":
         score += 8
@@ -4861,10 +5231,152 @@ def choose_auto_puzzle_candidate_ply(game_entry, anchor_ply=None, preferred_min=
     add_start(2)
     add_start(0)
 
+    best_start = None
+    best_score = None
     for start_value in candidate_starts:
-        if has_future_user_move(start_value):
-            return start_value
-    return None
+        if not has_future_user_move(start_value):
+            continue
+        score = 0
+        if preferred_min <= start_value <= preferred_max:
+            score += 18
+        elif 6 <= start_value <= 22:
+            score += 10
+        elif start_value >= 28:
+            score -= 12
+        elif start_value >= 22:
+            score -= 6
+        if anchor_ply is not None:
+            try:
+                score -= abs(start_value - int(anchor_ply or 0))
+            except Exception:
+                pass
+        if best_score is None or score > best_score:
+            best_score = score
+            best_start = start_value
+    return best_start
+
+
+def build_personal_training_practicality(entry, start_ply=0, max_user_steps=4):
+    payload = entry if isinstance(entry, dict) else {}
+    positions = [dict(item) for item in (payload.get("positions", []) or []) if isinstance(item, dict)]
+    user_color = str(payload.get("user_color", "") or "").strip().lower()
+    result = {
+        "user_step_count": 0,
+        "start_phase": "opening",
+        "late_game_start": False,
+        "very_late_start": False,
+        "ends_in_mate_against_user": False,
+        "immediate_mate_against_user": False,
+        "too_short_to_teach": True,
+        "practicality_score": 0,
+        "fallback_review_label": False,
+    }
+    try:
+        start_value = max(0, int(start_ply or 0))
+    except Exception:
+        start_value = 0
+    if start_value >= 28:
+        result["start_phase"] = "late"
+        result["late_game_start"] = True
+    elif start_value >= 18:
+        result["start_phase"] = "middlegame"
+    elif start_value >= 10:
+        result["start_phase"] = "transition"
+    if start_value >= 40:
+        result["very_late_start"] = True
+
+    if user_color not in {"white", "black"} or len(positions) < 2:
+        result["fallback_review_label"] = True
+        return result
+
+    scan_ply = min(start_value, max(0, len(positions) - 2))
+    final_fen = ""
+    first_reply_fen = ""
+    user_steps = 0
+    while scan_ply < len(positions) - 1 and user_steps < max(1, int(max_user_steps or 4)):
+        before_position = dict(positions[scan_ply] or {})
+        if str(before_position.get("turn", "") or "").strip().lower() != user_color:
+            scan_ply += 1
+            continue
+        user_after = dict(positions[scan_ply + 1] or {})
+        expected_uci = str(user_after.get("last_move", "") or "").strip()
+        expected_san = str(user_after.get("move", "") or "").strip()
+        if not expected_uci or not expected_san:
+            break
+        advance_ply = scan_ply + 1
+        while advance_ply < len(positions) - 1 and str((positions[advance_ply] or {}).get("turn", "") or "").strip().lower() != user_color:
+            advance_ply += 1
+        final_fen = str((positions[advance_ply] or {}).get("fen", "") or "").strip() if advance_ply < len(positions) else str(user_after.get("fen", "") or "").strip()
+        if user_steps == 0:
+            first_reply_fen = final_fen
+        user_steps += 1
+        scan_ply = advance_ply
+
+    result["user_step_count"] = user_steps
+    result["too_short_to_teach"] = user_steps < 2
+    if chesslib is not None:
+        for field_name, target_key in (
+            ("immediate_mate_against_user", first_reply_fen),
+            ("ends_in_mate_against_user", final_fen),
+        ):
+            fen_value = str(target_key or "").strip()
+            if not fen_value:
+                continue
+            try:
+                board = chesslib.Board(fen_value)
+                result[field_name] = bool(board.is_checkmate() and board.turn == (user_color == "white"))
+            except Exception:
+                continue
+
+    score = 0
+    if result["start_phase"] == "transition":
+        score += 14
+    elif result["start_phase"] == "opening":
+        score += 10
+    elif result["start_phase"] == "middlegame":
+        score += 4
+    if user_steps >= 3:
+        score += 10
+    elif user_steps == 2:
+        score += 4
+    if result["too_short_to_teach"]:
+        score -= 18
+    if result["late_game_start"]:
+        score -= 14
+    if result["very_late_start"]:
+        score -= 14
+    if result["ends_in_mate_against_user"]:
+        score -= 20
+    if result["immediate_mate_against_user"]:
+        score -= 16
+    result["practicality_score"] = score
+    result["fallback_review_label"] = bool(
+        result["too_short_to_teach"]
+        or result["immediate_mate_against_user"]
+        or (result["ends_in_mate_against_user"] and result["late_game_start"])
+    )
+    return result
+
+
+def infer_personal_training_type(candidate):
+    item = candidate if isinstance(candidate, dict) else {}
+    if bool(item.get("fallback_review_label", False)):
+        return "Review from your games"
+    source_type = str(item.get("source_type", item.get("source", "")) or "").strip().lower()
+    user_result = str(item.get("source_user_result", "") or "").strip().lower()
+    try:
+        ply_index = max(0, int(item.get("ply_index", 0) or 0))
+    except Exception:
+        ply_index = 0
+    if source_type in {"weak_line", "weak_opening"} or ply_index <= 16:
+        return "Opening repair"
+    if user_result == "win":
+        return "Win the position"
+    if bool(item.get("ends_in_mate_against_user", False)):
+        return "Avoid the disaster"
+    if user_result in {"loss", "draw"}:
+        return "Save the position"
+    return "Opening repair"
 
 
 def build_auto_puzzle_candidate_from_game(data, game_entry, state_map=None, line_entry=None, opening_summary=None, source_type="lost_game", reason="", anchor_ply=None):
@@ -4930,6 +5442,7 @@ def build_auto_puzzle_candidate_from_game(data, game_entry, state_map=None, line
     moves = [str(move or "").strip() for move in (entry.get("moves", game.get("moves", []) or []) or []) if str(move or "").strip()]
     if target_ply < len(moves):
         next_move = moves[target_ply]
+    practicality = build_personal_training_practicality(entry, start_ply=target_ply, max_user_steps=4)
 
     if not reason:
         if source_value == "weak_line":
@@ -4980,6 +5493,7 @@ def build_auto_puzzle_candidate_from_game(data, game_entry, state_map=None, line
         "score_percent_label": format_chess_percent(stats_score_percent),
         "reason": reason,
         "next_move_label": next_move,
+        "training_type_label": "",
         "latest_date": str(line_payload.get("latest_game_date", entry.get("date_label", "")) or "").strip() or "Date pending",
         "game_available": True,
         "game_href": url_for("chess_game_detail", game_id=chess_game_url_id(game_id), ply=target_ply),
@@ -4988,7 +5502,9 @@ def build_auto_puzzle_candidate_from_game(data, game_entry, state_map=None, line
         "updated_at": str(state.get("updated_at", "") or "").strip(),
         "sort_value": entry.get("sort_value") or datetime.min,
     }
+    candidate.update(practicality)
     candidate.update(build_auto_puzzle_candidate_priority(candidate, opening_summary=opening_payload))
+    candidate["training_type_label"] = infer_personal_training_type(candidate)
     return candidate
 
 
@@ -4996,6 +5512,7 @@ def build_auto_puzzle_candidates_snapshot(data):
     payload = data if isinstance(data, dict) else default_chess_data()
     state_map = build_auto_puzzle_candidate_state_map(payload)
     latest_attempt_map = get_latest_puzzle_attempt_map(payload)
+    attempt_history_map = build_puzzle_attempt_history_map(payload)
     line_summary = build_opening_line_summary(payload, ply_count=8)
     opening_lookup = {
         str(item.get("key", "") or "").strip(): dict(item)
@@ -5023,6 +5540,37 @@ def build_auto_puzzle_candidates_snapshot(data):
     repeat_needed_count = 0
     due_now_count = 0
     mastered_count = 0
+
+    def candidate_quality_key(candidate):
+        item = candidate if isinstance(candidate, dict) else {}
+        return (
+            1 if bool(item.get("fallback_review_label", False)) else 0,
+            -(int(item.get("priority_score", 0) or 0)),
+            -(int(item.get("user_step_count", 0) or 0)),
+            int(item.get("ply_index", 0) or 0),
+            item.get("sort_value") or datetime.min,
+        )
+
+    def choose_best_candidate_for_games(game_entries, line_entry=None, opening_summary=None, source_type="lost_game", reason="", anchor_ply=None):
+        best_candidate = None
+        for game_entry in game_entries or []:
+            if not isinstance(game_entry, dict):
+                continue
+            candidate = build_auto_puzzle_candidate_from_game(
+                payload,
+                game_entry,
+                state_map=state_map,
+                line_entry=line_entry,
+                opening_summary=opening_summary,
+                source_type=source_type,
+                reason=reason,
+                anchor_ply=anchor_ply,
+            )
+            if not isinstance(candidate, dict):
+                continue
+            if best_candidate is None or candidate_quality_key(candidate) < candidate_quality_key(best_candidate):
+                best_candidate = candidate
+        return best_candidate
 
     def register_candidate(candidate, ignore_opening_cap=False):
         nonlocal repeat_needed_count, due_now_count, mastered_count
@@ -5058,6 +5606,26 @@ def build_auto_puzzle_candidates_snapshot(data):
         candidate["repeat_note"] = dict(repeat_state.get("repeat_note", {}) or {})
         candidate["base_status"] = normalize_chess_auto_candidate_status(candidate.get("status", "candidate"))
         candidate["status"] = str(repeat_state.get("effective_status", candidate["base_status"]) or candidate["base_status"]).strip().lower() or candidate["base_status"]
+        state_progress = normalize_auto_puzzle_progress(state_map.get(candidate_id, {}).get("raw", {}), attempt_history_map.get(candidate_id, {}))
+        candidate["training_key"] = str(state_progress.get("training_key", "") or candidate_id).strip() or candidate_id
+        candidate["attempt_count"] = safe_non_negative_int(state_progress.get("attempt_count", 0), 0)
+        candidate["completed_count"] = safe_non_negative_int(state_progress.get("completed_count", 0), 0)
+        candidate["clean_completed_count"] = safe_non_negative_int(state_progress.get("clean_completed_count", 0), 0)
+        candidate["skipped_count"] = safe_non_negative_int(state_progress.get("skipped_count", 0), 0)
+        candidate["difficult_attempt_count"] = safe_non_negative_int(state_progress.get("difficult_attempt_count", 0), 0)
+        candidate["last_attempt_at"] = str(state_progress.get("last_attempt_at", "") or "").strip()
+        candidate["last_completed_at"] = str(state_progress.get("last_completed_at", "") or "").strip()
+        candidate["last_result"] = str(state_progress.get("last_result", "") or "").strip()
+        candidate["last_wrong_count"] = safe_non_negative_int(state_progress.get("last_wrong_count", 0), 0)
+        candidate["last_reveal_used"] = bool(state_progress.get("last_reveal_used", False))
+        candidate["rotation_penalty"] = compute_auto_puzzle_rotation_penalty(
+            state_progress,
+            repeat_needed=bool(candidate["repeat_needed"]),
+            due_now=bool(candidate["due_now"]),
+            mastered=bool(candidate["mastered"]),
+        )
+        candidate["recent_completion_label"] = format_timestamp_label(candidate["last_completed_at"], default="") if candidate["last_completed_at"] else ""
+        candidate["selection_label"] = "Review" if candidate["completed_count"] > 0 else "Fresh"
         if candidate["repeat_needed"]:
             repeat_needed_count += 1
             priority_reasons = [str(item or "").strip() for item in (candidate.get("priority_reasons", []) or []) if str(item or "").strip()]
@@ -5107,7 +5675,6 @@ def build_auto_puzzle_candidates_snapshot(data):
         if not matching_games:
             continue
         matching_games.sort(key=lambda item: (1 if str(item.get("user_result", "") or "").strip().lower() == "loss" else 0, item.get("sort_value") or datetime.min), reverse=True)
-        representative = matching_games[0]
         reason = "Weak line from your games."
         if repeated_losses:
             reason = "Repeated losses in this branch."
@@ -5117,10 +5684,8 @@ def build_auto_puzzle_candidates_snapshot(data):
             reason = "Low score in this opening family."
         elif low_score:
             reason = "Low score in this branch."
-        candidate = build_auto_puzzle_candidate_from_game(
-            payload,
-            representative,
-            state_map=state_map,
+        candidate = choose_best_candidate_for_games(
+            matching_games[:6],
             line_entry=raw_line,
             opening_summary=opening_summary,
             source_type="weak_line",
@@ -5185,7 +5750,8 @@ def build_auto_puzzle_candidates_snapshot(data):
                 ),
                 reverse=True,
             )
-            for game_entry in matching_games:
+            best_candidate = None
+            for game_entry in matching_games[:6]:
                 line_entry = line_lookup.get(f"{opening_key}||{str(game_entry.get('line_key', '') or '').strip()}", {})
                 candidate = build_auto_puzzle_candidate_from_game(
                     payload,
@@ -5197,8 +5763,12 @@ def build_auto_puzzle_candidates_snapshot(data):
                     reason="Review this opening family from a loss-prone line.",
                     anchor_ply=max(8, int(game_entry.get("line_ply_count", 0) or 0)),
                 )
-                if register_candidate(candidate):
-                    break
+                if not isinstance(candidate, dict):
+                    continue
+                if best_candidate is None or candidate_quality_key(candidate) < candidate_quality_key(best_candidate):
+                    best_candidate = candidate
+            if register_candidate(best_candidate):
+                pass
             if len(candidate_items) >= coverage_target or len(candidate_items) >= max_candidates:
                 break
 
@@ -5245,27 +5815,32 @@ def build_auto_puzzle_candidates_snapshot(data):
         repeat_needed = bool(item.get("repeat_needed", False))
         due_now = bool(item.get("due_now", False))
         mastered = bool(item.get("mastered", False))
+        has_completion = safe_non_negative_int(item.get("completed_count", 0), 0) > 0
         if status_value in {"queued", "training"}:
             return 0
-        if status_value == "candidate" and repeat_needed and due_now:
+        if status_value == "candidate" and not has_completion:
             return 1
-        if status_value == "candidate" and due_now and not mastered:
+        if status_value == "candidate" and not repeat_needed and not mastered:
             return 2
-        if status_value == "candidate" and not mastered:
+        if status_value == "candidate" and repeat_needed and due_now:
             return 3
-        if status_value == "candidate" and mastered:
+        if status_value == "candidate" and repeat_needed:
             return 4
-        if status_value == "done" and mastered:
+        if status_value == "candidate" and due_now and not mastered:
             return 5
-        if status_value == "done":
+        if status_value == "candidate" and mastered:
             return 6
-        return 4
+        if status_value == "done" and mastered:
+            return 7
+        if status_value == "done":
+            return 8
+        return 9
 
     candidate_items.sort(
         key=lambda item: (
             candidate_sort_rank(item),
-            -(1 if bool(item.get("repeat_needed", False)) else 0),
-            -(1 if bool(item.get("due_now", False)) else 0),
+            int(item.get("rotation_penalty", 0) or 0),
+            -(1 if safe_non_negative_int(item.get("completed_count", 0), 0) <= 0 else 0),
             1 if bool(item.get("mastered", False)) else 0,
             -(int(item.get("priority_score", 0) or 0)),
             -(int(item.get("games_count", 0) or 0)),
@@ -5333,9 +5908,12 @@ def build_auto_training_session_payload(data, offset=0, candidate_id=""):
     ]
     session_items.sort(
         key=lambda item: (
-            -(1 if bool(item.get("repeat_needed", False)) else 0),
-            -(int(item.get("priority_score", 0) or 0)),
+            1 if bool(item.get("fallback_review_label", False)) else 0,
+            int(item.get("rotation_penalty", 0) or 0),
             0 if str(item.get("status", "") or "").strip().lower() == "queued" else 1,
+            -(int(item.get("priority_score", 0) or 0)),
+            -(1 if bool(item.get("repeat_needed", False)) else 0),
+            -(int(item.get("user_step_count", 0) or 0)),
             -(int(item.get("games_count", 0) or 0)),
             item.get("sort_value") or datetime.min,
         )
@@ -5417,9 +5995,12 @@ def build_auto_training_puzzle_payload(data, candidate_id=""):
     ]
     queue_items.sort(
         key=lambda item: (
-            -(1 if bool(item.get("repeat_needed", False)) else 0),
-            -(int(item.get("priority_score", 0) or 0)),
+            1 if bool(item.get("fallback_review_label", False)) else 0,
+            int(item.get("rotation_penalty", 0) or 0),
             0 if str(item.get("status", "") or "").strip().lower() == "queued" else 1,
+            -(int(item.get("priority_score", 0) or 0)),
+            -(1 if bool(item.get("repeat_needed", False)) else 0),
+            -(int(item.get("user_step_count", 0) or 0)),
             -(int(item.get("games_count", 0) or 0)),
             item.get("sort_value") or datetime.min,
         )
@@ -5578,6 +6159,24 @@ def build_auto_training_puzzle_payload(data, candidate_id=""):
     current_item["position_label"] = f"{current_index + 1} / {len(queue_items)}" if queue_items and current_in_queue else "Selected candidate"
     current_item["practice_url"] = url_for("chess_training_puzzle", candidate_id=current_item.get("id", ""))
     current_item["goal_message"] = build_personal_puzzle_goal(current_item)
+    first_step = dict(steps[0] or {}) if steps else {}
+    repeat_note = dict(current_item.get("repeat_note", {}) or {}) if isinstance(current_item.get("repeat_note"), dict) else {}
+    current_item["lesson_summary"] = {
+        "opening_label": str(current_item.get("opening_label", "") or "").strip() or "Unknown opening",
+        "user_color_label": str(current_item.get("user_color_label", "") or "").strip() or "Unknown",
+        "line_label": str(current_item.get("line_label", "") or "").strip() or "Line pending",
+        "training_type_label": str(current_item.get("training_type_label", "") or "").strip() or "Opening repair",
+        "your_move_label": str(repeat_note.get("last_wrong_move", "") or "").strip(),
+        "recommended_move_label": str(first_step.get("expected_move_san", "") or first_step.get("expected_move_uci", "") or "").strip(),
+        "explanation": str(first_step.get("expected_move_idea", "") or "").strip() or "Lotus Chess will add engine-backed explanations later.",
+        "mastery_label": "Needs review" if bool(current_item.get("repeat_needed", False)) else ("Mastered" if bool(current_item.get("mastered", False)) else "In progress"),
+    }
+    current_item["session_debug"] = {
+        "training_key": str(current_item.get("training_key", "") or current_item.get("id", "") or "").strip(),
+        "completed_count": safe_non_negative_int(current_item.get("completed_count", 0), 0),
+        "last_completed_at": str(current_item.get("last_completed_at", "") or "").strip(),
+        "rotation_penalty": safe_non_negative_int(current_item.get("rotation_penalty", 0), 0),
+    }
     if changed:
         save_chess_data(payload)
     next_puzzle_href = url_for("chess_training_puzzle", candidate_id=next_candidate_id) if next_candidate_id else url_for("chess_training_puzzle")
@@ -24069,7 +24668,7 @@ def build_lotus_chess_context(active_key="home"):
     drill_candidates = build_drill_candidates(chess_data)
     puzzle_seed_snapshot = build_chess_puzzle_seeds_snapshot(chess_data)
     auto_puzzle_snapshot = build_auto_puzzle_candidates_snapshot(chess_data)
-    lichess_puzzle_source_status = get_lichess_puzzle_source_status() if active_key == "puzzles" else {
+    lichess_puzzle_source_status = get_lichess_puzzle_source_status() if active_key in {"home", "puzzles", "lichess_puzzles"} else {
         "available": False,
         "availability_label": "Missing",
         "count": 0,
@@ -24093,67 +24692,50 @@ def build_lotus_chess_context(active_key="home"):
     )
 
     nav_items = [
-        {"key": "home", "label": "Home", "href": url_for("chess"), "icon": "layout-dashboard"},
-        {"key": "import", "label": "Import", "href": url_for("chess_import"), "icon": "download"},
-        {"key": "games", "label": "Games", "href": url_for("chess_games"), "icon": "library-big"},
+        {"key": "home", "label": "Today", "href": url_for("chess"), "icon": "layout-dashboard"},
+        {"key": "train", "label": "My Training", "href": url_for("chess_train"), "icon": "target"},
+        {"key": "lichess_puzzles", "label": "Lichess Puzzles", "href": url_for("chess_lichess_puzzles"), "icon": "sparkles"},
         {"key": "openings", "label": "Openings", "href": url_for("chess_openings"), "icon": "waypoints"},
-        {"key": "branches", "label": "Branches", "href": url_for("chess_branches"), "icon": "git-branch"},
-        {"key": "train", "label": "Train", "href": url_for("chess_train"), "icon": "target"},
-        {"key": "drills", "label": "Drills", "href": url_for("chess_drills"), "icon": "swords"},
-        {"key": "puzzles", "label": "Puzzles", "href": url_for("chess_puzzles"), "icon": "sparkles"},
-        {"key": "progress", "label": "Progress", "href": url_for("chess_progress"), "icon": "activity"},
-        {"key": "courses", "label": "Courses", "href": url_for("chess_courses"), "icon": "graduation-cap"},
+        {"key": "advanced", "label": "Advanced", "href": url_for("chess_advanced"), "icon": "sliders-horizontal"},
     ]
     area_content = {
         "home": {
             "eyebrow": "Lotus Chess",
-            "title": "Simple outside. Deep inside.",
-            "summary": "A personal chess workspace centered on your games, your opening habits, and the next training action that actually matters.",
-            "cta_primary": {"label": "Start with Import", "href": url_for("chess_import")},
-            "cta_secondary": {"label": "Browse Games", "href": url_for("chess_games")},
-            "cards": build_chess_home_cards(
-                chess_data,
-                train_today_count=training_recommendations.get("train_today_count", 0),
-                review_queue_count=review_snapshot.get("active_count", 0),
-                progress_score_percent=progress_summary.get("overall", {}).get("score_percent", 0.0),
-                courses_saved_count=len(courses),
-                drills_count=len(drill_candidates),
-                puzzle_seeds_count=puzzle_seed_snapshot.get("total_count", 0),
-            ),
-            "sections": [
+            "title": "What should I train today?",
+            "summary": "Lotus Chess is your minimal personal trainer: opening-first, built from your own games, with Lichess tactics kept separate.",
+            "cta_primary": {"label": "Start training", "href": url_for("chess_train")},
+            "cta_secondary": {"label": "Advanced tools", "href": url_for("chess_advanced")},
+            "cards": [
+                {"label": "Imported games", "value": str(len(games)) if games else "0"},
+                {"label": "Openings tracked", "value": str(progress_summary.get("openings", {}).get("tracked", 0) or 0)},
+                {"label": "Lichess puzzles", "value": str(lichess_puzzle_source_status.get("count", 0) or 0)},
+            ],
+            "entry_points": [
                 {
-                    "title": "Why Lotus Chess",
-                    "description": "Built to turn your real games into opening awareness, weak-line review, and focused training.",
+                    "title": "My Training",
+                    "description": "Train the lines and positions Lotus Chess picks from your own games.",
+                    "href": url_for("chess_train"),
+                    "link_label": "Open My Training",
                 },
                 {
-                    "title": "Lotus Chess V0",
-                    "description": "Home, Import, Games, Openings, Train, Progress, and Courses. Local only. Result-based. Engine analysis comes later.",
+                    "title": "Lichess Puzzles",
+                    "description": "Solve best-move tactical sequences without mixing them into your personal trainer flow.",
+                    "href": url_for("chess_lichess_puzzles"),
+                    "link_label": "Open Lichess Puzzles",
                 },
                 {
-                    "title": "Imported games",
-                    "description": f"{len(games)} local games ready to browse. Open the games browser to inspect results, time classes, and raw PGNs.",
-                    "href": url_for("chess_games"),
-                    "link_label": "Open games browser",
-                },
-                {
-                    "title": "Branch Map",
-                    "description": f"{opening_line_summary.get('tracked', 0)} recurring branches grouped from your own first moves.",
-                    "href": url_for("chess_branches"),
-                    "link_label": "Open branch map",
-                },
-                {
-                    "title": "Drills",
-                    "description": f"{len(drill_candidates)} local drill positions ready from your own stored games.",
-                    "href": url_for("chess_drills"),
-                    "link_label": "Start drills",
-                },
-                {
-                    "title": "Puzzle seeds",
-                    "description": f"{puzzle_seed_snapshot.get('total_count', 0)} saved personal positions ready for future training.",
-                    "href": url_for("chess_puzzles"),
-                    "link_label": "Open puzzle seeds",
+                    "title": "Openings",
+                    "description": "Review the opening habits, weak branches, and recurring lines shaping your training.",
+                    "href": url_for("chess_openings"),
+                    "link_label": "Open Openings",
                 },
             ],
+            "advanced_entry": {
+                "title": "Advanced tools",
+                "description": "Imports, games, branches, drills, training prep, progress, courses, and deeper system tools live here.",
+                "href": url_for("chess_advanced"),
+                "link_label": "Open Advanced tools",
+            },
         },
         "import": {
             "eyebrow": "Import",
@@ -24229,23 +24811,23 @@ def build_lotus_chess_context(active_key="home"):
             ],
         },
         "train": {
-            "eyebrow": "Train",
-            "title": "Train Today",
-            "summary": "Lotus Chess chooses the most useful next thing to train from your own games. Engine analysis comes later.",
+            "eyebrow": "My Training",
+            "title": "My Training",
+            "summary": "Your personal training loop comes from your own games, weak lines, and review needs. Lichess tactics stay separate.",
             "cards": [
-                {"label": "Queued training", "value": str(int((auto_puzzle_snapshot.get("counts", {}) or {}).get("queued", 0) or 0) + int((auto_puzzle_snapshot.get("counts", {}) or {}).get("training", 0) or 0))},
-                {"label": "Top weak candidates", "value": str(auto_puzzle_snapshot.get("visible_count", 0) or 0)},
+                {"label": "Positions ready", "value": str(int((auto_puzzle_snapshot.get("counts", {}) or {}).get("queued", 0) or 0) + int((auto_puzzle_snapshot.get("counts", {}) or {}).get("training", 0) or 0))},
+                {"label": "Training in progress", "value": str(int((auto_puzzle_snapshot.get("counts", {}) or {}).get("training", 0) or 0))},
                 {"label": "Review items", "value": str(review_snapshot.get("active_count", 0) or 0)},
                 {"label": "Recurring lines", "value": str(opening_line_summary.get("tracked", 0) or 0)},
             ],
             "sections": [
                 {
-                    "title": "Train Today",
-                    "description": "One recommendation, one main action, then quiet access to the deeper tools.",
+                    "title": "Today’s workout",
+                    "description": "One recommendation, one next action, then a quiet path into the deeper trainer tools.",
                 },
                 {
                     "title": "Advanced tools",
-                    "description": "Candidates, puzzles, branches, and review are still here when you want them, but they no longer compete at the top.",
+                    "description": "Operational trainer tools still exist, but they stay out of the way until you want them.",
                 },
             ],
         },
@@ -24361,6 +24943,30 @@ def build_lotus_chess_context(active_key="home"):
                     "title": "Future curation",
                     "description": "When courses arrive, they should connect back to your repertoire, weak lines, and training backlog instead of behaving like a separate media shelf.",
                 },
+            ],
+        },
+        "advanced": {
+            "eyebrow": "Advanced tools",
+            "title": "Advanced tools",
+            "summary": "Operational Lotus Chess pages live here so the trainer front door can stay calm and focused.",
+            "cta_primary": {"label": "My Training", "href": url_for("chess_train")},
+            "cta_secondary": {"label": "Back to Today", "href": url_for("chess")},
+            "cards": [
+                {"label": "Imported games", "value": str(len(games)) if games else "0"},
+                {"label": "Prepared imports", "value": str(len(imports)) if imports else "0"},
+                {"label": "Personal positions", "value": str(puzzle_seed_snapshot.get("total_count", 0) or 0)},
+                {"label": "Review items", "value": str(review_snapshot.get("active_count", 0) or 0)},
+            ],
+            "tool_sections": [
+                {"title": "Imports", "description": "Bring in Chess.com or Lichess games for the personal trainer foundation.", "href": url_for("chess_import"), "link_label": "Open imports"},
+                {"title": "Games", "description": "Browse imported games, raw records, and game-level context.", "href": url_for("chess_games"), "link_label": "Open games"},
+                {"title": "Branches", "description": "Inspect recurring branches and line structure from your own games.", "href": url_for("chess_branches"), "link_label": "Open branches"},
+                {"title": "Drills", "description": "Use stored move-recall drills built from your own positions.", "href": url_for("chess_drills"), "link_label": "Open drills"},
+                {"title": "My Training Tools", "description": "Manage personal training positions, puzzle prep, and the raw trainer-side queue.", "href": url_for("chess_puzzles"), "link_label": "Open training tools"},
+                {"title": "Review Session", "description": "Work through saved review items from your training flow.", "href": url_for("chess_review_session"), "link_label": "Open review"},
+                {"title": "Progress", "description": "Inspect local progress and result-based summaries.", "href": url_for("chess_progress"), "link_label": "Open progress"},
+                {"title": "Courses", "description": "Manage course resources that support your repertoire and training.", "href": url_for("chess_courses"), "link_label": "Open courses"},
+                {"title": "Engine", "description": "Open the local engine status and analysis utilities.", "href": url_for("chess_engine"), "link_label": "Open engine"},
             ],
         },
     }
@@ -25056,6 +25662,9 @@ def build_lichess_puzzle_solver_payload(puzzle_id="", filter_payload=None):
         "already_solved": current_solved_clean,
         "progress_status": normalize_lichess_progress_status((current_progress or {}).get("status")) if current_progress else "",
         "progress_status_label": "Solved clean" if current_solved_clean else ("Needs another try" if current_progress else "Unseen"),
+        "times_seen": int((current_progress or {}).get("times_seen", 0) or 0),
+        "times_missed": int((current_progress or {}).get("times_missed", 0) or 0),
+        "times_solved": int((current_progress or {}).get("times_solved", 0) or 0),
     }
     next_query = build_lichess_solver_query_args(active_filter_payload)
     base_payload.update({
@@ -25079,7 +25688,12 @@ def render_lotus_chess_page(active_key="home"):
 
 @app.route("/chess", endpoint="chess")
 def chess():
-    return render_lotus_chess_page("home")
+    return render_template("chess_home.html", **build_lotus_chess_context("home"))
+
+
+@app.route("/chess/advanced", endpoint="chess_advanced")
+def chess_advanced():
+    return render_template("chess_advanced.html", **build_lotus_chess_context("advanced"))
 
 
 @app.route("/chess/import", endpoint="chess_import")
@@ -25337,7 +25951,7 @@ def chess_puzzles():
 
 @app.route("/chess/lichess-puzzles", endpoint="chess_lichess_puzzles")
 def chess_lichess_puzzles():
-    context = build_lotus_chess_context("puzzles")
+    context = build_lotus_chess_context("lichess_puzzles")
     lichess_source_status = get_lichess_puzzle_source_status()
     chess_data = load_chess_data()
     custom_filters = parse_lichess_custom_filters(lichess_source_status, request.args)
@@ -25363,25 +25977,25 @@ def chess_lichess_puzzles():
     context["chess_lichess_puzzles_status"] = {
         "badge": lichess_source_status.get("availability_label", "Coming soon") if lichess_source_status.get("available") else "Coming soon",
         "title": "Lichess puzzles",
-        "summary": "Practice tactical puzzles from the Lichess puzzle database without mixing them into My Puzzles.",
+        "summary": "Solve tactical puzzles from the local Lichess sample in a normal puzzle flow.",
         "status_line": (
             f"{lichess_source_status.get('count', 0)} local puzzles loaded"
             if lichess_source_status.get("available")
             else "Local source not imported yet."
         ),
-        "primary_label": "Coming later" if not lichess_source_status.get("available") else "Solve puzzles",
-        "primary_url": url_for("chess_puzzles") if not lichess_source_status.get("available") else url_for("chess_lichess_puzzle_solve"),
-        "secondary_label": "Back to My Puzzles",
-        "secondary_url": url_for("chess_puzzles"),
+        "primary_label": "Coming later" if not lichess_source_status.get("available") else "Start solving",
+        "primary_url": url_for("chess_advanced") if not lichess_source_status.get("available") else url_for("chess_lichess_puzzle_solve"),
+        "secondary_label": "Back to Chess",
+        "secondary_url": url_for("chess"),
         "sections": [
             {
                 "title": "Solve Puzzles",
                 "description": (
-                    "Coming soon. This hub will eventually launch structured Lichess puzzle solving without mixing into My Puzzles."
+                    "Add the local sample first, then this hub will launch a normal puzzle-solving flow."
                     if not lichess_source_status.get("available")
-                    else f"{lichess_source_status.get('count', 0)} local sample puzzles are loaded and ready for future solving."
+                    else f"{lichess_source_status.get('count', 0)} local sample puzzles are loaded and ready to solve."
                 ),
-                "status": "Coming soon" if not lichess_source_status.get("available") else "Sample loaded",
+                "status": "Waiting on sample" if not lichess_source_status.get("available") else "Ready",
             },
             {
                 "title": "Custom",
@@ -25421,7 +26035,7 @@ def chess_lichess_puzzles():
 @app.route("/chess/lichess-puzzles/solve/<path:puzzle_id>", endpoint="chess_lichess_puzzle_solve_by_id")
 def chess_lichess_puzzle_solve(puzzle_id=""):
     payload = build_lichess_puzzle_solver_payload(puzzle_id=puzzle_id, filter_payload=request.args)
-    context = build_lotus_chess_context("puzzles")
+    context = build_lotus_chess_context("lichess_puzzles")
     context["chess_lichess_puzzle_solver"] = payload
     context["title"] = "Lotus Chess | Solve Lichess Puzzle"
     return render_template("chess_lichess_puzzle_solve.html", **context)
@@ -25760,6 +26374,11 @@ def chess_openings():
 
 @app.route("/chess/train", endpoint="chess_train")
 def chess_train():
+    return render_template("chess_train.html", **build_lotus_chess_context("train"))
+
+
+@app.route("/chess/my-training", endpoint="chess_my_training")
+def chess_my_training():
     return render_template("chess_train.html", **build_lotus_chess_context("train"))
 
 

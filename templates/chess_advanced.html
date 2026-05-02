@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="page-hero chess-hero">
+    <div class="hero-meta">
+        <span class="hero-badge matte-tag">Lotus Chess</span>
+        <span>Advanced tools</span>
+    </div>
+    <h2>{{ chess_area.title }}</h2>
+    <p class="subhead">{{ chess_area.summary }}</p>
+</section>
+
+<nav class="surface-card chess-subnav" aria-label="Lotus Chess areas">
+    {% for item in chess_nav_items %}
+    <a class="chess-subnav-link {{ 'active' if item.key == chess_active_key else '' }}" href="{{ item.href }}">
+        <i data-lucide="{{ item.icon }}"></i>
+        <span>{{ item.label }}</span>
+    </a>
+    {% endfor %}
+</nav>
+
+<section class="chess-main chess-train-page">
+    {% if chess_success_message %}
+    <div class="chess-banner chess-banner-success">{{ chess_success_message }}</div>
+    {% endif %}
+    {% if chess_error_message %}
+    <div class="chess-banner chess-banner-error">{{ chess_error_message }}</div>
+    {% endif %}
+
+    <section class="surface-card section-card chess-focus-card">
+        <div class="hero-meta">
+            <span class="hero-badge matte-tag">{{ chess_area.eyebrow }}</span>
+            <span>Keep the front door calm</span>
+        </div>
+        <h3 class="title-scaled chess-section-title">{{ chess_area.title }}</h3>
+        <p class="subhead chess-section-copy">{{ chess_area.summary }}</p>
+        <div class="chess-hero-actions">
+            <a class="btn" href="{{ chess_area.cta_primary.href }}"><i data-lucide="target"></i><span>{{ chess_area.cta_primary.label }}</span></a>
+            <a class="btn chess-inline-btn" href="{{ chess_area.cta_secondary.href }}"><i data-lucide="arrow-left"></i><span>{{ chess_area.cta_secondary.label }}</span></a>
+        </div>
+    </section>
+
+    <section class="chess-overview-grid">
+        {% for card in chess_area.cards %}
+        <article class="surface-card chess-overview-card">
+            <span class="chess-card-label">{{ card.label }}</span>
+            <strong class="chess-card-value">{{ card.value }}</strong>
+        </article>
+        {% endfor %}
+    </section>
+
+    <section class="chess-section-grid">
+        {% for tool in chess_area.tool_sections %}
+        <article class="surface-card chess-section-card">
+            <h3>{{ tool.title }}</h3>
+            <p>{{ tool.description }}</p>
+            <a class="btn chess-inline-btn" href="{{ tool.href }}">
+                <i data-lucide="arrow-up-right"></i><span>{{ tool.link_label }}</span>
+            </a>
+        </article>
+        {% endfor %}
+    </section>
+</section>
+{% endblock %}

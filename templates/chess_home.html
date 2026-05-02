@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="page-hero chess-hero">
+    <div class="hero-meta">
+        <span class="hero-badge matte-tag">Lotus Chess</span>
+        <span>Today</span>
+    </div>
+    <h2>{{ chess_area.title }}</h2>
+    <p class="subhead">{{ chess_area.summary }}</p>
+</section>
+
+<nav class="surface-card chess-subnav" aria-label="Lotus Chess areas">
+    {% for item in chess_nav_items %}
+    <a class="chess-subnav-link {{ 'active' if item.key == chess_active_key else '' }}" href="{{ item.href }}">
+        <i data-lucide="{{ item.icon }}"></i>
+        <span>{{ item.label }}</span>
+    </a>
+    {% endfor %}
+</nav>
+
+<section class="chess-main chess-train-page">
+    {% if chess_success_message %}
+    <div class="chess-banner chess-banner-success">{{ chess_success_message }}</div>
+    {% endif %}
+    {% if chess_error_message %}
+    <div class="chess-banner chess-banner-error">{{ chess_error_message }}</div>
+    {% endif %}
+
+    <section class="surface-card section-card chess-focus-card">
+        <div class="hero-meta">
+            <span class="hero-badge matte-tag">Today’s Workout</span>
+            {% if chess_train_today_focus.priority_label %}
+            <span>{{ chess_train_today_focus.priority_label }}</span>
+            {% else %}
+            <span>Smart pick</span>
+            {% endif %}
+        </div>
+        <h3 class="title-scaled chess-section-title">{{ chess_train_today_focus.title }}</h3>
+        <p class="subhead chess-section-copy">{{ chess_train_today_focus.reason }}</p>
+        {% if chess_train_today_focus.detail_label %}
+        <p class="chess-summary-note">{{ chess_train_today_focus.detail_label }}</p>
+        {% endif %}
+        <div class="chess-review-queue-meta">
+            {% for card in chess_area.cards %}
+            <span>{{ card.label }}: {{ card.value }}</span>
+            {% endfor %}
+        </div>
+        <div class="chess-hero-actions">
+            <a class="btn" href="{{ url_for('chess_train') }}"><i data-lucide="play-circle"></i><span>Start training</span></a>
+        </div>
+    </section>
+
+    <section class="chess-section-grid">
+        {% for entry in chess_area.entry_points %}
+        <article class="surface-card chess-section-card">
+            <h3>{{ entry.title }}</h3>
+            <p>{{ entry.description }}</p>
+            <a class="btn chess-inline-btn" href="{{ entry.href }}">
+                <i data-lucide="arrow-up-right"></i><span>{{ entry.link_label }}</span>
+            </a>
+        </article>
+        {% endfor %}
+    </section>
+
+    <section class="surface-card section-card chess-train-section">
+        <div class="hero-meta">
+            <span class="hero-badge matte-tag">{{ chess_area.advanced_entry.title }}</span>
+            <span>Hidden from the main workout</span>
+        </div>
+        <p class="chess-summary-note">{{ chess_area.advanced_entry.description }}</p>
+        <div class="chess-hero-actions">
+            <a class="btn chess-inline-btn" href="{{ chess_area.advanced_entry.href }}">
+                <i data-lucide="sliders-horizontal"></i><span>{{ chess_area.advanced_entry.link_label }}</span>
+            </a>
+        </div>
+    </section>
+</section>
+{% endblock %}
