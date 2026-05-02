@@ -2840,3 +2840,128 @@ h2{font-size:clamp(2.2rem,4vw,3.6rem);margin-top:14px;letter-spacing:-.03em}.det
   }
 }
 
+@media (max-width:700px){
+  .chess-hero,
+  .chess-shell,
+  .chess-main,
+  .chess-puzzle-session,
+  .chess-puzzle-session-layout,
+  .chess-puzzle-board-column,
+  .chess-puzzle-coach-panel,
+  .chess-puzzle-board-stage,
+  .chess-puzzle-review-controls,
+  .chess-puzzle-context-card,
+  .chess-puzzle-move-compare,
+  .chess-board-review-card,
+  .chess-trainer-feedback-card,
+  .chess-train-section,
+  .chess-focus-card,
+  .chess-import-form,
+  .chess-puzzle-grid{
+    min-width:0;
+    max-width:100%;
+  }
+
+  .chess-subnav{
+    flex-wrap:nowrap;
+    overflow-x:auto;
+    overflow-y:hidden;
+    -webkit-overflow-scrolling:touch;
+    white-space:nowrap;
+    padding:10px 12px;
+    gap:8px;
+  }
+
+  .chess-subnav-link{
+    flex:0 0 auto;
+  }
+
+  .chess-hero-actions,
+  .chess-board-review-actions,
+  .chess-review-queue-actions,
+  .chess-puzzle-controls{
+    flex-direction:column;
+    align-items:stretch;
+  }
+
+  .chess-hero-actions .btn,
+  .chess-board-review-actions .btn,
+  .chess-review-queue-actions .btn,
+  .chess-puzzle-controls .btn{
+    width:100%;
+  }
+
+  .chess-review-queue-meta{
+    display:grid;
+    grid-template-columns:1fr;
+    gap:8px;
+  }
+
+  .chess-puzzle-session-layout{
+    grid-template-columns:minmax(0, 1fr);
+  }
+
+  .chess-puzzle-board-stage{
+    padding:12px;
+    border-radius:20px;
+  }
+
+  .chess-board-stage{
+    max-width:100%;
+  }
+
+  .chess-puzzle-review-controls,
+  .chess-puzzle-context-card,
+  .chess-puzzle-move-compare,
+  .chess-board-review-card,
+  .chess-trainer-feedback-card{
+    padding:12px 14px;
+  }
+
+  .chess-puzzle-review-buttons{
+    justify-content:stretch;
+  }
+
+  .chess-review-nav-btn{
+    flex:1 1 52px;
+  }
+
+  .chess-puzzle-moves-list{
+    max-height:none;
+  }
+
+  .chess-puzzle-preset-grid{
+    gap:8px;
+  }
+
+  .chess-puzzle-preset-option{
+    display:grid;
+    grid-template-columns:auto minmax(0, 1fr);
+    align-items:start;
+    gap:10px;
+    width:100%;
+    min-width:0;
+    padding:12px;
+  }
+
+  .chess-puzzle-preset-option input{
+    margin-top:4px;
+  }
+
+  .chess-puzzle-preset-copy{
+    min-width:0;
+    gap:4px;
+  }
+
+  .chess-puzzle-preset-copy strong,
+  .chess-puzzle-preset-copy small{
+    overflow-wrap:anywhere;
+    word-break:break-word;
+    line-height:1.45;
+  }
+
+  .chess-import-grid{
+    grid-template-columns:1fr;
+  }
+}
+

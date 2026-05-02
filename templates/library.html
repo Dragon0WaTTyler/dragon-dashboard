@@ -116,6 +116,53 @@
 .movie-library-card{
     cursor:pointer;
 }
+
+@media (max-width:700px){
+    .movies-hero-actions{
+        flex-direction:column;
+        align-items:stretch;
+    }
+
+    .movies-hero-actions .btn{
+        width:100%;
+    }
+
+    .filter-form{
+        grid-template-columns:1fr;
+    }
+
+    #movieRecommendationResults .detail-grid{
+        grid-template-columns:1fr !important;
+        gap:14px !important;
+    }
+
+    #movieRecommendationResults .detail-grid > div{
+        min-width:0;
+    }
+
+    #movieRecommendationResults .content-card.media-card{
+        width:100% !important;
+        max-width:100% !important;
+    }
+
+    #movieRecommendationResults .surface-card.section-card{
+        padding:16px !important;
+    }
+
+    #movieRecommendationResults .info-stack{
+        margin-top:12px !important;
+    }
+
+    #movieRecommendationResults .hero-meta{
+        gap:8px;
+    }
+
+    #movieRecommendationResults .card-title,
+    #movieRecommendationResults .card-meta{
+        overflow-wrap:anywhere;
+        word-break:break-word;
+    }
+}
 </style>
 <section class="surface-card section-card movie-filters-card">
     <form method="get" class="filter-form">
