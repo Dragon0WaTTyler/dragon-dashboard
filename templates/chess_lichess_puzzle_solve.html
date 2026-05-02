@@ -288,6 +288,7 @@
   let dragHoverSquare = "";
   let dragGhostNode = null;
   let dragGhostMarkup = "";
+  let dragStartedFromSelectedSquare = false;
   let suppressNextSquareClick = false;
   let suppressTouchClickUntil = 0;
   let activePointerId = null;
@@ -1438,22 +1439,48 @@
   function clearBoardSelectionMarks(resetState = true) {
     clearDragVisualState();
     if (resetState) selectedSquare = "";
+    releaseDragPointerCapture(dragPointerId);
     dragSourceSquare = "";
     dragPointerId = null;
     pendingTapSquare = "";
     activePointerId = null;
     activeInteractionToken = null;
     finalizedInteractionToken = null;
+    dragStartedFromSelectedSquare = false;
+    setBoardScrollLock(false);
     if (!boardNode) return;
     boardNode.querySelectorAll(".chess-board-square.selected, .chess-board-square.legal-target, .chess-board-square.drag-source").forEach((square) => {
       square.classList.remove("selected", "legal-target", "drag-source");
+    });
+    boardNode.querySelectorAll(".chess-board-piece.dragging-origin").forEach((pieceNode) => {
+      pieceNode.classList.remove("dragging-origin");
     });
     syncBoardDebug({ selectedSquare, dragSourceSquare: "" });
   }
 
   function clearDragVisualState() {
     setDragSourceVisualState(false);
+    if (boardNode) {
+      boardNode.querySelectorAll(".chess-board-square.drag-source").forEach((squareNode) => {
+        squareNode.classList.remove("drag-source");
+      });
+      boardNode.querySelectorAll(".chess-board-piece.dragging-origin").forEach((pieceNode) => {
+        pieceNode.classList.remove("dragging-origin");
+      });
+    }
     removeDragGhost();
+  }
+
+  function clearActivePieceInteraction(reason = "cleared") {
+    cancelPieceDrag();
+    selectedSquare = "";
+    pendingTapSquare = "";
+    activePointerId = null;
+    activeInteractionToken = null;
+    finalizedInteractionToken = null;
+    dragStartedFromSelectedSquare = false;
+    setBoardScrollLock(false);
+    syncBoardDebug({ selectedSquare: "", dragSourceSquare: "", activePointerId: null, lastAction: `piece:${reason}` });
   }
 
   function clearManualStudyMarks(skipRender = false) {
@@ -1563,14 +1590,11 @@
   }
 
   function cancelActiveBoardInteraction(reason = "cancelled") {
-    const hadDrag = Boolean(dragSourceSquare);
+    const hadPieceInteraction = Boolean(selectedSquare || dragSourceSquare || pendingTapSquare || activePointerId != null);
     const hadManual = Boolean(manualDrawActive);
-    const hadTap = Boolean(pendingTapSquare || activePointerId != null);
-    if (!hadDrag && !hadManual && !hadTap) return;
-    cancelPieceDrag();
+    if (!hadPieceInteraction && !hadManual) return;
+    clearActivePieceInteraction(reason);
     cancelManualDraw();
-    pendingTapSquare = "";
-    activePointerId = null;
     setBoardScrollLock(false);
     blockSyntheticTouchClick(300);
     refreshCurrentBoard({ refreshArrows: false });
@@ -1641,6 +1665,7 @@
     const liveBoardNode = refreshBoardNode();
     dragSourceSquare = String(squareName || "").trim();
     if (!dragSourceSquare) return false;
+    dragStartedFromSelectedSquare = selectedSquare === dragSourceSquare;
     dragPointerId = pointerId == null ? null : pointerId;
     dragMoved = false;
     dragHoverSquare = dragSourceSquare;
@@ -1667,6 +1692,7 @@
     dragCurrentClientY = 0;
     dragHoverSquare = "";
     dragGhostMarkup = "";
+    dragStartedFromSelectedSquare = false;
     pendingTapSquare = "";
     activePointerId = null;
     activeInteractionToken = null;
@@ -1723,21 +1749,22 @@
     const sourceSquare = dragSourceSquare;
     const releasedOutsideBoard = Boolean(event) && !squareMeta.insideBoard;
     const shouldAttemptDragMove = isDragOrClickMode() && dragMoved && !releasedOutsideBoard && sourceSquare && endSquare && sourceSquare !== endSquare;
-    const shouldTreatAsClick = isDragOrClickMode() && !dragMoved && !releasedOutsideBoard && sourceSquare && endSquare === sourceSquare;
+    const shouldCancelSameSquare = isDragOrClickMode() && !dragMoved && !releasedOutsideBoard && sourceSquare && endSquare === sourceSquare && dragStartedFromSelectedSquare;
+    const shouldTreatAsClick = isDragOrClickMode() && !dragMoved && !releasedOutsideBoard && sourceSquare && endSquare === sourceSquare && !shouldCancelSameSquare;
     const shouldSuppressClick = dragMoved;
     cancelPieceDrag();
     if (event && event.pointerType === "touch") blockSyntheticTouchClick(900);
     syncBoardDebug({
       dragReleased: true,
       lastPointerUp: event ? `${event.type}:${event.pointerType || "mouse"}:${sourceSquare}->${endSquare || ""}` : "release",
-      lastPointerUpSummary: `${endSquare || sourceSquare || "-"} / ${releasedOutsideBoard ? "cancelled-outside-board" : (shouldAttemptDragMove ? "attempted" : (shouldTreatAsClick ? "selected" : "cancelled"))}`,
+      lastPointerUpSummary: `${endSquare || sourceSquare || "-"} / ${releasedOutsideBoard ? "cancelled-outside-board" : (shouldAttemptDragMove ? "attempted" : (shouldCancelSameSquare ? "cancelled-selection" : (shouldTreatAsClick ? "selected" : "cancelled")))}`,
       lastSquare: endSquare || sourceSquare,
       activePointerId: null,
       lastMoveAttemptSource: shouldAttemptDragMove ? sourceSquare : "",
       lastMoveAttemptTarget: shouldAttemptDragMove ? (endSquare || "") : "",
       lastAction: "pointerup:left",
     });
-    recordPointerTrace("pointerup", event, { sourceSquare, targetSquare: endSquare || "", result: releasedOutsideBoard ? "cancelled-outside-board" : (shouldAttemptDragMove ? "attempted" : (shouldTreatAsClick ? "selected" : "cancelled")) });
+    recordPointerTrace("pointerup", event, { sourceSquare, targetSquare: endSquare || "", result: releasedOutsideBoard ? "cancelled-outside-board" : (shouldAttemptDragMove ? "attempted" : (shouldCancelSameSquare ? "cancelled-selection" : (shouldTreatAsClick ? "selected" : "cancelled"))) });
     if (shouldSuppressClick) {
       suppressNextSquareClick = true;
       window.setTimeout(() => {
@@ -1749,6 +1776,16 @@
       selectedSquare = "";
       attemptMove(sourceSquare, endSquare);
       return true;
+    }
+    if (shouldCancelSameSquare) {
+      suppressNextSquareClick = true;
+      window.setTimeout(() => {
+        suppressNextSquareClick = false;
+      }, 0);
+      recordPointerTrace("cancel", event, { square: sourceSquare, sourceSquare, targetSquare: endSquare || "", result: "cancelled-selection" });
+      clearActivePieceInteraction("same-square-release");
+      refreshCurrentBoard({ refreshArrows: true });
+      return false;
     }
     if (shouldTreatAsClick) {
       suppressNextSquareClick = true;
@@ -1800,12 +1837,13 @@
     const canStartDrag = isDragOrClickMode() && canMoveFromSquare(squareName);
     const hasManualMarks = Boolean(manualArrowMarks.length || manualHighlightSquares.size);
     const hasSelectionMarks = Boolean(selectedSquare || dragSourceSquare);
+    const sameSelectedSquare = Boolean(selectedSquare && squareName && selectedSquare === squareName);
     const pointerDownResult = squareMeta.insideShell && !squareMeta.insideBoard
       ? "ignored-outside-board-shell"
-      : (!squareName ? "ignored" : (canStartDrag ? "pointerdown-started" : (selectedSquare ? "await-pointerup-target" : "ignored-empty")));
+      : (!squareName ? "ignored" : (sameSelectedSquare ? "await-deselect" : (canStartDrag ? "pointerdown-started" : (selectedSquare ? "await-pointerup-target" : "ignored-empty"))));
     const sourceCaptureReason = !squareName
       ? "outside-or-mapping-failed"
-      : (canStartDrag ? "movable-piece" : (selectedSquare ? "empty-with-selection" : "no-movable-piece"));
+      : (sameSelectedSquare ? "same-selected-square" : (canStartDrag ? "movable-piece" : (selectedSquare ? "empty-with-selection" : "no-movable-piece")));
     recordPointerTrace("pointerdown", event, {
       square: squareName,
       sourceSquare: canStartDrag ? squareName : "",
@@ -1824,6 +1862,12 @@
       lastAction: "pointerdown:left",
     });
     if (hasManualMarks && settings.clear_marks_on_left_click) clearManualStudyMarks(true);
+    if (sameSelectedSquare) {
+      if (typeof event.preventDefault === "function") event.preventDefault();
+      recordPointerTrace("select-source", event, { square: squareName, sourceSquare: squareName, result: "await-deselect", sourceCaptureReason: "same-selected-square" });
+      syncBoardDebug({ selectedSquare, lastAction: "pointerdown:await-deselect" });
+      return;
+    }
     if (hasSelectionMarks) clearBoardSelectionMarks(!selectedSquare || canStartDrag);
     if (!squareName) {
       pendingTapSquare = "";
@@ -1918,9 +1962,8 @@
       return;
     }
     if (selectedSquare === squareName) {
-      selectedSquare = "";
       recordPointerTrace("cancel", null, { square: squareName, sourceSquare: squareName, result: "cancelled" });
-      syncBoardDebug({ selectedSquare: "" });
+      clearActivePieceInteraction("same-square-click");
       refreshCurrentBoard({ refreshArrows: true });
       return;
     }
@@ -1933,8 +1976,10 @@
     button.addEventListener("click", () => {
       const action = button.dataset.puzzleAction;
       if (action === "reveal") {
+        clearActivePieceInteraction("reveal");
         showReveal();
       } else if (action === "reset" || action === "repeat") {
+        clearActivePieceInteraction("reset");
         resetPuzzle();
       } else if (action === "clear-marks") {
         if (!manualMarksEnabled()) return;
@@ -1948,7 +1993,7 @@
 
   document.querySelectorAll('[data-puzzle-nav="next"]').forEach((link) => {
     link.addEventListener("click", () => {
-      clearDragVisualState();
+      clearActivePieceInteraction("next");
       if (skipSent || completionCard.hidden === false || currentStep >= steps.length) return;
       skipSent = true;
       postProgress(progressUrls.skip);
@@ -2056,6 +2101,11 @@
 
     boardShellNode.addEventListener("lostpointercapture", (event) => {
       traceShellEvent("lostpointercapture", event, { result: "received", sourceSquare: dragSourceSquare || selectedSquare || "" });
+      if (dragSourceSquare && eventMatchesActivePointer(event, dragPointerId)) {
+        recordPointerTrace("lostpointercapture", event, { sourceSquare: dragSourceSquare, result: "cancelled" });
+        cancelActiveBoardInteraction("lostpointercapture");
+        return;
+      }
       if (dragPointerId != null && event.pointerId === dragPointerId && !dragSourceSquare) dragPointerId = null;
       if (manualMarksEnabled() && manualDrawPointerId != null && event.pointerId !== manualDrawPointerId) return;
       if (!manualDrawActive) manualDrawPointerId = null;
