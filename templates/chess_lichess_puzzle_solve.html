@@ -646,14 +646,21 @@
     };
   }
 
+  function ensureBoardDebugApi() {
+    boardDebug.pointerTrace = pointerTrace;
+    boardDebug.dumpPointerTrace = () => pointerTrace.map(pointerTraceRowToText).join("\n");
+    boardDebug.clearPointerTrace = () => {
+      clearPointerTraceInternal();
+      syncBoardDebug({ lastAction: "trace:cleared" });
+      return "";
+    };
+    boardDebug.testBoardHit = () => testBoardHit();
+    window.lotusChessLichessBoardDebug = boardDebug;
+    return boardDebug;
+  }
+
+  ensureBoardDebugApi();
   boardDebug.pointerTrace = pointerTrace;
-  boardDebug.dumpPointerTrace = () => pointerTrace.map(pointerTraceRowToText).join("\n");
-  boardDebug.clearPointerTrace = () => {
-    clearPointerTraceInternal();
-    syncBoardDebug({ lastAction: "trace:cleared" });
-    return "";
-  };
-  boardDebug.testBoardHit = () => testBoardHit();
 
   function syncBoardDebug(extra = {}) {
     const liveIndex = Math.max(0, historyPositions.length - 1);
@@ -678,7 +685,7 @@
       currentStep,
       reviewMode: reviewIndex < liveIndex,
     }, extra || {});
-    window.lotusChessLichessBoardDebug = boardDebug;
+    ensureBoardDebugApi();
     window.lotusChessLichessBoardState = {
       get settings() { return { ...settings }; },
       get manualArrowMarks() { return manualArrowMarks.slice(); },
