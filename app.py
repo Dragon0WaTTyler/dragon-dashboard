@@ -20,7 +20,7 @@ from datetime import datetime, timedelta, timezone
 from html import escape, unescape
 from html.parser import HTMLParser
 from pathlib import Path
-from flask import Flask, Response, jsonify, redirect, render_template, request, session, send_file, url_for
+from flask import Flask, Response, flash, jsonify, redirect, render_template, request, session, send_file, url_for
 from markupsafe import Markup
 from werkzeug.middleware.proxy_fix import ProxyFix
 edge_tts = None
@@ -161,6 +161,7 @@ NOTEBOOKLM_URL       = config_value("NOTEBOOKLM_URL", "https://notebooklm.google
 DRAGON_ADMIN_USERNAME = config_value("DRAGON_ADMIN_USERNAME", "")
 DRAGON_ADMIN_PASSWORD = config_value("DRAGON_ADMIN_PASSWORD", "")
 DRAGON_PROTECT_WHOLE_SITE = config_flag("DRAGON_PROTECT_WHOLE_SITE", IS_PRODUCTION)
+DRAGON_ALLOW_WEB_REFRESH_SYNC = config_flag("DRAGON_ALLOW_WEB_REFRESH_SYNC", False)
 MOVIE_WANT_TO_UNION_FETCH_FLAG_NAME = "MOVIE_WANT_TO_UNION_FETCH_ENABLED"
 DEFAULT_MOVIE_FETCH_EXPERIMENT_UI_COUNT = 506
 MOVIE_FETCH_EXPERIMENT_ANCHOR_TITLES = (
@@ -23132,9 +23133,13 @@ def logout():
 @app.route("/refresh")
 def refresh():
     scope = (request.args.get("scope") or "all").strip().lower()
+    next_url = request.args.get("next") or url_for("home")
+    if not DRAGON_ALLOW_WEB_REFRESH_SYNC:
+        flash("Full sync is disabled online to avoid timeouts. Use Admin sync or scheduled sync.", "info")
+        return redirect(next_url)
+
     refresh_films = scope in {"all", "films", "movies", "movie"}
     refresh_youtube = scope in {"all", "youtube", "playlists"}
-    next_url = request.args.get("next") or url_for("home")
     pockettube_section_name = ""
     if refresh_youtube:
         try:
