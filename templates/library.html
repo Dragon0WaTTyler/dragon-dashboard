@@ -116,6 +116,10 @@
 .movie-library-card{
     cursor:pointer;
 }
+.movie-full-movie-btn{
+    font-size:.84rem;
+    padding:10px 12px;
+}
 
 @media (max-width:700px){
     .movies-hero-actions{
@@ -285,6 +289,17 @@
             <div class="score-pill" style="color: {{ score_color.get(film.score, '#777') }};">
                 {{ score_display.get(film.score, 'Not Rated') }}
             </div>
+            {% if film.source_type == 'film' %}
+            <a href="{{ vidsrc_embed_url(film) }}" target="_blank" rel="noopener noreferrer" class="btn movie-full-movie-btn" title="Watch on vidsrc">
+                <i data-lucide="play"></i>Watch Now
+            </a>
+            {% endif %}
+            {% if is_yts_movie_category(film.category) %}
+            <a href="{{ yts_url(film.name) }}" target="_blank" rel="noopener noreferrer" class="yts-badge" title="Search on YTS">
+                <i class="fa-solid fa-download" aria-hidden="true"></i>
+                <span>YTS</span>
+            </a>
+            {% endif %}
             <div class="card-meta">Open detail page</div>
         </div>
     </article>
@@ -665,7 +680,9 @@
         var card = event.target && event.target.closest ? event.target.closest('.movie-library-card') : null;
         var href = '';
         if (!card) return;
+        if (event.target && event.target.closest && event.target.closest('a, button')) return;
         if (event.target && event.target.closest && event.target.closest('.movie-genre-link')) return;
+        if (event.target && event.target.closest && event.target.closest('.yts-badge')) return;
         href = card.getAttribute('data-href') || '';
         if (!href) return;
         window.location.href = href;
@@ -674,7 +691,9 @@
         var card = event.target && event.target.closest ? event.target.closest('.movie-library-card') : null;
         var href = '';
         if (!card) return;
+        if (event.target && event.target.closest && event.target.closest('a, button')) return;
         if (event.target && event.target.closest && event.target.closest('.movie-genre-link')) return;
+        if (event.target && event.target.closest && event.target.closest('.yts-badge')) return;
         if (event.key !== 'Enter' && event.key !== ' ') return;
         href = card.getAttribute('data-href') || '';
         if (!href) return;
