@@ -145,6 +145,177 @@
             max-height: 280px !important;
         }
     }
+    .movie-watch-card {
+        display: grid;
+        gap: 12px;
+        width: 100%;
+        max-width: 280px;
+        margin: 0 auto;
+        padding: 12px;
+        border-radius: 22px;
+        border: 1px solid rgba(255,255,255,.06);
+        background:
+            linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,.01)),
+            #070707;
+        box-shadow: 0 18px 48px rgba(0,0,0,.28);
+    }
+    .movie-watch-launch {
+        position: relative;
+        display: block;
+        width: 100%;
+        padding: 0;
+        border: 0;
+        border-radius: 18px;
+        overflow: hidden;
+        cursor: pointer;
+        background: #0a0a0a;
+        color: var(--text);
+        text-align: left;
+        -webkit-appearance: none;
+        appearance: none;
+        transition: transform .2s ease, border-color .2s ease, box-shadow .2s ease;
+    }
+    .movie-watch-launch:hover,
+    .movie-watch-launch:focus-visible {
+        transform: translateY(-1px);
+        box-shadow: 0 0 0 1px rgba(185, 42, 42, .22);
+        outline: none;
+    }
+    .movie-watch-poster {
+        position: relative;
+        display: block;
+        width: 100%;
+        height: 0;
+        padding-top: 150%;
+        overflow: hidden;
+        border-radius: 18px;
+        background:
+            linear-gradient(180deg, rgba(0,0,0,.08), rgba(0,0,0,.72)),
+            #111;
+    }
+    .movie-watch-poster::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background-image:
+            linear-gradient(180deg, rgba(0,0,0,.08) 0%, rgba(0,0,0,.24) 56%, rgba(0,0,0,.82) 100%);
+        z-index: 1;
+        pointer-events: none;
+    }
+    .movie-watch-poster-image {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+    }
+    .movie-watch-poster-fallback {
+        position: absolute;
+        inset: 0;
+        display: block;
+        background:
+            radial-gradient(circle at top, rgba(153,31,31,.22), transparent 44%),
+            linear-gradient(180deg, rgba(32,32,32,.95), rgba(10,10,10,1));
+    }
+    .movie-watch-play {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        z-index: 2;
+        width: 62px;
+        height: 62px;
+        margin-top: -31px;
+        margin-left: -31px;
+        border-radius: 999px;
+        background: rgba(0,0,0,.72);
+        border: 1px solid rgba(255,255,255,.18);
+        box-shadow: 0 14px 32px rgba(0,0,0,.38);
+    }
+    .movie-watch-play::before {
+        content: "";
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        margin-top: -11px;
+        margin-left: -6px;
+        width: 0;
+        height: 0;
+        border-top: 11px solid transparent;
+        border-bottom: 11px solid transparent;
+        border-left: 18px solid #fff;
+    }
+    .movie-watch-title {
+        position: absolute;
+        right: 14px;
+        bottom: 14px;
+        left: 14px;
+        z-index: 2;
+        display: block;
+        color: #fff;
+        font-weight: 700;
+        line-height: 1.45;
+        text-shadow: 0 4px 22px rgba(0,0,0,.7);
+    }
+    .movie-watch-title-year {
+        opacity: .82;
+    }
+    .movie-watch-player-shell {
+        display: none;
+        border-radius: 18px;
+        overflow: hidden;
+        background: #090909;
+    }
+    .movie-watch-card.is-loaded .movie-watch-player-shell,
+    .movie-watch-player-shell.is-visible {
+        display: block;
+    }
+    .movie-watch-card.is-loaded .movie-watch-launch {
+        display: none;
+    }
+    .movie-watch-player-shell .vidsrc-embed-wrapper {
+        border-radius: 18px;
+    }
+    .movie-watch-player-shell .movie-watch-ratio {
+        position: relative;
+        display: block;
+        width: 100%;
+        height: 0;
+        padding-top: 56.25%;
+        overflow: hidden;
+        background: #090909;
+    }
+    .movie-watch-player-shell .movie-watch-ratio iframe {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        display: block;
+        border: 0;
+        background: #090909;
+    }
+    .movie-watch-error {
+        display: none;
+        margin-top: 8px;
+        padding: 7px 10px;
+        border-radius: 12px;
+        border: 1px solid rgba(255,255,255,.07);
+        background: rgba(255,255,255,.02);
+        color: rgba(255,255,255,.5);
+        font-size: .68rem;
+        line-height: 1.4;
+    }
+    .movie-watch-error.is-visible {
+        display: block;
+    }
+    .movie-watch-error a {
+        color: rgba(255,255,255,.78);
+    }
+    @media (max-width: 640px) {
+        .movie-watch-card {
+            max-width: none;
+        }
+    }
 </style>
 <section class="page-hero">
     <div class="hero-meta">
@@ -260,7 +431,9 @@
 {% else %}
 {% set detail_title = entry.title or entry.name %}
 {% set detail_category = entry.category or category %}
-{% set vidsrc_url = vidsrc_embed_url(entry) %}
+{% set embed_urls = vidsrc_embed_urls(entry) %}
+{% set vidsrc_url = embed_urls[0] if embed_urls else '' %}
+{% set detail_watch_title = detail_title ~ (' (' ~ entry.year ~ ')' if entry.year else '') %}
 <section class="surface-card section-card movie-detail-shell" style="padding:28px;">
     <div class="movie-detail-grid" style="display:grid; grid-template-columns:minmax(220px,280px) minmax(0,1fr); gap:26px; align-items:start;">
         <div class="movie-detail-poster-column" style="display:grid; gap:16px;">
@@ -272,23 +445,97 @@
                 {% endif %}
             </div>
             {% if entry.source_type == 'film' %}
-            <section class="surface-card movie-detail-card movie-yts-embed-card" style="padding:18px; border-radius:22px;">
-                <h6 style="margin:0 0 12px;">Full Movie</h6>
-                <div class="ratio ratio-16x9 vidsrc-embed-wrapper">
-                    <iframe
-                        src="{{ vidsrc_url }}"
-                        title="Watch {{ detail_title }} on vidsrc"
-                        sandbox="allow-scripts allow-same-origin allow-forms"
-                        allowfullscreen
-                        loading="lazy"
-                        referrerpolicy="no-referrer">
-                    </iframe>
+            <section class="surface-card movie-watch-card vidsrc-container">
+                <button id="vidsrc-overlay" class="movie-watch-launch" type="button" aria-label="Play {{ detail_watch_title }}">
+                    <span class="movie-watch-poster">
+                        {% if entry.poster %}
+                        <img class="movie-watch-poster-image" src="{{ entry.poster }}" alt="{{ detail_watch_title }}" loading="lazy">
+                        {% else %}
+                        <span class="movie-watch-poster-fallback" aria-hidden="true"></span>
+                        {% endif %}
+                        <span class="movie-watch-play" aria-hidden="true"></span>
+                        <span class="movie-watch-title">{{ detail_title }}{% if entry.year %} <span class="movie-watch-title-year">({{ entry.year }})</span>{% endif %}</span>
+                    </span>
+                </button>
+                <div id="vidsrc-player-shell" class="movie-watch-player-shell">
+                    <div class="vidsrc-embed-wrapper">
+                        <div class="movie-watch-ratio">
+                            <iframe
+                                title="Watch {{ detail_title }} on external player"
+                                allowfullscreen
+                                allow="autoplay; fullscreen"
+                                referrerpolicy="no-referrer"
+                                loading="lazy"
+                                style="border:0;"
+                                id="vidsrc-iframe"
+                                data-urls='{{ embed_urls | tojson }}'>
+                            </iframe>
+                        </div>
+                    </div>
                 </div>
-                <p class="small text-muted mt-1 mb-0">
-                    If the player fails,
-                    <a href="{{ vidsrc_url }}" target="_blank" rel="noopener noreferrer">open it directly</a>.
-                </p>
+                <div id="vidsrc-error" class="movie-watch-error" role="status" aria-live="polite">
+                    Player unavailable{% if vidsrc_url %}. <a href="{{ vidsrc_url }}" target="_blank" rel="noopener">Open source</a>{% endif %}.
+                </div>
             </section>
+            <script>
+            (function() {
+                const iframe = document.getElementById('vidsrc-iframe');
+                const overlay = document.getElementById('vidsrc-overlay');
+                const errorDiv = document.getElementById('vidsrc-error');
+                const playerShell = document.getElementById('vidsrc-player-shell');
+                const watchCard = document.querySelector('.movie-watch-card');
+                if (!iframe || !overlay || !errorDiv || !playerShell || !watchCard) return;
+
+                let urls = [];
+                try {
+                    urls = JSON.parse(iframe.dataset.urls || '[]');
+                } catch (error) {
+                    urls = [];
+                }
+
+                let currentIndex = 0;
+
+                function showError() {
+                    playerShell.classList.remove('is-visible');
+                    watchCard.classList.remove('is-loaded');
+                    errorDiv.classList.add('is-visible');
+                }
+
+                function tryLoad(index) {
+                    if (index >= urls.length) {
+                        showError();
+                        return;
+                    }
+                    currentIndex = index;
+                    iframe.src = urls[index];
+                }
+
+                iframe.addEventListener('load', function() {
+                    window.setTimeout(function() {
+                        if (iframe.src && iframe.src !== 'about:blank') {
+                            playerShell.classList.add('is-visible');
+                            watchCard.classList.add('is-loaded');
+                            errorDiv.classList.remove('is-visible');
+                        }
+                    }, 500);
+                });
+
+                iframe.addEventListener('error', function() {
+                    tryLoad(currentIndex + 1);
+                });
+
+                overlay.addEventListener('click', function() {
+                    if (!urls.length) {
+                        showError();
+                        return;
+                    }
+                    playerShell.classList.add('is-visible');
+                    watchCard.classList.add('is-loaded');
+                    errorDiv.classList.remove('is-visible');
+                    tryLoad(0);
+                });
+            })();
+            </script>
             {% endif %}
             <section class="surface-card movie-detail-card movie-detail-sidebar-card" style="padding:18px; border-radius:22px;">
                 <div class="info-stack">
