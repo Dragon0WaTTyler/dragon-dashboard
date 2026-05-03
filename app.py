@@ -153,6 +153,7 @@ NOTION_BOOK_QUOTES_DATABASE_ID = config_value("NOTION_BOOK_QUOTES_DATABASE_ID", 
 NOTION_BOOK_QUOTES_SOURCE_PAGE_ID = config_value("NOTION_BOOK_QUOTES_SOURCE_PAGE_ID", "")
 NOTION_BOOK_QUOTES_SOURCE_PAGE_TITLE = config_value("NOTION_BOOK_QUOTES_SOURCE_PAGE_TITLE", "مقولات من كتبي")
 TMDB_API_KEY         = config_value("TMDB_API_KEY", "")
+VIDSRC_EMBED_URL     = config_value("VIDSRC_EMBED_URL", "https://vidsrc.net/embed")
 NOTION_DIRECTORS_DATABASE_ID = config_value("NOTION_DIRECTORS_DATABASE_ID", "")
 NOTION_DIRECTORS_PARENT_PAGE_ID = config_value("NOTION_DIRECTORS_PARENT_PAGE_ID", "")
 NOTION_GENRES_DATABASE_ID = config_value("NOTION_GENRES_DATABASE_ID", "")
@@ -431,6 +432,7 @@ RUNTIME_CACHE = {
 GEMINI_MODEL_NAME_CACHE = None
 TMDB_LOOKUP_CACHE = {}
 TMDB_PERSON_LOOKUP_CACHE = {}
+TMDB_EXTERNAL_IDS_CACHE = {}
 TMDB_COUNTRY_NAME_CACHE = None
 TMDB_COUNTRY_DISPLAY_ALIASES = {
     "United States of America": "United States",
@@ -14447,6 +14449,22 @@ def fetch_tmdb_enrichment(movie_title, category="", year=""):
     return result
 
 
+def fetch_tmdb_imdb_id(tmdb_id):
+    if not tmdb_id:
+        return None
+    cache_key = f"imdb:{tmdb_id}"
+    if cache_key in TMDB_EXTERNAL_IDS_CACHE:
+        return TMDB_EXTERNAL_IDS_CACHE[cache_key]
+    try:
+        data = tmdb_request(f"/movie/{tmdb_id}/external_ids")
+        imdb_id = data.get("imdb_id")
+        TMDB_EXTERNAL_IDS_CACHE[cache_key] = imdb_id
+        return imdb_id
+    except Exception:
+        TMDB_EXTERNAL_IDS_CACHE[cache_key] = None
+        return None
+
+
 def ensure_tmdb_enrichment_properties():
     response = requests.get(
         f"https://api.notion.com/v1/databases/{NOTION_DATABASE_ID}",
@@ -19558,8 +19576,34 @@ def get_all_playlist_videos(playlist_id, max_total=5000, force_refresh=False):
     return []
 
 def yts_url(title):
-    encoded = urllib.parse.quote(title.strip(), safe="")
-    return f"https://www6.yts-official.to/browse-movies/{encoded}/all/all/0/latest/0/all"
+    query = f"{title.strip()} YTS".strip()
+    return f"https://duckduckgo.com/?q={urllib.parse.quote_plus(query)}"
+
+
+def get_vidsrc_embed_url(film):
+    """Return a vidsrc embed URL for the film."""
+    if not isinstance(film, dict):
+        film = {}
+
+    try:
+        tmdb_data = fetch_tmdb_enrichment(
+            film.get("name", ""),
+            category=film.get("category", ""),
+            year=film.get("year", ""),
+        )
+        if tmdb_data and tmdb_data.get("tmdb_id"):
+            imdb_id = fetch_tmdb_imdb_id(tmdb_data["tmdb_id"])
+            if imdb_id:
+                return f"{str(VIDSRC_EMBED_URL).rstrip('/')}/{imdb_id}"
+    except Exception:
+        pass
+
+    title = str(film.get("name", "") or "").strip()
+    base_url = str(VIDSRC_EMBED_URL).rstrip("/")
+    if title:
+        encoded_title = urllib.parse.quote(title)
+        return f"{base_url}/search/{encoded_title}"
+    return f"{base_url}/search/"
 
 def slugify(value):
     text = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
@@ -19768,6 +19812,24 @@ def normalize_movie_category(value):
     return re.sub(r"\s+", " ", str(value or "").strip().lower())
 
 
+def is_yts_movie_category(category):
+    if not category:
+        return False
+
+    try:
+        normalized = normalize_movie_category(category)
+    except Exception:
+        normalized = str(category).strip().lower()
+
+    if not normalized:
+        return False
+
+    if "youtube" in normalized:
+        return False
+
+    return normalized in {"movie", "short movie", "documentary", "anime movie"}
+
+
 def is_non_movie_category(value):
     category = normalize_movie_category(value)
     if not category or category in VALID_MOVIE_CATEGORIES:
@@ -19777,6 +19839,11 @@ def is_non_movie_category(value):
 
 def movie_row_type_for_category(value):
     return "non_movie" if is_non_movie_category(value) else "real"
+
+
+app.jinja_env.globals["yts_url"] = yts_url
+app.jinja_env.globals["vidsrc_embed_url"] = get_vidsrc_embed_url
+app.jinja_env.globals["is_yts_movie_category"] = is_yts_movie_category
 
 
 def normalize_movie_review_filter(value, allowed_values, default_value="all"):
