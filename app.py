@@ -609,10 +609,18 @@ def load_json_file(path, default):
 
 def save_json_file(path, payload):
     path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temp_path = path.with_name(f"{path.name}.tmp")
-    temp_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
-    temp_path.replace(path)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temp_path = path.with_name(f"{path.name}.tmp")
+        temp_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
+        temp_path.replace(path)
+        return True
+    except OSError as exc:
+        # On PythonAnywhere, disk quota exhaustion should not take the whole route down.
+        if getattr(exc, "errno", None) in {28, 122}:
+            print(f"[warn] Skipping write for {path.name}: disk quota exceeded")
+            return False
+        raise
 
 
 def backup_reading_data_file(reason="save"):
