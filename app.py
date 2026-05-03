@@ -153,7 +153,13 @@ NOTION_BOOK_QUOTES_DATABASE_ID = config_value("NOTION_BOOK_QUOTES_DATABASE_ID", 
 NOTION_BOOK_QUOTES_SOURCE_PAGE_ID = config_value("NOTION_BOOK_QUOTES_SOURCE_PAGE_ID", "")
 NOTION_BOOK_QUOTES_SOURCE_PAGE_TITLE = config_value("NOTION_BOOK_QUOTES_SOURCE_PAGE_TITLE", "مقولات من كتبي")
 TMDB_API_KEY         = config_value("TMDB_API_KEY", "")
-VIDSRC_EMBED_URL     = config_value("VIDSRC_EMBED_URL", "https://vidsrc.net/embed")
+VIDSRC_EMBED_URL     = config_value("VIDSRC_EMBED_URL", "https://vsembed.ru/embed")
+VIDSRC_FALLBACK_URLS = [
+    "https://vidsrc.me/embed",
+    "https://vidsrc.to/embed",
+    "https://vidsrc.xyz/embed",
+    "https://2embed.org/embed",
+]
 NOTION_DIRECTORS_DATABASE_ID = config_value("NOTION_DIRECTORS_DATABASE_ID", "")
 NOTION_DIRECTORS_PARENT_PAGE_ID = config_value("NOTION_DIRECTORS_PARENT_PAGE_ID", "")
 NOTION_GENRES_DATABASE_ID = config_value("NOTION_GENRES_DATABASE_ID", "")
@@ -19580,10 +19586,12 @@ def yts_url(title):
     return f"https://duckduckgo.com/?q={urllib.parse.quote_plus(query)}"
 
 
-def get_vidsrc_embed_url(film):
-    """Return a vidsrc embed URL for the film."""
+def get_vidsrc_embed_urls(film):
+    """Return ordered embed URLs for the film, starting with the primary host."""
     if not isinstance(film, dict):
         film = {}
+
+    imdb_id = None
 
     try:
         tmdb_data = fetch_tmdb_enrichment(
@@ -19593,17 +19601,40 @@ def get_vidsrc_embed_url(film):
         )
         if tmdb_data and tmdb_data.get("tmdb_id"):
             imdb_id = fetch_tmdb_imdb_id(tmdb_data["tmdb_id"])
-            if imdb_id:
-                return f"{str(VIDSRC_EMBED_URL).rstrip('/')}/{imdb_id}"
     except Exception:
         pass
 
+    urls = []
+    seen = set()
+    base_urls = [VIDSRC_EMBED_URL] + list(VIDSRC_FALLBACK_URLS or [])
     title = str(film.get("name", "") or "").strip()
-    base_url = str(VIDSRC_EMBED_URL).rstrip("/")
-    if title:
-        encoded_title = urllib.parse.quote(title)
-        return f"{base_url}/search/{encoded_title}"
-    return f"{base_url}/search/"
+    encoded_title = urllib.parse.quote(title) if title else ""
+
+    for raw_base_url in base_urls:
+        base_url = str(raw_base_url or "").rstrip("/")
+        if not base_url:
+            continue
+        if imdb_id:
+            candidate = f"{base_url}/{imdb_id}"
+        elif encoded_title:
+            candidate = f"{base_url}/search/{encoded_title}"
+        else:
+            candidate = base_url
+        if candidate not in seen:
+            seen.add(candidate)
+            urls.append(candidate)
+
+    return urls
+
+
+def get_vidsrc_embed_url(film):
+    """Return the primary vidsrc embed URL for the film."""
+    urls = get_vidsrc_embed_urls(film)
+    return urls[0] if urls else str(VIDSRC_EMBED_URL or "").rstrip("/")
+
+
+app.jinja_env.globals["vidsrc_embed_urls"] = get_vidsrc_embed_urls
+app.jinja_env.globals["vidsrc_embed_url"] = get_vidsrc_embed_url
 
 def slugify(value):
     text = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
@@ -19842,7 +19873,6 @@ def movie_row_type_for_category(value):
 
 
 app.jinja_env.globals["yts_url"] = yts_url
-app.jinja_env.globals["vidsrc_embed_url"] = get_vidsrc_embed_url
 app.jinja_env.globals["is_yts_movie_category"] = is_yts_movie_category
 
 

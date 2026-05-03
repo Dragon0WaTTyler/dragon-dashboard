@@ -431,7 +431,11 @@
 {% else %}
 {% set detail_title = entry.title or entry.name %}
 {% set detail_category = entry.category or category %}
+{% if vidsrc_embed_urls is defined %}
 {% set embed_urls = vidsrc_embed_urls(entry) %}
+{% else %}
+{% set embed_urls = [] %}
+{% endif %}
 {% set vidsrc_url = embed_urls[0] if embed_urls else '' %}
 {% set detail_watch_title = detail_title ~ (' (' ~ entry.year ~ ')' if entry.year else '') %}
 <section class="surface-card section-card movie-detail-shell" style="padding:28px;">
