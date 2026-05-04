@@ -7361,6 +7361,9 @@ def enrich_chess_games_from_pgn_headers(data):
 
 READING_STATUSES = ("unread", "reading", "finished", "archived")
 READING_CATEGORIES = ("news", "culture", "opinion")
+READING_RETENTION_CATEGORIES = READING_CATEGORIES
+READING_RETENTION_CAP = 100
+READING_RETENTION_PROTECTED_FIELDS = ("saved", "important", "saved_at", "important_at", "bookmarked", "bookmark", "pinned")
 READING_DEMO_SOURCE_URLS = {
     "https://www.themarginalian.org/feed/",
     "https://www.quantamagazine.org/feed/",
@@ -9066,6 +9069,130 @@ def strip_reading_demo_entries(data):
     return True
 
 
+def reading_entry_retention_timestamp(entry):
+    entry = entry if isinstance(entry, dict) else {}
+    for field in ("published_at", "added_at", "imported_at"):
+        timestamp = parse_timestamp(entry.get(field, ""))
+        if timestamp:
+            return timestamp
+    return None
+
+
+def reading_entry_is_retention_protected(entry):
+    entry = entry if isinstance(entry, dict) else {}
+    status = normalize_reading_status(entry.get("status", ""))
+    if status in {"reading", "finished"}:
+        return True
+    if bool(entry.get("starred", False)):
+        return True
+    for field in READING_RETENTION_PROTECTED_FIELDS:
+        if field not in entry:
+            continue
+        value = entry.get(field)
+        if isinstance(value, bool):
+            if value:
+                return True
+            continue
+        if value is None:
+            continue
+        if isinstance(value, str) and value.strip().lower() in {"", "0", "false", "no", "off", "null", "none"}:
+            continue
+        if value:
+            return True
+    for key, value in entry.items():
+        key_lower = str(key or "").strip().lower()
+        if "saved" not in key_lower and "important" not in key_lower:
+            continue
+        if key_lower in {"status", "saved", "saved_at", "important", "important_at"}:
+            continue
+        if value:
+            return True
+    return False
+
+
+def apply_reading_retention_policy(data):
+    data = data if isinstance(data, dict) else default_reading_data()
+    entries = list(data.get("entries", []) or [])
+    retained_entries = list(entries)
+    summary_by_category = {}
+    archived_total = 0
+    changed = False
+    timezone = datetime.now().astimezone().tzinfo
+
+    def retention_sort_value(entry, field):
+        timestamp = parse_timestamp(entry.get(field, ""))
+        if not timestamp:
+            return float("-inf")
+        if timestamp.tzinfo is None:
+            timestamp = timestamp.replace(tzinfo=timezone)
+        try:
+            return timestamp.timestamp()
+        except Exception:
+            return float("-inf")
+
+    for category in READING_RETENTION_CATEGORIES:
+        protected_count = 0
+        active_unprotected = []
+
+        for index, entry in enumerate(retained_entries):
+            if not isinstance(entry, dict):
+                continue
+            entry_category = str(entry.get("original_category", "") or entry.get("category", "") or "").strip().lower()
+            if entry_category not in READING_RETENTION_CATEGORIES:
+                continue
+            if entry_category != category:
+                continue
+            if normalize_reading_status(entry.get("status", "")) == "archived":
+                continue
+            if reading_entry_is_retention_protected(entry):
+                protected_count += 1
+                continue
+            active_unprotected.append({
+                "index": index,
+                "entry": entry,
+                "sort_key": (
+                    retention_sort_value(entry, "published_at"),
+                    retention_sort_value(entry, "added_at"),
+                    retention_sort_value(entry, "imported_at"),
+                    str(entry.get("id", "") or ""),
+                ),
+            })
+
+        active_unprotected.sort(key=lambda item: item["sort_key"], reverse=True)
+        archived_this_category = 0
+
+        for item in active_unprotected[READING_RETENTION_CAP:]:
+            entry = item["entry"]
+            if normalize_reading_status(entry.get("status", "")) == "archived":
+                continue
+            entry["status"] = "archived"
+            archived_total += 1
+            archived_this_category += 1
+            changed = True
+
+        active_count = protected_count + min(len(active_unprotected), READING_RETENTION_CAP)
+        summary_by_category[category] = {
+            "active_count": active_count,
+            "unprotected_count": len(active_unprotected),
+            "protected_count": protected_count,
+            "archived_count": archived_this_category,
+            "kept_unprotected_count": min(len(active_unprotected), READING_RETENTION_CAP),
+            "cap": READING_RETENTION_CAP,
+        }
+
+    data["entries"] = retained_entries
+    data["retention_last_run_at"] = current_timestamp()
+    data["retention_cap"] = READING_RETENTION_CAP
+    data["retention_last_run_archived_count"] = archived_total
+    data["retention_last_run_summary"] = summary_by_category
+    return data, {
+        "changed": changed,
+        "archived_total": archived_total,
+        "cap": READING_RETENTION_CAP,
+        "category_summary": summary_by_category,
+    }
+
+
 def reading_hash_key(value):
     return hashlib.sha1(str(value or "").encode("utf-8")).hexdigest()[:12]
 
@@ -9433,12 +9560,13 @@ def normalize_reading_entry(entry, index=0, source_lookup=None, source_category_
     ):
         author_image_url = ""
     source_category = source_category_lookup.get(source_id, "") or source_category_lookup.get(source_name.lower(), "")
-    category = normalize_reading_category(source_category or item.get("category", ""))
+    raw_category = str(source_category or item.get("category", "") or "").strip()
+    category = normalize_reading_category(raw_category)
     topic_display = reading_visible_topic_label(topic, category)
     extraction_status = str(item.get("extraction_status", "") or "").strip()
     if extraction_status and extraction_status not in READING_CONTENT_CACHE_STATUSES:
         extraction_status = ""
-    return {
+    normalized = {
         "id": entry_id,
         "source_id": source_id,
         "source": source_name,
@@ -9476,6 +9604,16 @@ def normalize_reading_entry(entry, index=0, source_lookup=None, source_category_
         "feed_url": str(item.get("feed_url", "") or "").strip(),
         "canonical_url": url,
     }
+    if raw_category and raw_category.lower() != category:
+        normalized["original_category"] = raw_category
+    for key, value in item.items():
+        key_name = str(key or "").strip()
+        key_lower = key_name.lower()
+        if not key_name or key_name in normalized:
+            continue
+        if key_lower in READING_RETENTION_PROTECTED_FIELDS or "saved" in key_lower or "important" in key_lower:
+            normalized[key_name] = value
+    return normalized
 
 
 def normalize_reading_data(payload):
@@ -9525,9 +9663,19 @@ def load_reading_data():
     return normalized
 
 
-def save_reading_data(data):
+def save_reading_data(data, apply_retention=False, retention_reason="save"):
     normalized, _ = normalize_reading_data(data)
-    backup_reading_data_file("save")
+    retention_summary = {
+        "changed": False,
+        "archived_total": 0,
+        "cap": READING_RETENTION_CAP,
+        "category_summary": {},
+    }
+    if apply_retention:
+        normalized, retention_summary = apply_reading_retention_policy(normalized)
+        normalized["retention_last_run_reason"] = str(retention_reason or "save").strip() or "save"
+        normalized["retention_summary"] = retention_summary
+    backup_reading_data_file(retention_reason if apply_retention else "save")
     save_json_file(READING_DATA_PATH, normalized)
     return normalized
 
@@ -9996,15 +10144,16 @@ def sync_reading_sources(source_id=""):
         data["last_sync_message"] = f"0 new items from {len(target_sources)} active source(s)"
         if reason_text:
             data["last_sync_message"] += f": {reason_text}"
-    save_reading_data(data)
+    saved_data = save_reading_data(data, apply_retention=True, retention_reason="sync")
     return {
         "imported_total": imported_total,
         "source_results": source_results,
         "zero_import_reasons": zero_import_reasons,
         "source_count": len(data.get("sources", [])),
         "active_source_count": len(target_sources),
-        "last_sync_at": data.get("last_sync_at", ""),
-        "last_sync_message": data.get("last_sync_message", ""),
+        "last_sync_at": saved_data.get("last_sync_at", ""),
+        "last_sync_message": saved_data.get("last_sync_message", ""),
+        "retention_summary": saved_data.get("retention_summary", {}),
     }
 
 
@@ -10793,8 +10942,9 @@ def build_reading_view():
             and entry_import_timestamp
             and entry_import_timestamp.timestamp() >= last_sync_timestamp.timestamp()
         )
+    active_entries = [entry for entry in entries if entry.get("status") != "archived"]
     source_entry_count = {}
-    for entry in entries:
+    for entry in active_entries:
         key = entry.get("source_id") or entry.get("source", "")
         source_entry_count[key] = source_entry_count.get(key, 0) + 1
     extra_sources = []
@@ -10847,19 +10997,21 @@ def build_reading_view():
                 entry.get("url", ""),
             ]).lower()
         ]
+    summary = {
+        "total": len(active_entries),
+        "unread": len([entry for entry in active_entries if entry.get("status") == "unread"]),
+        "reading": len([entry for entry in active_entries if entry.get("status") == "reading"]),
+        "starred": len([entry for entry in active_entries if entry.get("starred")]),
+    }
+    last_sync_at = str(data.get("last_sync_at", "") or "").strip()
+    if selected_status == "All Status":
+        filtered = [entry for entry in filtered if entry.get("status") != "archived"]
     fresh_entries = [entry for entry in filtered if entry.get("is_fresh_import")]
     fresh_entries.sort(key=reading_entry_sort_key, reverse=True)
     if fresh_only and last_sync_timestamp:
         filtered = fresh_entries[:]
     filtered.sort(key=reading_entry_sort_key, reverse=True)
     fresh_count = len(fresh_entries)
-    summary = {
-        "total": len(entries),
-        "unread": len([entry for entry in entries if entry.get("status") == "unread"]),
-        "reading": len([entry for entry in entries if entry.get("status") == "reading"]),
-        "starred": len([entry for entry in entries if entry.get("starred")]),
-    }
-    last_sync_at = str(data.get("last_sync_at", "") or "").strip()
     return {
         "entries": filtered,
         "sources": source_filters,
@@ -10909,6 +11061,19 @@ def build_reading_admin_context():
     for entry in entries:
         key = entry.get("source_id") or entry.get("source", "")
         source_entry_count[key] = source_entry_count.get(key, 0) + 1
+    retention_last_run_summary = data.get("retention_last_run_summary", {}) if isinstance(data.get("retention_last_run_summary", {}), dict) else {}
+    retention_current_counts = {}
+    for category in READING_RETENTION_CATEGORIES:
+        category_entries = [
+            entry for entry in entries
+            if normalize_reading_category(entry.get("category", "")) == category and normalize_reading_status(entry.get("status", "")) != "archived"
+        ]
+        retention_current_counts[category] = {
+            "active_count": len(category_entries),
+            "unprotected_count": len([entry for entry in category_entries if not reading_entry_is_retention_protected(entry)]),
+            "protected_count": len([entry for entry in category_entries if reading_entry_is_retention_protected(entry)]),
+            "cap": READING_RETENTION_CAP,
+        }
     health_counts = {"healthy": 0, "warning": 0, "failing": 0, "paused": 0}
     for source in sources:
         known_entries = int(source_entry_count.get(source.get("id", ""), 0) or source_entry_count.get(source.get("name", ""), 0) or 0)
@@ -10948,6 +11113,13 @@ def build_reading_admin_context():
         "reading_last_sync_count": int(data.get("last_sync_count", 0) or 0),
         "reading_last_sync_sources": int(data.get("last_sync_sources", 0) or 0),
         "reading_last_sync_message": str(data.get("last_sync_message", "") or "").strip(),
+        "reading_retention_cap": int(data.get("retention_cap", READING_RETENTION_CAP) or READING_RETENTION_CAP),
+        "reading_retention_last_run_at": str(data.get("retention_last_run_at", "") or "").strip(),
+        "reading_retention_last_run_at_display": format_timestamp_label(str(data.get("retention_last_run_at", "") or "").strip(), default="Never"),
+        "reading_retention_last_run_reason": str(data.get("retention_last_run_reason", "") or "").strip(),
+        "reading_retention_last_run_archived_count": int(data.get("retention_last_run_archived_count", 0) or 0),
+        "reading_retention_last_run_summary": retention_last_run_summary,
+        "reading_retention_current_counts": retention_current_counts,
         "reading_backup_files": backup_files,
         "reading_backup_count": len(backup_files),
         "reading_latest_backup": backup_files[0] if backup_files else {},
@@ -24373,7 +24545,7 @@ def reading_import():
         payload = json.loads(raw_text)
         if not isinstance(payload, dict):
             raise ValueError("Reading import file must contain a JSON object.")
-        normalized = save_reading_data(payload)
+        normalized = save_reading_data(payload, apply_retention=True, retention_reason="import")
         source_count = len(normalized.get("sources", []))
         entry_count = len(normalized.get("entries", []))
         message = f"Imported Reading data: {source_count} source(s), {entry_count} entries."

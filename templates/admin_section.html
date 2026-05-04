@@ -34,6 +34,8 @@
     .reading-admin-panel-meta{display:flex;align-items:center;gap:8px 10px;flex-wrap:wrap}
     .reading-admin-panel-stats{display:flex;align-items:center;gap:8px 10px;flex-wrap:wrap;color:var(--text-2);font-size:.68rem;line-height:1.35}
     .reading-admin-panel-stats span{white-space:nowrap}
+    .reading-admin-retention{display:flex;align-items:center;gap:8px 10px;flex-wrap:wrap;margin-top:10px;color:var(--text-2);font-size:.68rem;line-height:1.35}
+    .reading-admin-retention span{white-space:nowrap}
     .reading-admin-source-filters{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:14px;overflow-x:auto;padding-bottom:2px;-webkit-overflow-scrolling:touch}
     .reading-admin-source-filters::-webkit-scrollbar{height:6px}
     .reading-admin-source-filters::-webkit-scrollbar-thumb{background:rgba(255,255,255,.08);border-radius:999px}
@@ -258,6 +260,16 @@
             </div>
             <h3 style="font-size:1.6rem; margin-top:10px;">Reading sources</h3>
             <div class="muted" style="margin-top:6px;">{{ reading_admin.reading_last_sync_message or 'No reading sync has run yet.' }}</div>
+            <div class="reading-admin-retention">
+                <span>Retention cap {{ reading_admin.reading_retention_cap }}</span>
+                <span>Last archived {{ reading_admin.reading_retention_last_run_archived_count }}</span>
+                <span>Last run {{ reading_admin.reading_retention_last_run_at_display }}</span>
+            </div>
+            <div class="reading-admin-panel-stats" style="margin-top:8px;">
+                {% for category, info in reading_admin.reading_retention_current_counts.items() %}
+                <span>{{ category|title }} {{ info.active_count }} active</span>
+                {% endfor %}
+            </div>
             <div class="reading-admin-panel-stats" style="margin-top:10px;">
                 <span>{{ reading_admin.reading_rss_healthy_count }} healthy</span>
                 <span>{{ reading_admin.reading_rss_warning_count }} warning</span>

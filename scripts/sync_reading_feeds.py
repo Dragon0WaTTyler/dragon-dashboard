@@ -70,6 +70,7 @@ def build_summary(result: dict) -> dict:
         "source_results": source_results,
         "active_source_count": int(result.get("active_source_count", 0) or 0),
         "last_sync_message": str(result.get("last_sync_message", "") or "").strip(),
+        "retention_summary": result.get("retention_summary", {}) if isinstance(result.get("retention_summary", {}), dict) else {},
     }
 
 
@@ -90,6 +91,22 @@ def run_sync(source_id: str = "") -> int:
     safe_print(f"Skipped/missing key count: {summary['missing_key_total']}")
     if summary["last_sync_message"]:
         safe_print(f"Summary: {summary['last_sync_message']}")
+    retention_summary = summary.get("retention_summary", {}) or {}
+    if retention_summary:
+        safe_print(
+            "Retention: "
+            f"cap={retention_summary.get('cap', 100)} | "
+            f"archived={retention_summary.get('archived_total', 0)}"
+        )
+        category_summary = retention_summary.get("category_summary", {}) or {}
+        if category_summary:
+            for category, info in sorted(category_summary.items()):
+                safe_print(
+                    f"- {category}: active={int((info or {}).get('active_count', 0) or 0)} "
+                    f"unprotected={int((info or {}).get('unprotected_count', 0) or 0)} "
+                    f"protected={int((info or {}).get('protected_count', 0) or 0)} "
+                    f"archived={int((info or {}).get('archived_count', 0) or 0)}"
+                )
 
     if summary["source_results"]:
         safe_print("Sources:")
