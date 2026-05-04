@@ -170,7 +170,6 @@
 {% endif %}
 
 {% if playlists %}
-    {% set section_ai_mode = 'german' if 'german' in title|lower else 'study' %}
     {% if is_german_section %}
     <style>
         .playlist-section .video-grid{
@@ -222,7 +221,6 @@
             <a class="content-card video-card" href="{{ url_for('video_detail', entry_id='yt-' ~ (vid.playlist_item_id or vid.video_id)) }}" data-video-id="{{ vid.video_id }}" data-video-duration="{{ vid.duration_seconds or 0 }}" data-playlist-id="{{ vid.playlist_id or '' }}" data-playlist-item-id="{{ vid.playlist_item_id or '' }}" data-scroll-top="true">
                 <div class="video-frame video-poster">
                     <img class="video-thumb" src="{{ vid.thumb or vid.thumbnail_url or vid.thumbnail or vid.image_url }}" alt="{{ vid.title }}" loading="lazy" decoding="async">
-                    <button class="card-ai-action study-with-ai-btn" type="button" data-ai-mode="{{ section_ai_mode }}" data-ai-title="{{ vid.title }}" data-ai-playlist="{{ pl.name }}" data-ai-section="{{ title }}" data-ai-video-id="{{ vid.video_id }}" aria-label="Study this video with AI"><i data-lucide="sparkles"></i><span>Study with AI</span></button>
                     {% if quick_delete_enabled %}
                     <button class="card-quick-action quick-delete-btn" type="button" data-delete-url="{{ url_for('delete_from_youtube', playlist_item_id=vid.playlist_item_id or '__lookup__') }}" aria-label="Remove from YouTube playlist" title="Remove from YouTube playlist"><i data-lucide="trash-2"></i></button>
                     {% endif %}
