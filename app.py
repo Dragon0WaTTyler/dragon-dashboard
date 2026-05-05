@@ -2,6 +2,7 @@
 import json
 import csv
 import asyncio
+import copy
 import hashlib
 import io
 import shutil
@@ -7363,6 +7364,9 @@ READING_STATUSES = ("unread", "reading", "finished", "archived")
 READING_CATEGORIES = ("news", "culture", "opinion")
 READING_RETENTION_CATEGORIES = READING_CATEGORIES
 READING_RETENTION_CAP = 100
+READING_LIST_DEFAULT_LIMIT = 100
+READING_LIST_LIMIT_STEP = 100
+READING_LIST_LIMIT_MAX = 500
 READING_RETENTION_PROTECTED_FIELDS = ("saved", "important", "saved_at", "important_at", "bookmarked", "bookmark", "pinned")
 READING_DEMO_SOURCE_URLS = {
     "https://www.themarginalian.org/feed/",
@@ -9492,7 +9496,7 @@ def reading_is_rss_source(source):
     return True
 
 
-def normalize_reading_entry(entry, index=0, source_lookup=None, source_category_lookup=None):
+def normalize_reading_entry(entry, index=0, source_lookup=None, source_category_lookup=None, include_content=True, include_body_image_scan=True):
     item = entry if isinstance(entry, dict) else {}
     published_at = str(item.get("published_at", "") or "").strip()
     added_at = str(item.get("added_at", "") or "").strip()
@@ -9510,18 +9514,20 @@ def normalize_reading_entry(entry, index=0, source_lookup=None, source_category_
     if not entry_id:
         entry_id = f"reading-{reading_hash_key(entry_seed or str(index))}"
     topic = str(item.get("topic", "") or "").strip()
-    excerpt = normalize_reading_space(item.get("excerpt", ""))
-    content_text = str(item.get("content_text", "") or "").strip()
-    content_html = str(item.get("content_html", "") or "").strip()
-    content_score = int(item.get("content_score", 0) or 0) or reading_entry_content_score({
-        "content_html": content_html,
-        "content_text": content_text,
-        "excerpt": excerpt,
-        "image_url": item.get("image_url", ""),
-        "lead_image_url": item.get("lead_image_url", ""),
-        "author_image_url": item.get("author_image_url", ""),
-        "author": item.get("author", ""),
-    })
+    excerpt = normalize_reading_space(item.get("excerpt", "")) if include_content else ""
+    content_text = str(item.get("content_text", "") or "").strip() if include_content else ""
+    content_html = str(item.get("content_html", "") or "").strip() if include_content else ""
+    content_score = int(item.get("content_score", 0) or 0)
+    if include_content and not content_score:
+        content_score = reading_entry_content_score({
+            "content_html": content_html,
+            "content_text": content_text,
+            "excerpt": excerpt,
+            "image_url": item.get("image_url", ""),
+            "lead_image_url": item.get("lead_image_url", ""),
+            "author_image_url": item.get("author_image_url", ""),
+            "author": item.get("author", ""),
+        })
     image_url = absolutize_reading_url(item.get("image_url", ""), original_url or url)
     lead_image_url = absolutize_reading_url(item.get("lead_image_url", ""), original_url or url)
     image_source = str(item.get("image_source", "") or "").strip().lower()
@@ -9543,7 +9549,7 @@ def normalize_reading_entry(entry, index=0, source_lookup=None, source_category_
             "attrs": {},
         })
     body_image_url = ""
-    if content_html:
+    if include_body_image_scan and content_html and not (lead_image_url or image_url):
         body_image_url = extract_reading_image_from_html(content_html, original_url or url, source_url=feed_source_url, source_name=source_name)
     if body_image_url:
         image_candidates.append({"url": body_image_url, "kind": "body", "attrs": {}})
@@ -9625,6 +9631,40 @@ def normalize_reading_entry(entry, index=0, source_lookup=None, source_category_
         if key_lower in READING_RETENTION_PROTECTED_FIELDS or "saved" in key_lower or "important" in key_lower:
             normalized[key_name] = value
     return normalized
+
+
+def normalize_reading_list_entry(entry, index=0, source_lookup=None, source_category_lookup=None):
+    return normalize_reading_entry(
+        entry,
+        index=index,
+        source_lookup=source_lookup,
+        source_category_lookup=source_category_lookup,
+        include_content=False,
+        include_body_image_scan=False,
+    )
+
+
+def reading_entry_matches_filters(entry, source="All Sources", status="All Status", category="All Categories", search=""):
+    if source != "All Sources":
+        if entry.get("source_id") != source and entry.get("source") != source:
+            return False
+    if status == "All Status":
+        if entry.get("status") == "archived":
+            return False
+    elif entry.get("status") != status:
+        return False
+    if category != "All Categories" and entry.get("category") != category:
+        return False
+    if search:
+        haystack = " ".join([
+            str(entry.get("title", "") or ""),
+            str(entry.get("source", "") or ""),
+            str(entry.get("topic", "") or ""),
+            str(entry.get("url", "") or ""),
+        ]).lower()
+        if search not in haystack:
+            return False
+    return True
 
 
 def normalize_reading_data(payload):
@@ -10417,6 +10457,8 @@ def reading_filter_query_params(filters=None):
     status = str(filters.get("status", "All Status") or "All Status").strip()
     category = str(filters.get("category", "All Categories") or "All Categories").strip()
     search = str(filters.get("search", "") or "").strip()
+    limit = filters.get("limit", "")
+    fresh = filters.get("fresh", False)
     if source and source != "All Sources":
         query["source"] = source
     if status and status != "All Status":
@@ -10425,6 +10467,14 @@ def reading_filter_query_params(filters=None):
         query["category"] = category
     if search:
         query["search"] = search
+    if fresh:
+        query["fresh"] = "1"
+    try:
+        normalized_limit = int(limit or 0)
+    except (TypeError, ValueError):
+        normalized_limit = 0
+    if normalized_limit and normalized_limit != READING_LIST_DEFAULT_LIMIT:
+        query["limit"] = normalized_limit
     return query
 
 
@@ -10930,7 +10980,15 @@ def reading_tts_timings_url(entry_id, version=""):
 
 
 def build_reading_view():
-    data = load_reading_data()
+    data = load_json_file(READING_DATA_PATH, None)
+    read_failed = READING_DATA_PATH.exists() and data is None
+    if read_failed:
+        data = load_reading_backup_payload()
+    if not isinstance(data, dict):
+        data = default_reading_data()
+    retained_data, _ = apply_reading_retention_policy(copy.deepcopy(data))
+    if isinstance(retained_data, dict):
+        data = retained_data
     sources = [normalize_reading_source(source, index) for index, source in enumerate(data.get("sources", []))]
     source_lookup = {source["name"].lower(): source["id"] for source in sources if source.get("name")}
     source_lookup.update({
@@ -10941,9 +10999,10 @@ def build_reading_view():
     source_lookup.update({source["id"]: source["id"] for source in sources})
     source_category_lookup = {source["id"]: source.get("category", "news") for source in sources}
     source_category_lookup.update({source["name"].lower(): source.get("category", "news") for source in sources if source.get("name")})
+    raw_entries = list(data.get("entries", []) or [])
     entries = [
-        normalize_reading_entry(entry, index, source_lookup=source_lookup, source_category_lookup=source_category_lookup)
-        for index, entry in enumerate(data.get("entries", []))
+        normalize_reading_list_entry(entry, index, source_lookup=source_lookup, source_category_lookup=source_category_lookup)
+        for index, entry in enumerate(raw_entries)
     ]
     last_sync_timestamp = parse_timestamp(str(data.get("last_sync_at", "") or "").strip())
     for entry in entries:
@@ -10988,26 +11047,11 @@ def build_reading_view():
     raw_search = str(request.args.get("search", "") or "").strip()
     search = raw_search.lower()
     fresh_only = str(request.args.get("fresh", "") or "").strip().lower() in {"1", "true", "yes", "on"}
-    filtered = entries[:]
-    if selected_source != "All Sources":
-        filtered = [
-            entry for entry in filtered
-            if entry.get("source_id") == selected_source or entry.get("source") == selected_source
-        ]
-    if selected_status != "All Status":
-        filtered = [entry for entry in filtered if entry.get("status") == selected_status]
-    if selected_category != "All Categories":
-        filtered = [entry for entry in filtered if entry.get("category") == selected_category]
-    if search:
-        filtered = [
-            entry for entry in filtered
-            if search in " ".join([
-                entry.get("title", ""),
-                entry.get("source", ""),
-                entry.get("topic", ""),
-                entry.get("url", ""),
-            ]).lower()
-        ]
+    try:
+        requested_limit = int(request.args.get("limit", READING_LIST_DEFAULT_LIMIT) or READING_LIST_DEFAULT_LIMIT)
+    except (TypeError, ValueError):
+        requested_limit = READING_LIST_DEFAULT_LIMIT
+    requested_limit = max(1, min(requested_limit, READING_LIST_LIMIT_MAX))
     summary = {
         "total": len(active_entries),
         "unread": len([entry for entry in active_entries if entry.get("status") == "unread"]),
@@ -11015,16 +11059,29 @@ def build_reading_view():
         "starred": len([entry for entry in active_entries if entry.get("starred")]),
     }
     last_sync_at = str(data.get("last_sync_at", "") or "").strip()
-    if selected_status == "All Status":
-        filtered = [entry for entry in filtered if entry.get("status") != "archived"]
+    filtered = [
+        entry for entry in entries
+        if reading_entry_matches_filters(
+            entry,
+            source=selected_source,
+            status=selected_status,
+            category=selected_category,
+            search=search,
+        )
+    ]
     fresh_entries = [entry for entry in filtered if entry.get("is_fresh_import")]
     fresh_entries.sort(key=reading_entry_sort_key, reverse=True)
     if fresh_only and last_sync_timestamp:
         filtered = fresh_entries[:]
     filtered.sort(key=reading_entry_sort_key, reverse=True)
     fresh_count = len(fresh_entries)
+    total_matching = len(filtered)
+    displayed_entries = filtered[:requested_limit]
+    has_more = total_matching > len(displayed_entries)
+    next_limit = min(requested_limit + READING_LIST_LIMIT_STEP, READING_LIST_LIMIT_MAX)
+    showing_archived = selected_status == "archived"
     return {
-        "entries": filtered,
+        "entries": displayed_entries,
         "sources": source_filters,
         "source_options": source_filters,
         "reading_sources": sources,
@@ -11041,12 +11098,29 @@ def build_reading_view():
             "status": selected_status,
             "category": selected_category,
             "search": raw_search,
+            "limit": requested_limit,
+            "fresh": fresh_only,
+        }),
+        "show_more_query": reading_filter_query_params({
+            "source": selected_source,
+            "status": selected_status,
+            "category": selected_category,
+            "search": raw_search,
+            "limit": next_limit,
+            "fresh": fresh_only,
         }),
         "summary": summary,
         "source_count": len(sources),
         "active_source_count": len([source for source in sources if source.get("active", True) and source.get("url")]),
         "source_entry_count": source_entry_count,
-        "total_filtered": len(filtered),
+        "total_filtered": len(displayed_entries),
+        "total_matching": total_matching,
+        "render_limit": requested_limit,
+        "render_limit_default": READING_LIST_DEFAULT_LIMIT,
+        "render_limit_max": READING_LIST_LIMIT_MAX,
+        "has_more_entries": has_more,
+        "next_limit": next_limit,
+        "showing_archived": showing_archived,
         "fresh_only": fresh_only,
         "fresh_count": fresh_count,
         "fresh_label": "New since last sync" if fresh_count else "Up to date",

@@ -6,7 +6,7 @@
     .reading-feedback .message.error{border-color:rgba(255,0,0,.28);color:#f0b0b0}
     .reading-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(280px,100%),1fr));gap:18px;margin-top:18px;width:100%;max-width:100%;min-width:0;align-items:start}
     .reading-card{display:flex;flex-direction:column;min-height:100%;padding:0;overflow:hidden;width:100%;max-width:100%;min-width:0}
-    .reading-card-media{display:block;aspect-ratio:16/9;width:100%;max-width:100%;min-width:0;background:rgba(255,255,255,.035);border-bottom:1px solid var(--border);color:var(--muted);text-decoration:none;overflow:hidden}
+    .reading-card-media{display:block;aspect-ratio:16/9;width:100%;max-width:100%;min-width:0;max-height:230px;background:rgba(255,255,255,.035);border-bottom:1px solid var(--border);color:var(--muted);text-decoration:none;overflow:hidden}
     .reading-card-media img{width:100%;max-width:100%;height:100%;object-fit:cover;display:block;filter:saturate(.92)}
     .reading-card-placeholder{height:100%;display:flex;flex-direction:column;justify-content:space-between;gap:10px;padding:12px 13px 13px;background:
         radial-gradient(circle at 20% 18%, rgba(255,255,255,.08), transparent 30%),
@@ -46,6 +46,10 @@
     .reading-entry-actions .btn i{width:13px;height:13px;color:var(--accent);opacity:.72}
     .reading-entry-actions .btn:hover i,.reading-entry-actions .btn:focus i{opacity:.95}
     .reading-entry-actions .btn:active{background:rgba(255,255,255,.1);transform:translateY(1px)}
+    .reading-results-meta{display:grid;gap:8px;margin-top:14px}
+    .reading-results-note{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;color:var(--text-2);font-size:.82rem;line-height:1.4}
+    .reading-results-note strong{color:var(--heading);font-weight:700}
+    .reading-results-note .btn{padding:8px 12px}
     .reading-status{display:inline-flex;align-items:center;gap:6px;padding:4px 8px;border-radius:999px;border:1px solid var(--border);background:rgba(255,255,255,.04);font-size:.68rem;text-transform:uppercase;letter-spacing:.12em;color:var(--text-2)}
     .reading-status-unread{color:#9ecbff}
     .reading-status-reading{color:#f0d38b}
@@ -64,6 +68,13 @@
     }
     @media (max-width:700px){
         .reading-grid{grid-template-columns:1fr}
+        .reading-card-media{aspect-ratio:auto;height:180px;max-height:180px}
+        .reading-card-body{padding:12px 13px 14px;gap:7px}
+        .reading-card-title{font-size:.95rem;line-height:1.25}
+        .reading-entry-meta{font-size:.72rem;gap:6px 8px}
+        .reading-entry-actions{gap:6px}
+        .reading-entry-actions .btn{padding:6px 9px;font-size:.62rem}
+        .reading-results-note{font-size:.76rem}
     }
 </style>
 <section class="page-hero">
@@ -127,12 +138,27 @@
     <div class="detail-header">
         <div>
             <div class="hero-meta">
-                <span class="hero-badge">Inbox</span>
+                <span class="hero-badge">{{ 'Archived' if showing_archived else 'Inbox' }}</span>
                 <span>{{ total_filtered }} shown</span>
                 <span>{{ summary.starred }} starred</span>
                 <span>{{ summary.reading }} reading</span>
             </div>
             <h3 style="font-size:2rem; margin-top:12px;">Articles</h3>
+        </div>
+    </div>
+    <div class="reading-results-meta">
+        <div class="reading-results-note">
+            <span>
+                <strong>{{ total_filtered }}</strong> currently rendered.
+                {% if total_matching > total_filtered %}
+                Showing newest {{ total_filtered }} of {{ total_matching }} matching {{ 'archived' if showing_archived else 'active' }} articles.
+                {% else %}
+                Showing all {{ 'archived' if showing_archived else 'active' }} matches.
+                {% endif %}
+            </span>
+            {% if has_more_entries %}
+            <a class="btn" href="{{ url_for('reading', **show_more_query) }}"><i data-lucide="plus"></i>Show more</a>
+            {% endif %}
         </div>
     </div>
     <div class="reading-grid">
