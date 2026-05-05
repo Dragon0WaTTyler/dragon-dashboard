@@ -132,7 +132,7 @@
     <article class="surface-card reading-article-card">
         {% if article_hero_image %}
         <div class="reading-article-hero">
-            <img src="{{ article_hero_image }}" alt="" loading="lazy" referrerpolicy="no-referrer">
+            <img src="{{ article_hero_image }}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">
         </div>
         {% endif %}
         <div class="reading-article-body" dir="{{ article_dir }}" lang="{{ article_lang }}">

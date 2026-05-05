@@ -5,6 +5,7 @@ import asyncio
 import copy
 import hashlib
 import io
+import logging
 import shutil
 import requests
 import urllib.parse
@@ -118,6 +119,9 @@ print(f"[env] NOTION_BOOK_QUOTES_SOURCE_PAGE_ID detected: {bool(os.environ.get('
 
 app = Flask(__name__)
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+app.logger.setLevel(logging.INFO)
+for handler in list(app.logger.handlers):
+    handler.setLevel(logging.INFO)
 
 FLASK_ENV_NAME = str(config_value("FLASK_ENV", "") or "").strip().lower()
 IS_PRODUCTION = FLASK_ENV_NAME == "production" or config_flag("RENDER", False)
@@ -633,6 +637,18 @@ def save_json_file(path, payload):
             print(f"[warn] Skipping write for {path.name}: disk quota exceeded")
             return False
         raise
+
+
+READING_DATA_CACHE = {"fingerprint": None, "data": None}
+READING_DATA_CACHE_LOCK = threading.Lock()
+
+
+def _reading_data_cache_fingerprint():
+    try:
+        stat_result = READING_DATA_PATH.stat()
+    except OSError:
+        return None
+    return (stat_result.st_mtime_ns, stat_result.st_size)
 
 
 def backup_reading_data_file(reason="save"):
@@ -7827,7 +7843,7 @@ class ReadingArticleHTMLSanitizer(HTMLParser):
         self.seen_images.add(image_key)
         self.seen_image_variants.add(image_variant_key)
         alt = attrs_dict.get("alt", "")
-        image_markup = f'<img src="{html_escape(image_url, quote=True)}" alt="{html_escape(alt, quote=True)}" loading="lazy" referrerpolicy="no-referrer">'
+        image_markup = f'<img src="{html_escape(image_url, quote=True)}" alt="{html_escape(alt, quote=True)}" loading="lazy" decoding="async" referrerpolicy="no-referrer">'
         if "figure" in self.open_tags:
             self.output.append(image_markup)
         else:
@@ -9702,7 +9718,7 @@ def normalize_reading_data(payload):
     return data, changed
 
 
-def load_reading_data():
+def _load_reading_data_uncached():
     data = load_json_file(READING_DATA_PATH, None)
     read_failed = READING_DATA_PATH.exists() and data is None
     if read_failed:
@@ -9714,6 +9730,24 @@ def load_reading_data():
         backup_reading_data_file("normalize")
         save_json_file(READING_DATA_PATH, normalized)
     return normalized
+
+
+def load_reading_data():
+    return _load_reading_data_uncached()
+
+
+def load_reading_data_cached():
+    fingerprint = _reading_data_cache_fingerprint()
+    with READING_DATA_CACHE_LOCK:
+        cached_fingerprint = READING_DATA_CACHE.get("fingerprint")
+        cached_data = READING_DATA_CACHE.get("data")
+        if fingerprint and cached_fingerprint == fingerprint and cached_data is not None:
+            return cached_data
+    data = _load_reading_data_uncached()
+    with READING_DATA_CACHE_LOCK:
+        READING_DATA_CACHE["fingerprint"] = _reading_data_cache_fingerprint()
+        READING_DATA_CACHE["data"] = data
+    return data
 
 
 def save_reading_data(data, apply_retention=False, retention_reason="save"):
@@ -10372,7 +10406,7 @@ def update_reading_entry(entry_id, updates):
 
 
 def get_reading_entry(entry_id):
-    data = load_reading_data()
+    data = load_reading_data_cached()
     for index, entry in enumerate(data.get("entries", [])):
         normalized = normalize_reading_entry(entry, index)
         if normalized.get("id") == str(entry_id or "").strip():
@@ -11055,10 +11089,7 @@ def reading_tts_timings_url(entry_id, version=""):
 
 
 def build_reading_view():
-    data = load_json_file(READING_DATA_PATH, None)
-    read_failed = READING_DATA_PATH.exists() and data is None
-    if read_failed:
-        data = load_reading_backup_payload()
+    data = load_reading_data_cached()
     if not isinstance(data, dict):
         data = default_reading_data()
     retained_data, _ = apply_reading_retention_policy(copy.deepcopy(data))
@@ -24439,23 +24470,49 @@ def reading():
 
 @app.route("/reading/article/<entry_id>")
 def reading_article(entry_id):
+    route_started_at = time.monotonic()
+    normalized_entry_id = str(entry_id or "").strip()
+    app.logger.info("reading_article start entry_id=%s path=%s", normalized_entry_id, request.full_path)
+    reading_view_started_at = time.monotonic()
     reading_view = build_reading_view()
+    reading_view_elapsed_ms = (time.monotonic() - reading_view_started_at) * 1000
     entries = list(reading_view.get("entries", []) or [])
-    preferred_card_entry = get_reading_entry(entry_id)
+    preferred_card_entry = next((item for item in entries if item.get("id") == normalized_entry_id), None)
+    if not preferred_card_entry:
+        preferred_card_entry = get_reading_entry(normalized_entry_id)
+    app.logger.info(
+        "reading_article data_lookup entry_id=%s build_reading_view_ms=%.1f entries=%s preferred_card_hit=%s",
+        normalized_entry_id,
+        reading_view_elapsed_ms,
+        len(entries),
+        bool(preferred_card_entry),
+    )
     preferred_card_image_url = normalize_reading_url(preferred_card_entry.get("image_url", "")) if preferred_card_entry else ""
     force_refresh = str(request.args.get("refresh", "") or "").strip().lower() in {"1", "true", "yes", "on", "force"}
     live_extraction_allowed = reading_article_live_extraction_allowed(force_refresh=force_refresh)
+    cache_selection_started_at = time.monotonic()
     entry = ensure_reading_entry_content(
-        entry_id,
+        normalized_entry_id,
         force_refresh=force_refresh and live_extraction_allowed,
         allow_live_extraction=live_extraction_allowed,
         log_reason="article_open",
     )
+    cache_selection_elapsed_ms = (time.monotonic() - cache_selection_started_at) * 1000
+    app.logger.info(
+        "reading_article cache_content_selection entry_id=%s elapsed_ms=%.1f force_refresh=%s live_extraction_allowed=%s status=%s has_html=%s has_text=%s",
+        normalized_entry_id,
+        cache_selection_elapsed_ms,
+        bool(force_refresh),
+        bool(live_extraction_allowed),
+        str(entry.get("extraction_status", "") or "").strip() or "none" if entry else "missing",
+        bool(entry.get("content_html")) if entry else False,
+        bool(entry.get("content_text") or entry.get("excerpt")) if entry else False,
+    )
     if not entry:
         return Response("Reading entry not found.", status=404)
-    current_index = next((index for index, item in enumerate(entries) if item.get("id") == str(entry_id or "").strip()), -1)
+    current_index = next((index for index, item in enumerate(entries) if item.get("id") == normalized_entry_id), -1)
     if entry.get("status") == "unread":
-        updated_entry = update_reading_entry(entry_id, {"status": "reading"})
+        updated_entry = update_reading_entry(normalized_entry_id, {"status": "reading"})
         if updated_entry:
             entry = updated_entry
             if current_index >= 0:
@@ -24521,7 +24578,15 @@ def reading_article(entry_id):
     next_entry = entries[current_index + 1] if current_index >= 0 and current_index < len(entries) - 1 else None
     article_query = reading_view.get("filter_query", {})
     reading_return_url = url_for("reading", **article_query)
-    return render_template(
+    render_started_at = time.monotonic()
+    app.logger.info(
+        "reading_article render_template start entry_id=%s article_html=%s paragraph_count=%s tts_available=%s",
+        normalized_entry_id,
+        bool(article_html),
+        len(article_paragraphs),
+        bool(tts_payload["available"]),
+    )
+    rendered = render_template(
         "reading_article.html",
         title=entry.get("title") or "Reading Article",
         entry=entry,
@@ -24554,6 +24619,15 @@ def reading_article(entry_id):
         ai_default_mode="cinematic",
         ai_page_context="general",
     )
+    render_elapsed_ms = (time.monotonic() - render_started_at) * 1000
+    total_elapsed_ms = (time.monotonic() - route_started_at) * 1000
+    app.logger.info(
+        "reading_article render_template end entry_id=%s render_ms=%.1f total_ms=%.1f",
+        normalized_entry_id,
+        render_elapsed_ms,
+        total_elapsed_ms,
+    )
+    return rendered
 
 
 @app.route("/reading/article/<entry_id>/audio", methods=["GET"])
