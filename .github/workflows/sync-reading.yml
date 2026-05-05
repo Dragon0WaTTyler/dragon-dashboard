@@ -22,6 +22,8 @@ jobs:
       DRAGON_READING_SYNC_EXTRACT_TIMEOUT_SECONDS: "12"
       DRAGON_READING_SYNC_EXTRACT_FAILURE_RETRY_HOURS: "24"
       DRAGON_READING_SYNC_EXTRACT_SLOW_LOG_LIMIT: "5"
+      DRAGON_READING_SYNC_BACKFILL_BBC: "1"
+      DRAGON_READING_SYNC_BBC_BACKFILL_MAX: "12"
 
     steps:
       - name: Check out repository
@@ -56,9 +58,6 @@ jobs:
           echo "Reading sync diagnostics at $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
           git status --short -- reading_data.json || true
 
-      # Every 2 hours is a safer V1 balance than every 30 minutes:
-      # it is friendlier to RSS sources, lighter on GitHub Actions usage,
-      # and avoids noisy commits when nothing meaningful changed.
       - name: Commit updated reading data
         if: success()
         shell: bash
@@ -72,4 +71,6 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add reading_data.json
           git commit -m "Sync reading feeds"
-          git push
+
+          git pull origin main --rebase
+          git push origin main
