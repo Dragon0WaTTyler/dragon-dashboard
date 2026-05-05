@@ -14,6 +14,7 @@ import re
 import random
 import secrets
 import sqlite3
+import subprocess
 import time
 import threading
 import traceback
@@ -197,12 +198,14 @@ DRAGON_READING_SYNC_EXTRACT_SLOW_LOG_LIMIT = config_int("DRAGON_READING_SYNC_EXT
 DRAGON_READING_SYNC_BACKFILL_BBC = config_flag("DRAGON_READING_SYNC_BACKFILL_BBC", False)
 DRAGON_READING_SYNC_BBC_BACKFILL_MAX = config_int("DRAGON_READING_SYNC_BBC_BACKFILL_MAX", 12, minimum=0, maximum=50)
 GITHUB_ACTIONS_TOKEN = config_value("GITHUB_ACTIONS_TOKEN", "")
+DRAGON_GITHUB_WEBHOOK_SECRET = config_value("DRAGON_GITHUB_WEBHOOK_SECRET", "")
 READING_SYNC_GITHUB_OWNER = "Dragon0WaTTyler"
 READING_SYNC_GITHUB_REPO = "dragon-dashboard"
 READING_SYNC_GITHUB_WORKFLOW = "sync-reading.yml"
 READING_SYNC_GITHUB_BRANCH = "main"
 READING_SYNC_GITHUB_API_BASE = "https://api.github.com"
 READING_SYNC_TRIGGER_LOCK = threading.Lock()
+READING_GITHUB_REFRESH_LOCK = threading.Lock()
 MOVIE_WANT_TO_UNION_FETCH_FLAG_NAME = "MOVIE_WANT_TO_UNION_FETCH_ENABLED"
 DEFAULT_MOVIE_FETCH_EXPERIMENT_UI_COUNT = 506
 MOVIE_FETCH_EXPERIMENT_ANCHOR_TITLES = (
@@ -9986,6 +9989,12 @@ def load_reading_data_cached():
         READING_DATA_CACHE["fingerprint"] = _reading_data_cache_fingerprint()
         READING_DATA_CACHE["data"] = data
     return data
+
+
+def clear_reading_data_cache():
+    with READING_DATA_CACHE_LOCK:
+        READING_DATA_CACHE["fingerprint"] = None
+        READING_DATA_CACHE["data"] = None
 
 
 def save_reading_data(data, apply_retention=False, retention_reason="save"):
@@ -24025,7 +24034,7 @@ def dragon_login_required_for_request():
     if not dragon_auth_enabled():
         return False
     endpoint = str(request.endpoint or "")
-    if endpoint in {"static", "login", "logout", "healthz"}:
+    if endpoint in {"static", "login", "logout", "healthz", "reading_github_snapshot_updated"}:
         return False
     path = str(request.path or "/")
     if path.startswith("/static/"):
@@ -25035,6 +25044,82 @@ def _reading_github_actions_latest_run():
     return latest_run, _reading_sync_status_from_run(latest_run)
 
 
+def _reading_github_webhook_secret_valid(request_secret):
+    expected_secret = str(DRAGON_GITHUB_WEBHOOK_SECRET or "").strip()
+    provided_secret = str(request_secret or "").strip()
+    if not expected_secret or not provided_secret:
+        return False
+    return secrets.compare_digest(provided_secret, expected_secret)
+
+
+def _reading_repo_index_lock_path():
+    return BASE_DIR / ".git" / "index.lock"
+
+
+def _run_reading_git_command(args, timeout_seconds=20):
+    return subprocess.run(
+        args,
+        cwd=str(BASE_DIR),
+        capture_output=True,
+        text=True,
+        timeout=max(int(timeout_seconds or 0), 1),
+        check=False,
+    )
+
+
+def refresh_deployed_reading_snapshot_from_github():
+    lock_path = _reading_repo_index_lock_path()
+    if lock_path.exists():
+        raise RuntimeError(f"Git index is locked at {lock_path}")
+
+    git_commands = [
+        ["git", "fetch", "origin", READING_SYNC_GITHUB_BRANCH],
+        ["git", "restore", "--worktree", "--source", f"origin/{READING_SYNC_GITHUB_BRANCH}", "--", "reading_data.json"],
+    ]
+    command_labels = []
+
+    with READING_GITHUB_REFRESH_LOCK:
+        for command in git_commands:
+            command_labels.append(" ".join(command))
+            result = _run_reading_git_command(command, timeout_seconds=25)
+            if result.returncode != 0:
+                stderr = str(result.stderr or "").strip()
+                stdout = str(result.stdout or "").strip()
+                detail = stderr or stdout or f"exit code {result.returncode}"
+                raise RuntimeError(f"`{' '.join(command)}` failed: {detail[:400]}")
+            if lock_path.exists():
+                raise RuntimeError(f"Git index remained locked at {lock_path}")
+
+        refreshed_data = _load_reading_data_uncached()
+        clear_reading_data_cache()
+        with READING_DATA_CACHE_LOCK:
+            READING_DATA_CACHE["fingerprint"] = _reading_data_cache_fingerprint()
+            READING_DATA_CACHE["data"] = refreshed_data
+
+    return {
+        "ok": True,
+        "git_commands": command_labels,
+        "entry_count": len(refreshed_data.get("entries", []) or []) if isinstance(refreshed_data, dict) else 0,
+        "source_count": len(refreshed_data.get("sources", []) or []) if isinstance(refreshed_data, dict) else 0,
+        "fingerprint": _reading_data_cache_fingerprint(),
+    }
+
+
+def _reading_refresh_snapshot_worker(trigger_label="github"):
+    try:
+        result = refresh_deployed_reading_snapshot_from_github()
+        app.logger.info(
+            "reading_snapshot_refresh success trigger=%s entries=%s sources=%s",
+            trigger_label,
+            result.get("entry_count", 0),
+            result.get("source_count", 0),
+        )
+    except subprocess.TimeoutExpired:
+        app.logger.warning("reading_snapshot_refresh timeout trigger=%s", trigger_label)
+    except Exception as exc:
+        app.logger.warning("reading_snapshot_refresh failed trigger=%s error=%s", trigger_label, exc)
+
+
 @app.route("/reading/sync-status", methods=["GET"])
 def reading_sync_status():
     try:
@@ -25115,6 +25200,31 @@ def reading_trigger_sync():
             return jsonify({"ok": False, "error": "GitHub rejected the workflow dispatch request."}), 502
 
     return jsonify({"status": "started"})
+
+
+@app.route("/reading/github-snapshot-updated", methods=["POST"])
+def reading_github_snapshot_updated():
+    configured_secret = str(DRAGON_GITHUB_WEBHOOK_SECRET or "").strip()
+    provided_secret = request.headers.get("X-Dragon-GitHub-Secret", "")
+    if not configured_secret:
+        app.logger.warning("reading_github_snapshot_updated rejected reason=missing_server_secret")
+        return jsonify({"ok": False, "error": "Webhook secret is not configured."}), 403
+    if not _reading_github_webhook_secret_valid(provided_secret):
+        app.logger.warning("reading_github_snapshot_updated rejected reason=invalid_secret")
+        return jsonify({"ok": False, "error": "Forbidden"}), 403
+    if READING_GITHUB_REFRESH_LOCK.locked():
+        app.logger.info("reading_github_snapshot_updated skipped reason=refresh_in_progress")
+        return jsonify({"ok": True, "status": "already_refreshing"}), 202
+
+    worker = threading.Thread(
+        target=_reading_refresh_snapshot_worker,
+        kwargs={"trigger_label": "github_webhook"},
+        daemon=True,
+        name="reading-github-snapshot-refresh",
+    )
+    worker.start()
+    app.logger.info("reading_github_snapshot_updated accepted")
+    return jsonify({"ok": True, "status": "refresh_started"}), 202
 
 
 @app.route("/reading/article/<entry_id>")

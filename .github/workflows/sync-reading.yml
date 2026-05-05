@@ -59,10 +59,12 @@ jobs:
           git status --short -- reading_data.json || true
 
       - name: Commit updated reading data
+        id: commit_reading_data
         if: success()
         shell: bash
         run: |
           set -euo pipefail
+          echo "pushed=false" >> "$GITHUB_OUTPUT"
           if [ -z "$(git status --porcelain -- reading_data.json)" ]; then
             echo "No reading_data.json changes to commit."
             exit 0
@@ -74,3 +76,27 @@ jobs:
 
           git pull origin main --rebase
           git push origin main
+          echo "pushed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Notify PythonAnywhere reading snapshot refresh
+        if: success() && steps.commit_reading_data.outputs.pushed == 'true'
+        shell: bash
+        env:
+          DRAGON_GITHUB_WEBHOOK_SECRET: ${{ secrets.DRAGON_GITHUB_WEBHOOK_SECRET }}
+        run: |
+          set +e
+          if [ -z "${DRAGON_GITHUB_WEBHOOK_SECRET:-}" ]; then
+            echo "PythonAnywhere notify skipped: DRAGON_GITHUB_WEBHOOK_SECRET is not configured in GitHub secrets."
+            exit 0
+          fi
+          http_code=$(curl -sS -o /tmp/dragon-reading-notify-response.txt -w "%{http_code}" \
+            -X POST "https://dragon99.pythonanywhere.com/reading/github-snapshot-updated" \
+            -H "X-Dragon-GitHub-Secret: ${DRAGON_GITHUB_WEBHOOK_SECRET}" \
+            -H "Content-Type: application/json")
+          if [ "$http_code" -lt 200 ] || [ "$http_code" -ge 300 ]; then
+            echo "PythonAnywhere notify failed with HTTP $http_code"
+            cat /tmp/dragon-reading-notify-response.txt || true
+            exit 0
+          fi
+          echo "PythonAnywhere notify succeeded with HTTP $http_code"
+          cat /tmp/dragon-reading-notify-response.txt || true
