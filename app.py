@@ -109,6 +109,19 @@ def config_flag(name, default=False):
     return str(raw_value or "").strip().lower() not in {"", "0", "false", "no", "off"}
 
 
+def config_int(name, default=0, minimum=None, maximum=None):
+    raw_value = config_value(name, str(default))
+    try:
+        value = int(str(raw_value or "").strip())
+    except Exception:
+        value = int(default)
+    if minimum is not None:
+        value = max(int(minimum), value)
+    if maximum is not None:
+        value = min(int(maximum), value)
+    return value
+
+
 print(f"[env] .env path: {DOTENV_PATH} | exists: {DOTENV_PATH.exists()}")
 print(f"[env] NOTION_TOKEN detected: {bool(os.environ.get('NOTION_TOKEN') or LOCAL_ENV.get('NOTION_TOKEN'))}")
 print(f"[env] NOTION_DATABASE_ID detected: {bool(os.environ.get('NOTION_DATABASE_ID') or LOCAL_ENV.get('NOTION_DATABASE_ID'))}")
@@ -176,6 +189,11 @@ DRAGON_ADMIN_PASSWORD = config_value("DRAGON_ADMIN_PASSWORD", "")
 DRAGON_PROTECT_WHOLE_SITE = config_flag("DRAGON_PROTECT_WHOLE_SITE", IS_PRODUCTION)
 DRAGON_ALLOW_WEB_REFRESH_SYNC = config_flag("DRAGON_ALLOW_WEB_REFRESH_SYNC", False)
 DRAGON_ALLOW_LIVE_ARTICLE_EXTRACTION = config_flag("DRAGON_ALLOW_LIVE_ARTICLE_EXTRACTION", False)
+DRAGON_READING_SYNC_EXTRACT_FULL_CONTENT = config_flag("DRAGON_READING_SYNC_EXTRACT_FULL_CONTENT", False)
+DRAGON_READING_SYNC_EXTRACT_MAX_ARTICLES = config_int("DRAGON_READING_SYNC_EXTRACT_MAX_ARTICLES", 6, minimum=0, maximum=50)
+DRAGON_READING_SYNC_EXTRACT_TIMEOUT_SECONDS = config_int("DRAGON_READING_SYNC_EXTRACT_TIMEOUT_SECONDS", 12, minimum=3, maximum=60)
+DRAGON_READING_SYNC_EXTRACT_FAILURE_RETRY_HOURS = config_int("DRAGON_READING_SYNC_EXTRACT_FAILURE_RETRY_HOURS", 24, minimum=1, maximum=168)
+DRAGON_READING_SYNC_EXTRACT_SLOW_LOG_LIMIT = config_int("DRAGON_READING_SYNC_EXTRACT_SLOW_LOG_LIMIT", 5, minimum=1, maximum=20)
 MOVIE_WANT_TO_UNION_FETCH_FLAG_NAME = "MOVIE_WANT_TO_UNION_FETCH_ENABLED"
 DEFAULT_MOVIE_FETCH_EXPERIMENT_UI_COUNT = 506
 MOVIE_FETCH_EXPERIMENT_ANCHOR_TITLES = (
@@ -8541,6 +8559,21 @@ def extract_reading_lead_image_from_meta(meta, base_url=""):
     return ""
 
 
+def extract_reading_canonical_url_from_meta(meta, base_url=""):
+    meta = meta if isinstance(meta, dict) else {}
+    candidates = (
+        "og:url",
+        "twitter:url",
+        "parsely-link",
+        "canonical",
+    )
+    for key in candidates:
+        candidate = absolutize_reading_url(meta.get(key, ""), base_url)
+        if candidate:
+            return candidate
+    return ""
+
+
 def extract_reading_lead_image_from_html(value, base_url=""):
     parser = ReadingHTMLExtractor(base_url=base_url)
     try:
@@ -8810,6 +8843,73 @@ def reading_entry_needs_content_upgrade(entry, force_refresh=False):
     if status == "feed":
         return score < 900 or len(text) < 700
     return score < 900 or len(text) < 700
+
+
+def reading_sync_extract_retry_allowed(entry, retry_after_hours=24, now_dt=None):
+    entry = entry if isinstance(entry, dict) else {}
+    status = str(entry.get("extraction_status", "") or "").strip().lower()
+    if status != "failed":
+        return True
+    cached_at = parse_timestamp(entry.get("content_cached_at", ""))
+    if not cached_at:
+        return True
+    current_time = now_dt or datetime.now().astimezone()
+    if cached_at.tzinfo is None:
+        cached_at = cached_at.replace(tzinfo=current_time.tzinfo)
+    retry_after = timedelta(hours=max(1, int(retry_after_hours or 24)))
+    return (current_time - cached_at) >= retry_after
+
+
+def reading_describe_article_fetch_error(exc, timeout_seconds=0):
+    if isinstance(exc, requests.exceptions.Timeout):
+        seconds = int(timeout_seconds or 0)
+        if seconds > 0:
+            return f"Timed out after {seconds}s fetching article."
+        return "Timed out fetching article."
+    if isinstance(exc, requests.exceptions.HTTPError):
+        response = getattr(exc, "response", None)
+        status_code = int(getattr(response, "status_code", 0) or 0)
+        if status_code == 403:
+            return "HTTP 403 while fetching article."
+        if status_code:
+            return f"HTTP {status_code} while fetching article."
+    if isinstance(exc, requests.exceptions.ProxyError):
+        return "Proxy error while fetching article."
+    if isinstance(exc, requests.exceptions.ConnectionError):
+        return "Connection error while fetching article."
+    return str(exc) or exc.__class__.__name__
+
+
+def reading_merge_extraction_snapshot(entry, extraction, force_refresh=False):
+    entry = dict(entry or {})
+    extraction = extraction if isinstance(extraction, dict) else {}
+    media_needs_enrichment = reading_content_needs_media_enrichment(entry.get("content_html", ""))
+    current_score = reading_entry_content_score(entry)
+    extraction_score = int(extraction.get("content_score", 0) or 0)
+    updates = {
+        "extraction_status": str(extraction.get("status", "") or "").strip(),
+        "extraction_error": str(extraction.get("error", "") or "").strip(),
+        "content_cached_at": str(extraction.get("content_cached_at", "") or current_timestamp()).strip(),
+    }
+    canonical_url = normalize_reading_url(extraction.get("canonical_url", "")) or normalize_reading_url(entry.get("canonical_url", "")) or normalize_reading_url(entry.get("original_url", "")) or normalize_reading_url(entry.get("url", ""))
+    if canonical_url:
+        updates["canonical_url"] = canonical_url
+    for key in ("image_url", "lead_image_url", "lead_image_kind", "author", "author_image_url", "excerpt", "content_html", "content_text"):
+        incoming_value = extraction.get(key)
+        if not incoming_value:
+            continue
+        if key == "content_html":
+            if force_refresh or (not entry.get(key)) or media_needs_enrichment or extraction_score >= current_score:
+                updates[key] = incoming_value
+        elif force_refresh or (not entry.get(key)) or extraction_score >= current_score:
+            updates[key] = incoming_value
+    if extraction_score and (force_refresh or extraction_score >= current_score or not entry.get("content_score")):
+        updates["content_score"] = extraction_score
+    merged = dict(entry)
+    merged.update(updates)
+    if not merged.get("excerpt") and merged.get("content_text"):
+        merged["excerpt"] = normalize_reading_space(merged.get("content_text", ""))[:420].strip()
+    return merged
 
 
 def sanitize_reading_article_html(value, base_url="", hero_image="", author_image=""):
@@ -10035,6 +10135,11 @@ def sync_reading_sources(source_id=""):
     sync_started_at = time.monotonic()
     data = load_reading_data()
     source_id = str(source_id or "").strip()
+    extract_full_content = bool(DRAGON_READING_SYNC_EXTRACT_FULL_CONTENT)
+    extract_max_articles = int(DRAGON_READING_SYNC_EXTRACT_MAX_ARTICLES or 0)
+    extract_timeout_seconds = int(DRAGON_READING_SYNC_EXTRACT_TIMEOUT_SECONDS or 12)
+    extract_failure_retry_hours = int(DRAGON_READING_SYNC_EXTRACT_FAILURE_RETRY_HOURS or 24)
+    extract_slow_log_limit = int(DRAGON_READING_SYNC_EXTRACT_SLOW_LOG_LIMIT or 5)
     target_sources = []
     for source in data.get("sources", []):
         if not isinstance(source, dict):
@@ -10051,7 +10156,10 @@ def sync_reading_sources(source_id=""):
         "[reading-sync] start | "
         f"source_id={source_id or 'all'} | "
         f"tracked_sources={total_sources} | "
-        f"active_sources={len(target_sources)}"
+        f"active_sources={len(target_sources)} | "
+        f"extract_full_content={int(extract_full_content)} | "
+        f"extract_max_articles={extract_max_articles} | "
+        f"extract_timeout={extract_timeout_seconds}s"
     )
     if not target_sources:
         print("[reading-sync] no active sources matched this sync run")
@@ -10065,6 +10173,19 @@ def sync_reading_sources(source_id=""):
     imported_total = 0
     source_results = []
     zero_import_reasons = {}
+    extraction_candidate_indexes = []
+    extraction_summary = {
+        "enabled": extract_full_content,
+        "max_articles": extract_max_articles,
+        "timeout_seconds": extract_timeout_seconds,
+        "failure_retry_hours": extract_failure_retry_hours,
+        "attempted": 0,
+        "skipped_cached": 0,
+        "skipped_recent_failure": 0,
+        "enriched": 0,
+        "failed": 0,
+        "slowest": [],
+    }
     now = current_timestamp()
     for position, source in enumerate(target_sources, start=1):
         source_name = str(source.get("name", "Unknown Source") or "Unknown Source").strip() or "Unknown Source"
@@ -10148,6 +10269,7 @@ def sync_reading_sources(source_id=""):
                     for dedupe_key in reading_entry_dedupe_keys(existing):
                         existing_by_key[dedupe_key] = existing_index
                     source_skipped_existing += 1
+                    extraction_candidate_indexes.append(existing_index)
                 else:
                     primary_key = sorted(dedupe_keys)[0]
                     normalized_import["id"] = normalized_import.get("id") or f"reading-{reading_hash_key(primary_key)}"
@@ -10157,6 +10279,7 @@ def sync_reading_sources(source_id=""):
                         existing_by_key[dedupe_key] = new_index
                     imported_total += 1
                     source_imported += 1
+                    extraction_candidate_indexes.append(new_index)
             source["last_synced_at"] = now
             source["last_sync_count"] = raw_count
             source["last_sync_raw_count"] = raw_count
@@ -10253,6 +10376,70 @@ def sync_reading_sources(source_id=""):
             )
             traceback.print_exc()
 
+    if extract_full_content and extract_max_articles > 0 and extraction_candidate_indexes:
+        now_dt = datetime.now().astimezone()
+        seen_candidate_indexes = set()
+        for candidate_index in extraction_candidate_indexes:
+            if extraction_summary["attempted"] >= extract_max_articles:
+                break
+            if candidate_index in seen_candidate_indexes:
+                continue
+            seen_candidate_indexes.add(candidate_index)
+            if candidate_index < 0 or candidate_index >= len(entries):
+                continue
+            entry = normalize_reading_entry(entries[candidate_index], candidate_index)
+            article_url = normalize_reading_url(entry.get("original_url") or entry.get("url"))
+            if not article_url:
+                continue
+            if not reading_entry_needs_content_upgrade(entry):
+                extraction_summary["skipped_cached"] += 1
+                continue
+            if not reading_sync_extract_retry_allowed(entry, retry_after_hours=extract_failure_retry_hours, now_dt=now_dt):
+                extraction_summary["skipped_recent_failure"] += 1
+                continue
+            extraction_started_at = time.monotonic()
+            extraction_summary["attempted"] += 1
+            extraction = extract_reading_article_page(article_url, timeout_seconds=extract_timeout_seconds)
+            extraction_elapsed = time.monotonic() - extraction_started_at
+            merged_entry = normalize_reading_entry(
+                reading_merge_extraction_snapshot(entry, extraction),
+                candidate_index,
+            )
+            entries[candidate_index] = merged_entry
+            extraction_status = str(extraction.get("status", "") or "").strip().lower()
+            if extraction_status in {"ok", "partial"} and (
+                reading_entry_content_score(merged_entry) >= reading_entry_content_score(entry)
+                or merged_entry.get("content_html")
+                or merged_entry.get("content_text")
+                or merged_entry.get("image_url")
+            ):
+                extraction_summary["enriched"] += 1
+            elif extraction_status == "failed":
+                extraction_summary["failed"] += 1
+            else:
+                extraction_summary["enriched"] += 1
+            extraction_summary["slowest"].append({
+                "elapsed": extraction_elapsed,
+                "source": entry.get("source", ""),
+                "url": article_url,
+                "status": extraction_status or "unknown",
+                "error": str(extraction.get("error", "") or "").strip(),
+            })
+            print(
+                "[reading-sync] enrich | "
+                f"source={entry.get('source', 'Unknown Source')} | "
+                f"status={extraction_status or 'unknown'} | "
+                f"elapsed={extraction_elapsed:.1f}s | "
+                f"url={article_url}"
+            )
+        extraction_summary["slowest"] = sorted(
+            extraction_summary["slowest"],
+            key=lambda item: float(item.get("elapsed", 0.0) or 0.0),
+            reverse=True,
+        )[:extract_slow_log_limit]
+    elif extract_full_content and extract_max_articles > 0:
+        print("[reading-sync] enrich | no candidate entries needed content extraction")
+
     entries.sort(key=reading_entry_sort_key, reverse=True)
     data["entries"] = entries
     data["last_sync_at"] = now if target_sources else data.get("last_sync_at", "")
@@ -10270,6 +10457,14 @@ def sync_reading_sources(source_id=""):
         data["last_sync_message"] = f"0 new items from {len(target_sources)} active source(s)"
         if reason_text:
             data["last_sync_message"] += f": {reason_text}"
+    if extract_full_content and extract_max_articles > 0:
+        data["last_sync_message"] += (
+            f" | extraction attempted {extraction_summary['attempted']}, "
+            f"enriched {extraction_summary['enriched']}, "
+            f"failed {extraction_summary['failed']}, "
+            f"skipped cached {extraction_summary['skipped_cached']}, "
+            f"skipped recent failures {extraction_summary['skipped_recent_failure']}"
+        )
     saved_data = save_reading_data(data, apply_retention=True, retention_reason="sync")
     total_elapsed = time.monotonic() - sync_started_at
     failed_source_count = sum(1 for item in source_results if str(item.get("status", "")).strip().lower() == "error")
@@ -10280,6 +10475,23 @@ def sync_reading_sources(source_id=""):
         f"failed_sources={failed_source_count} | "
         f"elapsed={total_elapsed:.1f}s"
     )
+    if extract_full_content and extract_max_articles > 0:
+        print(
+            "[reading-sync] extraction summary | "
+            f"attempted={extraction_summary['attempted']} | "
+            f"skipped_cached={extraction_summary['skipped_cached']} | "
+            f"skipped_recent_failure={extraction_summary['skipped_recent_failure']} | "
+            f"enriched={extraction_summary['enriched']} | "
+            f"failed={extraction_summary['failed']}"
+        )
+        for item in extraction_summary.get("slowest", []) or []:
+            print(
+                "[reading-sync] slow extraction | "
+                f"elapsed={float(item.get('elapsed', 0.0) or 0.0):.1f}s | "
+                f"source={item.get('source', 'Unknown Source')} | "
+                f"status={item.get('status', 'unknown')} | "
+                f"url={item.get('url', '')}"
+            )
     return {
         "imported_total": imported_total,
         "source_results": source_results,
@@ -10289,6 +10501,7 @@ def sync_reading_sources(source_id=""):
         "last_sync_at": saved_data.get("last_sync_at", ""),
         "last_sync_message": saved_data.get("last_sync_message", ""),
         "retention_summary": saved_data.get("retention_summary", {}),
+        "extraction_summary": extraction_summary,
     }
 
 
@@ -10414,17 +10627,23 @@ def get_reading_entry(entry_id):
     return None
 
 
-def extract_reading_article_page(url):
+def extract_reading_article_page(url, timeout_seconds=None):
     article_url = normalize_reading_url(url)
     if not article_url:
         return {"status": "failed", "error": "Missing article URL."}
+    request_timeout = int(timeout_seconds or DRAGON_READING_SYNC_EXTRACT_TIMEOUT_SECONDS or 20)
     try:
-        response = requests.get(article_url, timeout=20, headers={"User-Agent": "DragonReading/1.0 (+local)"})
+        response = requests.get(article_url, timeout=request_timeout, headers={"User-Agent": "DragonReading/1.0 (+local)"})
         response.raise_for_status()
         html = response.text or ""
         parser = ReadingHTMLExtractor()
         parser.feed(html)
         parser.close()
+        canonical_url = (
+            extract_reading_canonical_url_from_meta(getattr(parser, "meta", {}), article_url)
+            or normalize_reading_url(getattr(response, "url", ""))
+            or article_url
+        )
         selected_html = reading_select_source_article_fragment(html, article_url) or reading_select_article_fragment(html)
         lead_image_url = extract_reading_lead_image_from_meta(parser.meta, article_url)
         lead_image_kind = "explicit" if lead_image_url and reading_is_explicit_lead_image_meta(parser.meta) else ""
@@ -10467,6 +10686,7 @@ def extract_reading_article_page(url):
         status = "ok" if content_score >= 900 or len(content_text) >= 900 else ("partial" if content_text or image_url else "failed")
         return {
             "status": status,
+            "canonical_url": canonical_url,
             "image_url": image_url,
             "lead_image_url": lead_image_url,
             "lead_image_kind": lead_image_kind,
@@ -10482,6 +10702,7 @@ def extract_reading_article_page(url):
     except Exception as exc:
         return {
             "status": "failed",
+            "canonical_url": article_url,
             "image_url": "",
             "lead_image_url": "",
             "lead_image_kind": "",
@@ -10492,7 +10713,7 @@ def extract_reading_article_page(url):
             "content_text": "",
             "content_score": 0,
             "content_cached_at": current_timestamp(),
-            "error": str(exc),
+            "error": reading_describe_article_fetch_error(exc, timeout_seconds=request_timeout),
         }
 
 
@@ -10541,20 +10762,26 @@ def ensure_reading_entry_content(entry_id, force_refresh=False, allow_live_extra
         bool(force_refresh),
     )
     extraction = extract_reading_article_page(entry.get("original_url") or entry.get("url"))
-    current_score = reading_entry_content_score(entry)
-    extraction_score = int(extraction.get("content_score", 0) or 0)
+    merged = reading_merge_extraction_snapshot(entry, extraction, force_refresh=force_refresh)
     updates = {
-        "extraction_status": extraction.get("status", ""),
-        "extraction_error": extraction.get("error", ""),
-        "content_cached_at": extraction.get("content_cached_at", current_timestamp()),
+        key: merged.get(key)
+        for key in (
+            "canonical_url",
+            "image_url",
+            "lead_image_url",
+            "lead_image_kind",
+            "author",
+            "author_image_url",
+            "excerpt",
+            "content_html",
+            "content_text",
+            "content_score",
+            "extraction_status",
+            "extraction_error",
+            "content_cached_at",
+        )
+        if key in merged
     }
-    for key in ("image_url", "lead_image_url", "lead_image_kind", "author", "author_image_url", "excerpt", "content_html", "content_text"):
-        if key == "content_html" and extraction.get(key) and (force_refresh or (not entry.get(key)) or media_needs_enrichment or extraction_score >= current_score):
-            updates[key] = extraction.get(key)
-        elif extraction.get(key) and (force_refresh or not entry.get(key) or extraction_score >= current_score):
-            updates[key] = extraction.get(key)
-    if extraction_score:
-        updates["content_score"] = extraction_score
     updated = update_reading_entry(entry_id, updates)
     return updated or entry
 
