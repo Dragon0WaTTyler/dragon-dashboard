@@ -196,6 +196,13 @@ DRAGON_READING_SYNC_EXTRACT_FAILURE_RETRY_HOURS = config_int("DRAGON_READING_SYN
 DRAGON_READING_SYNC_EXTRACT_SLOW_LOG_LIMIT = config_int("DRAGON_READING_SYNC_EXTRACT_SLOW_LOG_LIMIT", 5, minimum=1, maximum=20)
 DRAGON_READING_SYNC_BACKFILL_BBC = config_flag("DRAGON_READING_SYNC_BACKFILL_BBC", False)
 DRAGON_READING_SYNC_BBC_BACKFILL_MAX = config_int("DRAGON_READING_SYNC_BBC_BACKFILL_MAX", 12, minimum=0, maximum=50)
+GITHUB_ACTIONS_TOKEN = config_value("GITHUB_ACTIONS_TOKEN", "")
+READING_SYNC_GITHUB_OWNER = "Dragon0WaTTyler"
+READING_SYNC_GITHUB_REPO = "dragon-dashboard"
+READING_SYNC_GITHUB_WORKFLOW = "sync-reading.yml"
+READING_SYNC_GITHUB_BRANCH = "main"
+READING_SYNC_GITHUB_API_BASE = "https://api.github.com"
+READING_SYNC_TRIGGER_LOCK = threading.Lock()
 MOVIE_WANT_TO_UNION_FETCH_FLAG_NAME = "MOVIE_WANT_TO_UNION_FETCH_ENABLED"
 DEFAULT_MOVIE_FETCH_EXPERIMENT_UI_COUNT = 506
 MOVIE_FETCH_EXPERIMENT_ANCHOR_TITLES = (
@@ -24947,6 +24954,167 @@ def reading():
         ai_page_context="general",
         **reading_view,
     )
+
+
+def _reading_github_actions_headers():
+    token = str(GITHUB_ACTIONS_TOKEN or "").strip()
+    if not token:
+        return None
+    return {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/vnd.github+json",
+    }
+
+
+def _reading_github_actions_runs_url():
+    return (
+        f"{READING_SYNC_GITHUB_API_BASE}/repos/"
+        f"{READING_SYNC_GITHUB_OWNER}/{READING_SYNC_GITHUB_REPO}/actions/workflows/"
+        f"{READING_SYNC_GITHUB_WORKFLOW}/runs"
+    )
+
+
+def _reading_github_actions_dispatch_url():
+    return (
+        f"{READING_SYNC_GITHUB_API_BASE}/repos/"
+        f"{READING_SYNC_GITHUB_OWNER}/{READING_SYNC_GITHUB_REPO}/actions/workflows/"
+        f"{READING_SYNC_GITHUB_WORKFLOW}/dispatches"
+    )
+
+
+def _reading_sync_status_from_run(run):
+    if not isinstance(run, dict):
+        return {
+            "status": "idle",
+            "updated_at": None,
+            "run_id": None,
+            "conclusion": None,
+        }
+    run_status = str(run.get("status", "") or "").strip().lower()
+    conclusion = run.get("conclusion")
+    updated_at = str(run.get("updated_at") or run.get("created_at") or "").strip() or None
+    run_id = str(run.get("id") or "").strip() or None
+    if run_status == "completed":
+        normalized_conclusion = str(conclusion or "").strip().lower() or None
+        return {
+            "status": "completed" if normalized_conclusion in {"success", "neutral", "skipped"} else "failed",
+            "updated_at": updated_at,
+            "run_id": run_id,
+            "conclusion": normalized_conclusion,
+        }
+    if run_status in {"queued", "in_progress", "requested", "waiting", "pending", "action_required"}:
+        return {
+            "status": "queued" if run_status != "in_progress" else "in_progress",
+            "updated_at": updated_at,
+            "run_id": run_id,
+            "conclusion": None,
+        }
+    return {
+        "status": "queued",
+        "updated_at": updated_at,
+        "run_id": run_id,
+        "conclusion": None,
+    }
+
+
+def _reading_github_actions_latest_run():
+    headers = _reading_github_actions_headers()
+    if not headers:
+        return None, {"status": "missing_token"}
+    response = requests.get(
+        _reading_github_actions_runs_url(),
+        headers=headers,
+        params={"branch": READING_SYNC_GITHUB_BRANCH, "per_page": 1},
+        timeout=10,
+    )
+    if response.status_code != 200:
+        raise RuntimeError(f"GitHub workflow run lookup failed with status {response.status_code}")
+    payload = response.json()
+    workflow_runs = payload.get("workflow_runs", []) if isinstance(payload, dict) else []
+    latest_run = workflow_runs[0] if workflow_runs else None
+    return latest_run, _reading_sync_status_from_run(latest_run)
+
+
+@app.route("/reading/sync-status", methods=["GET"])
+def reading_sync_status():
+    try:
+        latest_run, status_payload = _reading_github_actions_latest_run()
+        if latest_run is None and status_payload.get("status") == "missing_token":
+            return jsonify({
+                "status": "idle",
+                "updated_at": None,
+                "run_id": None,
+                "conclusion": None,
+            })
+        return jsonify(status_payload)
+    except requests.RequestException as exc:
+        app.logger.warning("reading_sync_status github_request_failed: %s", exc)
+        return jsonify({
+            "status": "idle",
+            "updated_at": None,
+            "run_id": None,
+            "conclusion": None,
+        })
+    except ValueError as exc:
+        app.logger.warning("reading_sync_status invalid_json: %s", exc)
+        return jsonify({
+            "status": "idle",
+            "updated_at": None,
+            "run_id": None,
+            "conclusion": None,
+        })
+    except RuntimeError as exc:
+        app.logger.warning("reading_sync_status runtime_error: %s", exc)
+        return jsonify({
+            "status": "idle",
+            "updated_at": None,
+            "run_id": None,
+            "conclusion": None,
+        })
+
+
+@app.route("/reading/trigger-sync", methods=["POST"])
+def reading_trigger_sync():
+    headers = _reading_github_actions_headers()
+    if not headers:
+        return jsonify({"ok": False, "error": "Missing GITHUB_ACTIONS_TOKEN."}), 500
+
+    with READING_SYNC_TRIGGER_LOCK:
+        try:
+            _, status_payload = _reading_github_actions_latest_run()
+        except requests.RequestException as exc:
+            app.logger.warning("reading_trigger_sync lookup_failed: %s", exc)
+            return jsonify({"ok": False, "error": "Could not check the latest Reading workflow run."}), 502
+        except ValueError as exc:
+            app.logger.warning("reading_trigger_sync invalid_json_on_lookup: %s", exc)
+            return jsonify({"ok": False, "error": "Could not check the latest Reading workflow run."}), 502
+        except RuntimeError as exc:
+            app.logger.warning("reading_trigger_sync runtime_error_on_lookup: %s", exc)
+            return jsonify({"ok": False, "error": "Could not check the latest Reading workflow run."}), 502
+
+        if status_payload.get("status") in {"queued", "in_progress"}:
+            return jsonify({"status": "already_running"})
+
+        try:
+            response = requests.post(
+                _reading_github_actions_dispatch_url(),
+                headers=headers,
+                json={"ref": READING_SYNC_GITHUB_BRANCH},
+                timeout=10,
+            )
+        except requests.RequestException as exc:
+            app.logger.warning("reading_trigger_sync dispatch_failed: %s", exc)
+            return jsonify({"ok": False, "error": "Could not trigger the Reading workflow."}), 502
+
+        if response.status_code != 204:
+            app.logger.warning(
+                "reading_trigger_sync dispatch_rejected status=%s body=%s",
+                response.status_code,
+                getattr(response, "text", "")[:500],
+            )
+            return jsonify({"ok": False, "error": "GitHub rejected the workflow dispatch request."}), 502
+
+    return jsonify({"status": "started"})
 
 
 @app.route("/reading/article/<entry_id>")
