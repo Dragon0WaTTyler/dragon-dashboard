@@ -9110,6 +9110,17 @@ def reading_entry_is_retention_protected(entry):
     return False
 
 
+def reading_entry_retention_category(entry):
+    entry = entry if isinstance(entry, dict) else {}
+    raw_category = str(entry.get("category", "") or "").strip()
+    if not raw_category:
+        raw_category = str(entry.get("original_category", "") or "").strip()
+    normalized = raw_category.lower()
+    if normalized in READING_RETENTION_CATEGORIES:
+        return normalized
+    return ""
+
+
 def apply_reading_retention_policy(data):
     data = data if isinstance(data, dict) else default_reading_data()
     entries = list(data.get("entries", []) or [])
@@ -9137,8 +9148,8 @@ def apply_reading_retention_policy(data):
         for index, entry in enumerate(retained_entries):
             if not isinstance(entry, dict):
                 continue
-            entry_category = str(entry.get("original_category", "") or entry.get("category", "") or "").strip().lower()
-            if entry_category not in READING_RETENTION_CATEGORIES:
+            entry_category = reading_entry_retention_category(entry)
+            if not entry_category:
                 continue
             if entry_category != category:
                 continue
@@ -11066,7 +11077,7 @@ def build_reading_admin_context():
     for category in READING_RETENTION_CATEGORIES:
         category_entries = [
             entry for entry in entries
-            if normalize_reading_category(entry.get("category", "")) == category and normalize_reading_status(entry.get("status", "")) != "archived"
+            if reading_entry_retention_category(entry) == category and normalize_reading_status(entry.get("status", "")) != "archived"
         ]
         retention_current_counts[category] = {
             "active_count": len(category_entries),
