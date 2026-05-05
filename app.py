@@ -194,6 +194,8 @@ DRAGON_READING_SYNC_EXTRACT_MAX_ARTICLES = config_int("DRAGON_READING_SYNC_EXTRA
 DRAGON_READING_SYNC_EXTRACT_TIMEOUT_SECONDS = config_int("DRAGON_READING_SYNC_EXTRACT_TIMEOUT_SECONDS", 12, minimum=3, maximum=60)
 DRAGON_READING_SYNC_EXTRACT_FAILURE_RETRY_HOURS = config_int("DRAGON_READING_SYNC_EXTRACT_FAILURE_RETRY_HOURS", 24, minimum=1, maximum=168)
 DRAGON_READING_SYNC_EXTRACT_SLOW_LOG_LIMIT = config_int("DRAGON_READING_SYNC_EXTRACT_SLOW_LOG_LIMIT", 5, minimum=1, maximum=20)
+DRAGON_READING_SYNC_BACKFILL_BBC = config_flag("DRAGON_READING_SYNC_BACKFILL_BBC", False)
+DRAGON_READING_SYNC_BBC_BACKFILL_MAX = config_int("DRAGON_READING_SYNC_BBC_BACKFILL_MAX", 12, minimum=0, maximum=50)
 MOVIE_WANT_TO_UNION_FETCH_FLAG_NAME = "MOVIE_WANT_TO_UNION_FETCH_ENABLED"
 DEFAULT_MOVIE_FETCH_EXPERIMENT_UI_COUNT = 506
 MOVIE_FETCH_EXPERIMENT_ANCHOR_TITLES = (
@@ -8858,6 +8860,8 @@ def reading_sync_extraction_priority(index, entry):
     priority = 0
     if reading_is_bbc_host(host):
         priority += 5000
+        if status in {"feed", "partial"}:
+            priority += 1300
     if status == "feed":
         priority += 2500
     elif status == "partial":
@@ -8878,6 +8882,52 @@ def reading_sync_extraction_priority(index, entry):
         -score,
         -text_len,
     )
+
+
+def reading_sync_entry_content_text_length(entry):
+    entry = entry if isinstance(entry, dict) else {}
+    text = (
+        reading_html_to_text(entry.get("content_html", ""))
+        or normalize_reading_space(entry.get("content_text", ""))
+        or normalize_reading_space(entry.get("excerpt", ""))
+    )
+    return len(text), text
+
+
+def reading_sync_entry_age_timestamp(entry):
+    entry = entry if isinstance(entry, dict) else {}
+    for field in ("published_at", "added_at", "imported_at", "content_cached_at"):
+        timestamp = parse_timestamp(entry.get(field, ""))
+        if timestamp:
+            if timestamp.tzinfo is None:
+                timestamp = timestamp.replace(tzinfo=datetime.now().astimezone().tzinfo)
+            return timestamp
+    return None
+
+
+def reading_sync_entry_has_weak_content_html(entry):
+    entry = entry if isinstance(entry, dict) else {}
+    html = str(entry.get("content_html", "") or "").strip()
+    if not html:
+        return True
+    if len(html) < 900:
+        return True
+    return reading_html_structure_score(html) < 1200
+
+
+def reading_sync_bbc_backfill_candidate(entry):
+    entry = entry if isinstance(entry, dict) else {}
+    article_url = normalize_reading_url(entry.get("original_url") or entry.get("url"))
+    host = urllib.parse.urlsplit(str(article_url or "")).netloc.lower()
+    if not reading_is_bbc_host(host):
+        return False
+    status = str(entry.get("extraction_status", "") or "").strip().lower()
+    if status not in {"feed", "partial"}:
+        return False
+    text_length, _ = reading_sync_entry_content_text_length(entry)
+    if text_length >= 1200:
+        return False
+    return reading_sync_entry_has_weak_content_html(entry)
 
 
 def reading_entry_content_score(entry):
@@ -10266,6 +10316,13 @@ def sync_reading_sources(source_id=""):
         "enriched": 0,
         "failed": 0,
         "slowest": [],
+        "bbc_backfill_enabled": DRAGON_READING_SYNC_BACKFILL_BBC,
+        "bbc_backfill_max": DRAGON_READING_SYNC_BBC_BACKFILL_MAX,
+        "bbc_backfill_candidates": 0,
+        "bbc_backfill_attempted": 0,
+        "bbc_backfill_enriched": 0,
+        "bbc_backfill_failed": 0,
+        "bbc_backfill_skipped_recent_failure": 0,
     }
     now = current_timestamp()
     for position, source in enumerate(target_sources, start=1):
@@ -10457,20 +10514,82 @@ def sync_reading_sources(source_id=""):
             )
             traceback.print_exc()
 
-    if extract_full_content and extract_max_articles > 0 and extraction_candidate_indexes:
-        now_dt = datetime.now().astimezone()
-        seen_candidate_indexes = set()
-        ordered_candidate_indexes = sorted(
-            extraction_candidate_indexes,
-            key=lambda candidate_index: reading_sync_extraction_priority(
+    bbc_backfill_candidate_indexes = []
+    if extract_full_content and DRAGON_READING_SYNC_BACKFILL_BBC and DRAGON_READING_SYNC_BBC_BACKFILL_MAX > 0:
+        for candidate_index, candidate_entry in enumerate(entries):
+            if not reading_sync_bbc_backfill_candidate(candidate_entry):
+                continue
+            bbc_backfill_candidate_indexes.append(candidate_index)
+        bbc_backfill_candidate_indexes.sort(
+            key=lambda candidate_index: (
+                reading_sync_entry_age_timestamp(entries[candidate_index]).timestamp()
+                if reading_sync_entry_age_timestamp(entries[candidate_index]) else float("inf"),
                 candidate_index,
-                entries[candidate_index] if 0 <= candidate_index < len(entries) else {},
-            ),
-            reverse=True,
+            )
         )
-        for candidate_index in ordered_candidate_indexes:
-            if extraction_summary["attempted"] >= extract_max_articles:
-                break
+        extraction_summary["bbc_backfill_candidates"] = len(bbc_backfill_candidate_indexes)
+        print(
+            "[reading-sync] BBC backfill candidates | "
+            f"enabled=1 | "
+            f"bbc_backfill_candidates={len(bbc_backfill_candidate_indexes)} | "
+            f"max={DRAGON_READING_SYNC_BBC_BACKFILL_MAX}"
+        )
+    elif extract_full_content:
+        print(
+            "[reading-sync] BBC backfill candidates | "
+            f"enabled={int(DRAGON_READING_SYNC_BACKFILL_BBC)} | "
+            f"bbc_backfill_candidates=0 | "
+            f"max={DRAGON_READING_SYNC_BBC_BACKFILL_MAX}"
+        )
+
+    if extract_full_content and extract_max_articles > 0 and (extraction_candidate_indexes or bbc_backfill_candidate_indexes):
+        now_dt = datetime.now().astimezone()
+        candidate_records = []
+        for candidate_index in extraction_candidate_indexes:
+            entry = entries[candidate_index] if 0 <= candidate_index < len(entries) else {}
+            if DRAGON_READING_SYNC_BACKFILL_BBC and reading_sync_bbc_backfill_candidate(entry):
+                continue
+            candidate_records.append({
+                "index": candidate_index,
+                "entry": entry,
+                "kind": "primary",
+                "priority": reading_sync_extraction_priority(candidate_index, entry),
+                "sort_key": (1,) + tuple(-part for part in reading_sync_extraction_priority(candidate_index, entry)),
+                "age_timestamp": reading_sync_entry_age_timestamp(entry),
+            })
+        for candidate_index in bbc_backfill_candidate_indexes:
+            entry = entries[candidate_index] if 0 <= candidate_index < len(entries) else {}
+            text_length, _ = reading_sync_entry_content_text_length(entry)
+            age_timestamp = reading_sync_entry_age_timestamp(entry)
+            age_sort_value = age_timestamp.timestamp() if age_timestamp else float("inf")
+            status_rank = 0 if str(entry.get("extraction_status", "") or "").strip().lower() == "feed" else 1
+            candidate_records.append({
+                "index": candidate_index,
+                "entry": entry,
+                "kind": "bbc_backfill",
+                "priority": (
+                    10000
+                    + (3200 if str(entry.get("extraction_status", "") or "").strip().lower() == "feed" else 2600)
+                    + (1800 if reading_is_bbc_host(urllib.parse.urlsplit(str(normalize_reading_url(entry.get("original_url") or entry.get("url"))) or "").netloc.lower()) else 0)
+                    + max(0, 1200 - text_length)
+                    + (1500 if reading_sync_entry_has_weak_content_html(entry) else 0)
+                ),
+                "age_timestamp": age_timestamp,
+                "sort_key": (
+                    0,
+                    status_rank,
+                    age_sort_value,
+                    text_length,
+                    candidate_index,
+                ),
+            })
+        candidate_records.sort(
+            key=lambda item: item.get("sort_key", (2, float("inf"), 0, 0, 0))
+        )
+        seen_candidate_indexes = set()
+        for candidate in candidate_records:
+            candidate_index = int(candidate.get("index", -1) or -1)
+            candidate_kind = str(candidate.get("kind", "primary") or "primary")
             if candidate_index in seen_candidate_indexes:
                 continue
             seen_candidate_indexes.add(candidate_index)
@@ -10480,14 +10599,26 @@ def sync_reading_sources(source_id=""):
             article_url = normalize_reading_url(entry.get("original_url") or entry.get("url"))
             if not article_url:
                 continue
+            if candidate_kind == "primary" and extraction_summary["attempted"] >= extract_max_articles:
+                continue
+            if candidate_kind == "bbc_backfill" and extraction_summary["bbc_backfill_attempted"] >= DRAGON_READING_SYNC_BBC_BACKFILL_MAX:
+                continue
             if not reading_entry_needs_content_upgrade(entry):
+                if candidate_kind == "bbc_backfill":
+                    continue
                 extraction_summary["skipped_cached"] += 1
                 continue
             if not reading_sync_extract_retry_allowed(entry, retry_after_hours=extract_failure_retry_hours, now_dt=now_dt):
-                extraction_summary["skipped_recent_failure"] += 1
+                if candidate_kind == "bbc_backfill":
+                    extraction_summary["bbc_backfill_skipped_recent_failure"] += 1
+                else:
+                    extraction_summary["skipped_recent_failure"] += 1
                 continue
             extraction_started_at = time.monotonic()
-            extraction_summary["attempted"] += 1
+            if candidate_kind == "bbc_backfill":
+                extraction_summary["bbc_backfill_attempted"] += 1
+            else:
+                extraction_summary["attempted"] += 1
             extraction = extract_reading_article_page(article_url, timeout_seconds=extract_timeout_seconds)
             extraction_elapsed = time.monotonic() - extraction_started_at
             merged_entry = normalize_reading_entry(
@@ -10502,11 +10633,20 @@ def sync_reading_sources(source_id=""):
                 or merged_entry.get("content_text")
                 or merged_entry.get("image_url")
             ):
-                extraction_summary["enriched"] += 1
+                if candidate_kind == "bbc_backfill":
+                    extraction_summary["bbc_backfill_enriched"] += 1
+                else:
+                    extraction_summary["enriched"] += 1
             elif extraction_status == "failed":
-                extraction_summary["failed"] += 1
+                if candidate_kind == "bbc_backfill":
+                    extraction_summary["bbc_backfill_failed"] += 1
+                else:
+                    extraction_summary["failed"] += 1
             else:
-                extraction_summary["enriched"] += 1
+                if candidate_kind == "bbc_backfill":
+                    extraction_summary["bbc_backfill_enriched"] += 1
+                else:
+                    extraction_summary["enriched"] += 1
             extraction_summary["slowest"].append({
                 "elapsed": extraction_elapsed,
                 "source": entry.get("source", ""),
@@ -10514,9 +10654,11 @@ def sync_reading_sources(source_id=""):
                 "status": extraction_status or "unknown",
                 "error": str(extraction.get("error", "") or "").strip(),
                 "content_text_length": len(str(extraction.get("content_text", "") or "")),
+                "kind": candidate_kind,
             })
             print(
                 "[reading-sync] enrich | "
+                f"kind={candidate_kind} | "
                 f"source={entry.get('source', 'Unknown Source')} | "
                 f"status={extraction_status or 'unknown'} | "
                 f"elapsed={extraction_elapsed:.1f}s | "
@@ -10557,6 +10699,14 @@ def sync_reading_sources(source_id=""):
             f"skipped cached {extraction_summary['skipped_cached']}, "
             f"skipped recent failures {extraction_summary['skipped_recent_failure']}"
         )
+        if DRAGON_READING_SYNC_BACKFILL_BBC:
+            data["last_sync_message"] += (
+                f" | BBC backfill candidates {extraction_summary['bbc_backfill_candidates']}, "
+                f"attempted {extraction_summary['bbc_backfill_attempted']}, "
+                f"enriched {extraction_summary['bbc_backfill_enriched']}, "
+                f"failed {extraction_summary['bbc_backfill_failed']}, "
+                f"skipped recent failures {extraction_summary['bbc_backfill_skipped_recent_failure']}"
+            )
     saved_data = save_reading_data(data, apply_retention=True, retention_reason="sync")
     total_elapsed = time.monotonic() - sync_started_at
     failed_source_count = sum(1 for item in source_results if str(item.get("status", "")).strip().lower() == "error")
@@ -10576,6 +10726,16 @@ def sync_reading_sources(source_id=""):
             f"enriched={extraction_summary['enriched']} | "
             f"failed={extraction_summary['failed']}"
         )
+        if DRAGON_READING_SYNC_BACKFILL_BBC:
+            print(
+                "[reading-sync] BBC backfill summary | "
+                f"bbc_backfill_enabled={int(DRAGON_READING_SYNC_BACKFILL_BBC)} | "
+                f"bbc_backfill_candidates={extraction_summary['bbc_backfill_candidates']} | "
+                f"bbc_backfill_attempted={extraction_summary['bbc_backfill_attempted']} | "
+                f"bbc_backfill_enriched={extraction_summary['bbc_backfill_enriched']} | "
+                f"bbc_backfill_failed={extraction_summary['bbc_backfill_failed']} | "
+                f"bbc_backfill_skipped_recent_failure={extraction_summary['bbc_backfill_skipped_recent_failure']}"
+            )
         for item in extraction_summary.get("slowest", []) or []:
             print(
                 "[reading-sync] slow extraction | "
@@ -10583,6 +10743,7 @@ def sync_reading_sources(source_id=""):
                 f"source={item.get('source', 'Unknown Source')} | "
                 f"status={item.get('status', 'unknown')} | "
                 f"content_text_length={int(item.get('content_text_length', 0) or 0)} | "
+                f"kind={item.get('kind', 'primary')} | "
                 f"url={item.get('url', '')}"
             )
     return {

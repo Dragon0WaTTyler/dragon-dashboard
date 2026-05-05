@@ -165,6 +165,17 @@ def run_sync(source_id: str = "", data_path: str = "", dry_run: bool = False) ->
             f"enriched={int(extraction_summary.get('enriched', 0) or 0)} | "
             f"failed={int(extraction_summary.get('failed', 0) or 0)}"
         )
+        if extraction_summary.get("bbc_backfill_enabled"):
+            safe_print(
+                "BBC backfill: "
+                f"enabled=1 | "
+                f"max_articles={int(extraction_summary.get('bbc_backfill_max', 0) or 0)} | "
+                f"bbc_backfill_candidates={int(extraction_summary.get('bbc_backfill_candidates', 0) or 0)} | "
+                f"bbc_backfill_attempted={int(extraction_summary.get('bbc_backfill_attempted', 0) or 0)} | "
+                f"bbc_backfill_enriched={int(extraction_summary.get('bbc_backfill_enriched', 0) or 0)} | "
+                f"bbc_backfill_failed={int(extraction_summary.get('bbc_backfill_failed', 0) or 0)} | "
+                f"bbc_backfill_skipped_recent_failure={int(extraction_summary.get('bbc_backfill_skipped_recent_failure', 0) or 0)}"
+            )
         slowest = list(extraction_summary.get("slowest", []) or [])
         if slowest:
             safe_print("Slowest extraction URLs:")
@@ -173,6 +184,7 @@ def run_sync(source_id: str = "", data_path: str = "", dry_run: bool = False) ->
                     f"- {item.get('source', 'Unknown Source')} | "
                     f"elapsed={float(item.get('elapsed', 0.0) or 0.0):.1f}s | "
                     f"status={item.get('status', 'unknown')} | "
+                    f"kind={item.get('kind', 'primary')} | "
                     f"url={item.get('url', '')}"
                 )
     retention_summary = summary.get("retention_summary", {}) or {}
