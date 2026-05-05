@@ -8208,6 +8208,10 @@ def reading_host_matches(host, allowed_hosts):
     return False
 
 
+def reading_is_bbc_host(host):
+    return reading_host_matches(host, ("bbc.com", "bbc.co.uk", "bbci.co.uk"))
+
+
 def reading_extract_youtube_id(url):
     raw = str(url or "").strip()
     if not raw:
@@ -8772,11 +8776,52 @@ def reading_select_article_fragment(html):
     return best
 
 
+def reading_extract_best_bbc_fragment(raw):
+    raw = str(raw or "").strip()
+    if not raw:
+        return ""
+    patterns = (
+        r'(?is)<article\b[^>]*>.*?</article>',
+        r'(?is)<main\b[^>]*>.*?</main>',
+        r'(?is)<section\b[^>]*\bdata-component=(["\'])(?:headline-block|byline-block|text-block|subheadline-block|image-block|embed-block|links-block|tag-list-block)\1[^>]*>.*?</section>',
+        r'(?is)<div\b[^>]*\bdata-component=(["\'])(?:headline-block|byline-block|text-block|subheadline-block|image-block|embed-block|links-block|tag-list-block)\1[^>]*>.*?</div>',
+    )
+    candidates = []
+    seen = set()
+    for pattern in patterns:
+        for match in re.finditer(pattern, raw):
+            fragment = str(match.group(0) or "").strip()
+            lowered = fragment.lower()
+            if not fragment or fragment in seen:
+                continue
+            if "data-component=" not in lowered and "<article" not in lowered and "<main" not in lowered:
+                continue
+            text_len = len(reading_html_to_text(fragment))
+            if text_len < 500:
+                continue
+            component_hits = len(re.findall(r'(?i)\bdata-component=(["\'])(?:headline-block|byline-block|text-block|subheadline-block|image-block|embed-block|links-block|tag-list-block)\1', fragment))
+            score = reading_html_structure_score(fragment) + component_hits * 260
+            if "data-component=" in lowered:
+                score += 300
+            if "<article" in lowered:
+                score += 400
+            if "<main" in lowered:
+                score += 220
+            seen.add(fragment)
+            candidates.append((score, text_len, component_hits, fragment))
+    if not candidates:
+        return ""
+    candidates.sort(key=lambda item: (item[0], item[1], item[2]), reverse=True)
+    return candidates[0][3]
+
+
 def reading_select_source_article_fragment(html, article_url=""):
     raw = str(html or "").strip()
     if not raw:
         return ""
     host = urllib.parse.urlsplit(str(article_url or "")).netloc.lower()
+    if reading_is_bbc_host(host):
+        return reading_extract_best_bbc_fragment(raw)
     if host.endswith("alousboue.ma"):
         fragment_parser = ReadingArticleFragmentExtractor()
         try:
@@ -8797,6 +8842,42 @@ def reading_select_source_article_fragment(html, article_url=""):
             candidates.sort(key=lambda item: (item[0], item[1]), reverse=True)
             return candidates[0][2]
     return ""
+
+
+def reading_sync_extraction_priority(index, entry):
+    entry = entry if isinstance(entry, dict) else {}
+    article_url = normalize_reading_url(entry.get("original_url") or entry.get("url"))
+    host = urllib.parse.urlsplit(str(article_url or "")).netloc.lower()
+    status = str(entry.get("extraction_status", "") or "").strip().lower()
+    score = reading_entry_content_score(entry)
+    text_len = len(
+        reading_html_to_text(entry.get("content_html", ""))
+        or normalize_reading_space(entry.get("content_text", ""))
+        or normalize_reading_space(entry.get("excerpt", ""))
+    )
+    priority = 0
+    if reading_is_bbc_host(host):
+        priority += 5000
+    if status == "feed":
+        priority += 2500
+    elif status == "partial":
+        priority += 1800
+    elif not status:
+        priority += 1200
+    if text_len < 200:
+        priority += 900
+    elif text_len < 700:
+        priority += 600
+    if score < 900:
+        priority += 600
+    elif score < 1800:
+        priority += 300
+    return (
+        priority,
+        -index,
+        -score,
+        -text_len,
+    )
 
 
 def reading_entry_content_score(entry):
@@ -10379,7 +10460,15 @@ def sync_reading_sources(source_id=""):
     if extract_full_content and extract_max_articles > 0 and extraction_candidate_indexes:
         now_dt = datetime.now().astimezone()
         seen_candidate_indexes = set()
-        for candidate_index in extraction_candidate_indexes:
+        ordered_candidate_indexes = sorted(
+            extraction_candidate_indexes,
+            key=lambda candidate_index: reading_sync_extraction_priority(
+                candidate_index,
+                entries[candidate_index] if 0 <= candidate_index < len(entries) else {},
+            ),
+            reverse=True,
+        )
+        for candidate_index in ordered_candidate_indexes:
             if extraction_summary["attempted"] >= extract_max_articles:
                 break
             if candidate_index in seen_candidate_indexes:
@@ -10424,12 +10513,15 @@ def sync_reading_sources(source_id=""):
                 "url": article_url,
                 "status": extraction_status or "unknown",
                 "error": str(extraction.get("error", "") or "").strip(),
+                "content_text_length": len(str(extraction.get("content_text", "") or "")),
             })
             print(
                 "[reading-sync] enrich | "
                 f"source={entry.get('source', 'Unknown Source')} | "
                 f"status={extraction_status or 'unknown'} | "
                 f"elapsed={extraction_elapsed:.1f}s | "
+                f"content_text_length={len(str(extraction.get('content_text', '') or ''))} | "
+                f"error={str(extraction.get('error', '') or '').strip() or 'none'} | "
                 f"url={article_url}"
             )
         extraction_summary["slowest"] = sorted(
@@ -10490,6 +10582,7 @@ def sync_reading_sources(source_id=""):
                 f"elapsed={float(item.get('elapsed', 0.0) or 0.0):.1f}s | "
                 f"source={item.get('source', 'Unknown Source')} | "
                 f"status={item.get('status', 'unknown')} | "
+                f"content_text_length={int(item.get('content_text_length', 0) or 0)} | "
                 f"url={item.get('url', '')}"
             )
     return {
