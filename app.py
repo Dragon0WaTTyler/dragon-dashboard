@@ -15,6 +15,7 @@ import secrets
 import sqlite3
 import time
 import threading
+import traceback
 import xml.etree.ElementTree as ET
 from email.utils import parsedate_to_datetime
 from datetime import datetime, timedelta, timezone
@@ -9996,6 +9997,7 @@ def fetch_reading_feed(source):
 
 
 def sync_reading_sources(source_id=""):
+    sync_started_at = time.monotonic()
     data = load_reading_data()
     source_id = str(source_id or "").strip()
     target_sources = []
@@ -10009,6 +10011,15 @@ def sync_reading_sources(source_id=""):
         if not str(source.get("url", "") or "").strip():
             continue
         target_sources.append(source)
+    total_sources = len(data.get("sources", []) or [])
+    print(
+        "[reading-sync] start | "
+        f"source_id={source_id or 'all'} | "
+        f"tracked_sources={total_sources} | "
+        f"active_sources={len(target_sources)}"
+    )
+    if not target_sources:
+        print("[reading-sync] no active sources matched this sync run")
 
     entries = list(data.get("entries", []))
     existing_by_key = {}
@@ -10020,7 +10031,14 @@ def sync_reading_sources(source_id=""):
     source_results = []
     zero_import_reasons = {}
     now = current_timestamp()
-    for source in target_sources:
+    for position, source in enumerate(target_sources, start=1):
+        source_name = str(source.get("name", "Unknown Source") or "Unknown Source").strip() or "Unknown Source"
+        source_started_at = time.monotonic()
+        print(
+            "[reading-sync] source start | "
+            f"{position}/{len(target_sources)} | "
+            f"name={source_name}"
+        )
         try:
             fetch_result = fetch_reading_feed(source)
             imported_items = list(fetch_result.get("items", []) or [])
@@ -10150,7 +10168,21 @@ def sync_reading_sources(source_id=""):
                 "content_type": fetch_content_type,
                 "error": fetch_error,
             })
+            source_elapsed = time.monotonic() - source_started_at
+            print(
+                "[reading-sync] source done | "
+                f"{position}/{len(target_sources)} | "
+                f"name={source_name} | "
+                f"elapsed={source_elapsed:.1f}s | "
+                f"fetched={raw_count} | "
+                f"normalized={normalized_count} | "
+                f"imported={source_imported} | "
+                f"duplicates={source_skipped_existing} | "
+                f"missing_key={source_skipped_missing_key} | "
+                f"status={'ok' if fetch_ok else 'error'}"
+            )
         except Exception as exc:
+            source_elapsed = time.monotonic() - source_started_at
             source["last_synced_at"] = now
             source["last_sync_count"] = 0
             source["last_sync_raw_count"] = 0
@@ -10177,6 +10209,14 @@ def sync_reading_sources(source_id=""):
                 "reason": source.get("last_sync_reason", ""),
                 "error": str(exc),
             })
+            print(
+                "[reading-sync] source failed | "
+                f"{position}/{len(target_sources)} | "
+                f"name={source_name} | "
+                f"elapsed={source_elapsed:.1f}s | "
+                f"error={exc}"
+            )
+            traceback.print_exc()
 
     entries.sort(key=reading_entry_sort_key, reverse=True)
     data["entries"] = entries
@@ -10196,6 +10236,15 @@ def sync_reading_sources(source_id=""):
         if reason_text:
             data["last_sync_message"] += f": {reason_text}"
     saved_data = save_reading_data(data, apply_retention=True, retention_reason="sync")
+    total_elapsed = time.monotonic() - sync_started_at
+    failed_source_count = sum(1 for item in source_results if str(item.get("status", "")).strip().lower() == "error")
+    print(
+        "[reading-sync] finish | "
+        f"active_sources={len(target_sources)} | "
+        f"imported_total={imported_total} | "
+        f"failed_sources={failed_source_count} | "
+        f"elapsed={total_elapsed:.1f}s"
+    )
     return {
         "imported_total": imported_total,
         "source_results": source_results,

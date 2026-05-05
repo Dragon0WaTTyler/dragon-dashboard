@@ -11,6 +11,12 @@ permissions:
 jobs:
   sync-reading:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
+    concurrency:
+      group: sync-reading
+      cancel-in-progress: false
+    env:
+      PYTHONUNBUFFERED: "1"
 
     steps:
       - name: Check out repository
@@ -24,16 +30,35 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
 
       - name: Sync reading feeds
-        run: python scripts/sync_reading_feeds.py
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Starting Reading sync at $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          python -u scripts/sync_reading_feeds.py
+
+      - name: Reading sync diagnostics
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Reading sync diagnostics at $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          git status --short -- reading_data.json || true
 
       # Every 2 hours is a safer V1 balance than every 30 minutes:
       # it is friendlier to RSS sources, lighter on GitHub Actions usage,
       # and avoids noisy commits when nothing meaningful changed.
       - name: Commit updated reading data
+        if: success()
+        shell: bash
         run: |
+          set -euo pipefail
           if [ -z "$(git status --porcelain -- reading_data.json)" ]; then
             echo "No reading_data.json changes to commit."
             exit 0

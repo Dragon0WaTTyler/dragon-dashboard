@@ -2,7 +2,10 @@
 from __future__ import annotations
 
 import argparse
+import signal
 import sys
+import time
+import traceback
 from pathlib import Path
 
 
@@ -61,11 +64,13 @@ def build_summary(result: dict) -> dict:
     missing_key_total = sum(int(item.get("missing_key", 0) or 0) for item in source_results)
     failed_sources = [item for item in source_results if str(item.get("status", "")).strip().lower() == "error"]
     return {
+        "source_count": int(result.get("source_count", 0) or 0),
         "fetched_total": fetched_total,
         "normalized_total": normalized_total,
         "imported_total": imported_total,
         "duplicate_total": duplicate_total,
         "missing_key_total": missing_key_total,
+        "failed_source_count": len(failed_sources),
         "failed_sources": failed_sources,
         "source_results": source_results,
         "active_source_count": int(result.get("active_source_count", 0) or 0),
@@ -74,21 +79,45 @@ def build_summary(result: dict) -> dict:
     }
 
 
+def _install_signal_handlers() -> None:
+    def _handle_signal(signum, _frame):
+        raise KeyboardInterrupt(f"Reading sync interrupted by signal {signum}.")
+
+    signal.signal(signal.SIGINT, _handle_signal)
+    signal.signal(signal.SIGTERM, _handle_signal)
+
+
 def run_sync(source_id: str = "") -> int:
+    started_at = time.monotonic()
+    safe_print(f"Reading RSS sync started | source_id={source_id or 'all'}")
     try:
         result = dragon_app.sync_reading_sources(source_id=source_id)
+    except KeyboardInterrupt as exc:
+        safe_print(str(exc) or "Reading sync cancelled.")
+        return 130
     except Exception as exc:
-        safe_print(f"Reading sync crashed: {exc}")
+        safe_print(f"Reading sync crashed: {type(exc).__name__}: {exc}")
+        safe_print(traceback.format_exc().rstrip())
         return 1
 
     summary = build_summary(result)
-    safe_print("Reading RSS sync completed.")
+    elapsed = time.monotonic() - started_at
+    safe_print(
+        "Reading RSS sync completed | "
+        f"elapsed={elapsed:.1f}s | "
+        f"sources={summary['source_count']} | "
+        f"active_sources={summary['active_source_count']} | "
+        f"failed_sources={summary['failed_source_count']}"
+    )
+    safe_print(f"Reading sync result: {summary['imported_total']} imported entries")
     safe_print(f"Active sources: {summary['active_source_count']}")
+    safe_print(f"Total sources tracked: {summary['source_count']}")
     safe_print(f"Fetched count: {summary['fetched_total']}")
     safe_print(f"Normalized count: {summary['normalized_total']}")
     safe_print(f"Imported/new count: {summary['imported_total']}")
     safe_print(f"Skipped/duplicate count: {summary['duplicate_total']}")
     safe_print(f"Skipped/missing key count: {summary['missing_key_total']}")
+    safe_print(f"Failed sources: {summary['failed_source_count']}")
     if summary["last_sync_message"]:
         safe_print(f"Summary: {summary['last_sync_message']}")
     retention_summary = summary.get("retention_summary", {}) or {}
@@ -118,14 +147,20 @@ def run_sync(source_id: str = "") -> int:
         for item in summary["failed_sources"]:
             safe_print(f"- {item.get('name', 'Unknown Source')}: {item.get('error') or item.get('reason') or 'Unknown error'}")
 
+    safe_print(f"Reading RSS sync finished | elapsed={elapsed:.1f}s")
     return 0
 
 
 def main() -> int:
+    _install_signal_handlers()
     parser = argparse.ArgumentParser(description="Sync Dragon reading RSS sources into reading_data.json.")
     parser.add_argument("--source-id", default="", help="Optional specific reading source id to sync.")
     args = parser.parse_args()
-    return run_sync(source_id=str(args.source_id or "").strip())
+    try:
+        return run_sync(source_id=str(args.source_id or "").strip())
+    except KeyboardInterrupt as exc:
+        safe_print(str(exc) or "Reading sync cancelled.")
+        return 130
 
 
 if __name__ == "__main__":
