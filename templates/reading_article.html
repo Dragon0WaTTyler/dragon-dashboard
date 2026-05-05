@@ -243,13 +243,16 @@
                         <p dir="auto">{{ paragraph }}</p>
                     {% endfor %}
                 </div>
+                {% if article_cache_fallback_message %}
+                <div class="reading-extraction-note">{{ article_cache_fallback_message }}</div>
+                {% endif %}
                 {% elif entry.excerpt %}
                 <div class="reading-prose" dir="{{ article_dir }}" lang="{{ article_lang }}">
                     <p dir="auto">{{ entry.excerpt }}</p>
                 </div>
-                <div class="reading-extraction-note">Only an excerpt is available locally. Open the original for the full article.</div>
+                <div class="reading-extraction-note">{{ article_cache_fallback_message or 'Full article content is not cached yet. Open original source.' }}</div>
                 {% else %}
-                <div class="reading-extraction-note">No clean article body is cached yet. The page stays readable, but the original source is the fallback.</div>
+                <div class="reading-extraction-note">{{ article_cache_fallback_message or 'Full article content is not cached yet. Open original source.' }}</div>
                 {% endif %}
 
                 {% if entry.extraction_status or entry.extraction_error %}

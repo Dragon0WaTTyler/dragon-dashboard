@@ -171,6 +171,7 @@ DRAGON_ADMIN_USERNAME = config_value("DRAGON_ADMIN_USERNAME", "")
 DRAGON_ADMIN_PASSWORD = config_value("DRAGON_ADMIN_PASSWORD", "")
 DRAGON_PROTECT_WHOLE_SITE = config_flag("DRAGON_PROTECT_WHOLE_SITE", IS_PRODUCTION)
 DRAGON_ALLOW_WEB_REFRESH_SYNC = config_flag("DRAGON_ALLOW_WEB_REFRESH_SYNC", False)
+DRAGON_ALLOW_LIVE_ARTICLE_EXTRACTION = config_flag("DRAGON_ALLOW_LIVE_ARTICLE_EXTRACTION", False)
 MOVIE_WANT_TO_UNION_FETCH_FLAG_NAME = "MOVIE_WANT_TO_UNION_FETCH_ENABLED"
 DEFAULT_MOVIE_FETCH_EXPERIMENT_UI_COUNT = 506
 MOVIE_FETCH_EXPERIMENT_ANCHOR_TITLES = (
@@ -10461,12 +10462,17 @@ def extract_reading_article_page(url):
         }
 
 
-def ensure_reading_entry_content(entry_id, force_refresh=False):
+def reading_article_live_extraction_allowed(force_refresh=False):
+    return bool(DRAGON_ALLOW_LIVE_ARTICLE_EXTRACTION)
+
+
+def ensure_reading_entry_content(entry_id, force_refresh=False, allow_live_extraction=False, log_reason=""):
     entry = get_reading_entry(entry_id)
     if not entry:
         return None
     media_needs_enrichment = reading_content_needs_media_enrichment(entry.get("content_html", ""))
     needs_upgrade = reading_entry_needs_content_upgrade(entry, force_refresh=force_refresh)
+    live_extraction_allowed = bool(allow_live_extraction)
     if force_refresh:
         needs_upgrade = True
     if entry.get("content_html") and not media_needs_enrichment and not needs_upgrade:
@@ -10480,6 +10486,26 @@ def ensure_reading_entry_content(entry_id, force_refresh=False):
     if entry.get("content_text") and entry.get("extraction_status") == "feed" and entry.get("content_html") and not media_needs_enrichment and not needs_upgrade:
         return entry
 
+    if not live_extraction_allowed:
+        if log_reason:
+            app.logger.info(
+                "reading_article cache_only entry_id=%s reason=%s status=%s has_html=%s has_text=%s needs_upgrade=%s media_enrichment=%s",
+                entry_id,
+                log_reason,
+                str(entry.get("extraction_status", "") or "").strip() or "none",
+                bool(entry.get("content_html")),
+                bool(entry.get("content_text") or entry.get("excerpt")),
+                bool(needs_upgrade),
+                bool(media_needs_enrichment),
+            )
+        return entry
+
+    app.logger.info(
+        "reading_article live_extraction entry_id=%s reason=%s force_refresh=%s",
+        entry_id,
+        log_reason or "unspecified",
+        bool(force_refresh),
+    )
     extraction = extract_reading_article_page(entry.get("original_url") or entry.get("url"))
     current_score = reading_entry_content_score(entry)
     extraction_score = int(extraction.get("content_score", 0) or 0)
@@ -24418,7 +24444,13 @@ def reading_article(entry_id):
     preferred_card_entry = get_reading_entry(entry_id)
     preferred_card_image_url = normalize_reading_url(preferred_card_entry.get("image_url", "")) if preferred_card_entry else ""
     force_refresh = str(request.args.get("refresh", "") or "").strip().lower() in {"1", "true", "yes", "on", "force"}
-    entry = ensure_reading_entry_content(entry_id, force_refresh=force_refresh)
+    live_extraction_allowed = reading_article_live_extraction_allowed(force_refresh=force_refresh)
+    entry = ensure_reading_entry_content(
+        entry_id,
+        force_refresh=force_refresh and live_extraction_allowed,
+        allow_live_extraction=live_extraction_allowed,
+        log_reason="article_open",
+    )
     if not entry:
         return Response("Reading entry not found.", status=404)
     current_index = next((index for index, item in enumerate(entries) if item.get("id") == str(entry_id or "").strip()), -1)
@@ -24459,6 +24491,26 @@ def reading_article(entry_id):
     article_paragraphs = [] if article_html else [paragraph.strip() for paragraph in article_text.split("\n\n") if paragraph.strip()]
     if not article_paragraphs and article_text:
         article_paragraphs = [article_text]
+    article_cache_fallback = not bool(article_html)
+    article_cache_fallback_message = ""
+    if article_cache_fallback:
+        if entry.get("content_text") or entry.get("excerpt"):
+            article_cache_fallback_message = "Full article content is not cached yet. Open original source."
+        else:
+            article_cache_fallback_message = "Full article content is not cached yet. Open original source."
+        app.logger.info(
+            "reading_article fallback entry_id=%s status=%s has_text=%s has_excerpt=%s",
+            entry_id,
+            str(entry.get("extraction_status", "") or "").strip() or "none",
+            bool(entry.get("content_text")),
+            bool(entry.get("excerpt")),
+        )
+    else:
+        app.logger.info(
+            "reading_article cache_hit entry_id=%s status=%s has_html=1",
+            entry_id,
+            str(entry.get("extraction_status", "") or "").strip() or "none",
+        )
     article_direction = detect_reading_direction(
         entry.get("title", ""),
         article_text,
@@ -24475,6 +24527,8 @@ def reading_article(entry_id):
         entry=entry,
         article_html=Markup(article_html) if article_html else "",
         article_paragraphs=article_paragraphs,
+        article_cache_fallback=article_cache_fallback,
+        article_cache_fallback_message=article_cache_fallback_message,
         article_dir=article_direction["dir"],
         article_lang=article_direction["lang"],
         article_hero_image=article_hero_image,
@@ -24505,7 +24559,13 @@ def reading_article(entry_id):
 @app.route("/reading/article/<entry_id>/audio", methods=["GET"])
 def reading_article_audio(entry_id):
     force_refresh = str(request.args.get("refresh", "") or "").strip().lower() in {"1", "true", "yes", "on", "force"}
-    entry = ensure_reading_entry_content(entry_id, force_refresh=force_refresh)
+    live_extraction_allowed = reading_article_live_extraction_allowed(force_refresh=force_refresh)
+    entry = ensure_reading_entry_content(
+        entry_id,
+        force_refresh=force_refresh and live_extraction_allowed,
+        allow_live_extraction=live_extraction_allowed,
+        log_reason="audio_route",
+    )
     if not entry:
         return Response("Reading entry not found.", status=404, mimetype="text/plain")
 
@@ -24556,7 +24616,12 @@ def reading_article_audio(entry_id):
 
 @app.route("/reading/article/<entry_id>/audio/timings", methods=["GET"])
 def reading_article_audio_timings(entry_id):
-    entry = ensure_reading_entry_content(entry_id, force_refresh=False)
+    entry = ensure_reading_entry_content(
+        entry_id,
+        force_refresh=False,
+        allow_live_extraction=False,
+        log_reason="audio_timings_route",
+    )
     if not entry:
         return jsonify({"ok": False, "error": "Reading entry not found."}), 404
 
