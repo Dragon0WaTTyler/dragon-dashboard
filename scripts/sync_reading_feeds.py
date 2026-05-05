@@ -40,6 +40,15 @@ def format_source_line(result: dict) -> str:
     missing_key = int(result.get("missing_key", 0) or 0)
     reason = str(result.get("reason", "") or "").strip()
     error = str(result.get("error", "") or "").strip()
+    status_code = int(result.get("status_code", 0) or 0)
+    content_type = str(result.get("content_type", "") or "").strip()
+    resolved_url = str(result.get("resolved_url", "") or "").strip()
+    retry_count = int(result.get("retry_count", 0) or 0)
+    timeout_reason = str(result.get("timeout_reason", "") or "").strip()
+    bozo = str(result.get("feedparser_bozo", "") or "").strip()
+    bozo_exception = str(result.get("feedparser_bozo_exception", "") or "").strip()
+    entry_count = int(result.get("feedparser_entry_count", 0) or 0)
+    fallback_used = bool(result.get("source_fallback_used", False))
     parts = [
         f"{name}",
         f"status={status}",
@@ -47,13 +56,27 @@ def format_source_line(result: dict) -> str:
         f"normalized={normalized}",
         f"imported={imported}",
         f"duplicates={duplicates}",
+        f"status_code={status_code}",
+        f"resolved_url={resolved_url or 'n/a'}",
+        f"content_type={content_type or 'n/a'}",
+        f"retry_count={retry_count}",
     ]
     if missing_key:
         parts.append(f"missing_key={missing_key}")
+    if timeout_reason:
+        parts.append(f"timeout_reason={timeout_reason}")
+    if bozo:
+        parts.append(f"bozo={bozo}")
+    if entry_count:
+        parts.append(f"feed_entries={entry_count}")
+    if fallback_used:
+        parts.append("fallback=1")
     if reason:
         parts.append(f"reason={reason}")
     if error:
         parts.append(f"error={error}")
+    if bozo_exception:
+        parts.append(f"bozo_exception={bozo_exception}")
     return " | ".join(parts)
 
 
@@ -185,6 +208,9 @@ def run_sync(source_id: str = "", data_path: str = "", dry_run: bool = False) ->
                     f"elapsed={float(item.get('elapsed', 0.0) or 0.0):.1f}s | "
                     f"status={item.get('status', 'unknown')} | "
                     f"kind={item.get('kind', 'primary')} | "
+                    f"selector={item.get('selector', 'unknown')} | "
+                    f"paragraph_count={int(item.get('paragraph_count', 0) or 0)} | "
+                    f"content_text_length={int(item.get('content_text_length', 0) or 0)} | "
                     f"url={item.get('url', '')}"
                 )
     retention_summary = summary.get("retention_summary", {}) or {}

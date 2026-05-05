@@ -30,6 +30,11 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 edge_tts = None
 genai = None
 try:
+    import feedparser
+except ImportError:
+    feedparser = None
+
+try:
     from dotenv import load_dotenv
 except ImportError:
     load_dotenv = None
@@ -7416,6 +7421,25 @@ READING_LIST_DEFAULT_LIMIT = 100
 READING_LIST_LIMIT_STEP = 100
 READING_LIST_LIMIT_MAX = 500
 READING_RETENTION_PROTECTED_FIELDS = ("saved", "important", "saved_at", "important_at", "bookmarked", "bookmark", "pinned")
+READING_BROWSER_USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/124.0.0.0 Safari/537.36"
+)
+READING_BROWSER_ACCEPT = (
+    "application/rss+xml,application/atom+xml,application/xml;q=0.9,"
+    "text/xml;q=0.8,text/html;q=0.5,*/*;q=0.3"
+)
+READING_BROWSER_ACCEPT_HTML = (
+    "text/html,application/xhtml+xml,application/xml;q=0.9,"
+    "image/avif,image/webp,*/*;q=0.8"
+)
+READING_BROWSER_ACCEPT_LANGUAGE = "en-US,en;q=0.9,ar;q=0.8,fr;q=0.7"
+READING_HTTP_SESSION = requests.Session()
+READING_HTTP_SESSION.headers.update({
+    "User-Agent": READING_BROWSER_USER_AGENT,
+    "Accept-Language": READING_BROWSER_ACCEPT_LANGUAGE,
+})
 READING_DEMO_SOURCE_URLS = {
     "https://www.themarginalian.org/feed/",
     "https://www.quantamagazine.org/feed/",
@@ -8742,7 +8766,7 @@ def reading_html_structure_score(value):
     return min(len(text), 3000) + block_count * 110 + heading_count * 50 + image_count * 35 + media_count * 90
 
 
-def reading_select_article_fragment(html):
+def reading_select_article_fragment(html, diagnostics=None):
     raw = str(html or "").strip()
     if not raw:
         return ""
@@ -8775,6 +8799,8 @@ def reading_select_article_fragment(html):
     best = raw
     best_score = reading_html_structure_score(raw)
     best_text_len = len(reading_html_to_text(raw))
+    best_paragraph_count = len(re.findall(r"(?is)<p\b", raw))
+    best_selector = "full-document"
     for candidate, structured in candidates[1:]:
         candidate_text = reading_html_to_text(candidate)
         candidate_score = reading_html_structure_score(candidate) + (260 if structured else 0)
@@ -8785,6 +8811,12 @@ def reading_select_article_fragment(html):
             best = candidate
             best_score = candidate_score
             best_text_len = candidate_len
+            best_paragraph_count = len(re.findall(r"(?is)<p\b", candidate))
+            best_selector = "parsed-fragment" if structured else "regex-fragment"
+    if isinstance(diagnostics, dict):
+        diagnostics["selector"] = best_selector
+        diagnostics["paragraph_count"] = best_paragraph_count
+        diagnostics["text_length"] = best_text_len
     return best
 
 
@@ -8827,13 +8859,71 @@ def reading_extract_best_bbc_fragment(raw):
     return candidates[0][3]
 
 
-def reading_select_source_article_fragment(html, article_url=""):
+def reading_extract_hespress_fragment(raw, diagnostics=None):
+    raw = str(raw or "").strip()
+    if not raw:
+        if isinstance(diagnostics, dict):
+            diagnostics["selector"] = "hespress:missing"
+            diagnostics["paragraph_count"] = 0
+            diagnostics["text_length"] = 0
+        return ""
+    patterns = (
+        ("hespress:article-content", r'(?is)<div\b[^>]*class=["\'][^"\']*\barticle-content\b[^"\']*["\'][^>]*>.*?</div>'),
+        ("hespress:article-content", r'(?is)<section\b[^>]*class=["\'][^"\']*\barticle-content\b[^"\']*["\'][^>]*>.*?</section>'),
+        ("hespress:article-content", r'(?is)<article\b[^>]*>.*?<div\b[^>]*class=["\'][^"\']*\barticle-content\b[^"\']*["\'][^>]*>.*?</div>.*?</article>'),
+        ("hespress:article", r'(?is)<article\b[^>]*>.*?</article>'),
+        ("hespress:main", r'(?is)<main\b[^>]*>.*?</main>'),
+    )
+    candidates = []
+    seen = set()
+    for selector, pattern in patterns:
+        for match in re.finditer(pattern, raw):
+            fragment = str(match.group(0) or "").strip()
+            lowered = fragment.lower()
+            if not fragment or fragment in seen:
+                continue
+            seen.add(fragment)
+            text_length = len(reading_html_to_text(fragment))
+            paragraph_count = len(re.findall(r"(?is)<p\b", fragment))
+            score = reading_html_structure_score(fragment)
+            if "article-content" in lowered:
+                score += 500
+            if "post-title" in lowered:
+                score += 80
+            if "related" in lowered or "sidebar" in lowered or "footer" in lowered:
+                score -= 800
+            score += paragraph_count * 90
+            candidates.append((score, text_length, paragraph_count, selector, fragment))
+    if not candidates:
+        if isinstance(diagnostics, dict):
+            diagnostics["selector"] = "hespress:unavailable"
+            diagnostics["paragraph_count"] = 0
+            diagnostics["text_length"] = 0
+        return ""
+    candidates.sort(key=lambda item: (item[0], item[1], item[2]), reverse=True)
+    best_score, best_text_length, best_paragraph_count, best_selector, best_fragment = candidates[0]
+    if isinstance(diagnostics, dict):
+        diagnostics["selector"] = best_selector
+        diagnostics["paragraph_count"] = best_paragraph_count
+        diagnostics["text_length"] = best_text_length
+        diagnostics["score"] = best_score
+    return best_fragment
+
+
+def reading_select_source_article_fragment(html, article_url="", diagnostics=None):
     raw = str(html or "").strip()
     if not raw:
         return ""
     host = urllib.parse.urlsplit(str(article_url or "")).netloc.lower()
+    if host.endswith("hespress.com"):
+        return reading_extract_hespress_fragment(raw, diagnostics=diagnostics)
     if reading_is_bbc_host(host):
-        return reading_extract_best_bbc_fragment(raw)
+        fragment = reading_extract_best_bbc_fragment(raw)
+        if isinstance(diagnostics, dict):
+            diagnostics["selector"] = "bbc:data-component"
+            diagnostics["paragraph_count"] = len(re.findall(r"(?is)<p\b", fragment)) if fragment else 0
+            diagnostics["text_length"] = len(reading_html_to_text(fragment)) if fragment else 0
+        return fragment
     if host.endswith("alousboue.ma"):
         fragment_parser = ReadingArticleFragmentExtractor()
         try:
@@ -8852,7 +8942,16 @@ def reading_select_source_article_fragment(html, article_url=""):
                 candidates.append((score, text_len, fragment))
         if candidates:
             candidates.sort(key=lambda item: (item[0], item[1]), reverse=True)
-            return candidates[0][2]
+            fragment = candidates[0][2]
+            if isinstance(diagnostics, dict):
+                diagnostics["selector"] = "alousboue:entry-content"
+                diagnostics["paragraph_count"] = len(re.findall(r"(?is)<p\b", fragment))
+                diagnostics["text_length"] = len(reading_html_to_text(fragment))
+            return fragment
+    if isinstance(diagnostics, dict):
+        diagnostics["selector"] = "full-document"
+        diagnostics["paragraph_count"] = len(re.findall(r"(?is)<p\b", raw))
+        diagnostics["text_length"] = len(reading_html_to_text(raw))
     return ""
 
 
@@ -8870,11 +8969,11 @@ def reading_sync_extraction_priority(index, entry):
     priority = 0
     if reading_is_bbc_host(host):
         priority += 5000
-        if status in {"feed", "partial"}:
+        if status in {"feed", "partial", "weak_partial"}:
             priority += 1300
     if status == "feed":
         priority += 2500
-    elif status == "partial":
+    elif status in {"partial", "weak_partial"}:
         priority += 1800
     elif not status:
         priority += 1200
@@ -8979,7 +9078,7 @@ def reading_entry_needs_content_upgrade(entry, force_refresh=False):
         return True
     if status == "ok":
         return score < 1800 or len(text) < 900
-    if status == "partial":
+    if status in {"partial", "weak_partial"}:
         return score < 1800 or len(text) < 1200
     if status == "feed":
         return score < 900 or len(text) < 700
@@ -9021,17 +9120,148 @@ def reading_describe_article_fetch_error(exc, timeout_seconds=0):
     return str(exc) or exc.__class__.__name__
 
 
+def reading_describe_fetch_timeout(exc, timeout_seconds=0):
+    seconds = int(timeout_seconds or 0)
+    if isinstance(exc, requests.exceptions.ConnectTimeout):
+        return f"connect timeout after {seconds}s" if seconds > 0 else "connect timeout"
+    if isinstance(exc, requests.exceptions.ReadTimeout):
+        return f"read timeout after {seconds}s" if seconds > 0 else "read timeout"
+    if isinstance(exc, requests.exceptions.Timeout):
+        return f"timeout after {seconds}s" if seconds > 0 else "timeout"
+    return ""
+
+
+def reading_request_headers(purpose="feed"):
+    purpose = str(purpose or "").strip().lower()
+    headers = {
+        "User-Agent": READING_BROWSER_USER_AGENT,
+        "Accept-Language": READING_BROWSER_ACCEPT_LANGUAGE,
+    }
+    if purpose == "article":
+        headers["Accept"] = READING_BROWSER_ACCEPT_HTML
+    else:
+        headers["Accept"] = READING_BROWSER_ACCEPT
+    return headers
+
+
+def reading_http_get(url, timeout_seconds=20, purpose="feed", retries=1):
+    request_url = normalize_reading_url(url)
+    timeout_seconds = max(int(timeout_seconds or 0), 1)
+    retries = max(int(retries or 0), 0)
+    diagnostics = {
+        "request_url": request_url,
+        "final_url": "",
+        "status_code": 0,
+        "content_type": "",
+        "retry_count": 0,
+        "timeout_reason": "",
+        "error": "",
+        "attempts": [],
+    }
+    last_exc = None
+    last_response = None
+    for attempt in range(1, retries + 2):
+        started_at = time.monotonic()
+        try:
+            response = READING_HTTP_SESSION.get(
+                request_url,
+                timeout=timeout_seconds,
+                allow_redirects=True,
+                headers=reading_request_headers(purpose),
+            )
+            elapsed_ms = int((time.monotonic() - started_at) * 1000)
+            diagnostics["attempts"].append({
+                "attempt": attempt,
+                "status_code": int(getattr(response, "status_code", 0) or 0),
+                "final_url": normalize_reading_url(getattr(response, "url", "") or request_url),
+                "content_type": str(getattr(response, "headers", {}).get("Content-Type", "") or "").strip(),
+                "elapsed_ms": elapsed_ms,
+                "error": "",
+            })
+            diagnostics["retry_count"] = attempt - 1
+            diagnostics["final_url"] = normalize_reading_url(getattr(response, "url", "") or request_url)
+            diagnostics["status_code"] = int(getattr(response, "status_code", 0) or 0)
+            diagnostics["content_type"] = str(getattr(response, "headers", {}).get("Content-Type", "") or "").strip()
+            diagnostics["error"] = ""
+            last_response = response
+            return response, diagnostics
+        except requests.exceptions.RequestException as exc:
+            elapsed_ms = int((time.monotonic() - started_at) * 1000)
+            response = getattr(exc, "response", None)
+            diagnostics["attempts"].append({
+                "attempt": attempt,
+                "status_code": int(getattr(response, "status_code", 0) or 0),
+                "final_url": normalize_reading_url(getattr(response, "url", "") or request_url),
+                "content_type": str(getattr(response, "headers", {}).get("Content-Type", "") or "").strip(),
+                "elapsed_ms": elapsed_ms,
+                "error": str(exc) or exc.__class__.__name__,
+            })
+            diagnostics["retry_count"] = attempt - 1
+            diagnostics["timeout_reason"] = reading_describe_fetch_timeout(exc, timeout_seconds=timeout_seconds)
+            diagnostics["error"] = str(exc) or exc.__class__.__name__
+            last_exc = exc
+            last_response = response
+    if last_response is not None:
+        diagnostics["final_url"] = normalize_reading_url(getattr(last_response, "url", "") or request_url)
+        diagnostics["status_code"] = int(getattr(last_response, "status_code", 0) or 0)
+        diagnostics["content_type"] = str(getattr(last_response, "headers", {}).get("Content-Type", "") or "").strip()
+    if not diagnostics["timeout_reason"] and last_exc is not None:
+        diagnostics["timeout_reason"] = reading_describe_fetch_timeout(last_exc, timeout_seconds=timeout_seconds)
+    return None, diagnostics
+
+
+def reading_feedparser_diagnostics(feed_bytes):
+    if feedparser is None:
+        return {"bozo": "", "bozo_exception": "", "entry_count": 0}
+    try:
+        parsed = feedparser.parse(feed_bytes or b"")
+    except Exception as exc:
+        return {"bozo": "1", "bozo_exception": str(exc), "entry_count": 0}
+    bozo = bool(getattr(parsed, "bozo", False))
+    bozo_exception = getattr(parsed, "bozo_exception", None)
+    return {
+        "bozo": "1" if bozo else "0",
+        "bozo_exception": str(bozo_exception or "").strip(),
+        "entry_count": len(getattr(parsed, "entries", []) or []),
+    }
+
+
 def reading_merge_extraction_snapshot(entry, extraction, force_refresh=False):
     entry = dict(entry or {})
     extraction = extraction if isinstance(extraction, dict) else {}
     media_needs_enrichment = reading_content_needs_media_enrichment(entry.get("content_html", ""))
     current_score = reading_entry_content_score(entry)
     extraction_score = int(extraction.get("content_score", 0) or 0)
+    extraction_status = str(extraction.get("status", "") or "").strip().lower()
+    extraction_text_length = len(str(extraction.get("content_text", "") or ""))
+    extraction_selector = str(extraction.get("extraction_selector", "") or "").strip()
+    extraction_paragraph_count = int(extraction.get("extraction_paragraph_count", 0) or 0)
+    preserve_stronger_content = (
+        extraction_status == "weak_partial"
+        and not force_refresh
+        and current_score >= max(extraction_score, 300)
+        and bool(entry.get("content_html") or entry.get("content_text") or entry.get("excerpt"))
+    )
     updates = {
-        "extraction_status": str(extraction.get("status", "") or "").strip(),
-        "extraction_error": str(extraction.get("error", "") or "").strip(),
-        "content_cached_at": str(extraction.get("content_cached_at", "") or current_timestamp()).strip(),
+        "extraction_selector": extraction_selector,
+        "extraction_paragraph_count": extraction_paragraph_count,
+        "extraction_text_length": extraction_text_length,
+        "fetch_final_url": str(extraction.get("fetch_final_url", "") or "").strip(),
+        "fetch_status_code": int(extraction.get("fetch_status_code", 0) or 0),
+        "fetch_content_type": str(extraction.get("fetch_content_type", "") or "").strip(),
+        "fetch_retry_count": int(extraction.get("fetch_retry_count", 0) or 0),
+        "fetch_timeout_reason": str(extraction.get("fetch_timeout_reason", "") or "").strip(),
     }
+    if not preserve_stronger_content:
+        updates["extraction_error"] = str(extraction.get("error", "") or "").strip()
+        updates["content_cached_at"] = str(extraction.get("content_cached_at", "") or current_timestamp()).strip()
+        updates["extraction_status"] = str(extraction.get("status", "") or "").strip()
+    else:
+        updates["extraction_last_status"] = str(extraction.get("status", "") or "").strip()
+        updates["extraction_last_error"] = str(extraction.get("error", "") or "").strip()
+        updates["extraction_last_selector"] = extraction_selector
+        updates["extraction_last_paragraph_count"] = extraction_paragraph_count
+        updates["extraction_last_text_length"] = extraction_text_length
     canonical_url = normalize_reading_url(extraction.get("canonical_url", "")) or normalize_reading_url(entry.get("canonical_url", "")) or normalize_reading_url(entry.get("original_url", "")) or normalize_reading_url(entry.get("url", ""))
     if canonical_url:
         updates["canonical_url"] = canonical_url
@@ -9039,12 +9269,14 @@ def reading_merge_extraction_snapshot(entry, extraction, force_refresh=False):
         incoming_value = extraction.get(key)
         if not incoming_value:
             continue
+        if preserve_stronger_content and key in {"content_html", "content_text", "excerpt", "image_url", "lead_image_url", "lead_image_kind", "author", "author_image_url"}:
+            continue
         if key == "content_html":
             if force_refresh or (not entry.get(key)) or media_needs_enrichment or extraction_score >= current_score:
                 updates[key] = incoming_value
         elif force_refresh or (not entry.get(key)) or extraction_score >= current_score:
             updates[key] = incoming_value
-    if extraction_score and (force_refresh or extraction_score >= current_score or not entry.get("content_score")):
+    if extraction_score and not preserve_stronger_content and (force_refresh or extraction_score >= current_score or not entry.get("content_score")):
         updates["content_score"] = extraction_score
     merged = dict(entry)
     merged.update(updates)
@@ -9479,6 +9711,14 @@ def normalize_reading_source(source, index=0):
     topic = normalize_reading_topic(item.get("topic", "") or "", category)
     topic_display = reading_visible_topic_label(topic, category)
     source_id = str(item.get("id", "") or item.get("source_id", "") or "").strip()
+    fallback_urls = []
+    raw_fallback_urls = item.get("fallback_urls", item.get("feed_fallback_urls", []))
+    if isinstance(raw_fallback_urls, str):
+        raw_fallback_urls = [raw_fallback_urls]
+    for fallback_url in raw_fallback_urls or []:
+        normalized_fallback = normalize_reading_url(fallback_url)
+        if normalized_fallback and normalized_fallback not in fallback_urls and normalized_fallback != normalize_reading_url(url):
+            fallback_urls.append(normalized_fallback)
     if not source_id:
         source_id = f"reading-src-{reading_hash_key('|'.join([name.lower(), normalize_reading_url(url).lower(), topic.lower()]))}"
     added_at = str(item.get("added_at", "") or "").strip() or current_timestamp()
@@ -9505,6 +9745,7 @@ def normalize_reading_source(source, index=0):
         "id": source_id,
         "name": name,
         "url": url,
+        "fallback_urls": fallback_urls,
         "topic": topic,
         "topic_display": topic_display,
         "category": category,
@@ -9522,6 +9763,13 @@ def normalize_reading_source(source, index=0):
         "last_sync_status_code": int(item.get("last_sync_status_code", 0) or 0),
         "last_sync_content_type": str(item.get("last_sync_content_type", "") or "").strip(),
         "last_sync_feed_kind": str(item.get("last_sync_feed_kind", "") or "").strip(),
+        "last_sync_resolved_url": str(item.get("last_sync_resolved_url", "") or "").strip(),
+        "last_sync_retry_count": int(item.get("last_sync_retry_count", 0) or 0),
+        "last_sync_timeout_reason": str(item.get("last_sync_timeout_reason", "") or "").strip(),
+        "last_sync_feedparser_bozo": str(item.get("last_sync_feedparser_bozo", "") or "").strip(),
+        "last_sync_feedparser_bozo_exception": str(item.get("last_sync_feedparser_bozo_exception", "") or "").strip(),
+        "last_sync_feedparser_entry_count": int(item.get("last_sync_feedparser_entry_count", 0) or 0),
+        "last_sync_source_fallback_used": normalize_reading_bool(item.get("last_sync_source_fallback_used", False), default=False),
         "last_sync_reason": str(item.get("last_sync_reason", "") or "").strip(),
         "last_sync_message": last_sync_message,
         "last_sync_status": last_sync_status,
@@ -10203,6 +10451,85 @@ def build_reading_import_item(source, feed_url, node, source_topic=""):
     }
 
 
+def build_reading_import_item_from_feedparser(source, feed_url, entry, source_topic=""):
+    source = source if isinstance(source, dict) else {}
+    entry = entry if isinstance(entry, dict) else {}
+    title = normalize_reading_space(entry.get("title", "")) or "Untitled article"
+    url = normalize_reading_url(entry.get("link", "") or entry.get("id", ""))
+    external_id = normalize_reading_space(entry.get("id", "") or entry.get("guid", ""))
+    published_at = normalize_timestamp_value(
+        entry.get("published", "")
+        or entry.get("updated", "")
+        or entry.get("created", "")
+        or entry.get("pubDate", "")
+    )
+    imported_at = current_timestamp()
+    topic = []
+    for tag in entry.get("tags", []) or []:
+        term = ""
+        if isinstance(tag, dict):
+            term = str(tag.get("term", "") or tag.get("label", "") or "").strip()
+        else:
+            term = str(tag or "").strip()
+        if term:
+            topic.append(term)
+    content_html = ""
+    for content_item in entry.get("content", []) or []:
+        if isinstance(content_item, dict):
+            candidate = str(content_item.get("value", "") or "").strip()
+            if candidate:
+                content_html = candidate
+                break
+    if not content_html:
+        content_html = str(entry.get("summary", "") or entry.get("description", "") or entry.get("subtitle", "") or "").strip()
+    content_text = strip_reading_html(content_html)
+    excerpt = content_text[:420].strip()
+    lead_image_url = extract_reading_lead_image_from_html(content_html, url)
+    image_url = extract_reading_image_from_html(content_html, url, source_url=feed_url, source_name=source.get("name", ""))
+    lead_image_kind = "explicit" if lead_image_url else ""
+    author_name = normalize_reading_space(entry.get("author", "") or "")
+    author_image_url = ""
+    content_score = reading_entry_content_score({
+        "content_html": content_html,
+        "content_text": content_text,
+        "excerpt": excerpt,
+        "image_url": image_url,
+        "lead_image_url": lead_image_url,
+        "author_image_url": author_image_url,
+        "author": author_name,
+    })
+    return {
+        "source": source.get("name", "Unknown Source"),
+        "source_id": source.get("id", ""),
+        "title": title,
+        "url": url,
+        "original_url": url,
+        "external_id": external_id or url,
+        "published_at": published_at,
+        "added_at": imported_at,
+        "imported_at": imported_at,
+        "status": "unread",
+        "starred": False,
+        "author": author_name,
+        "author_image_url": author_image_url,
+        "topic": topic[0] if topic else source_topic,
+        "category": normalize_reading_category(source.get("category", "")),
+        "topic_display": reading_visible_topic_label(topic[0] if topic else source_topic, source.get("category", "")),
+        "image_url": image_url,
+        "lead_image_url": lead_image_url,
+        "lead_image_kind": lead_image_kind,
+        "excerpt": excerpt,
+        "content_text": content_text,
+        "content_html": content_html,
+        "content_score": content_score,
+        "extraction_status": "feed" if content_text else "",
+        "extraction_error": "",
+        "content_cached_at": imported_at if content_text or image_url else "",
+        "origin": "rss",
+        "feed_url": feed_url,
+    }
+
+
 def fetch_reading_feed(source):
     source = normalize_reading_source(source)
     feed_url = str(source.get("url", "") or "").strip()
@@ -10211,70 +10538,141 @@ def fetch_reading_feed(source):
             "ok": False,
             "feed_kind": "empty",
             "source_url": feed_url,
+            "feed_url": "",
+            "resolved_url": "",
             "status_code": 0,
             "content_type": "",
             "raw_count": 0,
             "normalized_count": 0,
             "items": [],
+            "retry_count": 0,
+            "timeout_reason": "",
+            "feedparser_bozo": "",
+            "feedparser_bozo_exception": "",
+            "feedparser_entry_count": 0,
+            "source_fallback_used": False,
+            "attempts": [],
             "error": "Missing feed URL.",
         }
-    response = None
-    content_type = ""
-    try:
-        response = requests.get(feed_url, timeout=20, headers={"User-Agent": "DragonReading/1.0 (+local)"})
-        response.raise_for_status()
-        content_type = str(response.headers.get("Content-Type", "") or "").strip()
-        root = ET.fromstring(response.content)
-    except Exception as exc:
-        response_obj = getattr(exc, "response", None) or response
-        headers = getattr(response_obj, "headers", {}) or {}
+    candidate_urls = []
+    for candidate_url in [feed_url] + list(source.get("fallback_urls", []) or []):
+        normalized_candidate = normalize_reading_url(candidate_url)
+        if normalized_candidate and normalized_candidate not in candidate_urls:
+            candidate_urls.append(normalized_candidate)
+    attempts = []
+    source_topic = str(source.get("topic", "") or "").strip()
+    for candidate_index, candidate_url in enumerate(candidate_urls):
+        response, request_diag = reading_http_get(candidate_url, timeout_seconds=20, purpose="feed", retries=1)
+        request_diag = dict(request_diag or {})
+        request_diag["feed_url"] = candidate_url
+        request_diag["source_url"] = feed_url
+        request_diag["fallback_index"] = candidate_index
+        attempts.append(request_diag)
+        if response is None:
+            continue
+        status_code = int(getattr(response, "status_code", 0) or 0)
+        content_type = str(getattr(response, "headers", {}).get("Content-Type", "") or "").strip()
+        if status_code >= 400:
+            request_diag["error"] = f"HTTP {status_code}"
+            continue
+        feedparser_diag = reading_feedparser_diagnostics(getattr(response, "content", b""))
+        try:
+            root = ET.fromstring(response.content)
+        except Exception as exc:
+            request_diag["error"] = str(exc) or exc.__class__.__name__
+            request_diag["parse_error"] = str(exc) or exc.__class__.__name__
+            if feedparser_diag.get("entry_count", 0) and feedparser is not None:
+                parsed = feedparser.parse(response.content or b"")
+                items = []
+                for entry in getattr(parsed, "entries", []) or []:
+                    items.append(build_reading_import_item_from_feedparser(source, candidate_url, entry, source_topic=source_topic))
+                return {
+                    "ok": True,
+                    "feed_kind": "feedparser",
+                    "source_url": feed_url,
+                    "feed_url": candidate_url,
+                    "resolved_url": request_diag.get("final_url", candidate_url) or candidate_url,
+                    "status_code": status_code,
+                    "content_type": content_type,
+                    "raw_count": len(getattr(parsed, "entries", []) or []),
+                    "normalized_count": len(items),
+                    "items": items,
+                    "retry_count": int(request_diag.get("retry_count", 0) or 0),
+                    "timeout_reason": str(request_diag.get("timeout_reason", "") or "").strip(),
+                    "feedparser_bozo": feedparser_diag.get("bozo", ""),
+                    "feedparser_bozo_exception": feedparser_diag.get("bozo_exception", ""),
+                    "feedparser_entry_count": int(feedparser_diag.get("entry_count", 0) or 0),
+                    "source_fallback_used": candidate_url != feed_url,
+                    "attempts": attempts,
+                    "error": "",
+                }
+            continue
+
+        items = []
+        rss_items = []
+        atom_items = []
+        feed_kind = "unknown"
+        if root.tag.endswith("rss"):
+            feed_kind = "rss"
+            channel = root.find(".//{*}channel")
+            if channel is not None:
+                rss_items = channel.findall("./item")
+            if not rss_items:
+                rss_items = root.findall(".//{*}item")
+        elif root.tag.endswith("RDF") or root.tag.endswith("rdf"):
+            feed_kind = "rdf"
+            rss_items = root.findall(".//{*}item")
+        elif root.tag.endswith("feed"):
+            feed_kind = "atom"
+            atom_items = root.findall(".//{*}entry")
+
+        for node in rss_items:
+            items.append(build_reading_import_item(source, candidate_url, node, source_topic=source_topic))
+
+        for node in atom_items:
+            items.append(build_reading_import_item(source, candidate_url, node, source_topic=source_topic))
+
         return {
-            "ok": False,
-            "feed_kind": "error",
+            "ok": True,
+            "feed_kind": feed_kind,
             "source_url": feed_url,
-            "status_code": int(getattr(response_obj, "status_code", 0) or 0),
-            "content_type": str(headers.get("Content-Type", "") or ""),
-            "raw_count": 0,
-            "normalized_count": 0,
-            "items": [],
-            "error": str(exc),
+            "feed_url": candidate_url,
+            "resolved_url": request_diag.get("final_url", candidate_url) or candidate_url,
+            "status_code": status_code,
+            "content_type": content_type,
+            "raw_count": len(rss_items) + len(atom_items),
+            "normalized_count": len(items),
+            "items": items,
+            "retry_count": int(request_diag.get("retry_count", 0) or 0),
+            "timeout_reason": str(request_diag.get("timeout_reason", "") or "").strip(),
+            "feedparser_bozo": feedparser_diag.get("bozo", ""),
+            "feedparser_bozo_exception": feedparser_diag.get("bozo_exception", ""),
+            "feedparser_entry_count": int(feedparser_diag.get("entry_count", 0) or 0),
+            "source_fallback_used": candidate_url != feed_url,
+            "attempts": attempts,
+            "error": "",
         }
 
-    items = []
-    source_topic = str(source.get("topic", "") or "").strip()
-    rss_items = []
-    atom_items = []
-    feed_kind = "unknown"
-    if root.tag.endswith("rss"):
-        feed_kind = "rss"
-        channel = root.find(".//{*}channel")
-        if channel is not None:
-            rss_items = channel.findall("./item")
-        if not rss_items:
-            rss_items = root.findall(".//{*}item")
-    elif root.tag.endswith("RDF") or root.tag.endswith("rdf"):
-        feed_kind = "rdf"
-        rss_items = root.findall(".//{*}item")
-    elif root.tag.endswith("feed"):
-        feed_kind = "atom"
-        atom_items = root.findall(".//{*}entry")
-
-    for node in rss_items:
-        items.append(build_reading_import_item(source, feed_url, node, source_topic=source_topic))
-
-    for node in atom_items:
-        items.append(build_reading_import_item(source, feed_url, node, source_topic=source_topic))
-
+    last_attempt = attempts[-1] if attempts else {}
     return {
-        "ok": True,
-        "feed_kind": feed_kind,
+        "ok": False,
+        "feed_kind": "error",
         "source_url": feed_url,
-        "status_code": getattr(response, "status_code", 200),
-        "content_type": content_type,
-        "raw_count": len(rss_items) + len(atom_items),
-        "normalized_count": len(items),
-        "items": items,
-        "error": "",
+        "feed_url": str(last_attempt.get("feed_url", feed_url) or feed_url),
+        "resolved_url": str(last_attempt.get("final_url", "") or ""),
+        "status_code": int(last_attempt.get("status_code", 0) or 0),
+        "content_type": str(last_attempt.get("content_type", "") or ""),
+        "raw_count": 0,
+        "normalized_count": 0,
+        "items": [],
+        "retry_count": int(last_attempt.get("retry_count", 0) or 0),
+        "timeout_reason": str(last_attempt.get("timeout_reason", "") or "").strip(),
+        "feedparser_bozo": "",
+        "feedparser_bozo_exception": "",
+        "feedparser_entry_count": 0,
+        "source_fallback_used": bool(last_attempt and str(last_attempt.get("feed_url", "") or "") != feed_url),
+        "attempts": attempts,
+        "error": str(last_attempt.get("error", "") or "") or "Unable to fetch feed.",
     }
 
 
@@ -10359,6 +10757,14 @@ def sync_reading_sources(source_id=""):
             fetch_kind = str(fetch_result.get("feed_kind", "") or "").strip()
             fetch_status_code = int(fetch_result.get("status_code", 0) or 0)
             fetch_content_type = str(fetch_result.get("content_type", "") or "").strip()
+            fetch_resolved_url = str(fetch_result.get("resolved_url", "") or "").strip()
+            fetch_retry_count = int(fetch_result.get("retry_count", 0) or 0)
+            fetch_timeout_reason = str(fetch_result.get("timeout_reason", "") or "").strip()
+            fetch_bozo = str(fetch_result.get("feedparser_bozo", "") or "").strip()
+            fetch_bozo_exception = str(fetch_result.get("feedparser_bozo_exception", "") or "").strip()
+            fetch_feedparser_entry_count = int(fetch_result.get("feedparser_entry_count", 0) or 0)
+            fetch_source_fallback_used = bool(fetch_result.get("source_fallback_used", False))
+            fetch_source_url = str(fetch_result.get("feed_url", feed_url) or feed_url).strip()
             source_imported = 0
             source_skipped_existing = 0
             source_skipped_missing_key = 0
@@ -10445,6 +10851,13 @@ def sync_reading_sources(source_id=""):
             source["last_sync_status_code"] = fetch_status_code
             source["last_sync_content_type"] = fetch_content_type
             source["last_sync_feed_kind"] = fetch_kind
+            source["last_sync_resolved_url"] = fetch_resolved_url
+            source["last_sync_retry_count"] = fetch_retry_count
+            source["last_sync_timeout_reason"] = fetch_timeout_reason
+            source["last_sync_feedparser_bozo"] = fetch_bozo
+            source["last_sync_feedparser_bozo_exception"] = fetch_bozo_exception
+            source["last_sync_feedparser_entry_count"] = fetch_feedparser_entry_count
+            source["last_sync_source_fallback_used"] = fetch_source_fallback_used
             source["last_sync_status"] = "ok" if fetch_ok else "error"
             source["last_sync_error"] = fetch_error if not fetch_ok else ""
             source["last_sync_reason"] = reading_source_sync_reason(source)
@@ -10457,6 +10870,10 @@ def sync_reading_sources(source_id=""):
                 source["last_sync_message"] += f" Skipped {source_skipped_missing_key} item(s) with no stable URL or id."
             if fetch_ok and raw_count == 0:
                 source["last_sync_message"] = "Fetched 0 items from feed."
+            if fetch_ok and fetch_source_fallback_used and fetch_source_url:
+                source["last_sync_message"] += f" Fallback URL used: {fetch_source_url}."
+            if fetch_timeout_reason:
+                source["last_sync_message"] += f" Timeout note: {fetch_timeout_reason}."
             if source_imported == 0:
                 source["last_sync_zero_import_streak"] = int(source.get("last_sync_zero_import_streak", 0) or 0) + 1
             else:
@@ -10478,6 +10895,13 @@ def sync_reading_sources(source_id=""):
                 "feed_kind": fetch_kind,
                 "status_code": fetch_status_code,
                 "content_type": fetch_content_type,
+                "resolved_url": fetch_resolved_url,
+                "retry_count": fetch_retry_count,
+                "timeout_reason": fetch_timeout_reason,
+                "feedparser_bozo": fetch_bozo,
+                "feedparser_bozo_exception": fetch_bozo_exception,
+                "feedparser_entry_count": fetch_feedparser_entry_count,
+                "source_fallback_used": fetch_source_fallback_used,
                 "error": fetch_error,
             })
             source_elapsed = time.monotonic() - source_started_at
@@ -10491,7 +10915,13 @@ def sync_reading_sources(source_id=""):
                 f"imported={source_imported} | "
                 f"duplicates={source_skipped_existing} | "
                 f"missing_key={source_skipped_missing_key} | "
-                f"status={'ok' if fetch_ok else 'error'}"
+                f"status={'ok' if fetch_ok else 'error'} | "
+                f"status_code={fetch_status_code or 0} | "
+                f"resolved_url={fetch_resolved_url or fetch_source_url or feed_url} | "
+                f"content_type={fetch_content_type or 'unknown'} | "
+                f"retry_count={fetch_retry_count} | "
+                f"timeout_reason={fetch_timeout_reason or 'none'} | "
+                f"bozo={fetch_bozo or '0'}"
             )
         except Exception as exc:
             source_elapsed = time.monotonic() - source_started_at
@@ -10506,6 +10936,13 @@ def sync_reading_sources(source_id=""):
             source["last_sync_status_code"] = 0
             source["last_sync_content_type"] = ""
             source["last_sync_feed_kind"] = "error"
+            source["last_sync_resolved_url"] = ""
+            source["last_sync_retry_count"] = 0
+            source["last_sync_timeout_reason"] = ""
+            source["last_sync_feedparser_bozo"] = ""
+            source["last_sync_feedparser_bozo_exception"] = ""
+            source["last_sync_feedparser_entry_count"] = 0
+            source["last_sync_source_fallback_used"] = False
             source["last_sync_status"] = "error"
             source["last_sync_error"] = str(exc)
             source["last_sync_message"] = f"Fetch failed: {exc}"
@@ -10519,6 +10956,15 @@ def sync_reading_sources(source_id=""):
                 "imported": 0,
                 "status": "error",
                 "reason": source.get("last_sync_reason", ""),
+                "status_code": 0,
+                "content_type": "",
+                "resolved_url": "",
+                "retry_count": 0,
+                "timeout_reason": "",
+                "feedparser_bozo": "",
+                "feedparser_bozo_exception": "",
+                "feedparser_entry_count": 0,
+                "source_fallback_used": False,
                 "error": str(exc),
             })
             print(
@@ -10643,7 +11089,7 @@ def sync_reading_sources(source_id=""):
             )
             entries[candidate_index] = merged_entry
             extraction_status = str(extraction.get("status", "") or "").strip().lower()
-            if extraction_status in {"ok", "partial"} and (
+            if extraction_status in {"ok", "partial", "weak_partial"} and (
                 reading_entry_content_score(merged_entry) >= reading_entry_content_score(entry)
                 or merged_entry.get("content_html")
                 or merged_entry.get("content_text")
@@ -10670,6 +11116,9 @@ def sync_reading_sources(source_id=""):
                 "status": extraction_status or "unknown",
                 "error": str(extraction.get("error", "") or "").strip(),
                 "content_text_length": len(str(extraction.get("content_text", "") or "")),
+                "selector": str(extraction.get("extraction_selector", "") or "").strip(),
+                "paragraph_count": int(extraction.get("extraction_paragraph_count", 0) or 0),
+                "extracted_text_length": int(extraction.get("extraction_text_length", 0) or 0),
                 "kind": candidate_kind,
             })
             print(
@@ -10679,6 +11128,8 @@ def sync_reading_sources(source_id=""):
                 f"status={extraction_status or 'unknown'} | "
                 f"elapsed={extraction_elapsed:.1f}s | "
                 f"content_text_length={len(str(extraction.get('content_text', '') or ''))} | "
+                f"selector={str(extraction.get('extraction_selector', '') or '').strip() or 'unknown'} | "
+                f"paragraph_count={int(extraction.get('extraction_paragraph_count', 0) or 0)} | "
                 f"error={str(extraction.get('error', '') or '').strip() or 'none'} | "
                 f"url={article_url}"
             )
@@ -10759,6 +11210,8 @@ def sync_reading_sources(source_id=""):
                 f"source={item.get('source', 'Unknown Source')} | "
                 f"status={item.get('status', 'unknown')} | "
                 f"content_text_length={int(item.get('content_text_length', 0) or 0)} | "
+                f"selector={item.get('selector', 'unknown')} | "
+                f"paragraph_count={int(item.get('paragraph_count', 0) or 0)} | "
                 f"kind={item.get('kind', 'primary')} | "
                 f"url={item.get('url', '')}"
             )
@@ -10903,18 +11356,71 @@ def extract_reading_article_page(url, timeout_seconds=None):
         return {"status": "failed", "error": "Missing article URL."}
     request_timeout = int(timeout_seconds or DRAGON_READING_SYNC_EXTRACT_TIMEOUT_SECONDS or 20)
     try:
-        response = requests.get(article_url, timeout=request_timeout, headers={"User-Agent": "DragonReading/1.0 (+local)"})
-        response.raise_for_status()
+        response, request_diag = reading_http_get(article_url, timeout_seconds=request_timeout, purpose="article", retries=1)
+        request_diag = dict(request_diag or {})
+        if response is None:
+            error_message = request_diag.get("error", "") or "Unable to fetch article."
+            return {
+                "status": "failed",
+                "canonical_url": article_url,
+                "image_url": "",
+                "lead_image_url": "",
+                "lead_image_kind": "",
+                "author": "",
+                "author_image_url": "",
+                "excerpt": "",
+                "content_html": "",
+                "content_text": "",
+                "content_score": 0,
+                "content_cached_at": current_timestamp(),
+                "extraction_selector": "",
+                "extraction_paragraph_count": 0,
+                "extraction_text_length": 0,
+                "fetch_final_url": str(request_diag.get("final_url", "") or ""),
+                "fetch_status_code": int(request_diag.get("status_code", 0) or 0),
+                "fetch_content_type": str(request_diag.get("content_type", "") or ""),
+                "fetch_retry_count": int(request_diag.get("retry_count", 0) or 0),
+                "fetch_timeout_reason": str(request_diag.get("timeout_reason", "") or ""),
+                "error": error_message,
+            }
+        if int(getattr(response, "status_code", 0) or 0) >= 400:
+            error_message = f"HTTP {int(getattr(response, 'status_code', 0) or 0)} while fetching article."
+            if int(getattr(response, "status_code", 0) or 0) == 403:
+                error_message = "HTTP 403 while fetching article."
+            return {
+                "status": "failed",
+                "canonical_url": article_url,
+                "image_url": "",
+                "lead_image_url": "",
+                "lead_image_kind": "",
+                "author": "",
+                "author_image_url": "",
+                "excerpt": "",
+                "content_html": "",
+                "content_text": "",
+                "content_score": 0,
+                "content_cached_at": current_timestamp(),
+                "extraction_selector": "",
+                "extraction_paragraph_count": 0,
+                "extraction_text_length": 0,
+                "fetch_final_url": str(request_diag.get("final_url", "") or ""),
+                "fetch_status_code": int(request_diag.get("status_code", 0) or 0),
+                "fetch_content_type": str(request_diag.get("content_type", "") or ""),
+                "fetch_retry_count": int(request_diag.get("retry_count", 0) or 0),
+                "fetch_timeout_reason": str(request_diag.get("timeout_reason", "") or ""),
+                "error": error_message,
+            }
         html = response.text or ""
         parser = ReadingHTMLExtractor()
         parser.feed(html)
         parser.close()
+        fragment_diag = {}
         canonical_url = (
             extract_reading_canonical_url_from_meta(getattr(parser, "meta", {}), article_url)
             or normalize_reading_url(getattr(response, "url", ""))
             or article_url
         )
-        selected_html = reading_select_source_article_fragment(html, article_url) or reading_select_article_fragment(html)
+        selected_html = reading_select_source_article_fragment(html, article_url, diagnostics=fragment_diag) or reading_select_article_fragment(html, diagnostics=fragment_diag)
         lead_image_url = extract_reading_lead_image_from_meta(parser.meta, article_url)
         lead_image_kind = "explicit" if lead_image_url and reading_is_explicit_lead_image_meta(parser.meta) else ""
         image_candidates = []
@@ -10947,13 +11453,32 @@ def extract_reading_article_page(url, timeout_seconds=None):
                 content_html = candidate_html
                 content_text = candidate_text
                 content_score = candidate_score
+        content_text = normalize_reading_space(content_text)
         excerpt = content_text[:420].strip()
         if content_html and not content_text:
             content_text = reading_html_to_text(content_html)
         if content_score < 200 and not content_text:
             content_text = reading_html_to_text(selected_html or html)
             content_score = max(content_score, len(content_text))
-        status = "ok" if content_score >= 900 or len(content_text) >= 900 else ("partial" if content_text or image_url else "failed")
+        article_title = normalize_reading_space(getattr(parser, "meta", {}).get("og:title", "") or getattr(parser, "meta", {}).get("twitter:title", "") or "")
+        normalized_text = normalize_reading_space(content_text)
+        lowered_text = normalized_text.lower()
+        title_lower = article_title.lower()
+        weak_partial = False
+        if normalized_text and len(normalized_text) < 140:
+            weak_partial = True
+        if article_title and normalized_text and (lowered_text == title_lower or normalized_text == article_title or (title_lower in lowered_text and len(normalized_text) < max(len(article_title) * 4, 220))):
+            weak_partial = True
+        if any(marker in lowered_text for marker in ("read more", "continue reading", "related", "follow us", "newsletter", "share", "comment", "comments")):
+            weak_partial = True
+        if not normalized_text and not image_url:
+            status = "failed"
+        elif weak_partial:
+            status = "weak_partial"
+        elif content_score >= 900 or len(normalized_text) >= 900:
+            status = "ok"
+        else:
+            status = "partial"
         return {
             "status": status,
             "canonical_url": canonical_url,
@@ -10964,10 +11489,18 @@ def extract_reading_article_page(url, timeout_seconds=None):
             "author_image_url": author_info.get("author_image_url", ""),
             "excerpt": excerpt,
             "content_html": content_html,
-            "content_text": content_text,
+            "content_text": normalized_text,
             "content_score": content_score,
             "content_cached_at": current_timestamp(),
-            "error": "" if content_text or image_url else "No readable article body found.",
+            "extraction_selector": str(fragment_diag.get("selector", "") or ""),
+            "extraction_paragraph_count": int(fragment_diag.get("paragraph_count", 0) or 0),
+            "extraction_text_length": len(normalized_text),
+            "fetch_final_url": str(request_diag.get("final_url", "") or ""),
+            "fetch_status_code": int(request_diag.get("status_code", 0) or 0),
+            "fetch_content_type": str(request_diag.get("content_type", "") or ""),
+            "fetch_retry_count": int(request_diag.get("retry_count", 0) or 0),
+            "fetch_timeout_reason": str(request_diag.get("timeout_reason", "") or ""),
+            "error": "" if normalized_text or image_url else "No readable article body found.",
         }
     except Exception as exc:
         return {
@@ -10983,6 +11516,14 @@ def extract_reading_article_page(url, timeout_seconds=None):
             "content_text": "",
             "content_score": 0,
             "content_cached_at": current_timestamp(),
+            "extraction_selector": "",
+            "extraction_paragraph_count": 0,
+            "extraction_text_length": 0,
+            "fetch_final_url": "",
+            "fetch_status_code": 0,
+            "fetch_content_type": "",
+            "fetch_retry_count": 0,
+            "fetch_timeout_reason": "",
             "error": reading_describe_article_fetch_error(exc, timeout_seconds=request_timeout),
         }
 
