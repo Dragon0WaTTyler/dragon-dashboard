@@ -1,9 +1,13 @@
 {% extends "base.html" %}
 {% block content %}
 <style>
-    .reading-feedback{display:grid;gap:10px;margin-bottom:18px}
-    .reading-feedback .message{padding:12px 14px;border-radius:16px;border:1px solid var(--border);background:rgba(255,255,255,.03);color:var(--text-2)}
+    .reading-page{width:100%;max-width:100%;min-width:0;box-sizing:border-box;overflow-x:clip}
+    .reading-page .surface-card,.reading-page .page-hero,.reading-page .section-card{width:100%;max-width:100%;min-width:0;box-sizing:border-box}
+    .reading-feedback{display:grid;gap:10px;margin-bottom:18px;max-width:100%;min-width:0}
+    .reading-feedback .message{padding:12px 14px;border-radius:16px;border:1px solid var(--border);background:rgba(255,255,255,.03);color:var(--text-2);max-width:100%;min-width:0;white-space:normal;overflow-wrap:anywhere;word-break:break-word}
     .reading-feedback .message.error{border-color:rgba(255,0,0,.28);color:#f0b0b0}
+    .reading-feedback .message .message-summary{display:none;font-weight:700;color:var(--heading);margin-bottom:4px}
+    .reading-feedback .message .message-detail{display:inline}
     .reading-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(280px,100%),1fr));gap:18px;margin-top:18px;width:100%;max-width:100%;min-width:0;align-items:start}
     .reading-card{display:flex;flex-direction:column;min-height:100%;padding:0;overflow:hidden;width:100%;max-width:100%;min-width:0}
     .reading-card-media{display:block;aspect-ratio:16/9;width:100%;max-width:100%;min-width:0;max-height:230px;background:rgba(255,255,255,.035);border-bottom:1px solid var(--border);color:var(--muted);text-decoration:none;overflow:hidden}
@@ -34,7 +38,8 @@
     .reading-fresh-pill{display:inline-flex;align-items:center;gap:4px;padding:3px 7px;border-radius:999px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.03);font-size:.56rem;line-height:1.1;letter-spacing:.12em;text-transform:uppercase;color:var(--text-2);white-space:nowrap}
     .reading-sync-row{display:flex;align-items:center;justify-content:space-between;gap:10px 14px;flex-wrap:wrap;margin-top:16px;padding-top:14px;border-top:1px solid rgba(255,255,255,.06)}
     .reading-sync-meta{display:flex;align-items:center;gap:8px 10px;flex-wrap:wrap;color:var(--text-2);font-size:.72rem;line-height:1.35}
-    .reading-sync-meta span{white-space:nowrap}
+    .reading-sync-meta span{white-space:normal;overflow-wrap:anywhere;word-break:break-word;min-width:0}
+    .reading-sync-meta span:first-child{white-space:nowrap}
     .reading-sync-row .btn{padding:8px 12px;min-height:32px}
     .reading-card-badges{display:flex;align-items:center;gap:7px 8px;flex-wrap:wrap;margin-top:-1px}
     .reading-entry-meta{display:flex;align-items:center;gap:8px 10px;flex-wrap:wrap;font-size:.76rem;line-height:1.35}
@@ -63,20 +68,34 @@
     .reading-metadata-row span{white-space:nowrap}
     .reading-original-link{color:var(--link-muted);font-size:.78rem;text-decoration:none}
     .reading-original-link:hover,.reading-original-link:focus{text-decoration:underline;outline:none}
+    .filter-form{width:100%;max-width:100%;min-width:0;align-items:stretch}
+    .filter-form > *{min-width:0;max-width:100%;width:100%}
+    .filter-form .btn,.filter-form button{width:100%;justify-content:center}
+    .filter-submit{min-width:0}
     @media (max-width:1024px){
         .reading-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
     }
     @media (max-width:700px){
+        .reading-page .page-hero,.reading-page .section-card{padding:16px}
+        .reading-feedback .message .message-summary{display:block}
+        .reading-feedback .message .message-detail{display:none}
         .reading-grid{grid-template-columns:1fr}
-        .reading-card-media{aspect-ratio:auto;height:180px;max-height:180px}
+        .reading-card-media{aspect-ratio:auto;height:170px;max-height:180px}
         .reading-card-body{padding:12px 13px 14px;gap:7px}
         .reading-card-title{font-size:.95rem;line-height:1.25}
         .reading-entry-meta{font-size:.72rem;gap:6px 8px}
         .reading-entry-actions{gap:6px}
-        .reading-entry-actions .btn{padding:6px 9px;font-size:.62rem}
+        .reading-entry-actions .btn{padding:6px 9px;font-size:.62rem;white-space:normal;line-height:1.15}
+        .reading-sync-row{align-items:flex-start}
+        .reading-sync-row form,.reading-sync-row .btn{width:100%}
+        .reading-sync-meta{width:100%;flex-direction:column;align-items:flex-start}
+        .reading-results-note{font-size:.76rem;align-items:flex-start}
+        .reading-results-note .btn{width:100%}
+        .filter-form{grid-template-columns:1fr;gap:10px}
         .reading-results-note{font-size:.76rem}
     }
 </style>
+<div class="reading-page">
 <section class="page-hero">
     <div class="hero-meta">
         <span class="hero-badge">Reading</span>
@@ -104,7 +123,10 @@
     <div class="message">{{ success_message }}</div>
     {% endif %}
     {% if error_message %}
-    <div class="message error">{{ error_message }}</div>
+    <div class="message error">
+        <span class="message-summary">Sync failed</span>
+        <span class="message-detail">{{ error_message }}</span>
+    </div>
     {% endif %}
 </section>
 {% endif %}
@@ -241,4 +263,5 @@
         {% endif %}
     </div>
 </section>
+</div>
 {% endblock %}
