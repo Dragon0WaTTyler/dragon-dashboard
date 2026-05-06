@@ -43,12 +43,14 @@ def format_source_line(result: dict) -> str:
     status_code = int(result.get("status_code", 0) or 0)
     content_type = str(result.get("content_type", "") or "").strip()
     resolved_url = str(result.get("resolved_url", "") or "").strip()
+    successful_url = str(result.get("successful_url", "") or "").strip()
     retry_count = int(result.get("retry_count", 0) or 0)
     timeout_reason = str(result.get("timeout_reason", "") or "").strip()
     bozo = str(result.get("feedparser_bozo", "") or "").strip()
     bozo_exception = str(result.get("feedparser_bozo_exception", "") or "").strip()
     entry_count = int(result.get("feedparser_entry_count", 0) or 0)
     fallback_used = bool(result.get("source_fallback_used", False))
+    tried_urls = [str(url or "").strip() for url in (result.get("tried_urls", []) or []) if str(url or "").strip()]
     parts = [
         f"{name}",
         f"status={status}",
@@ -58,6 +60,7 @@ def format_source_line(result: dict) -> str:
         f"duplicates={duplicates}",
         f"status_code={status_code}",
         f"resolved_url={resolved_url or 'n/a'}",
+        f"successful_url={successful_url or 'n/a'}",
         f"content_type={content_type or 'n/a'}",
         f"retry_count={retry_count}",
     ]
@@ -71,6 +74,8 @@ def format_source_line(result: dict) -> str:
         parts.append(f"feed_entries={entry_count}")
     if fallback_used:
         parts.append("fallback=1")
+    if tried_urls:
+        parts.append("tried_urls=" + " -> ".join(tried_urls))
     if reason:
         parts.append(f"reason={reason}")
     if error:
@@ -105,6 +110,36 @@ def build_summary(result: dict) -> dict:
     }
 
 
+def resolve_source_id(source_id: str = "", source_name: str = "") -> str:
+    source_id = str(source_id or "").strip()
+    source_name = str(source_name or "").strip().lower()
+    if source_id:
+        return source_id
+    if not source_name:
+        return ""
+    data = dragon_app.load_reading_data()
+    sources = list(data.get("sources", []) or [])
+    exact_matches = []
+    partial_matches = []
+    for source in sources:
+        if not isinstance(source, dict):
+            continue
+        candidate_id = str(source.get("id", "") or "").strip()
+        candidate_name = str(source.get("name", "") or "").strip()
+        if not candidate_id and not candidate_name:
+            continue
+        if candidate_name.lower() == source_name:
+            exact_matches.append(candidate_id)
+            continue
+        if source_name in candidate_name.lower():
+            partial_matches.append(candidate_id)
+    if exact_matches:
+        return exact_matches[0]
+    if len(partial_matches) == 1:
+        return partial_matches[0]
+    return ""
+
+
 def _install_signal_handlers() -> None:
     def _handle_signal(signum, _frame):
         raise KeyboardInterrupt(f"Reading sync interrupted by signal {signum}.")
@@ -125,7 +160,7 @@ def configure_reading_data_path(data_path: str = "") -> Path | None:
     return resolved
 
 
-def run_sync(source_id: str = "", data_path: str = "", dry_run: bool = False) -> int:
+def run_sync(source_id: str = "", source_name: str = "", data_path: str = "", dry_run: bool = False) -> int:
     started_at = time.monotonic()
     configured_data_path = configure_reading_data_path(data_path)
     cleanup_path = None
@@ -135,14 +170,20 @@ def run_sync(source_id: str = "", data_path: str = "", dry_run: bool = False) ->
             cleanup_path = Path(temp_file.name)
         shutil.copy2(source_path, cleanup_path)
         configured_data_path = configure_reading_data_path(str(cleanup_path))
+    resolved_source_id = resolve_source_id(source_id=source_id, source_name=source_name)
+    if source_name and not resolved_source_id:
+        safe_print(f"Reading RSS sync aborted: no source matched name={source_name!r}")
+        if cleanup_path and cleanup_path.exists():
+            cleanup_path.unlink(missing_ok=True)
+        return 1
     safe_print(
         "Reading RSS sync started | "
-        f"source_id={source_id or 'all'} | "
+        f"source_id={resolved_source_id or source_id or 'all'} | "
         f"data_path={(configured_data_path or dragon_app.READING_DATA_PATH)} | "
         f"dry_run={int(dry_run)}"
     )
     try:
-        result = dragon_app.sync_reading_sources(source_id=source_id)
+        result = dragon_app.sync_reading_sources(source_id=resolved_source_id or source_id)
     except KeyboardInterrupt as exc:
         safe_print(str(exc) or "Reading sync cancelled.")
         if cleanup_path and cleanup_path.exists():
@@ -250,12 +291,14 @@ def main() -> int:
     _install_signal_handlers()
     parser = argparse.ArgumentParser(description="Sync Dragon reading RSS sources into reading_data.json.")
     parser.add_argument("--source-id", default="", help="Optional specific reading source id to sync.")
+    parser.add_argument("--source-name", default="", help="Optional specific reading source name to sync.")
     parser.add_argument("--data-path", default="", help="Optional alternate reading_data.json path for safe testing.")
     parser.add_argument("--dry-run", action="store_true", help="Copy the reading data to a temporary file before syncing.")
     args = parser.parse_args()
     try:
         return run_sync(
             source_id=str(args.source_id or "").strip(),
+            source_name=str(args.source_name or "").strip(),
             data_path=str(args.data_path or "").strip(),
             dry_run=bool(args.dry_run),
         )

@@ -319,13 +319,13 @@
     <h3 style="font-size:1.6rem;">Source Diagnostics</h3>
     <div class="reading-admin-source-list" style="margin-top:18px;">
         {% for source in reading_admin.reading_rss_sources %}
-        <div class="reading-admin-source" data-health-group="{{ 'inactive' if not source.active else ('error' if source.health_summary.state == 'failing' else ('warning' if source.health_summary.state == 'warning' else 'healthy')) }}">
+        <div class="reading-admin-source" data-health-group="{{ 'inactive' if not source.active else ('error' if source.health_summary.visual_state == 'failing' else ('warning' if source.health_summary.visual_state == 'warning' else 'healthy')) }}">
             <div class="reading-admin-source-top">
                 <div class="reading-admin-source-title">
                     <div class="reading-admin-source-meta">
                         <span class="hero-badge">{{ source.name }}</span>
                         <span class="reading-admin-source-pill">{{ source.category|title }}</span>
-                        <span class="reading-admin-source-pill is-{{ source.health_summary.state }}">{{ source.health_summary.label if source.health_summary else source.health_label if source.health_label else source.health|title }}</span>
+                        <span class="reading-admin-source-pill is-{{ source.health_summary.visual_state if source.health_summary else source.health }}">{{ source.health_summary.label if source.health_summary else source.health_label if source.health_label else source.health|title }}</span>
                         <span class="reading-admin-source-pill {% if source.active %}is-active{% else %}is-paused{% endif %}">{{ 'active' if source.active else 'paused' }}</span>
                         <span>{{ source.known_entries_count }} known entries</span>
                     </div>
@@ -365,8 +365,21 @@
                 <div class="reading-admin-source-technical">
                     <span>Last sync: {{ source.last_synced_display or 'Never' }}</span>
                     <span>Status: {{ source.last_sync_status|default('unknown')|title }}</span>
+                    {% if source.primary_url %}
+                    <span class="reading-admin-source-detail-line">Primary URL: {{ source.primary_url }}</span>
+                    {% endif %}
+                    {% if source.last_sync_successful_url %}
+                    <span class="reading-admin-source-detail-line">Successful URL: {{ source.last_sync_successful_url }}</span>
+                    {% endif %}
+                    {% if source.last_sync_resolved_url %}
+                    <span class="reading-admin-source-detail-line">Resolved URL: {{ source.last_sync_resolved_url }}</span>
+                    {% endif %}
+                    {% if source.last_sync_tried_urls %}
+                    <span class="reading-admin-source-detail-line">Tried URLs: {{ source.last_sync_tried_urls|join(' | ') }}</span>
+                    {% endif %}
                     <span>Fetched: {{ source.last_sync_raw_count or source.last_sync_count or 0 }}</span>
                     <span>Normalized: {{ source.last_sync_normalized_count or source.last_sync_count or 0 }}</span>
+                    <span>Entries parsed: {{ source.last_sync_feedparser_entry_count or source.last_sync_normalized_count or source.last_sync_raw_count or 0 }}</span>
                     <span>Imported: {{ source.last_sync_imported_count or 0 }}</span>
                     <span>Already had: {{ source.last_sync_already_had_count or 0 }}</span>
                     {% if source.last_sync_missing_key_count %}
@@ -385,7 +398,7 @@
                     <span>Feed kind: {{ source.last_sync_feed_kind }}</span>
                     {% endif %}
                     {% if source.last_sync_status_code %}
-                    <span>Status code: {{ source.last_sync_status_code }}</span>
+                    <span>HTTP status: {{ source.last_sync_status_code }}</span>
                     {% endif %}
                 </div>
             </details>

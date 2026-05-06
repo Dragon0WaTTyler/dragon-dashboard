@@ -9131,20 +9131,32 @@ def reading_describe_fetch_timeout(exc, timeout_seconds=0):
     return ""
 
 
-def reading_request_headers(purpose="feed"):
+def reading_request_headers(purpose="feed", source=None, url=""):
     purpose = str(purpose or "").strip().lower()
     headers = {
         "User-Agent": READING_BROWSER_USER_AGENT,
         "Accept-Language": READING_BROWSER_ACCEPT_LANGUAGE,
+        "Cache-Control": "no-cache",
+        "Pragma": "no-cache",
     }
     if purpose == "article":
         headers["Accept"] = READING_BROWSER_ACCEPT_HTML
     else:
-        headers["Accept"] = READING_BROWSER_ACCEPT
+        headers["Accept"] = "application/rss+xml, application/atom+xml, application/xml;q=0.9, text/xml;q=0.8, text/html;q=0.7, */*;q=0.6"
+        headers["Upgrade-Insecure-Requests"] = "1"
+        headers["Sec-Fetch-Dest"] = "document"
+        headers["Sec-Fetch-Mode"] = "navigate"
+        headers["Sec-Fetch-Site"] = "none"
+        headers["Sec-Fetch-User"] = "?1"
+        source_url = normalize_reading_url((source or {}).get("url", "") or url)
+        if source_url:
+            parsed_source = urllib.parse.urlparse(source_url)
+            if parsed_source.scheme and parsed_source.netloc:
+                headers["Referer"] = f"{parsed_source.scheme}://{parsed_source.netloc}/"
     return headers
 
 
-def reading_http_get(url, timeout_seconds=20, purpose="feed", retries=1):
+def reading_http_get(url, timeout_seconds=20, purpose="feed", retries=1, source=None):
     request_url = normalize_reading_url(url)
     timeout_seconds = max(int(timeout_seconds or 0), 1)
     retries = max(int(retries or 0), 0)
@@ -9167,7 +9179,7 @@ def reading_http_get(url, timeout_seconds=20, purpose="feed", retries=1):
                 request_url,
                 timeout=timeout_seconds,
                 allow_redirects=True,
-                headers=reading_request_headers(purpose),
+                headers=reading_request_headers(purpose, source=source, url=request_url),
             )
             elapsed_ms = int((time.monotonic() - started_at) * 1000)
             diagnostics["attempts"].append({
@@ -9703,10 +9715,75 @@ def reading_hash_key(value):
     return hashlib.sha1(str(value or "").encode("utf-8")).hexdigest()[:12]
 
 
+def reading_log_text(value):
+    text = str(value or "")
+    try:
+        text.encode("ascii")
+        return text
+    except UnicodeEncodeError:
+        return text.encode("unicode_escape").decode("ascii")
+
+
+def reading_source_name_key(source):
+    return str((source or {}).get("name", "") or "").strip().lower()
+
+
+def reading_source_primary_url(source):
+    source = source if isinstance(source, dict) else {}
+    primary_url = normalize_reading_url(source.get("primary_url", "") or "")
+    url = normalize_reading_url(source.get("url", "") or "")
+    return primary_url or url
+
+
+def reading_source_extra_fallback_urls(source):
+    source = source if isinstance(source, dict) else {}
+    name_key = reading_source_name_key(source)
+    url = normalize_reading_url(source.get("url", "") or "")
+    primary_url = reading_source_primary_url(source)
+    category = normalize_reading_category(source.get("category", "") or "")
+    fallback_urls = []
+
+    def _add(url_value):
+        normalized = normalize_reading_url(url_value)
+        if normalized and normalized not in fallback_urls and normalized != primary_url:
+            fallback_urls.append(normalized)
+
+    if "morocco world news" in name_key:
+        _add("https://www.moroccoworldnews.com/rss")
+        _add("https://www.moroccoworldnews.com/feed/")
+        _add("https://www.moroccoworldnews.com/opinion/feed/")
+    if "howiyapress" in name_key or "howiyapress.com" in url:
+        if "/category/" in url or category in {"news", "culture", "opinion"}:
+            _add("https://howiyapress.com/feed/")
+    if "assabah.ma" in url or "assabah" in name_key:
+        if "/category/" in url:
+            _add("https://assabah.ma/feed")
+    if "al jazeera english" in name_key and "opinion" in name_key:
+        _add("https://www.aljazeera.com/xml/rss/all.xml")
+
+    return fallback_urls
+
+
+def reading_source_feed_candidate_urls(source):
+    source = source if isinstance(source, dict) else {}
+    candidate_urls = []
+    primary_url = reading_source_primary_url(source)
+    url = normalize_reading_url(source.get("url", "") or "")
+    raw_fallback_urls = source.get("fallback_urls", source.get("feed_fallback_urls", []))
+    if isinstance(raw_fallback_urls, str):
+        raw_fallback_urls = [raw_fallback_urls]
+    for candidate_url in [primary_url, url] + list(raw_fallback_urls or []) + reading_source_extra_fallback_urls(source):
+        normalized_candidate = normalize_reading_url(candidate_url)
+        if normalized_candidate and normalized_candidate not in candidate_urls:
+            candidate_urls.append(normalized_candidate)
+    return candidate_urls
+
+
 def normalize_reading_source(source, index=0):
     item = source if isinstance(source, dict) else {}
     name = str(item.get("name", "") or "").strip() or f"Source {index + 1}"
     url = str(item.get("url", "") or "").strip()
+    primary_url = str(item.get("primary_url", "") or "").strip() or url
     category = normalize_reading_category(item.get("category", "") or "")
     topic = normalize_reading_topic(item.get("topic", "") or "", category)
     topic_display = reading_visible_topic_label(topic, category)
@@ -9745,6 +9822,7 @@ def normalize_reading_source(source, index=0):
         "id": source_id,
         "name": name,
         "url": url,
+        "primary_url": primary_url,
         "fallback_urls": fallback_urls,
         "topic": topic,
         "topic_display": topic_display,
@@ -9764,6 +9842,8 @@ def normalize_reading_source(source, index=0):
         "last_sync_content_type": str(item.get("last_sync_content_type", "") or "").strip(),
         "last_sync_feed_kind": str(item.get("last_sync_feed_kind", "") or "").strip(),
         "last_sync_resolved_url": str(item.get("last_sync_resolved_url", "") or "").strip(),
+        "last_sync_successful_url": str(item.get("last_sync_successful_url", "") or "").strip(),
+        "last_sync_tried_urls": list(item.get("last_sync_tried_urls", []) or []) if isinstance(item.get("last_sync_tried_urls", []), list) else [],
         "last_sync_retry_count": int(item.get("last_sync_retry_count", 0) or 0),
         "last_sync_timeout_reason": str(item.get("last_sync_timeout_reason", "") or "").strip(),
         "last_sync_feedparser_bozo": str(item.get("last_sync_feedparser_bozo", "") or "").strip(),
@@ -9774,6 +9854,8 @@ def normalize_reading_source(source, index=0):
         "last_sync_message": last_sync_message,
         "last_sync_status": last_sync_status,
         "last_sync_error": last_sync_error,
+        "successful_url": str(item.get("successful_url", "") or "").strip(),
+        "last_successful_url": str(item.get("last_successful_url", "") or "").strip(),
     }
 
 
@@ -9783,6 +9865,7 @@ def reading_source_sync_reason(source):
     error = str(source.get("last_sync_error", "") or "").strip()
     feed_kind = str(source.get("last_sync_feed_kind", "") or "").strip().lower()
     content_type = str(source.get("last_sync_content_type", "") or "").strip().lower()
+    status_code = int(source.get("last_sync_status_code", 0) or 0)
     raw_count = int(source.get("last_sync_raw_count", 0) or source.get("last_sync_count", 0) or 0)
     normalized_count = int(source.get("last_sync_normalized_count", 0) or 0)
     imported_count = int(source.get("last_sync_imported_count", 0) or 0)
@@ -9793,20 +9876,24 @@ def reading_source_sync_reason(source):
         return "Source paused"
     if not str(source.get("url", "") or "").strip():
         return "Missing feed URL"
-    if zero_import_streak >= 3 and status == "error":
-        return "Repeated zero-import failures"
+    if status == "error" and status_code in {403, 429, 451}:
+        return f"Fetch blocked by source (HTTP {status_code})"
     if status == "error":
         return f"Fetch failed: {error}" if error else "Fetch failed"
     if not source.get("last_synced_at"):
         return "Not synced yet"
     if raw_count == 0:
+        if imported_count == 0:
+            return "No new items"
         if "html" in content_type or feed_kind == "unknown":
             return "No RSS/Atom items found"
         return "Feed empty"
     if normalized_count == 0:
         return "Parser/normalization issue"
+    if imported_count == 0 and zero_import_streak >= 3:
+        return "Repeated zero imports"
     if imported_count == 0 and already_had_count >= normalized_count:
-        return "Already had all items"
+        return "No new items"
     if missing_key_count:
         return f"Skipped {missing_key_count} item(s) with no stable URL or id"
     return "New items imported" if imported_count else "No new items"
@@ -9836,9 +9923,9 @@ def reading_source_health(source, known_entries=0):
         return "warning"
     if status == "error":
         return "failing"
-    if age_days is not None and age_days >= 7:
+    if age_days is not None and age_days >= 14 and imported_count == 0:
         return "warning"
-    if zero_import_streak >= 3:
+    if zero_import_streak >= 3 and raw_count > 0 and imported_count == 0:
         return "warning"
     if raw_count == 0 and imported_count == 0 and not known_entries:
         return "healthy"
@@ -9872,6 +9959,16 @@ def reading_source_sync_age_label(source):
     return f"{total_weeks}w ago"
 
 
+def reading_source_sync_age_days(source):
+    last_synced_at = parse_timestamp((source or {}).get("last_synced_at", ""))
+    if not last_synced_at:
+        return None
+    now = datetime.now().astimezone()
+    if last_synced_at.tzinfo is None:
+        last_synced_at = last_synced_at.replace(tzinfo=now.tzinfo)
+    return max((now - last_synced_at.astimezone()).total_seconds() / 86400.0, 0.0)
+
+
 def reading_source_admin_status(source, known_entries=0):
     source = source if isinstance(source, dict) else {}
     health_state = reading_source_health(source, known_entries=known_entries)
@@ -9885,19 +9982,14 @@ def reading_source_admin_status(source, known_entries=0):
     already_had_count = int(source.get("last_sync_already_had_count", 0) or 0)
     missing_key_count = int(source.get("last_sync_missing_key_count", 0) or 0)
     zero_import_streak = int(source.get("last_sync_zero_import_streak", 0) or 0)
-    last_synced_at = parse_timestamp(source.get("last_synced_at", ""))
-    age_days = None
-    if last_synced_at:
-        now = datetime.now().astimezone()
-        if last_synced_at.tzinfo is None:
-            last_synced_at = last_synced_at.replace(tzinfo=now.tzinfo)
-        age_days = max((now - last_synced_at.astimezone()).total_seconds() / 86400.0, 0.0)
-
+    age_days = reading_source_sync_age_days(source)
     reason = reading_source_sync_reason(source)
     last_sync_age_label = reading_source_sync_age_label(source)
+
     if not source.get("active", True):
         return {
             "state": "paused",
+            "visual_state": "paused",
             "label": "Inactive",
             "note": "Source is paused.",
             "detail": reason,
@@ -9905,7 +9997,8 @@ def reading_source_admin_status(source, known_entries=0):
         }
     if not str(source.get("url", "") or "").strip():
         return {
-            "state": "warning",
+            "state": "needs_review",
+            "visual_state": "warning",
             "label": "Needs review",
             "note": "Missing feed URL.",
             "detail": "Add a feed URL before the next sync.",
@@ -9913,39 +10006,44 @@ def reading_source_admin_status(source, known_entries=0):
         }
     if status == "error" or feed_kind == "error" or error:
         return {
-            "state": "failing",
+            "state": "fetch_error",
+            "visual_state": "failing",
             "label": "Fetch error",
-            "note": error or "The feed fetch failed.",
+            "note": reason if reason.startswith("Fetch blocked by source") else (error or "The feed fetch failed."),
             "detail": reason,
             "age_label": last_sync_age_label,
         }
-    if not last_synced_at:
+    if not str(source.get("last_synced_at", "") or "").strip():
         return {
-            "state": "warning",
+            "state": "not_synced",
+            "visual_state": "warning",
             "label": "Needs review",
             "note": "Not synced yet.",
             "detail": "Run a sync to collect diagnostics.",
             "age_label": last_sync_age_label,
         }
-    if zero_import_streak >= 3:
+    if zero_import_streak >= 3 and raw_count > 0 and imported_count == 0:
         return {
-            "state": "warning",
+            "state": "repeated_zero_imports",
+            "visual_state": "warning",
             "label": "Repeated zero imports",
             "note": f"{zero_import_streak} zero-import runs in a row.",
             "detail": reason,
             "age_label": last_sync_age_label,
         }
-    if age_days is not None and age_days >= 7:
+    if age_days is not None and age_days >= 14 and imported_count == 0:
         return {
-            "state": "warning",
-            "label": "Needs review",
-            "note": f"Last sync was {last_sync_age_label}.",
+            "state": "stale",
+            "visual_state": "warning",
+            "label": "Stale",
+            "note": f"No imports for {last_sync_age_label}.",
             "detail": reason,
             "age_label": last_sync_age_label,
         }
     if health_state == "warning":
         return {
-            "state": "warning",
+            "state": "needs_review",
+            "visual_state": "warning",
             "label": "Needs review",
             "note": "The feed needs a quick look.",
             "detail": reason,
@@ -9953,7 +10051,8 @@ def reading_source_admin_status(source, known_entries=0):
         }
     if normalized_count == 0 and raw_count > 0:
         return {
-            "state": "warning",
+            "state": "needs_review",
+            "visual_state": "warning",
             "label": "Needs review",
             "note": "The feed parsed poorly.",
             "detail": reason,
@@ -9961,7 +10060,8 @@ def reading_source_admin_status(source, known_entries=0):
         }
     if missing_key_count:
         return {
-            "state": "warning",
+            "state": "needs_review",
+            "visual_state": "warning",
             "label": "Needs review",
             "note": f"{missing_key_count} item(s) lacked a stable key.",
             "detail": reason,
@@ -9970,6 +10070,7 @@ def reading_source_admin_status(source, known_entries=0):
     if imported_count > 0:
         return {
             "state": "healthy",
+            "visual_state": "healthy",
             "label": "Healthy",
             "note": f"Imported {imported_count} new item(s).",
             "detail": reason,
@@ -9977,16 +10078,18 @@ def reading_source_admin_status(source, known_entries=0):
         }
     if imported_count == 0 and (already_had_count >= normalized_count or raw_count == 0):
         return {
-            "state": "healthy",
+            "state": "ok_no_new",
+            "visual_state": "healthy",
             "label": "No new items",
-            "note": "All feed items were already known.",
+            "note": "Feed fetched successfully and had no new items.",
             "detail": reason,
             "age_label": last_sync_age_label,
         }
     return {
-        "state": "healthy",
-        "label": "Healthy",
-        "note": "Source synced cleanly.",
+        "state": "ok_no_new" if imported_count == 0 else "healthy",
+        "visual_state": "healthy",
+        "label": "No new items" if imported_count == 0 else "Healthy",
+        "note": "Feed fetched successfully with no new entries." if imported_count == 0 else "Source synced cleanly.",
         "detail": reason,
         "age_label": last_sync_age_label,
     }
@@ -10538,8 +10641,10 @@ def fetch_reading_feed(source):
             "ok": False,
             "feed_kind": "empty",
             "source_url": feed_url,
+            "primary_url": str(source.get("primary_url", "") or "").strip(),
             "feed_url": "",
             "resolved_url": "",
+            "successful_url": "",
             "status_code": 0,
             "content_type": "",
             "raw_count": 0,
@@ -10551,18 +10656,15 @@ def fetch_reading_feed(source):
             "feedparser_bozo_exception": "",
             "feedparser_entry_count": 0,
             "source_fallback_used": False,
+            "tried_urls": [],
             "attempts": [],
             "error": "Missing feed URL.",
         }
-    candidate_urls = []
-    for candidate_url in [feed_url] + list(source.get("fallback_urls", []) or []):
-        normalized_candidate = normalize_reading_url(candidate_url)
-        if normalized_candidate and normalized_candidate not in candidate_urls:
-            candidate_urls.append(normalized_candidate)
+    candidate_urls = reading_source_feed_candidate_urls(source)
     attempts = []
     source_topic = str(source.get("topic", "") or "").strip()
     for candidate_index, candidate_url in enumerate(candidate_urls):
-        response, request_diag = reading_http_get(candidate_url, timeout_seconds=20, purpose="feed", retries=1)
+        response, request_diag = reading_http_get(candidate_url, timeout_seconds=20, purpose="feed", retries=1, source=source)
         request_diag = dict(request_diag or {})
         request_diag["feed_url"] = candidate_url
         request_diag["source_url"] = feed_url
@@ -10590,8 +10692,10 @@ def fetch_reading_feed(source):
                     "ok": True,
                     "feed_kind": "feedparser",
                     "source_url": feed_url,
+                    "primary_url": reading_source_primary_url(source),
                     "feed_url": candidate_url,
                     "resolved_url": request_diag.get("final_url", candidate_url) or candidate_url,
+                    "successful_url": candidate_url,
                     "status_code": status_code,
                     "content_type": content_type,
                     "raw_count": len(getattr(parsed, "entries", []) or []),
@@ -10603,6 +10707,7 @@ def fetch_reading_feed(source):
                     "feedparser_bozo_exception": feedparser_diag.get("bozo_exception", ""),
                     "feedparser_entry_count": int(feedparser_diag.get("entry_count", 0) or 0),
                     "source_fallback_used": candidate_url != feed_url,
+                    "tried_urls": [str(attempt.get("feed_url", "") or "") for attempt in attempts if str(attempt.get("feed_url", "") or "").strip()],
                     "attempts": attempts,
                     "error": "",
                 }
@@ -10636,8 +10741,10 @@ def fetch_reading_feed(source):
             "ok": True,
             "feed_kind": feed_kind,
             "source_url": feed_url,
+            "primary_url": reading_source_primary_url(source),
             "feed_url": candidate_url,
             "resolved_url": request_diag.get("final_url", candidate_url) or candidate_url,
+            "successful_url": candidate_url,
             "status_code": status_code,
             "content_type": content_type,
             "raw_count": len(rss_items) + len(atom_items),
@@ -10649,6 +10756,7 @@ def fetch_reading_feed(source):
             "feedparser_bozo_exception": feedparser_diag.get("bozo_exception", ""),
             "feedparser_entry_count": int(feedparser_diag.get("entry_count", 0) or 0),
             "source_fallback_used": candidate_url != feed_url,
+            "tried_urls": [str(attempt.get("feed_url", "") or "") for attempt in attempts if str(attempt.get("feed_url", "") or "").strip()],
             "attempts": attempts,
             "error": "",
         }
@@ -10658,8 +10766,10 @@ def fetch_reading_feed(source):
         "ok": False,
         "feed_kind": "error",
         "source_url": feed_url,
+        "primary_url": reading_source_primary_url(source),
         "feed_url": str(last_attempt.get("feed_url", feed_url) or feed_url),
         "resolved_url": str(last_attempt.get("final_url", "") or ""),
+        "successful_url": "",
         "status_code": int(last_attempt.get("status_code", 0) or 0),
         "content_type": str(last_attempt.get("content_type", "") or ""),
         "raw_count": 0,
@@ -10671,6 +10781,7 @@ def fetch_reading_feed(source):
         "feedparser_bozo_exception": "",
         "feedparser_entry_count": 0,
         "source_fallback_used": bool(last_attempt and str(last_attempt.get("feed_url", "") or "") != feed_url),
+        "tried_urls": [str(attempt.get("feed_url", "") or "") for attempt in attempts if str(attempt.get("feed_url", "") or "").strip()],
         "attempts": attempts,
         "error": str(last_attempt.get("error", "") or "") or "Unable to fetch feed.",
     }
@@ -10741,11 +10852,12 @@ def sync_reading_sources(source_id=""):
     now = current_timestamp()
     for position, source in enumerate(target_sources, start=1):
         source_name = str(source.get("name", "Unknown Source") or "Unknown Source").strip() or "Unknown Source"
+        safe_source_name = reading_log_text(source_name)
         source_started_at = time.monotonic()
         print(
             "[reading-sync] source start | "
             f"{position}/{len(target_sources)} | "
-            f"name={source_name}"
+            f"name={safe_source_name}"
         )
         try:
             fetch_result = fetch_reading_feed(source)
@@ -10758,13 +10870,16 @@ def sync_reading_sources(source_id=""):
             fetch_status_code = int(fetch_result.get("status_code", 0) or 0)
             fetch_content_type = str(fetch_result.get("content_type", "") or "").strip()
             fetch_resolved_url = str(fetch_result.get("resolved_url", "") or "").strip()
+            fetch_successful_url = str(fetch_result.get("successful_url", "") or "").strip()
+            fetch_primary_url = str(fetch_result.get("primary_url", "") or "").strip()
             fetch_retry_count = int(fetch_result.get("retry_count", 0) or 0)
             fetch_timeout_reason = str(fetch_result.get("timeout_reason", "") or "").strip()
             fetch_bozo = str(fetch_result.get("feedparser_bozo", "") or "").strip()
             fetch_bozo_exception = str(fetch_result.get("feedparser_bozo_exception", "") or "").strip()
             fetch_feedparser_entry_count = int(fetch_result.get("feedparser_entry_count", 0) or 0)
             fetch_source_fallback_used = bool(fetch_result.get("source_fallback_used", False))
-            fetch_source_url = str(fetch_result.get("feed_url", feed_url) or feed_url).strip()
+            fetch_source_url = str(fetch_result.get("feed_url", source.get("url", "")) or source.get("url", "")).strip()
+            fetch_tried_urls = [str(url or "").strip() for url in list(fetch_result.get("tried_urls", []) or []) if str(url or "").strip()]
             source_imported = 0
             source_skipped_existing = 0
             source_skipped_missing_key = 0
@@ -10852,6 +10967,10 @@ def sync_reading_sources(source_id=""):
             source["last_sync_content_type"] = fetch_content_type
             source["last_sync_feed_kind"] = fetch_kind
             source["last_sync_resolved_url"] = fetch_resolved_url
+            source["last_sync_successful_url"] = fetch_successful_url
+            source["last_successful_url"] = fetch_successful_url or str(source.get("last_successful_url", "") or "").strip()
+            source["successful_url"] = fetch_successful_url or str(source.get("successful_url", "") or "").strip()
+            source["last_sync_tried_urls"] = fetch_tried_urls
             source["last_sync_retry_count"] = fetch_retry_count
             source["last_sync_timeout_reason"] = fetch_timeout_reason
             source["last_sync_feedparser_bozo"] = fetch_bozo
@@ -10861,11 +10980,14 @@ def sync_reading_sources(source_id=""):
             source["last_sync_status"] = "ok" if fetch_ok else "error"
             source["last_sync_error"] = fetch_error if not fetch_ok else ""
             source["last_sync_reason"] = reading_source_sync_reason(source)
-            source["last_sync_message"] = (
-                f"Fetched {raw_count} item(s), normalized {normalized_count}, imported {source_imported}, already had {source_skipped_existing}."
-                if fetch_ok else
-                f"Fetch failed ({fetch_kind or 'feed'}{f' {fetch_status_code}' if fetch_status_code else ''}): {fetch_error}"
-            )
+            if fetch_ok:
+                source["last_sync_message"] = f"Fetched {raw_count} item(s), normalized {normalized_count}, imported {source_imported}, already had {source_skipped_existing}."
+            else:
+                blocked_note = ""
+                if fetch_status_code in {403, 429, 451}:
+                    blocked_note = f"Blocked by source (HTTP {fetch_status_code})"
+                failure_prefix = blocked_note or f"Fetch failed ({fetch_kind or 'feed'}{f' {fetch_status_code}' if fetch_status_code else ''})"
+                source["last_sync_message"] = f"{failure_prefix}: {fetch_error}" if fetch_error else failure_prefix
             if fetch_ok and source_skipped_missing_key:
                 source["last_sync_message"] += f" Skipped {source_skipped_missing_key} item(s) with no stable URL or id."
             if fetch_ok and raw_count == 0:
@@ -10874,12 +10996,14 @@ def sync_reading_sources(source_id=""):
                 source["last_sync_message"] += f" Fallback URL used: {fetch_source_url}."
             if fetch_timeout_reason:
                 source["last_sync_message"] += f" Timeout note: {fetch_timeout_reason}."
-            if source_imported == 0:
+            if fetch_ok and raw_count > 0 and source_imported == 0:
                 source["last_sync_zero_import_streak"] = int(source.get("last_sync_zero_import_streak", 0) or 0) + 1
-            else:
+            elif fetch_ok and raw_count == 0:
+                source["last_sync_zero_import_streak"] = 0
+            elif source_imported > 0:
                 source["last_sync_zero_import_streak"] = 0
             source["last_sync_reason"] = reading_source_sync_reason(source)
-            if source_imported == 0:
+            if fetch_ok and source_imported == 0:
                 reason = str(source.get("last_sync_reason", "") or "").strip() or "No new items"
                 zero_import_reasons[reason] = zero_import_reasons.get(reason, 0) + 1
             source["updated_at"] = now
@@ -10896,19 +11020,21 @@ def sync_reading_sources(source_id=""):
                 "status_code": fetch_status_code,
                 "content_type": fetch_content_type,
                 "resolved_url": fetch_resolved_url,
+                "successful_url": fetch_successful_url,
                 "retry_count": fetch_retry_count,
                 "timeout_reason": fetch_timeout_reason,
                 "feedparser_bozo": fetch_bozo,
                 "feedparser_bozo_exception": fetch_bozo_exception,
                 "feedparser_entry_count": fetch_feedparser_entry_count,
                 "source_fallback_used": fetch_source_fallback_used,
+                "tried_urls": fetch_tried_urls,
                 "error": fetch_error,
             })
             source_elapsed = time.monotonic() - source_started_at
             print(
                 "[reading-sync] source done | "
                 f"{position}/{len(target_sources)} | "
-                f"name={source_name} | "
+                f"name={safe_source_name} | "
                 f"elapsed={source_elapsed:.1f}s | "
                 f"fetched={raw_count} | "
                 f"normalized={normalized_count} | "
@@ -10937,17 +11063,18 @@ def sync_reading_sources(source_id=""):
             source["last_sync_content_type"] = ""
             source["last_sync_feed_kind"] = "error"
             source["last_sync_resolved_url"] = ""
+            source["last_sync_successful_url"] = ""
             source["last_sync_retry_count"] = 0
             source["last_sync_timeout_reason"] = ""
             source["last_sync_feedparser_bozo"] = ""
             source["last_sync_feedparser_bozo_exception"] = ""
             source["last_sync_feedparser_entry_count"] = 0
             source["last_sync_source_fallback_used"] = False
+            source["last_sync_tried_urls"] = []
             source["last_sync_status"] = "error"
             source["last_sync_error"] = str(exc)
             source["last_sync_message"] = f"Fetch failed: {exc}"
             source["last_sync_reason"] = reading_source_sync_reason(source)
-            zero_import_reasons[source["last_sync_reason"]] = zero_import_reasons.get(source["last_sync_reason"], 0) + 1
             source["updated_at"] = now
             source_results.append({
                 "name": source.get("name", "Unknown Source"),
@@ -10959,20 +11086,22 @@ def sync_reading_sources(source_id=""):
                 "status_code": 0,
                 "content_type": "",
                 "resolved_url": "",
+                "successful_url": "",
                 "retry_count": 0,
                 "timeout_reason": "",
                 "feedparser_bozo": "",
                 "feedparser_bozo_exception": "",
                 "feedparser_entry_count": 0,
                 "source_fallback_used": False,
+                "tried_urls": [],
                 "error": str(exc),
             })
             print(
                 "[reading-sync] source failed | "
                 f"{position}/{len(target_sources)} | "
-                f"name={source_name} | "
+                f"name={safe_source_name} | "
                 f"elapsed={source_elapsed:.1f}s | "
-                f"error={exc}"
+                f"error={reading_log_text(exc)}"
             )
             traceback.print_exc()
 
@@ -11124,7 +11253,7 @@ def sync_reading_sources(source_id=""):
             print(
                 "[reading-sync] enrich | "
                 f"kind={candidate_kind} | "
-                f"source={entry.get('source', 'Unknown Source')} | "
+                f"source={reading_log_text(entry.get('source', 'Unknown Source'))} | "
                 f"status={extraction_status or 'unknown'} | "
                 f"elapsed={extraction_elapsed:.1f}s | "
                 f"content_text_length={len(str(extraction.get('content_text', '') or ''))} | "
@@ -11207,7 +11336,7 @@ def sync_reading_sources(source_id=""):
             print(
                 "[reading-sync] slow extraction | "
                 f"elapsed={float(item.get('elapsed', 0.0) or 0.0):.1f}s | "
-                f"source={item.get('source', 'Unknown Source')} | "
+                f"source={reading_log_text(item.get('source', 'Unknown Source'))} | "
                 f"status={item.get('status', 'unknown')} | "
                 f"content_text_length={int(item.get('content_text_length', 0) or 0)} | "
                 f"selector={item.get('selector', 'unknown')} | "
