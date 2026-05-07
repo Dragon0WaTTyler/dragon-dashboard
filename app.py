@@ -21215,6 +21215,90 @@ def build_yts_magnet(hash_value, title):
     return f"magnet:?xt=urn:btih:{hash_text}&dn={encoded_title}&{tracker_params}"
 
 
+def movie_has_torrent_link(movie):
+    if not isinstance(movie, dict):
+        return False
+    for key in ("torrent_hd", "torrent_fhd", "torrent_url", "torrent", "download_url"):
+        if str(movie.get(key, "") or "").strip():
+            return True
+    return False
+
+
+def movie_has_magnet_link(movie):
+    if not isinstance(movie, dict):
+        return False
+    for key in ("magnet_hd", "magnet_fhd", "magnet_url", "magnet"):
+        value = str(movie.get(key, "") or "").strip()
+        if value:
+            return True
+    return False
+
+
+def build_movie_link_diagnostic(movie, yts_data=None):
+    item = movie if isinstance(movie, dict) else {}
+    has_torrent_link = movie_has_torrent_link(item)
+    has_magnet_link = movie_has_magnet_link(item)
+    imdb_id = str(item.get("imdb_id", "") or "").strip()
+    tmdb_id = str(item.get("tmdb_id", "") or "").strip()
+    diagnostic = {
+        "reason_label": "",
+        "has_torrent_link": has_torrent_link,
+        "has_magnet_link": has_magnet_link,
+        "imdb_id": imdb_id,
+        "tmdb_id": tmdb_id,
+        "yts_match_status": "not checked",
+        "suggested_yts_url": "",
+        "suggested_torrent_quality": "",
+        "suggested_torrent_url": "",
+        "suggested_magnet": "",
+        "missing_labels": [],
+    }
+
+    missing_labels = []
+    if not has_torrent_link:
+        missing_labels.append("Missing torrent URL")
+    if not has_magnet_link:
+        missing_labels.append("Missing magnet URL")
+    diagnostic["missing_labels"] = missing_labels
+    if not missing_labels:
+        diagnostic["yts_match_status"] = "has download links"
+        return diagnostic
+
+    diagnostic["reason_label"] = "Missing torrent/magnet link"
+
+    lookup = yts_data
+    if lookup is None:
+        try:
+            lookup = fetch_yts_torrents(item, force_refresh=False)
+        except Exception:
+            lookup = None
+
+    if not isinstance(lookup, dict) or not lookup:
+        diagnostic["yts_match_status"] = "no YTS match found"
+        return diagnostic
+
+    diagnostic["yts_match_status"] = f"YTS match found via {lookup.get('match_method', 'unknown')}"
+    diagnostic["suggested_yts_url"] = str(lookup.get("yts_url", "") or "").strip()
+
+    torrents = list(lookup.get("torrents", []) or [])
+    best_torrent = select_best_torrent(torrents, "fhd") or select_best_torrent(torrents, "hd")
+    if not isinstance(best_torrent, dict):
+        best_torrent = {}
+
+    torrent_url = str(best_torrent.get("url", "") or "").strip()
+    magnet = str(best_torrent.get("magnet", "") or "").strip() or build_yts_magnet(best_torrent.get("hash"), item.get("name", ""))
+    quality = str(best_torrent.get("quality", "") or "").strip()
+
+    if torrent_url or magnet:
+        diagnostic["suggested_torrent_quality"] = quality
+        diagnostic["suggested_torrent_url"] = torrent_url
+        diagnostic["suggested_magnet"] = magnet
+    else:
+        diagnostic["yts_match_status"] = "YTS match exists but no usable torrent/magnet was generated"
+
+    return diagnostic
+
+
 def yts_api_base_urls():
     configured = str(YTS_API_BASE_URL or "").strip().rstrip("/")
     candidates = [
@@ -22775,40 +22859,49 @@ def build_admin_movie_review_queue():
         "suspicious_year": 0,
         "missing_director": 0,
         "missing_overview": 0,
+        "missing_download_links": 0,
+        "proposal_items": 0,
     }
     current_year_limit = datetime.now().year + 1
 
     for film in films:
         reasons = []
+        link_diagnostic = None
         year_value = normalize_year_value(film.get("year", ""))
         tmdb_data = None
         tmdb_status = "Not checked in queue pass"
         tmdb_match_status = "unchecked"
         tmdb_error = ""
         proposed_correction = None
+        content_reasons = []
 
         if not year_value:
-            reasons.append("Missing year")
+            content_reasons.append("Missing year")
             summary["missing_year"] += 1
         else:
             try:
                 numeric_year = int(year_value)
                 if numeric_year < 1888 or numeric_year > current_year_limit:
-                    reasons.append(f"Suspicious year: {numeric_year}")
+                    content_reasons.append(f"Suspicious year: {numeric_year}")
                     summary["suspicious_year"] += 1
             except (TypeError, ValueError):
-                reasons.append(f"Suspicious year: {year_value}")
+                content_reasons.append(f"Suspicious year: {year_value}")
                 summary["suspicious_year"] += 1
 
         if not (clean_correction_text(film.get("director", "")) or list(film.get("director_entries", []) or [])):
-            reasons.append("Missing director")
+            content_reasons.append("Missing director")
             summary["missing_director"] += 1
 
         if not clean_correction_text(film.get("overview", "")):
-            reasons.append("Missing overview")
+            content_reasons.append("Missing overview")
             summary["missing_overview"] += 1
 
-        should_check_tmdb = bool(reasons)
+        if not movie_has_torrent_link(film) or not movie_has_magnet_link(film):
+            link_diagnostic = build_movie_link_diagnostic(film)
+            reasons.extend(link_diagnostic.get("missing_labels", []) or [])
+            summary["missing_download_links"] += 1
+
+        should_check_tmdb = bool(content_reasons)
         if should_check_tmdb:
             try:
                 tmdb_data = fetch_tmdb_enrichment(
@@ -22837,6 +22930,7 @@ def build_admin_movie_review_queue():
                     tmdb_status += f" ({matched_year})"
                 tmdb_status += f" | {tmdb_match_status}"
 
+        reasons.extend(content_reasons)
         csv_plan_item = csv_proposals_by_page_id.get(film.get("notion_page_id", ""))
         if csv_plan_item:
             proposed_correction = build_csv_review_proposal(film, csv_plan_item)
@@ -22846,7 +22940,7 @@ def build_admin_movie_review_queue():
         if not reasons:
             continue
 
-        review_items.append({
+        review_item = {
             "notion_page_id": film.get("notion_page_id", ""),
             "entry_id": film.get("entry_id", ""),
             "title": film.get("name", "Untitled"),
@@ -22854,6 +22948,7 @@ def build_admin_movie_review_queue():
             "detail_url": "",
             "category": film.get("category", ""),
             "status": film.get("status", ""),
+            "source": film.get("source", ""),
             "score": film.get("score", ""),
             "year": year_value,
             "director": film.get("director", ""),
@@ -22865,7 +22960,20 @@ def build_admin_movie_review_queue():
             "tmdb_matched_title": "" if not tmdb_data else str(tmdb_data.get("matched_title") or "").strip(),
             "tmdb_matched_year": "" if not tmdb_data else normalize_year_value(tmdb_data.get("matched_year", "")),
             "proposed_correction": proposed_correction,
-        })
+            "download_diagnostic": link_diagnostic or {},
+        }
+        review_item["download_reason_label"] = (link_diagnostic or {}).get("reason_label", "")
+        review_item["download_yts_match_status"] = (link_diagnostic or {}).get("yts_match_status", "")
+        review_item["download_has_torrent_link"] = (link_diagnostic or {}).get("has_torrent_link", False)
+        review_item["download_has_magnet_link"] = (link_diagnostic or {}).get("has_magnet_link", False)
+        review_item["download_imdb_id"] = (link_diagnostic or {}).get("imdb_id", "")
+        review_item["download_tmdb_id"] = (link_diagnostic or {}).get("tmdb_id", "")
+        review_item["download_suggested_yts_url"] = (link_diagnostic or {}).get("suggested_yts_url", "")
+        review_item["download_suggested_torrent_quality"] = (link_diagnostic or {}).get("suggested_torrent_quality", "")
+        review_item["download_suggested_torrent_url"] = (link_diagnostic or {}).get("suggested_torrent_url", "")
+        review_item["download_suggested_magnet"] = (link_diagnostic or {}).get("suggested_magnet", "")
+
+        review_items.append(review_item)
         try:
             review_items[-1]["detail_url"] = url_for("video_detail", entry_id=film.get("entry_id", ""))
         except RuntimeError:
@@ -22873,6 +22981,7 @@ def build_admin_movie_review_queue():
 
     review_items.sort(key=lambda item: (-len(item["reasons"]), item["title"].lower()))
     summary["total_items"] = len(review_items)
+    summary["proposal_items"] = sum(1 for item in review_items if item.get("proposed_correction"))
     return {"items": review_items, "summary": summary}
 
 
