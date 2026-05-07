@@ -145,9 +145,13 @@ def resolve_source_id(source_id: str = "", source_name: str = "") -> str:
             continue
         candidate_id = str(source.get("id", "") or "").strip()
         candidate_name = str(source.get("name", "") or "").strip()
+        candidate_url = str(source.get("url", "") or "").strip().lower()
         if not candidate_id and not candidate_name:
             continue
         if candidate_name.lower() == source_name:
+            exact_matches.append(candidate_id)
+            continue
+        if source_name == "morocco world news" and candidate_url == "https://www.mapnews.ma/en/rss.xml":
             exact_matches.append(candidate_id)
             continue
         if source_name in candidate_name.lower():

@@ -164,6 +164,9 @@ if not IS_PRODUCTION:
 
 READING_LOCAL_SYNC_DISABLED_MESSAGE = "Local RSS sync is disabled online. Use GitHub Actions sync."
 READING_GITHUB_SYNC_ONLINE_MESSAGE = "Reading sync is handled by GitHub Actions online."
+READING_MAP_NEWS_ENGLISH_FEED_URL = "https://www.mapnews.ma/en/rss.xml"
+READING_MAP_NEWS_ENGLISH_NAME = "MAP News English"
+READING_MOROCCO_WORLD_NEWS_NAME = "Morocco World News"
 
 # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 #  CONFIGURATION
@@ -9857,9 +9860,11 @@ def reading_source_feed_candidate_urls(source):
 
 def normalize_reading_source(source, index=0):
     item = source if isinstance(source, dict) else {}
-    name = str(item.get("name", "") or "").strip() or f"Source {index + 1}"
     url = str(item.get("url", "") or "").strip()
     primary_url = str(item.get("primary_url", "") or "").strip() or url
+    name = str(item.get("name", "") or "").strip() or f"Source {index + 1}"
+    if normalize_reading_url(url) == READING_MAP_NEWS_ENGLISH_FEED_URL:
+        name = READING_MAP_NEWS_ENGLISH_NAME
     category = normalize_reading_category(item.get("category", "") or "")
     topic = normalize_reading_topic(item.get("topic", "") or "", category)
     topic_display = reading_visible_topic_label(topic, category)
@@ -10271,6 +10276,12 @@ def normalize_reading_entry(entry, index=0, source_lookup=None, source_category_
     source_category_lookup = source_category_lookup if isinstance(source_category_lookup, dict) else {}
     if not source_id:
         source_id = source_lookup.get(source_name.lower(), "")
+    source_name_lookup = source_lookup.get("__source_name_lookup__", {}) if isinstance(source_lookup.get("__source_name_lookup__", {}), dict) else {}
+    if source_id and isinstance(source_name_lookup, dict):
+        canonical_source_name = str(source_name_lookup.get(source_id, "") or "").strip()
+        if canonical_source_name:
+            if not source_name or source_lookup.get(source_name.lower(), "") == source_id:
+                source_name = canonical_source_name
     url = normalize_reading_url(item.get("url", ""))
     title = str(item.get("title", "") or "").strip() or "Untitled article"
     original_url = normalize_reading_url(item.get("original_url", "")) or url
@@ -10441,6 +10452,7 @@ def normalize_reading_data(payload):
     normalized_sources = []
     source_lookup = {}
     source_category_lookup = {}
+    source_name_lookup = {}
     for index, source in enumerate(data.get("sources", []) or []):
         normalized_source = normalize_reading_source(source, index)
         if not isinstance(source, dict) or source != normalized_source:
@@ -10450,8 +10462,12 @@ def normalize_reading_data(payload):
         source_lookup[normalized_source["id"]] = normalized_source["id"]
         if normalized_source.get("url"):
             source_lookup[normalize_reading_url(normalized_source["url"]).lower()] = normalized_source["id"]
+            if normalize_reading_url(normalized_source["url"]) == READING_MAP_NEWS_ENGLISH_FEED_URL:
+                source_lookup[READING_MOROCCO_WORLD_NEWS_NAME.lower()] = normalized_source["id"]
         source_category_lookup[normalized_source["id"]] = normalized_source.get("category", "news")
         source_category_lookup[normalized_source["name"].lower()] = normalized_source.get("category", "news")
+        source_name_lookup[normalized_source["id"]] = normalized_source["name"]
+    source_lookup["__source_name_lookup__"] = source_name_lookup
     normalized_entries = []
     for index, entry in enumerate(data.get("entries", []) or []):
         normalized_entry = normalize_reading_entry(entry, index, source_lookup=source_lookup, source_category_lookup=source_category_lookup)
@@ -12701,7 +12717,7 @@ def build_reading_admin_context():
         "reading_rss_failing_count": health_counts.get("failing", 0),
         "reading_rss_inactive_count": health_counts.get("paused", 0),
         "reading_sync_online_only": IS_PRODUCTION,
-        "reading_online_sync_note": "Online sync runs through GitHub Actions. Local RSS fetching is disabled on PythonAnywhere.",
+        "reading_online_sync_note": "Online RSS sync runs through GitHub Actions. Local source retry is disabled on PythonAnywhere.",
         "reading_source_entry_count": source_entry_count,
         "reading_category_options": [(category, reading_category_label(category)) for category in READING_CATEGORIES],
         "reading_summary": {
