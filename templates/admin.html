@@ -16,6 +16,10 @@
     .admin-hub-meta span{white-space:nowrap}
     .admin-hub-cta{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:auto;color:var(--text-2);font-size:.72rem;letter-spacing:.08em;text-transform:uppercase}
     .admin-hub-cta i{flex:none}
+    .admin-sync-report{display:grid;gap:12px}
+    .admin-sync-report summary{cursor:pointer;list-style:none}
+    .admin-sync-report summary::-webkit-details-marker{display:none}
+    .admin-sync-report-list{margin:0;padding-left:18px;color:var(--text-2);display:grid;gap:6px}
 </style>
 <section class="page-hero">
     <div class="hero-meta"><span class="hero-badge">Admin Hub</span><span>Modular control center</span></div>
@@ -31,6 +35,33 @@
 {% if error_message %}
 <section class="surface-card section-card" style="padding:16px 20px; border-color:rgba(255,0,0,.32);">
     <div class="muted" style="color:#ff9a9a;">{{ error_message }}</div>
+</section>
+{% endif %}
+{% if yts_sync_report %}
+<section class="surface-card section-card admin-sync-report" style="padding:16px 20px;">
+    <div class="hero-meta">
+        <span class="hero-badge">YTS Sync Report</span>
+        <span>{{ yts_sync_report.updated_films }} updated</span>
+        <span>{{ yts_sync_report.films_without_links_count }} without links</span>
+    </div>
+    <div class="muted" style="color:#ffffff;">
+        {{ yts_sync_report.films_without_links_count }} films without links.
+    </div>
+    {% if yts_sync_report.films_without_links %}
+    <details>
+        <summary class="muted">
+            Show first {{ [yts_sync_report.films_without_links|length, 10]|min }} titles
+        </summary>
+        <ol class="admin-sync-report-list">
+            {% for title in yts_sync_report.films_without_links[:10] %}
+            <li>{{ title }}</li>
+            {% endfor %}
+        </ol>
+        {% if yts_sync_report.films_without_links|length > 10 %}
+        <div class="muted">And {{ yts_sync_report.films_without_links|length - 10 }} more.</div>
+        {% endif %}
+    </details>
+    {% endif %}
 </section>
 {% endif %}
 

@@ -18,6 +18,7 @@ import subprocess
 import time
 import threading
 import traceback
+import unicodedata
 import xml.etree.ElementTree as ET
 from email.utils import parsedate_to_datetime
 from datetime import datetime, timedelta, timezone
@@ -16010,6 +16011,7 @@ def fetch_tmdb_enrichment(movie_title, category="", year=""):
         "tmdb_id": movie_id,
         "tmdb_type": media_type,
         "matched_title": next((title for title in tmdb_result_title_candidates(match, media_type) if title), ""),
+        "original_title": str(details.get("original_name") or details.get("original_title") or "").strip(),
         "matched_year": tmdb_result_year(match, media_type),
         "match_score": match_score,
         "year": year_value,
@@ -21260,6 +21262,153 @@ def _yts_movie_seed_count(movie):
     return best_seed_count
 
 
+def clean_yts_search_title(value):
+    text = normalize_movie_title(value)
+    text = unicodedata.normalize("NFKD", str(text or ""))
+    text = "".join(char for char in text if not unicodedata.combining(char))
+    text = text.strip().strip("'\"").strip()
+    text = re.sub(r"\s*:\s*", ": ", text)
+    cleaned_chars = []
+    for char in text:
+        if char.isalnum() or char in {" ", ":", "-"}:
+            cleaned_chars.append(char)
+        else:
+            cleaned_chars.append(" ")
+    text = "".join(cleaned_chars)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
+
+
+def normalize_yts_search_title(value, drop_leading_article=False):
+    title = clean_yts_search_title(value)
+    if drop_leading_article:
+        title = re.sub(r"^(the|a|an)\s+", "", title, flags=re.IGNORECASE).strip()
+    return title
+
+
+def yts_title_tokens(value):
+    normalized_title = normalize_yts_search_title(value, drop_leading_article=True).lower()
+    return [token for token in normalized_title.split(" ") if token]
+
+
+def _yts_movie_match_score(movie, wanted_title, preferred_year=""):
+    wanted_clean = normalize_yts_search_title(wanted_title, drop_leading_article=True)
+    candidate_clean = normalize_yts_search_title(movie.get("title", ""), drop_leading_article=True)
+    wanted_key = normalized_match_key(wanted_clean)
+    candidate_key = normalized_match_key(candidate_clean)
+    if not wanted_clean or not candidate_clean or not wanted_key or not candidate_key:
+        return None
+
+    score = 0
+    if candidate_clean.lower() == wanted_clean.lower():
+        score += 100
+
+    year_str = normalize_year_value(preferred_year)
+    candidate_year = normalize_year_value(movie.get("year", ""))
+    if year_str and candidate_year:
+        if candidate_year == year_str:
+            score += 50
+
+    if wanted_clean.lower() in candidate_clean.lower() or candidate_clean.lower() in wanted_clean.lower():
+        score += 30
+
+    if score <= 0:
+        wanted_tokens = yts_title_tokens(wanted_title)
+        candidate_tokens = yts_title_tokens(movie.get("title", ""))
+        overlap = [token for token in wanted_tokens if token in set(candidate_tokens)]
+        if len(overlap) >= min(2, len(wanted_tokens)):
+            score += len(overlap) * 8
+
+    if score <= 0:
+        return None
+    return score
+
+
+def _build_yts_match_result(movie, match_method, match_score):
+    best_movie = movie if isinstance(movie, dict) else {}
+    return {
+        "yts_id": best_movie.get("id"),
+        "yts_title": best_movie.get("title", ""),
+        "yts_year": best_movie.get("year"),
+        "yts_url": best_movie.get("url", ""),
+        "torrents": best_movie.get("torrents", []),
+        "imdb_id": best_movie.get("imdb_code", ""),
+        "match_method": match_method,
+        "match_score": match_score,
+    }
+
+
+def _yts_year_gap(preferred_year, candidate_year):
+    preferred = normalize_year_value(preferred_year)
+    candidate = normalize_year_value(candidate_year)
+    if not preferred or not candidate:
+        return 9999
+    try:
+        return abs(int(candidate) - int(preferred))
+    except (TypeError, ValueError):
+        return 9999
+
+
+def _search_yts_by_query(query_term, wanted_title, preferred_year="", match_method_prefix="title_scored"):
+    query_text = str(query_term or "").strip()
+    wanted_title = str(wanted_title or "").strip()
+    if not query_text or not wanted_title:
+        return None
+    try:
+        data = _yts_request({"query_term": query_text, "limit": 10})
+        movies = data.get("data", {}).get("movies", []) if isinstance(data, dict) else []
+        if not movies:
+            return None
+
+        scored = []
+        for movie in movies:
+            score = _yts_movie_match_score(movie, wanted_title, preferred_year)
+            if score is None:
+                continue
+            scored.append((score, _yts_movie_seed_count(movie), movie))
+
+        if not scored:
+            return None
+
+        scored.sort(key=lambda item: (-item[0], -item[1]))
+        best_score, _, best_movie = scored[0]
+        confidence = "high" if best_score >= 80 else ("medium" if best_score >= 50 else "low")
+        if confidence == "low":
+            return None
+
+        return _build_yts_match_result(best_movie, f"{match_method_prefix}_{confidence}", best_score)
+    except Exception:
+        return None
+
+
+def _search_yts_loose_by_query(query_term, wanted_title, preferred_year=""):
+    query_text = str(query_term or "").strip()
+    wanted_title = str(wanted_title or "").strip()
+    if not query_text or not wanted_title:
+        return None
+    try:
+        data = _yts_request({"query_term": query_text, "limit": 20})
+        movies = data.get("data", {}).get("movies", []) if isinstance(data, dict) else []
+        if not movies:
+            return None
+
+        scored = []
+        for movie in movies:
+            score = _yts_movie_match_score(movie, wanted_title, preferred_year)
+            if score is None:
+                continue
+            scored.append((score, _yts_year_gap(preferred_year, movie.get("year", "")), _yts_movie_seed_count(movie), movie))
+
+        if not scored:
+            return None
+
+        scored.sort(key=lambda item: (-item[0], item[1], -item[2]))
+        best_score, _, _, best_movie = scored[0]
+        return _build_yts_match_result(best_movie, "loose_title_words", best_score)
+    except Exception:
+        return None
+
+
 def select_best_torrent_url(torrents, quality_preference):
     preference = str(quality_preference or "").strip().lower()
     if preference == "hd":
@@ -21330,7 +21479,15 @@ def search_yts_by_imdb(imdb_id):
         movies = data.get("data", {}).get("movies", []) if isinstance(data, dict) else []
         if not movies:
             return None
-        best = movies[0]
+        best = next(
+            (
+                movie for movie in movies
+                if str((movie or {}).get("imdb_code", "") or "").strip().lower() == imdb_id.lower()
+            ),
+            None,
+        )
+        if not isinstance(best, dict):
+            return None
         return {
             "yts_id": best.get("id"),
             "yts_title": best.get("title", ""),
@@ -21345,51 +21502,47 @@ def search_yts_by_imdb(imdb_id):
 
 
 def search_yts_by_title_year(title, year):
-    title = str(title or "").strip()
-    year_str = str(year or "").strip()
-    if not title:
+    return _search_yts_by_query(title, title, preferred_year=year, match_method_prefix="title_scored")
+
+
+def _yts_search_attempt(search_label, query_term, wanted_title, preferred_year="", match_method_prefix="title_scored", loose=False):
+    query_text = str(query_term or "").strip()
+    wanted_text = str(wanted_title or "").strip()
+    if not query_text or not wanted_text:
         return None
-    try:
-        data = _yts_request({"query_term": title, "limit": 10})
-        movies = data.get("data", {}).get("movies", []) if isinstance(data, dict) else []
-        if not movies:
-            return None
+    if loose:
+        result = _search_yts_loose_by_query(query_text, wanted_text, preferred_year=preferred_year)
+    else:
+        result = _search_yts_by_query(
+            query_text,
+            wanted_text,
+            preferred_year=preferred_year,
+            match_method_prefix=match_method_prefix,
+        )
+    if result:
+        print(safe_console_text(f"[yts] Found via {search_label}."))
+    return result
 
-        wanted_key = normalized_match_key(title)
-        scored = []
-        for movie in movies:
-            score = 0
-            candidate_key = normalized_match_key(movie.get("title", ""))
-            if candidate_key == wanted_key:
-                score += 60
-            elif wanted_key and candidate_key and (wanted_key in candidate_key or candidate_key in wanted_key):
-                score += 35
-            if year_str and str(movie.get("year", "")) == year_str:
-                score += 30
-            if score > 0:
-                scored.append((score, _yts_movie_seed_count(movie), movie))
 
-        if not scored:
-            return None
-
-        scored.sort(key=lambda item: (-item[0], -item[1]))
-        best_score, _, best_movie = scored[0]
-        confidence = "high" if best_score >= 80 else ("medium" if best_score >= 50 else "low")
-        if confidence == "low":
-            return None
-
-        return {
-            "yts_id": best_movie.get("id"),
-            "yts_title": best_movie.get("title", ""),
-            "yts_year": best_movie.get("year"),
-            "yts_url": best_movie.get("url", ""),
-            "torrents": best_movie.get("torrents", []),
-            "imdb_id": best_movie.get("imdb_code", ""),
-            "match_method": f"title_scored_{confidence}",
-            "match_score": best_score,
-        }
-    except Exception:
+def _fetch_yts_tmdb_enrichment(film):
+    if not isinstance(film, dict):
         return None
+    title = film.get("name", "")
+    year = film.get("year", "")
+    normalized_category = normalize_movie_category(film.get("category", "")).replace("_", " ")
+    candidate_categories = []
+    if normalized_category == "anime":
+        candidate_categories = ["anime movie", "anime"]
+    else:
+        candidate_categories = [film.get("category", "")]
+    for candidate_category in candidate_categories:
+        try:
+            tmdb_data = fetch_tmdb_enrichment(title, category=candidate_category, year=year)
+        except Exception:
+            tmdb_data = None
+        if isinstance(tmdb_data, dict) and tmdb_data.get("tmdb_id"):
+            return tmdb_data
+    return None
 
 
 def _load_yts_torrents_cache():
@@ -21417,13 +21570,10 @@ def fetch_yts_torrents(film, force_refresh=False):
         return None
 
     imdb_id = str(film.get("imdb_id", "") or "").strip()
+    tmdb_data = None
     if not imdb_id:
         try:
-            tmdb_data = fetch_tmdb_enrichment(
-                film.get("name", ""),
-                category=film.get("category", ""),
-                year=film.get("year", ""),
-            )
+            tmdb_data = _fetch_yts_tmdb_enrichment(film)
             if tmdb_data and tmdb_data.get("tmdb_id"):
                 imdb_id = str(fetch_tmdb_imdb_id(tmdb_data["tmdb_id"]) or "").strip()
         except Exception:
@@ -21442,12 +21592,72 @@ def fetch_yts_torrents(film, force_refresh=False):
         if not is_cache_entry_stale({"updated_at": entry.get("fetched_at", "")}, max_age_seconds=86400 * 7):
             return entry
 
+    print(safe_console_text(f"[yts] Searching for \"{film.get('name', '')}\" (IMDb: {imdb_id or 'none'}) ..."))
+
     result = None
     if imdb_id:
         result = search_yts_by_imdb(imdb_id)
+        if result:
+            print("[yts] Found via IMDb ID.")
+    if not result and not isinstance(tmdb_data, dict):
+        try:
+            tmdb_data = _fetch_yts_tmdb_enrichment(film)
+        except Exception:
+            tmdb_data = None
+
+    notion_title = str(film.get("name", "") or "").strip()
+    cleaned_notion_title = clean_yts_search_title(notion_title)
+    preferred_year = film.get("year", "") or (tmdb_data or {}).get("year", "")
+
+    if not result and isinstance(tmdb_data, dict):
+        tmdb_english_title = str(tmdb_data.get("matched_title") or "").strip()
+        if tmdb_english_title and normalized_match_key(tmdb_english_title) != normalized_match_key(notion_title):
+            result = _yts_search_attempt(
+                "English TMDb title",
+                clean_yts_search_title(tmdb_english_title),
+                tmdb_english_title,
+                preferred_year=preferred_year,
+                match_method_prefix="tmdb_english_title",
+            )
+    if not result and cleaned_notion_title:
+        result = _yts_search_attempt(
+            "cleaned Notion title + year",
+            cleaned_notion_title,
+            cleaned_notion_title,
+            preferred_year=preferred_year,
+            match_method_prefix="cleaned_notion_title_year",
+        )
+    if not result and cleaned_notion_title:
+        result = _yts_search_attempt(
+            "cleaned Notion title",
+            cleaned_notion_title,
+            cleaned_notion_title,
+            preferred_year="",
+            match_method_prefix="cleaned_notion_title",
+        )
+    if not result and normalize_movie_category(film.get("category", "")) == "anime" and isinstance(tmdb_data, dict):
+        romaji_title = str(tmdb_data.get("original_title") or "").strip()
+        if romaji_title and normalized_match_key(romaji_title) != normalized_match_key(notion_title):
+            result = _yts_search_attempt(
+                "anime romaji title",
+                clean_yts_search_title(romaji_title),
+                romaji_title,
+                preferred_year=preferred_year,
+                match_method_prefix="anime_romaji_title",
+            )
+    if not result and cleaned_notion_title:
+        loose_words = cleaned_notion_title.split(" ")[:3]
+        loose_query = " ".join(word for word in loose_words if word).strip()
+        if loose_query and loose_query.lower() != cleaned_notion_title.lower():
+            result = _yts_search_attempt(
+                "loose first-3-word search",
+                loose_query,
+                cleaned_notion_title,
+                preferred_year=preferred_year,
+                loose=True,
+            )
     if not result:
-        result = search_yts_by_title_year(film.get("name", ""), film.get("year", ""))
-    if not result:
+        print("[yts] NOT FOUND")
         return None
 
     enriched_torrents = []
@@ -21485,6 +21695,7 @@ def sync_yts_to_notion():
     fhd_count = 0
     magnet_hd_count = 0
     magnet_fhd_count = 0
+    films_without_links = []
     for page in fetch_all_notion_database_pages():
         props = (page or {}).get("properties", {}) or {}
         page_id = str(page.get("id") or "").strip()
@@ -21494,6 +21705,9 @@ def sync_yts_to_notion():
             "year": notion_property_display_value(props.get("Year")),
         }
         if not page_id or not film.get("name"):
+            continue
+        if is_yts_tv_series_category(film):
+            print(safe_console_text(f"[sync] Skipping TV series for YTS: {film.get('name', '')} [{film.get('category', '')}]"))
             continue
 
         yts_data = fetch_yts_torrents(film, force_refresh=True)
@@ -21525,7 +21739,14 @@ def sync_yts_to_notion():
             magnet_hd_count += 1
         if magnet_fhd:
             magnet_fhd_count += 1
+        if not any([hd_url, fhd_url, magnet_hd, magnet_fhd]):
+            films_without_links.append(str(film.get("name", "") or "").strip())
         updated_films += 1
+
+    if films_without_links:
+        print("[sync] Films still without YTS links:")
+        for title in films_without_links:
+            print(f" - {safe_console_text(title)}")
 
     clear_runtime_cache()
     refresh_film_cache_from_source()
@@ -21535,6 +21756,8 @@ def sync_yts_to_notion():
         "fhd_links": fhd_count,
         "magnet_hd_count": magnet_hd_count,
         "magnet_fhd_count": magnet_fhd_count,
+        "films_without_links": films_without_links,
+        "films_without_links_count": len(films_without_links),
     }
 
 
@@ -21932,6 +22155,39 @@ def is_yts_movie_category(category):
         return False
 
     return normalized in {"movie", "short movie", "documentary", "anime movie"}
+
+
+def is_yts_tv_series_category(film_or_category):
+    if isinstance(film_or_category, dict):
+        category = film_or_category.get("category", "")
+    else:
+        category = film_or_category
+    normalized = normalize_movie_category(category).replace("_", " ")
+    if normalized == "tv show":
+        return True
+    if normalized != "anime":
+        return False
+    if not isinstance(film_or_category, dict):
+        return False
+    try:
+        movie_match = fetch_tmdb_enrichment(
+            film_or_category.get("name", ""),
+            category="anime movie",
+            year=film_or_category.get("year", ""),
+        )
+    except Exception:
+        movie_match = None
+    if isinstance(movie_match, dict) and movie_match.get("tmdb_id"):
+        return False
+    try:
+        tv_match = fetch_tmdb_enrichment(
+            film_or_category.get("name", ""),
+            category="anime",
+            year=film_or_category.get("year", ""),
+        )
+    except Exception:
+        tv_match = None
+    return bool(isinstance(tv_match, dict) and tv_match.get("tmdb_type") == "tv")
 
 
 def is_non_movie_category(value):
@@ -25726,6 +25982,7 @@ def admin():
     error_message = ""
     success_message = request.args.get("success", "")
     error_message = request.args.get("error", "") or ""
+    yts_sync_report = session.pop("admin_yts_sync_report", None)
     if request.method == "POST":
         return handle_admin_panel_post(url_for("admin"))
     hub_context = build_admin_hub_context()
@@ -25734,6 +25991,7 @@ def admin():
         **hub_context,
         success_message=success_message,
         error_message=error_message,
+        yts_sync_report=yts_sync_report if isinstance(yts_sync_report, dict) else {},
         ai_default_mode="cinematic",
         ai_page_context="general"
     )
@@ -26930,6 +27188,15 @@ def admin_sync_yts_to_notion():
     next_url = request.form.get("next") or url_for("admin")
     try:
         summary = sync_yts_to_notion()
+        session["admin_yts_sync_report"] = {
+            "updated_films": int(summary.get("updated_films", 0) or 0),
+            "hd_links": int(summary.get("hd_links", 0) or 0),
+            "fhd_links": int(summary.get("fhd_links", 0) or 0),
+            "magnet_hd_count": int(summary.get("magnet_hd_count", 0) or 0),
+            "magnet_fhd_count": int(summary.get("magnet_fhd_count", 0) or 0),
+            "films_without_links_count": int(summary.get("films_without_links_count", 0) or 0),
+            "films_without_links": list(summary.get("films_without_links", []) or []),
+        }
         success_message = f"YTS sync finished. Updated {summary['updated_films']} films."
         return redirect(append_query_param(next_url, success=success_message))
     except Exception as exc:
