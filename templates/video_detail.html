@@ -328,6 +328,96 @@
         color: rgba(255,255,255,.9);
         outline: none;
     }
+    .torrent-source-wrap {
+        position: relative;
+        display: inline-block;
+        margin-right: 10px;
+        vertical-align: top;
+    }
+    .torrent-source-trigger {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        white-space: nowrap;
+    }
+    .torrent-source-menu {
+        position: absolute;
+        top: calc(100% + 8px);
+        left: 0;
+        z-index: 20;
+        width: 220px;
+        max-width: calc(100vw - 24px);
+        padding: 8px;
+        border: 1px solid rgba(255,255,255,.10);
+        border-radius: 16px;
+        background: rgba(5,5,5,.98);
+        box-shadow: 0 20px 44px rgba(0,0,0,.58);
+        opacity: 0;
+        visibility: hidden;
+        transform: translateY(-6px) scale(.98);
+        transform-origin: top left;
+        pointer-events: none;
+        transition: opacity .16s ease, transform .16s ease, visibility 0s linear .16s;
+    }
+    .torrent-source-wrap.is-open .torrent-source-menu {
+        opacity: 1;
+        visibility: visible;
+        transform: translateY(0) scale(1);
+        pointer-events: auto;
+        transition: opacity .16s ease, transform .16s ease;
+    }
+    .torrent-source-menu-list {
+        display: grid;
+        gap: 6px;
+    }
+    .torrent-source-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        width: 100%;
+        padding: 8px 10px;
+        border-radius: 12px;
+        border: 1px solid rgba(255,255,255,.08);
+        background: rgba(255,255,255,.02);
+        color: rgba(255,255,255,.88);
+        -webkit-appearance: none;
+        appearance: none;
+        font-size: .78rem;
+        line-height: 1.2;
+        text-align: left;
+        text-decoration: none;
+        cursor: pointer;
+    }
+    .torrent-source-item:hover,
+    .torrent-source-item:focus-visible {
+        border-color: rgba(106,192,69,.24);
+        background: rgba(106,192,69,.08);
+        color: rgba(255,255,255,.98);
+        outline: none;
+    }
+    .torrent-source-icon {
+        width: 1.1rem;
+        flex: 0 0 auto;
+        text-align: center;
+    }
+    .torrent-copy-wrap {
+        position: relative;
+        display: block;
+    }
+    .torrent-copy-tooltip {
+        display: none;
+        position: absolute;
+        left: 50%;
+        bottom: calc(100% + 6px);
+        transform: translateX(-50%);
+        padding: 4px 8px;
+        border-radius: 999px;
+        background: rgba(0,0,0,.86);
+        color: #fff;
+        font-size: .72rem;
+        white-space: nowrap;
+        z-index: 5;
+    }
     .movie-watch-player-shell .movie-watch-ratio {
         position: relative;
         display: block;
@@ -345,6 +435,50 @@
         display: block;
         border: 0;
         background: #090909;
+    }
+    .movie-watch-stream-shell {
+        display: none;
+        position: relative;
+        border-radius: 18px;
+        overflow: hidden;
+        background:
+            radial-gradient(circle at top, rgba(106,192,69,.12), transparent 42%),
+            #050505;
+    }
+    .movie-watch-stream-shell.is-visible {
+        display: block;
+    }
+    .movie-watch-stream-status {
+        display: none;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        position: absolute;
+        inset: 0;
+        padding: 18px;
+        background: rgba(5, 5, 5, .86);
+        color: rgba(255,255,255,.86);
+        text-align: center;
+        font-size: .82rem;
+        line-height: 1.6;
+        z-index: 2;
+    }
+    .movie-watch-stream-status.is-visible {
+        display: flex;
+    }
+    .movie-watch-stream-spinner {
+        width: 20px;
+        height: 20px;
+        border-radius: 999px;
+        border: 2px solid rgba(106,192,69,.22);
+        border-top-color: #6ac045;
+        animation: movie-watch-spin .9s linear infinite;
+        flex: 0 0 auto;
+    }
+    @keyframes movie-watch-spin {
+        to {
+            transform: rotate(360deg);
+        }
     }
     .movie-watch-error {
         display: none;
@@ -373,6 +507,11 @@
         }
         .movie-watch-open-link {
             align-self: flex-start;
+        }
+        .torrent-source-wrap {
+            display: block;
+            margin-right: 0;
+            margin-bottom: 10px;
         }
     }
 </style>
@@ -513,7 +652,7 @@
                 <div class="poster-placeholder">No Poster</div>
                 {% endif %}
             </div>
-            {% if entry.source_type == 'film' %}
+            {% if entry_type == 'film' %}
             <section class="surface-card movie-watch-card vidsrc-container">
                 <button id="vidsrc-overlay" class="movie-watch-launch" type="button" aria-label="Play {{ detail_watch_title }}">
                     <span class="movie-watch-poster">
@@ -558,27 +697,76 @@
                     Player unavailable{% if initial_player_url %}. <a id="movie-watch-error-link" href="{{ initial_player_url }}" target="_blank" rel="noopener">Open source</a>{% endif %}.
                 </div>
             </section>
-            <a href="{{ extra_torrent_url(entry) }}" target="_blank" class="btn btn-sm btn-outline-warning mt-2">
-                ⬇ Extra-Torrent
-            </a>
-            <!-- DEBUG: torrent_hd = {{ entry.torrent_hd }} | torrent_fhd = {{ entry.torrent_fhd }} -->
+            {% endif %}
             {% if entry.torrent_hd or entry.torrent_fhd or entry.magnet_hd or entry.magnet_fhd %}
+            {% set torrent_handoff_url = entry.magnet_fhd or entry.magnet_hd or entry.torrent_fhd or entry.torrent_hd %}
             <div class="torrent-links" style="margin-top:20px; border-top:1px solid #333; padding-top:15px;">
                 <h4 style="color:#6ac045; margin-bottom:10px;">Download Torrent</h4>
-                {% if entry.torrent_hd %}
-                <a href="{{ entry.torrent_hd }}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-outline-success" style="margin-right:10px;">⬇ HD Torrent</a>
+                {% if torrent_handoff_url %}
+                <button
+                    type="button"
+                    id="torrent-handoff-button"
+                    class="btn btn-sm btn-outline-light"
+                    data-handoff-url="{{ torrent_handoff_url }}">
+                    ▶ Open in qBittorrent
+                </button>
                 {% endif %}
-                {% if entry.magnet_hd %}
-                <a href="{{ entry.magnet_hd }}" class="btn btn-sm btn-outline-secondary" style="margin-right:10px;">🧲 Magnet HD</a>
-                {% endif %}
-                {% if entry.torrent_fhd %}
-                <a href="{{ entry.torrent_fhd }}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-outline-success" style="margin-right:10px;">⬇ Full HD Torrent</a>
-                {% endif %}
-                {% if entry.magnet_fhd %}
-                <a href="{{ entry.magnet_fhd }}" class="btn btn-sm btn-outline-secondary">🧲 Magnet FHD</a>
-                {% endif %}
+                <div class="torrent-source-wrap" style="margin-top:10px;">
+                    <button
+                        type="button"
+                        id="torrent-source-button"
+                        class="btn btn-sm btn-outline-warning torrent-source-trigger"
+                        aria-haspopup="menu"
+                        aria-expanded="false"
+                        aria-controls="torrent-source-menu">
+                        ⬇ Source
+                    </button>
+                    <div id="torrent-source-menu" class="torrent-source-menu" role="menu" aria-hidden="true">
+                        <div class="torrent-source-menu-list">
+                            {% if entry.torrent_hd %}
+                            <a href="{{ entry.torrent_hd }}" target="_blank" rel="noopener noreferrer" class="torrent-source-item" role="menuitem">
+                                <span class="torrent-source-icon">⬇</span>
+                                <span>HD Torrent</span>
+                            </a>
+                            {% endif %}
+                            {% if entry.torrent_fhd %}
+                            <a href="{{ entry.torrent_fhd }}" target="_blank" rel="noopener noreferrer" class="torrent-source-item" role="menuitem">
+                                <span class="torrent-source-icon">⬇</span>
+                                <span>Full HD Torrent</span>
+                            </a>
+                            {% endif %}
+                            {% if entry.magnet_hd %}
+                            <a href="{{ entry.magnet_hd }}" class="torrent-source-item" role="menuitem">
+                                <span class="torrent-source-icon">🧲</span>
+                                <span>Magnet HD</span>
+                            </a>
+                            {% endif %}
+                            {% if entry.magnet_fhd %}
+                            <a href="{{ entry.magnet_fhd }}" class="torrent-source-item" role="menuitem">
+                                <span class="torrent-source-icon">🧲</span>
+                                <span>Magnet FHD</span>
+                            </a>
+                            {% endif %}
+                            {% if entry.magnet_hd or entry.magnet_fhd %}
+                            <span class="torrent-copy-wrap">
+                                <button
+                                    type="button"
+                                    id="copy-magnet-button"
+                                    class="torrent-source-item"
+                                    data-magnet="{{ entry.magnet_hd or entry.magnet_fhd or '' }}"
+                                    role="menuitem">
+                                    <span class="torrent-source-icon">🧲</span>
+                                    <span>Copy Magnet</span>
+                                </button>
+                                <span id="copy-magnet-tooltip" class="torrent-copy-tooltip">Copied!</span>
+                            </span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
             </div>
             {% endif %}
+            {% if entry_type == 'film' %}
             <script>
             (function() {
                 const iframe = document.getElementById('vidsrc-iframe');
@@ -828,6 +1016,106 @@
             })();
             </script>
             {% endif %}
+            <script>
+            (function() {
+                const torrentHandoffButton = document.getElementById('torrent-handoff-button');
+                const copyMagnetButton = document.getElementById('copy-magnet-button');
+                const copyMagnetTooltip = document.getElementById('copy-magnet-tooltip');
+                const torrentSourceWrap = document.querySelector('.torrent-source-wrap');
+                const torrentSourceButton = document.getElementById('torrent-source-button');
+                const torrentSourceMenu = document.getElementById('torrent-source-menu');
+                let copyMagnetTooltipTimer = 0;
+
+                if (torrentHandoffButton) {
+                    torrentHandoffButton.addEventListener('click', function() {
+                        const handoffUrl = String(torrentHandoffButton.dataset.handoffUrl || '').trim();
+                        if (!handoffUrl) {
+                            window.alert('Torrent handoff is unavailable for this item.');
+                            return;
+                        }
+                        window.location.href = handoffUrl;
+                    });
+                }
+
+                function showCopyMagnetTooltip() {
+                    if (!copyMagnetTooltip) {
+                        return;
+                    }
+                    if (copyMagnetTooltipTimer) {
+                        window.clearTimeout(copyMagnetTooltipTimer);
+                    }
+                    copyMagnetTooltip.style.display = 'block';
+                    copyMagnetTooltipTimer = window.setTimeout(function() {
+                        copyMagnetTooltip.style.display = 'none';
+                    }, 2000);
+                }
+
+                function closeTorrentSourceMenu() {
+                    if (!torrentSourceWrap || !torrentSourceButton || !torrentSourceMenu) {
+                        return;
+                    }
+                    torrentSourceWrap.classList.remove('is-open');
+                    torrentSourceButton.setAttribute('aria-expanded', 'false');
+                    torrentSourceMenu.setAttribute('aria-hidden', 'true');
+                }
+
+                function toggleTorrentSourceMenu(forceOpen) {
+                    if (!torrentSourceWrap || !torrentSourceButton || !torrentSourceMenu) {
+                        return;
+                    }
+                    const shouldOpen = typeof forceOpen === 'boolean'
+                        ? forceOpen
+                        : !torrentSourceWrap.classList.contains('is-open');
+                    if (shouldOpen) {
+                        torrentSourceWrap.classList.add('is-open');
+                        torrentSourceButton.setAttribute('aria-expanded', 'true');
+                        torrentSourceMenu.setAttribute('aria-hidden', 'false');
+                    } else {
+                        closeTorrentSourceMenu();
+                    }
+                }
+
+                if (torrentSourceWrap && torrentSourceButton && torrentSourceMenu) {
+                    torrentSourceButton.addEventListener('click', function(event) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        toggleTorrentSourceMenu();
+                    });
+
+                    torrentSourceMenu.addEventListener('click', function(event) {
+                        event.stopPropagation();
+                    });
+
+                    document.addEventListener('click', function(event) {
+                        if (!torrentSourceWrap.contains(event.target)) {
+                            closeTorrentSourceMenu();
+                        }
+                    });
+
+                    document.addEventListener('keydown', function(event) {
+                        const key = event.key || event.keyCode;
+                        if (key === 'Escape' || key === 'Esc' || key === 27) {
+                            closeTorrentSourceMenu();
+                        }
+                    });
+                }
+                if (copyMagnetButton) {
+                    copyMagnetButton.addEventListener('click', function() {
+                        const magnet = String(copyMagnetButton.dataset.magnet || '').trim();
+                        if (!magnet || !navigator.clipboard || typeof navigator.clipboard.writeText !== 'function') {
+                            window.alert('Magnet copy is unavailable for this item.');
+                            return;
+                        }
+                        navigator.clipboard.writeText(magnet).then(function() {
+                            showCopyMagnetTooltip();
+                        }).catch(function() {
+                            window.alert('Failed to copy the magnet link.');
+                        });
+                    });
+                }
+            })();
+            </script>
+            {% endif %}
             <section class="surface-card movie-detail-card movie-detail-sidebar-card" style="padding:18px; border-radius:22px;">
                 <div class="info-stack">
                     <div class="info-row"><span>Type</span><strong>Film Entry</strong></div>
@@ -1023,7 +1311,6 @@
     <div class="empty-state" style="margin-top:18px;">No related entries available yet.</div>
     {% endif %}
 </section>
-{% endif %}
 {% endblock %}
 
 {% block global_modals %}
