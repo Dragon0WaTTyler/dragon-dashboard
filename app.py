@@ -9771,6 +9771,22 @@ def reading_source_name_key(source):
     return str((source or {}).get("name", "") or "").strip().lower()
 
 
+def reading_parse_reading_url_list(value):
+    if isinstance(value, list):
+        raw_values = value
+    else:
+        raw_text = str(value or "").strip()
+        if not raw_text:
+            return []
+        raw_values = re.split(r"[\n,]+", raw_text)
+    urls = []
+    for raw_value in raw_values:
+        normalized = normalize_reading_url(raw_value)
+        if normalized and normalized not in urls:
+            urls.append(normalized)
+    return urls
+
+
 def reading_source_primary_url(source):
     source = source if isinstance(source, dict) else {}
     primary_url = normalize_reading_url(source.get("primary_url", "") or "")
@@ -9794,15 +9810,29 @@ def reading_source_extra_fallback_urls(source):
     if "morocco world news" in name_key:
         _add("https://www.moroccoworldnews.com/rss")
         _add("https://www.moroccoworldnews.com/feed/")
+        _add("https://www.moroccoworldnews.com/feed")
+        _add("https://moroccoworldnews.com/feed")
         _add("https://www.moroccoworldnews.com/opinion/feed/")
+        _add("https://moroccoworldnews.com/rss")
     if "howiyapress" in name_key or "howiyapress.com" in url:
         if "/category/" in url or category in {"news", "culture", "opinion"}:
             _add("https://howiyapress.com/feed/")
+            _add("https://howiyapress.com/feed")
+            _add("https://www.howiyapress.com/feed/")
+            _add("https://www.howiyapress.com/feed")
+            _add("https://howiyapress.com/rss")
+            _add("https://www.howiyapress.com/rss")
     if "assabah.ma" in url or "assabah" in name_key:
         if "/category/" in url:
             _add("https://assabah.ma/feed")
+            _add("https://assabah.ma/feed/")
+            _add("https://www.assabah.ma/feed")
+            _add("https://www.assabah.ma/feed/")
+            _add("https://assabah.ma/rss")
+            _add("https://www.assabah.ma/rss")
     if "al jazeera english" in name_key and "opinion" in name_key:
         _add("https://www.aljazeera.com/xml/rss/all.xml")
+        _add("https://www.aljazeera.com/rss")
 
     return fallback_urls
 
@@ -9843,6 +9873,8 @@ def normalize_reading_source(source, index=0):
         source_id = f"reading-src-{reading_hash_key('|'.join([name.lower(), normalize_reading_url(url).lower(), topic.lower()]))}"
     added_at = str(item.get("added_at", "") or "").strip() or current_timestamp()
     updated_at = str(item.get("updated_at", "") or "").strip() or added_at
+    note = str(item.get("note", "") or "").strip()
+    status = str(item.get("status", "") or "").strip()
     last_sync_status = str(item.get("last_sync_status", "") or "").strip()
     last_sync_error = str(item.get("last_sync_error", "") or "").strip()
     last_sync_message = str(item.get("last_sync_message", "") or "").strip()
@@ -9861,6 +9893,23 @@ def normalize_reading_source(source, index=0):
         if not last_sync_error:
             last_sync_error = last_sync_status.split(":", 1)[1].strip()
         last_sync_status = "error"
+    last_sync_attempts = []
+    raw_last_sync_attempts = item.get("last_sync_attempts", [])
+    if isinstance(raw_last_sync_attempts, list):
+        for attempt in raw_last_sync_attempts:
+            if not isinstance(attempt, dict):
+                continue
+            normalized_attempt = {
+                "attempt": int(attempt.get("attempt", 0) or 0),
+                "feed_url": normalize_reading_url(attempt.get("feed_url", "") or attempt.get("request_url", "") or ""),
+                "final_url": normalize_reading_url(attempt.get("final_url", "") or ""),
+                "status_code": int(attempt.get("status_code", 0) or 0),
+                "content_type": str(attempt.get("content_type", "") or "").strip(),
+                "elapsed_ms": int(attempt.get("elapsed_ms", 0) or 0),
+                "error": str(attempt.get("error", "") or "").strip(),
+            }
+            if any(normalized_attempt.values()):
+                last_sync_attempts.append(normalized_attempt)
     return {
         "id": source_id,
         "name": name,
@@ -9870,6 +9919,8 @@ def normalize_reading_source(source, index=0):
         "topic": topic,
         "topic_display": topic_display,
         "category": category,
+        "note": note,
+        "status": status,
         "active": normalize_reading_bool(item.get("active", True), default=True),
         "added_at": added_at,
         "updated_at": updated_at,
@@ -9893,13 +9944,28 @@ def normalize_reading_source(source, index=0):
         "last_sync_feedparser_bozo_exception": str(item.get("last_sync_feedparser_bozo_exception", "") or "").strip(),
         "last_sync_feedparser_entry_count": int(item.get("last_sync_feedparser_entry_count", 0) or 0),
         "last_sync_source_fallback_used": normalize_reading_bool(item.get("last_sync_source_fallback_used", False), default=False),
+        "last_sync_attempts": last_sync_attempts,
         "last_sync_reason": str(item.get("last_sync_reason", "") or "").strip(),
         "last_sync_message": last_sync_message,
         "last_sync_status": last_sync_status,
         "last_sync_error": last_sync_error,
         "successful_url": str(item.get("successful_url", "") or "").strip(),
         "last_successful_url": str(item.get("last_successful_url", "") or "").strip(),
+        "last_sync_final_url": str(item.get("last_sync_final_url", item.get("last_sync_resolved_url", "")) or "").strip(),
     }
+
+
+def reading_source_is_blocked(source):
+    source = source if isinstance(source, dict) else {}
+    status = str(source.get("last_sync_status", "") or "").strip().lower()
+    status_code = int(source.get("last_sync_status_code", 0) or 0)
+    error = str(source.get("last_sync_error", "") or "").strip().lower()
+    message = str(source.get("last_sync_message", "") or "").strip().lower()
+    if status == "blocked_source":
+        return True
+    if status_code == 403:
+        return True
+    return "http 403" in error or "http 403" in message
 
 
 def reading_source_sync_reason(source):
@@ -9915,12 +9981,12 @@ def reading_source_sync_reason(source):
     already_had_count = int(source.get("last_sync_already_had_count", 0) or 0)
     missing_key_count = int(source.get("last_sync_missing_key_count", 0) or 0)
     zero_import_streak = int(source.get("last_sync_zero_import_streak", 0) or 0)
+    if reading_source_is_blocked(source):
+        return "This source is blocking automated fetches from the sync environment."
     if not source.get("active", True):
         return "Source paused"
     if not str(source.get("url", "") or "").strip():
         return "Missing feed URL"
-    if status == "error" and status_code in {403, 429, 451}:
-        return f"Fetch blocked by source (HTTP {status_code})"
     if status == "error":
         return f"Fetch failed: {error}" if error else "Fetch failed"
     if not source.get("last_synced_at"):
@@ -9964,6 +10030,8 @@ def reading_source_health(source, known_entries=0):
         return "paused"
     if not str(source.get("url", "") or "").strip() or not source.get("last_synced_at"):
         return "warning"
+    if reading_source_is_blocked(source):
+        return "failing"
     if status == "error":
         return "failing"
     if age_days is not None and age_days >= 14 and imported_count == 0:
@@ -10028,6 +10096,9 @@ def reading_source_admin_status(source, known_entries=0):
     age_days = reading_source_sync_age_days(source)
     reason = reading_source_sync_reason(source)
     last_sync_age_label = reading_source_sync_age_label(source)
+    last_sync_attempts = list(source.get("last_sync_attempts", []) or [])
+    last_sync_final_url = str(source.get("last_sync_final_url", "") or "").strip() or str(source.get("last_sync_resolved_url", "") or "").strip()
+    last_successful_url = str(source.get("last_successful_url", "") or "").strip() or str(source.get("successful_url", "") or "").strip()
 
     if not source.get("active", True):
         return {
@@ -10046,6 +10117,18 @@ def reading_source_admin_status(source, known_entries=0):
             "note": "Missing feed URL.",
             "detail": "Add a feed URL before the next sync.",
             "age_label": last_sync_age_label,
+        }
+    if reading_source_is_blocked(source):
+        return {
+            "state": "blocked_source",
+            "visual_state": "failing",
+            "label": "Blocked by source",
+            "note": "This source is blocking automated fetches from the sync environment.",
+            "detail": reason,
+            "age_label": last_sync_age_label,
+            "final_url": last_sync_final_url,
+            "last_successful_url": last_successful_url,
+            "attempts": last_sync_attempts,
         }
     if status == "error" or feed_kind == "error" or error:
         return {
@@ -10687,6 +10770,7 @@ def fetch_reading_feed(source):
             "primary_url": str(source.get("primary_url", "") or "").strip(),
             "feed_url": "",
             "resolved_url": "",
+            "final_url": "",
             "successful_url": "",
             "status_code": 0,
             "content_type": "",
@@ -10738,6 +10822,7 @@ def fetch_reading_feed(source):
                     "primary_url": reading_source_primary_url(source),
                     "feed_url": candidate_url,
                     "resolved_url": request_diag.get("final_url", candidate_url) or candidate_url,
+                    "final_url": request_diag.get("final_url", candidate_url) or candidate_url,
                     "successful_url": candidate_url,
                     "status_code": status_code,
                     "content_type": content_type,
@@ -10787,6 +10872,7 @@ def fetch_reading_feed(source):
             "primary_url": reading_source_primary_url(source),
             "feed_url": candidate_url,
             "resolved_url": request_diag.get("final_url", candidate_url) or candidate_url,
+            "final_url": request_diag.get("final_url", candidate_url) or candidate_url,
             "successful_url": candidate_url,
             "status_code": status_code,
             "content_type": content_type,
@@ -10812,6 +10898,7 @@ def fetch_reading_feed(source):
         "primary_url": reading_source_primary_url(source),
         "feed_url": str(last_attempt.get("feed_url", feed_url) or feed_url),
         "resolved_url": str(last_attempt.get("final_url", "") or ""),
+        "final_url": str(last_attempt.get("final_url", "") or ""),
         "successful_url": "",
         "status_code": int(last_attempt.get("status_code", 0) or 0),
         "content_type": str(last_attempt.get("content_type", "") or ""),
@@ -10913,6 +11000,7 @@ def sync_reading_sources(source_id=""):
             fetch_status_code = int(fetch_result.get("status_code", 0) or 0)
             fetch_content_type = str(fetch_result.get("content_type", "") or "").strip()
             fetch_resolved_url = str(fetch_result.get("resolved_url", "") or "").strip()
+            fetch_final_url = str(fetch_result.get("final_url", "") or fetch_resolved_url or "").strip()
             fetch_successful_url = str(fetch_result.get("successful_url", "") or "").strip()
             fetch_primary_url = str(fetch_result.get("primary_url", "") or "").strip()
             fetch_retry_count = int(fetch_result.get("retry_count", 0) or 0)
@@ -10923,6 +11011,21 @@ def sync_reading_sources(source_id=""):
             fetch_source_fallback_used = bool(fetch_result.get("source_fallback_used", False))
             fetch_source_url = str(fetch_result.get("feed_url", source.get("url", "")) or source.get("url", "")).strip()
             fetch_tried_urls = [str(url or "").strip() for url in list(fetch_result.get("tried_urls", []) or []) if str(url or "").strip()]
+            fetch_attempts = []
+            for attempt in list(fetch_result.get("attempts", []) or []):
+                if not isinstance(attempt, dict):
+                    continue
+                normalized_attempt = {
+                    "attempt": int(attempt.get("attempt", 0) or 0),
+                    "feed_url": str(attempt.get("feed_url", "") or "").strip(),
+                    "final_url": str(attempt.get("final_url", "") or "").strip(),
+                    "status_code": int(attempt.get("status_code", 0) or 0),
+                    "content_type": str(attempt.get("content_type", "") or "").strip(),
+                    "elapsed_ms": int(attempt.get("elapsed_ms", 0) or 0),
+                    "error": str(attempt.get("error", "") or "").strip(),
+                }
+                if any(normalized_attempt.values()):
+                    fetch_attempts.append(normalized_attempt)
             source_imported = 0
             source_skipped_existing = 0
             source_skipped_missing_key = 0
@@ -11010,25 +11113,27 @@ def sync_reading_sources(source_id=""):
             source["last_sync_content_type"] = fetch_content_type
             source["last_sync_feed_kind"] = fetch_kind
             source["last_sync_resolved_url"] = fetch_resolved_url
+            source["last_sync_final_url"] = fetch_final_url
             source["last_sync_successful_url"] = fetch_successful_url
             source["last_successful_url"] = fetch_successful_url or str(source.get("last_successful_url", "") or "").strip()
             source["successful_url"] = fetch_successful_url or str(source.get("successful_url", "") or "").strip()
             source["last_sync_tried_urls"] = fetch_tried_urls
+            source["last_sync_attempts"] = fetch_attempts
             source["last_sync_retry_count"] = fetch_retry_count
             source["last_sync_timeout_reason"] = fetch_timeout_reason
             source["last_sync_feedparser_bozo"] = fetch_bozo
             source["last_sync_feedparser_bozo_exception"] = fetch_bozo_exception
             source["last_sync_feedparser_entry_count"] = fetch_feedparser_entry_count
             source["last_sync_source_fallback_used"] = fetch_source_fallback_used
-            source["last_sync_status"] = "ok" if fetch_ok else "error"
+            source["last_sync_status"] = "ok" if fetch_ok else ("blocked_source" if fetch_status_code == 403 else "error")
             source["last_sync_error"] = fetch_error if not fetch_ok else ""
             source["last_sync_reason"] = reading_source_sync_reason(source)
             if fetch_ok:
                 source["last_sync_message"] = f"Fetched {raw_count} item(s), normalized {normalized_count}, imported {source_imported}, already had {source_skipped_existing}."
             else:
                 blocked_note = ""
-                if fetch_status_code in {403, 429, 451}:
-                    blocked_note = f"Blocked by source (HTTP {fetch_status_code})"
+                if fetch_status_code == 403:
+                    blocked_note = "This source is blocking automated fetches from the sync environment."
                 failure_prefix = blocked_note or f"Fetch failed ({fetch_kind or 'feed'}{f' {fetch_status_code}' if fetch_status_code else ''})"
                 source["last_sync_message"] = f"{failure_prefix}: {fetch_error}" if fetch_error else failure_prefix
             if fetch_ok and source_skipped_missing_key:
@@ -11057,12 +11162,13 @@ def sync_reading_sources(source_id=""):
                 "imported": source_imported,
                 "already_existing": source_skipped_existing,
                 "missing_key": source_skipped_missing_key,
-                "status": "ok" if fetch_ok else "error",
+                "status": "ok" if fetch_ok else ("blocked_source" if fetch_status_code == 403 else "error"),
                 "reason": source.get("last_sync_reason", ""),
                 "feed_kind": fetch_kind,
                 "status_code": fetch_status_code,
                 "content_type": fetch_content_type,
                 "resolved_url": fetch_resolved_url,
+                "final_url": fetch_final_url,
                 "successful_url": fetch_successful_url,
                 "retry_count": fetch_retry_count,
                 "timeout_reason": fetch_timeout_reason,
@@ -11071,6 +11177,7 @@ def sync_reading_sources(source_id=""):
                 "feedparser_entry_count": fetch_feedparser_entry_count,
                 "source_fallback_used": fetch_source_fallback_used,
                 "tried_urls": fetch_tried_urls,
+                "attempts": fetch_attempts,
                 "error": fetch_error,
             })
             source_elapsed = time.monotonic() - source_started_at
@@ -11106,6 +11213,7 @@ def sync_reading_sources(source_id=""):
             source["last_sync_content_type"] = ""
             source["last_sync_feed_kind"] = "error"
             source["last_sync_resolved_url"] = ""
+            source["last_sync_final_url"] = ""
             source["last_sync_successful_url"] = ""
             source["last_sync_retry_count"] = 0
             source["last_sync_timeout_reason"] = ""
@@ -11114,6 +11222,7 @@ def sync_reading_sources(source_id=""):
             source["last_sync_feedparser_entry_count"] = 0
             source["last_sync_source_fallback_used"] = False
             source["last_sync_tried_urls"] = []
+            source["last_sync_attempts"] = []
             source["last_sync_status"] = "error"
             source["last_sync_error"] = str(exc)
             source["last_sync_message"] = f"Fetch failed: {exc}"
@@ -11129,6 +11238,7 @@ def sync_reading_sources(source_id=""):
                 "status_code": 0,
                 "content_type": "",
                 "resolved_url": "",
+                "final_url": "",
                 "successful_url": "",
                 "retry_count": 0,
                 "timeout_reason": "",
@@ -11137,7 +11247,9 @@ def sync_reading_sources(source_id=""):
                 "feedparser_entry_count": 0,
                 "source_fallback_used": False,
                 "tried_urls": [],
+                "attempts": [],
                 "error": str(exc),
+                "status": "error",
             })
             print(
                 "[reading-sync] source failed | "
@@ -11348,7 +11460,7 @@ def sync_reading_sources(source_id=""):
             )
     saved_data = save_reading_data(data, apply_retention=True, retention_reason="sync")
     total_elapsed = time.monotonic() - sync_started_at
-    failed_source_count = sum(1 for item in source_results if str(item.get("status", "")).strip().lower() == "error")
+    failed_source_count = sum(1 for item in source_results if str(item.get("status", "")).strip().lower() in {"error", "blocked_source"})
     print(
         "[reading-sync] finish | "
         f"active_sources={len(target_sources)} | "
@@ -11471,6 +11583,49 @@ def upsert_reading_source_record(name, url="", topic="", category="", active=Tru
     data["sources"] = sources
     save_reading_data(data)
     return data, message
+
+
+def update_reading_source_record(source_id, url=None, fallback_urls=None, note=None, status=None, use_successful_url=False):
+    data = load_reading_data()
+    source_id = str(source_id or "").strip()
+    sources = list(data.get("sources", []))
+    for index, source in enumerate(sources):
+        if not isinstance(source, dict) or source.get("id") != source_id:
+            continue
+        existing = dict(source)
+        existing_url = normalize_reading_url(existing.get("url", "") or "")
+        existing_primary_url = normalize_reading_url(existing.get("primary_url", "") or "") or existing_url
+        requested_url = normalize_reading_url(url if url is not None else existing_url)
+        requested_fallback_urls = reading_parse_reading_url_list(fallback_urls) if fallback_urls is not None else list(existing.get("fallback_urls", []) or [])
+        requested_note = existing.get("note", "") if note is None else str(note or "").strip()
+        requested_status = existing.get("status", "") if status is None else str(status or "").strip()
+        target_url = requested_url or existing_url
+        if use_successful_url:
+            successful_url = normalize_reading_url(existing.get("last_successful_url", "") or existing.get("successful_url", "") or "")
+            if not successful_url:
+                return None, None
+            if successful_url:
+                target_url = successful_url
+        if target_url and existing_url and target_url != existing_url:
+            for candidate in [existing_url, existing_primary_url]:
+                if candidate and candidate not in requested_fallback_urls and candidate != target_url:
+                    requested_fallback_urls.append(candidate)
+        if use_successful_url and target_url:
+            existing["last_successful_url"] = target_url
+            existing["successful_url"] = target_url
+        existing.update({
+            "url": target_url,
+            "primary_url": target_url or existing_primary_url,
+            "fallback_urls": requested_fallback_urls,
+            "note": requested_note,
+            "status": requested_status,
+            "updated_at": current_timestamp(),
+        })
+        sources[index] = normalize_reading_source(existing, index)
+        data["sources"] = sources
+        save_reading_data(data)
+        return data, sources[index]
+    return None, None
 
 
 def toggle_reading_source_active(source_id):
@@ -14978,6 +15133,36 @@ def handle_admin_action(admin_data, form):
             raise ValueError("Source name is required.")
         _, message = upsert_reading_source_record(name=name, url=url, topic=topic, category=category, active=active, source_id=source_id)
         return message
+
+    if action == "reading_source_update":
+        source_id = str(form.get("source_id", "") or "").strip()
+        fallback_urls = form.get("fallback_urls", "")
+        url = form.get("url", "")
+        note = form.get("note", "")
+        status = form.get("status", "")
+        updated_data, updated_source = update_reading_source_record(
+            source_id,
+            url=url,
+            fallback_urls=fallback_urls,
+            note=note,
+            status=status,
+        )
+        if not updated_data or not updated_source:
+            raise ValueError("Source not found.")
+        return f'Updated source "{updated_source.get("name", "")}".'
+
+    if action == "reading_source_use_successful_url":
+        source_id = str(form.get("source_id", "") or "").strip()
+        source = next((source for source in load_reading_data().get("sources", []) if isinstance(source, dict) and source.get("id") == source_id), None)
+        if not source:
+            raise ValueError("Source not found.")
+        successful_url = str(source.get("last_successful_url", "") or source.get("successful_url", "") or "").strip()
+        if not successful_url:
+            raise ValueError("No successful URL is available for this source.")
+        updated_data, updated_source = update_reading_source_record(source_id, use_successful_url=True)
+        if not updated_data or not updated_source:
+            raise ValueError("Source not found.")
+        return f'Updated source "{updated_source.get("name", "")}" to the last successful URL.'
 
     if action == "reading_source_toggle":
         source_id = str(form.get("source_id", "") or "").strip()

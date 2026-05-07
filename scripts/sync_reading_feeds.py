@@ -43,6 +43,7 @@ def format_source_line(result: dict) -> str:
     status_code = int(result.get("status_code", 0) or 0)
     content_type = str(result.get("content_type", "") or "").strip()
     resolved_url = str(result.get("resolved_url", "") or "").strip()
+    final_url = str(result.get("final_url", "") or "").strip()
     successful_url = str(result.get("successful_url", "") or "").strip()
     retry_count = int(result.get("retry_count", 0) or 0)
     timeout_reason = str(result.get("timeout_reason", "") or "").strip()
@@ -51,6 +52,7 @@ def format_source_line(result: dict) -> str:
     entry_count = int(result.get("feedparser_entry_count", 0) or 0)
     fallback_used = bool(result.get("source_fallback_used", False))
     tried_urls = [str(url or "").strip() for url in (result.get("tried_urls", []) or []) if str(url or "").strip()]
+    attempts = [item for item in (result.get("attempts", []) or []) if isinstance(item, dict)]
     parts = [
         f"{name}",
         f"status={status}",
@@ -60,6 +62,7 @@ def format_source_line(result: dict) -> str:
         f"duplicates={duplicates}",
         f"status_code={status_code}",
         f"resolved_url={resolved_url or 'n/a'}",
+        f"final_url={final_url or 'n/a'}",
         f"successful_url={successful_url or 'n/a'}",
         f"content_type={content_type or 'n/a'}",
         f"retry_count={retry_count}",
@@ -76,6 +79,22 @@ def format_source_line(result: dict) -> str:
         parts.append("fallback=1")
     if tried_urls:
         parts.append("tried_urls=" + " -> ".join(tried_urls))
+    if attempts:
+        attempt_text = []
+        for attempt in attempts:
+            attempt_url = str(attempt.get("feed_url", "") or "").strip()
+            attempt_final_url = str(attempt.get("final_url", "") or "").strip()
+            attempt_status = int(attempt.get("status_code", 0) or 0)
+            attempt_error = str(attempt.get("error", "") or "").strip()
+            segment = attempt_url or "n/a"
+            if attempt_final_url and attempt_final_url != attempt_url:
+                segment += f" -> {attempt_final_url}"
+            if attempt_status:
+                segment += f" [{attempt_status}]"
+            if attempt_error:
+                segment += f" {attempt_error}"
+            attempt_text.append(segment)
+        parts.append("attempts=" + " | ".join(attempt_text))
     if reason:
         parts.append(f"reason={reason}")
     if error:
@@ -92,7 +111,7 @@ def build_summary(result: dict) -> dict:
     imported_total = int(result.get("imported_total", 0) or 0)
     duplicate_total = sum(int(item.get("already_existing", 0) or 0) for item in source_results)
     missing_key_total = sum(int(item.get("missing_key", 0) or 0) for item in source_results)
-    failed_sources = [item for item in source_results if str(item.get("status", "")).strip().lower() == "error"]
+    failed_sources = [item for item in source_results if str(item.get("status", "")).strip().lower() in {"error", "blocked_source"}]
     return {
         "source_count": int(result.get("source_count", 0) or 0),
         "fetched_total": fetched_total,

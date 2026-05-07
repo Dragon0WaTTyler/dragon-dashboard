@@ -346,6 +346,14 @@
                         <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
                         <button type="submit" class="btn"><i data-lucide="refresh-cw"></i>Retry</button>
                     </form>
+                    {% if source.successful_url or source.last_successful_url %}
+                    <form method="post">
+                        <input type="hidden" name="action" value="reading_source_use_successful_url">
+                        <input type="hidden" name="source_id" value="{{ source.id }}">
+                        <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
+                        <button type="submit" class="btn"><i data-lucide="move-right"></i>Use successful URL</button>
+                    </form>
+                    {% endif %}
                     <form method="post">
                         <input type="hidden" name="action" value="reading_source_toggle">
                         <input type="hidden" name="source_id" value="{{ source.id }}">
@@ -397,10 +405,46 @@
                     {% if source.last_sync_feed_kind %}
                     <span>Feed kind: {{ source.last_sync_feed_kind }}</span>
                     {% endif %}
+                    {% if source.last_sync_final_url %}
+                    <span class="reading-admin-source-detail-line">Final URL: {{ source.last_sync_final_url }}</span>
+                    {% endif %}
+                    {% if source.last_successful_url or source.successful_url %}
+                    <span class="reading-admin-source-detail-line">Last successful URL: {{ source.last_successful_url or source.successful_url }}</span>
+                    {% endif %}
                     {% if source.last_sync_status_code %}
                     <span>HTTP status: {{ source.last_sync_status_code }}</span>
                     {% endif %}
+                    {% if source.note %}
+                    <span class="reading-admin-source-detail-line">Note: {{ source.note }}</span>
+                    {% endif %}
+                    {% if source.status %}
+                    <span class="reading-admin-source-detail-line">Status: {{ source.status }}</span>
+                    {% endif %}
+                    {% if source.last_sync_attempts %}
+                    <span class="reading-admin-source-detail-line">Fallback attempts:</span>
+                    {% for attempt in source.last_sync_attempts %}
+                    <span class="reading-admin-source-detail-line">- Attempt {{ attempt.attempt or loop.index }}: {{ attempt.feed_url or 'n/a' }}{% if attempt.final_url and attempt.final_url != attempt.feed_url %} -> {{ attempt.final_url }}{% endif %}{% if attempt.status_code %} (HTTP {{ attempt.status_code }}){% endif %}{% if attempt.error %} {{ attempt.error }}{% endif %}</span>
+                    {% endfor %}
+                    {% endif %}
                 </div>
+            </details>
+            <details class="reading-admin-source-details">
+                <summary>Replace source</summary>
+                <form method="post" class="reading-admin-source-form" style="margin-top:12px;">
+                    <input type="hidden" name="action" value="reading_source_update">
+                    <input type="hidden" name="source_id" value="{{ source.id }}">
+                    <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
+                    <div class="field-wide">
+                        <label class="muted" for="admin-reading-source-url-{{ source.id }}">Feed URL</label>
+                    </div>
+                    <input id="admin-reading-source-url-{{ source.id }}" type="url" name="url" value="{{ source.url }}" placeholder="Feed URL">
+                    <textarea name="fallback_urls" rows="3" placeholder="One fallback URL per line">{{ source.fallback_urls|join('\n') }}</textarea>
+                    <input type="text" name="note" value="{{ source.note }}" placeholder="Optional note">
+                    <input type="text" name="status" value="{{ source.status }}" placeholder="Optional status">
+                    <div class="field-wide">
+                        <button type="submit" class="btn"><i data-lucide="save"></i>Save replacement</button>
+                    </div>
+                </form>
             </details>
         </div>
         {% endfor %}
