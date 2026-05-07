@@ -41,9 +41,20 @@
 <section class="surface-card section-card admin-sync-report" style="padding:16px 20px;">
     <div class="hero-meta">
         <span class="hero-badge">YTS Sync Report</span>
+        {% if yts_sync_report.mode == "magnets_only" %}
+        <span>{{ yts_sync_report.updated_films }} films updated</span>
+        <span>{{ yts_sync_report.magnet_hd_count }} HD magnets</span>
+        <span>{{ yts_sync_report.magnet_fhd_count }} FHD magnets</span>
+        {% else %}
         <span>{{ yts_sync_report.updated_films }} updated</span>
         <span>{{ yts_sync_report.films_without_links_count }} without links</span>
+        {% endif %}
     </div>
+    {% if yts_sync_report.mode == "magnets_only" %}
+    <div class="muted" style="color:#ffffff;">
+        Updated {{ yts_sync_report.magnet_hd_count }} HD magnet links and {{ yts_sync_report.magnet_fhd_count }} FHD magnet links.
+    </div>
+    {% else %}
     <div class="muted" style="color:#ffffff;">
         {{ yts_sync_report.films_without_links_count }} films without links.
     </div>
@@ -62,6 +73,7 @@
         {% endif %}
     </details>
     {% endif %}
+    {% endif %}
 </section>
 {% endif %}
 
@@ -70,7 +82,13 @@
         <span class="hero-badge">Launcher</span>
         <span>{{ admin_cards|length }} admin areas</span>
     </div>
-    <div style="display:flex; justify-content:flex-end; margin-top:6px;">
+    <div style="display:flex; justify-content:flex-end; gap:10px; flex-wrap:wrap; margin-top:6px;">
+        <form method="post" action="{{ url_for('admin_sync_yts_magnets_only') }}" style="margin:0;">
+            <input type="hidden" name="next" value="{{ url_for('admin') }}">
+            <button type="submit" class="btn btn-sm btn-outline-warning">
+                <i data-lucide="link"></i>Sync Magnets Only
+            </button>
+        </form>
         <form method="post" action="{{ url_for('admin_sync_yts_to_notion') }}" style="margin:0;">
             <input type="hidden" name="next" value="{{ url_for('admin') }}">
             <button type="submit" class="btn btn-sm btn-outline-success">
