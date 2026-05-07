@@ -285,6 +285,9 @@
             <div class="score-pill" style="color: {{ score_color.get(film.score, '#777') }};">
                 {{ score_display.get(film.score, 'Not Rated') }}
             </div>
+            <a href="{{ extra_torrent_url(film) }}" target="_blank" class="btn btn-sm btn-outline-warning" title="Download torrent from Extra-Torrent">
+                ⬇ Extra-Torrent
+            </a>
             <div class="card-meta">Open detail page</div>
         </div>
     </article>

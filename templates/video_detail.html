@@ -276,6 +276,58 @@
     .movie-watch-player-shell .vidsrc-embed-wrapper {
         border-radius: 18px;
     }
+    .movie-watch-toolbar {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        min-width: 0;
+    }
+    .movie-watch-source {
+        min-width: 0;
+        flex: 1 1 auto;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    .movie-watch-source-label {
+        color: rgba(255,255,255,.48);
+        font-size: .62rem;
+        letter-spacing: .12em;
+        text-transform: uppercase;
+        white-space: nowrap;
+    }
+    .movie-watch-source-select {
+        min-width: 0;
+        width: 100%;
+        padding: 7px 28px 7px 10px;
+        border-radius: 999px;
+        border: 1px solid rgba(255,255,255,.08);
+        background: rgba(255,255,255,.03);
+        color: rgba(255,255,255,.88);
+        font-size: .76rem;
+        line-height: 1.2;
+        -webkit-appearance: none;
+        appearance: none;
+        outline: none;
+        box-shadow: none;
+    }
+    .movie-watch-source-select:focus,
+    .movie-watch-source-select:hover {
+        border-color: rgba(255,255,255,.14);
+        background: rgba(255,255,255,.05);
+    }
+    .movie-watch-open-link {
+        flex: 0 0 auto;
+        color: rgba(255,255,255,.64);
+        font-size: .7rem;
+        text-decoration: none;
+        white-space: nowrap;
+    }
+    .movie-watch-open-link:hover,
+    .movie-watch-open-link:focus-visible {
+        color: rgba(255,255,255,.9);
+        outline: none;
+    }
     .movie-watch-player-shell .movie-watch-ratio {
         position: relative;
         display: block;
@@ -314,6 +366,13 @@
     @media (max-width: 640px) {
         .movie-watch-card {
             max-width: none;
+        }
+        .movie-watch-toolbar {
+            align-items: stretch;
+            flex-direction: column;
+        }
+        .movie-watch-open-link {
+            align-self: flex-start;
         }
     }
 </style>
@@ -431,12 +490,18 @@
 {% else %}
 {% set detail_title = entry.title or entry.name %}
 {% set detail_category = entry.category or category %}
-{% if vidsrc_embed_urls is defined %}
-{% set embed_urls = vidsrc_embed_urls(entry) %}
-{% else %}
-{% set embed_urls = [] %}
+{% set player_sources = player_sources if player_sources is defined else [] %}
+{% set player_fallback_urls = player_fallback_urls if player_fallback_urls is defined else [] %}
+{% set template_player_sources = player_sources %}
+{% if not template_player_sources and player_fallback_urls %}
+{% set template_player_sources = [{
+    'key': 'vidsrc',
+    'label': 'VidSrc',
+    'url': player_fallback_urls[0],
+    'urls': player_fallback_urls
+}] %}
 {% endif %}
-{% set vidsrc_url = embed_urls[0] if embed_urls else '' %}
+{% set initial_player_url = template_player_sources[0].url if template_player_sources else (player_fallback_urls[0] if player_fallback_urls else '') %}
 {% set detail_watch_title = detail_title ~ (' (' ~ entry.year ~ ')' if entry.year else '') %}
 <section class="surface-card section-card movie-detail-shell" style="padding:28px;">
     <div class="movie-detail-grid" style="display:grid; grid-template-columns:minmax(220px,280px) minmax(0,1fr); gap:26px; align-items:start;">
@@ -471,15 +536,49 @@
                                 loading="lazy"
                                 style="border:0;"
                                 id="vidsrc-iframe"
-                                data-urls='{{ embed_urls | tojson }}'>
+                                data-sources='{{ template_player_sources | tojson }}'
+                                data-fallback-urls='{{ player_fallback_urls | tojson }}'>
                             </iframe>
                         </div>
                     </div>
                 </div>
+                <div class="movie-watch-toolbar">
+                    <div class="movie-watch-source">
+                        <label class="movie-watch-source-label" for="movie-watch-source">Source</label>
+                        <select id="movie-watch-source" class="movie-watch-source-select" aria-label="Select player source">
+                            <option value="auto">Auto</option>
+                            {% for source in template_player_sources %}
+                            <option value="{{ source.key }}">{{ source.label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <a id="movie-watch-open-link" class="movie-watch-open-link" href="{{ initial_player_url }}" target="_blank" rel="noopener">Open source</a>
+                </div>
                 <div id="vidsrc-error" class="movie-watch-error" role="status" aria-live="polite">
-                    Player unavailable{% if vidsrc_url %}. <a href="{{ vidsrc_url }}" target="_blank" rel="noopener">Open source</a>{% endif %}.
+                    Player unavailable{% if initial_player_url %}. <a id="movie-watch-error-link" href="{{ initial_player_url }}" target="_blank" rel="noopener">Open source</a>{% endif %}.
                 </div>
             </section>
+            <a href="{{ extra_torrent_url(entry) }}" target="_blank" class="btn btn-sm btn-outline-warning mt-2">
+                ⬇ Extra-Torrent
+            </a>
+            <!-- DEBUG: torrent_hd = {{ entry.torrent_hd }} | torrent_fhd = {{ entry.torrent_fhd }} -->
+            {% if entry.torrent_hd or entry.torrent_fhd or entry.magnet_hd or entry.magnet_fhd %}
+            <div class="torrent-links" style="margin-top:20px; border-top:1px solid #333; padding-top:15px;">
+                <h4 style="color:#6ac045; margin-bottom:10px;">Download Torrent</h4>
+                {% if entry.torrent_hd %}
+                <a href="{{ entry.torrent_hd }}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-outline-success" style="margin-right:10px;">⬇ HD Torrent</a>
+                {% endif %}
+                {% if entry.magnet_hd %}
+                <a href="{{ entry.magnet_hd }}" class="btn btn-sm btn-outline-secondary" style="margin-right:10px;">🧲 Magnet HD</a>
+                {% endif %}
+                {% if entry.torrent_fhd %}
+                <a href="{{ entry.torrent_fhd }}" target="_blank" rel="noopener noreferrer" class="btn btn-sm btn-outline-success" style="margin-right:10px;">⬇ Full HD Torrent</a>
+                {% endif %}
+                {% if entry.magnet_fhd %}
+                <a href="{{ entry.magnet_fhd }}" class="btn btn-sm btn-outline-secondary">🧲 Magnet FHD</a>
+                {% endif %}
+            </div>
+            {% endif %}
             <script>
             (function() {
                 const iframe = document.getElementById('vidsrc-iframe');
@@ -487,16 +586,140 @@
                 const errorDiv = document.getElementById('vidsrc-error');
                 const playerShell = document.getElementById('vidsrc-player-shell');
                 const watchCard = document.querySelector('.movie-watch-card');
-                if (!iframe || !overlay || !errorDiv || !playerShell || !watchCard) return;
+                const sourceSelect = document.getElementById('movie-watch-source');
+                const openLink = document.getElementById('movie-watch-open-link');
+                const errorLink = document.getElementById('movie-watch-error-link');
+                if (!iframe || !overlay || !errorDiv || !playerShell || !watchCard || !sourceSelect) return;
 
-                let urls = [];
+                const sourceStorageKey = 'dragon-movie-player-source-v1';
+                const fallbackUrlsRaw = iframe.dataset.fallbackUrls || '[]';
+                let sources = [];
+                let legacyFallbackUrls = [];
                 try {
-                    urls = JSON.parse(iframe.dataset.urls || '[]');
+                    sources = JSON.parse(iframe.dataset.sources || '[]');
                 } catch (error) {
-                    urls = [];
+                    sources = [];
+                }
+                try {
+                    legacyFallbackUrls = JSON.parse(fallbackUrlsRaw);
+                } catch (error) {
+                    legacyFallbackUrls = [];
                 }
 
+                let currentQueue = [];
                 let currentIndex = 0;
+                let currentSource = null;
+
+                function uniqueUrls(urls) {
+                    const seen = new Set();
+                    return (Array.isArray(urls) ? urls : []).filter(function(url) {
+                        const normalized = typeof url === 'string' ? url.trim() : '';
+                        if (!normalized || seen.has(normalized)) {
+                            return false;
+                        }
+                        seen.add(normalized);
+                        return true;
+                    });
+                }
+
+                function normalizeSource(source) {
+                    if (!source || typeof source !== 'object') {
+                        return null;
+                    }
+                    const url = typeof source.url === 'string' ? source.url.trim() : '';
+                    const urls = uniqueUrls(
+                        (Array.isArray(source.urls) ? source.urls : []).concat(url ? [url] : [])
+                    );
+                    if (!urls.length) {
+                        return null;
+                    }
+                    return {
+                        key: String(source.key || '').trim(),
+                        label: String(source.label || source.key || 'Source').trim(),
+                        url: urls[0],
+                        urls: urls
+                    };
+                }
+
+                legacyFallbackUrls = uniqueUrls(legacyFallbackUrls);
+                sources = (Array.isArray(sources) ? sources : []).map(normalizeSource).filter(Boolean);
+                if (!sources.some(function(source) { return source.key === 'vidsrc'; }) && legacyFallbackUrls.length) {
+                    sources.unshift({
+                        key: 'vidsrc',
+                        label: 'VidSrc',
+                        url: legacyFallbackUrls[0],
+                        urls: legacyFallbackUrls.slice()
+                    });
+                }
+
+                function renderSourceOptions() {
+                    const previousValue = selectedSourceValue();
+                    sourceSelect.innerHTML = '';
+
+                    const autoOption = document.createElement('option');
+                    autoOption.value = 'auto';
+                    autoOption.textContent = 'Auto';
+                    sourceSelect.appendChild(autoOption);
+
+                    sources.forEach(function(source) {
+                        if (!source || !source.key) {
+                            return;
+                        }
+                        const option = document.createElement('option');
+                        option.value = source.key;
+                        option.textContent = source.label || source.key;
+                        sourceSelect.appendChild(option);
+                    });
+
+                    const hasPreviousValue = previousValue === 'auto' || sources.some(function(source) {
+                        return source && source.key === previousValue;
+                    });
+                    sourceSelect.value = hasPreviousValue ? previousValue : 'auto';
+                }
+
+                function setOpenUrl(url) {
+                    const nextUrl = url || '';
+                    if (openLink) {
+                        openLink.href = nextUrl;
+                        openLink.style.visibility = nextUrl ? 'visible' : 'hidden';
+                    }
+                    if (errorLink) {
+                        errorLink.href = nextUrl;
+                    }
+                }
+
+                function selectedSourceValue() {
+                    return String(sourceSelect.value || 'auto');
+                }
+
+                function availableSourcesForSelection(selection) {
+                    if (selection === 'auto') {
+                        return sources.slice();
+                    }
+                    return sources.filter(function(source) {
+                        return source && source.key === selection;
+                    });
+                }
+
+                function saveSelectedSource(value) {
+                    try {
+                        window.localStorage.setItem(sourceStorageKey, value || 'auto');
+                    } catch (error) {}
+                }
+
+                function readSelectedSource() {
+                    try {
+                        return window.localStorage.getItem(sourceStorageKey) || 'auto';
+                    } catch (error) {
+                        return 'auto';
+                    }
+                }
+
+                function previewSelection() {
+                    const selection = selectedSourceValue();
+                    const previewQueue = buildQueue(selection).queue;
+                    setOpenUrl(previewQueue.length ? previewQueue[0] : '');
+                }
 
                 function showError() {
                     playerShell.classList.remove('is-visible');
@@ -504,13 +727,63 @@
                     errorDiv.classList.add('is-visible');
                 }
 
-                function tryLoad(index) {
-                    if (index >= urls.length) {
+                function sourceUrls(source) {
+                    if (!source) {
+                        return [];
+                    }
+                    if (source.urls && source.urls.length) {
+                        return source.urls.filter(function(url) {
+                            return !!url;
+                        });
+                    }
+                    return source.url ? [source.url] : [];
+                }
+
+                function buildQueue(selection) {
+                    const selectedSources = availableSourcesForSelection(selection);
+                    const selectedSource = selection === 'auto'
+                        ? (selectedSources.length ? selectedSources[0] : null)
+                        : (selectedSources.find(Boolean) || null);
+                    let queue = [];
+
+                    selectedSources.forEach(function(source) {
+                        queue = queue.concat(sourceUrls(source));
+                    });
+
+                    queue = uniqueUrls(queue);
+
+                    if (!queue.length && legacyFallbackUrls.length) {
+                        queue = legacyFallbackUrls.slice();
+                    }
+
+                    return {
+                        selectedSource: selectedSource,
+                        queue: queue
+                    };
+                }
+
+                function loadFromQueue(index) {
+                    if (index >= currentQueue.length) {
                         showError();
                         return;
                     }
                     currentIndex = index;
-                    iframe.src = urls[index];
+                    currentSource = currentQueue[index];
+                    setOpenUrl(currentSource || '');
+                    iframe.src = currentSource || 'about:blank';
+                }
+
+                function startPlayback() {
+                    const selected = selectedSourceValue();
+                    const resolved = buildQueue(selected);
+                    currentQueue = resolved.queue.slice();
+                    if (!currentQueue.length) {
+                        return;
+                    }
+                    playerShell.classList.add('is-visible');
+                    watchCard.classList.add('is-loaded');
+                    errorDiv.classList.remove('is-visible');
+                    loadFromQueue(0);
                 }
 
                 iframe.addEventListener('load', function() {
@@ -524,19 +797,34 @@
                 });
 
                 iframe.addEventListener('error', function() {
-                    tryLoad(currentIndex + 1);
+                    if (currentIndex + 1 < currentQueue.length) {
+                        loadFromQueue(currentIndex + 1);
+                        return;
+                    }
+                    showError();
                 });
 
                 overlay.addEventListener('click', function() {
-                    if (!urls.length) {
-                        showError();
-                        return;
-                    }
-                    playerShell.classList.add('is-visible');
-                    watchCard.classList.add('is-loaded');
-                    errorDiv.classList.remove('is-visible');
-                    tryLoad(0);
+                    startPlayback();
                 });
+
+                sourceSelect.addEventListener('change', function() {
+                    saveSelectedSource(selectedSourceValue());
+                    previewSelection();
+                    if (watchCard.classList.contains('is-loaded') || playerShell.classList.contains('is-visible')) {
+                        startPlayback();
+                    }
+                });
+
+                (function restoreSelection() {
+                    renderSourceOptions();
+                    const saved = readSelectedSource();
+                    const hasSavedSource = saved === 'auto' || sources.some(function(source) {
+                        return source && source.key === saved;
+                    });
+                    sourceSelect.value = hasSavedSource ? saved : 'auto';
+                    previewSelection();
+                })();
             })();
             </script>
             {% endif %}
@@ -646,12 +934,6 @@
             <div class="detail-controls movie-detail-actions">
                 {% if entry.trailer %}
                 <a class="btn" href="{{ entry.trailer }}" target="_blank"><i data-lucide="clapperboard"></i>Open Trailer</a>
-                {% endif %}
-                {% if is_yts_movie_category(detail_category) %}
-                <a href="{{ yts_url(detail_title) }}" target="_blank" rel="noopener noreferrer" class="btn-yts btn-yts-detail" title="Search on YTS" aria-label="Search on YTS">
-                    <i class="fa-solid fa-download" aria-hidden="true"></i>
-                    <span>YTS</span>
-                </a>
                 {% endif %}
                 <a class="btn" href="{{ url_for('refresh', scope='films', next=request.full_path if request.query_string else request.path) }}"><i data-lucide="refresh-cw"></i>Refresh Movie Data</a>
             </div>

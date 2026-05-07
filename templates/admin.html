@@ -39,6 +39,14 @@
         <span class="hero-badge">Launcher</span>
         <span>{{ admin_cards|length }} admin areas</span>
     </div>
+    <div style="display:flex; justify-content:flex-end; margin-top:6px;">
+        <form method="post" action="{{ url_for('admin_sync_yts_to_notion') }}" style="margin:0;">
+            <input type="hidden" name="next" value="{{ url_for('admin') }}">
+            <button type="submit" class="btn btn-sm btn-outline-success">
+                <i data-lucide="download"></i>Sync YTS to Notion
+            </button>
+        </form>
+    </div>
     <div class="admin-hub-groups" style="margin-top:18px;">
         {% for group in admin_card_groups %}
         <div class="admin-hub-group">

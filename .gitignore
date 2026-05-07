@@ -27,3 +27,7 @@ exports/
 correction_reports/
 csv_corrections/
 stockfish-windows-x86-64-avx2/
+tmp_*
+*.log
+*.out
+*.err

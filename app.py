@@ -178,12 +178,39 @@ NOTION_BOOK_QUOTES_DATABASE_ID = config_value("NOTION_BOOK_QUOTES_DATABASE_ID", 
 NOTION_BOOK_QUOTES_SOURCE_PAGE_ID = config_value("NOTION_BOOK_QUOTES_SOURCE_PAGE_ID", "")
 NOTION_BOOK_QUOTES_SOURCE_PAGE_TITLE = config_value("NOTION_BOOK_QUOTES_SOURCE_PAGE_TITLE", "مقولات من كتبي")
 TMDB_API_KEY         = config_value("TMDB_API_KEY", "")
+YTS_API_BASE_URL     = config_value("YTS_API_BASE_URL", "https://yts.rs/api/v2")
 VIDSRC_EMBED_URL     = config_value("VIDSRC_EMBED_URL", "https://vsembed.ru/embed")
 VIDSRC_FALLBACK_URLS = [
     "https://vidsrc.me/embed",
     "https://vidsrc.to/embed",
     "https://vidsrc.xyz/embed",
     "https://2embed.org/embed",
+]
+PLAYER_SOURCES = [
+    {
+        "key": "vidsrc",
+        "label": "VidSrc",
+        "movie_url": config_value("PLAYER_SOURCE_VIDSRC_MOVIE_URL", "https://vidsrc.xyz/embed/movie/{tmdb_id}"),
+        "tv_url": config_value("PLAYER_SOURCE_VIDSRC_TV_URL", "https://vidsrc.xyz/embed/tv/{tmdb_id}/{season}/{episode}"),
+        "search_url": config_value("PLAYER_SOURCE_VIDSRC_SEARCH_URL", "https://vidsrc.xyz/embed/search/{title_query}"),
+        "enabled": config_flag("PLAYER_SOURCE_VIDSRC_ENABLED", True),
+    },
+    {
+        "key": "multiembed",
+        "label": "MultiEmbed",
+        "movie_url": config_value("PLAYER_SOURCE_MULTIEMBED_MOVIE_URL", "https://multiembed.mov/?video_id={tmdb_id}&tmdb=1"),
+        "tv_url": config_value("PLAYER_SOURCE_MULTIEMBED_TV_URL", "https://multiembed.mov/embed/tv/{tmdb_id}/{season}/{episode}"),
+        "search_url": "",
+        "enabled": config_flag("PLAYER_SOURCE_MULTIEMBED_ENABLED", False),
+    },
+    {
+        "key": "embedsu",
+        "label": "Embed.su",
+        "movie_url": config_value("PLAYER_SOURCE_EMBEDSU_MOVIE_URL", "https://embed.su/embed/movie/{tmdb_id}"),
+        "tv_url": config_value("PLAYER_SOURCE_EMBEDSU_TV_URL", "https://embed.su/embed/tv/{tmdb_id}/{season}/{episode}"),
+        "search_url": "",
+        "enabled": config_flag("PLAYER_SOURCE_EMBEDSU_ENABLED", False),
+    },
 ]
 NOTION_DIRECTORS_DATABASE_ID = config_value("NOTION_DIRECTORS_DATABASE_ID", "")
 NOTION_DIRECTORS_PARENT_PAGE_ID = config_value("NOTION_DIRECTORS_PARENT_PAGE_ID", "")
@@ -204,6 +231,19 @@ DRAGON_READING_SYNC_BACKFILL_BBC = config_flag("DRAGON_READING_SYNC_BACKFILL_BBC
 DRAGON_READING_SYNC_BBC_BACKFILL_MAX = config_int("DRAGON_READING_SYNC_BBC_BACKFILL_MAX", 12, minimum=0, maximum=50)
 GITHUB_ACTIONS_TOKEN = config_value("GITHUB_ACTIONS_TOKEN", "")
 DRAGON_GITHUB_WEBHOOK_SECRET = config_value("DRAGON_GITHUB_WEBHOOK_SECRET", "")
+YTS_TORRENTS_CACHE_PATH = BASE_DIR / "yts_torrents_cache.json"
+YTS_TORRENTS_CACHE = {}
+YTS_TORRENTS_CACHE_LOADED = False
+YTS_TRACKERS = [
+    "udp://open.demonii.com:1337/announce",
+    "udp://tracker.openbittorrent.com:80",
+    "udp://tracker.coppersurfer.tk:6969",
+    "udp://glotorrents.pw:6969/announce",
+    "udp://tracker.opentrackr.org:1337/announce",
+    "udp://torrent.gresille.org:80/announce",
+    "udp://p4p.arenabg.com:1337",
+    "udp://tracker.leechers-paradise.org:6969",
+]
 READING_SYNC_GITHUB_OWNER = "Dragon0WaTTyler"
 READING_SYNC_GITHUB_REPO = "dragon-dashboard"
 READING_SYNC_GITHUB_WORKFLOW = "sync-reading.yml"
@@ -16029,6 +16069,37 @@ def ensure_tmdb_enrichment_properties():
     return (patch_response.json() or {}).get("properties", properties)
 
 
+def ensure_yts_torrent_properties():
+    response = requests.get(
+        f"https://api.notion.com/v1/databases/{NOTION_DATABASE_ID}",
+        headers=notion_api_headers(),
+        timeout=60
+    )
+    response.raise_for_status()
+    properties = (response.json() or {}).get("properties", {})
+    desired = {
+        "Torrent HD": {"url": {}},
+        "Torrent FHD": {"url": {}},
+        "Magnet HD": {"url": {}},
+        "Magnet FHD": {"url": {}},
+    }
+    missing = {}
+    for name, config in desired.items():
+        current = properties.get(name, {}) or {}
+        if current.get("type") != "url":
+            missing[name] = config
+    if not missing:
+        return properties
+    patch_response = requests.patch(
+        f"https://api.notion.com/v1/databases/{NOTION_DATABASE_ID}",
+        headers=notion_api_headers(),
+        json={"properties": missing},
+        timeout=60
+    )
+    patch_response.raise_for_status()
+    return (patch_response.json() or {}).get("properties", properties)
+
+
 def fetch_all_notion_database_pages(database_id=None):
     target_database_id = database_id or NOTION_DATABASE_ID
     pages = []
@@ -18368,6 +18439,19 @@ def update_notion_page_properties(page_id, properties_payload):
     return response.json() or {}
 
 
+def fetch_notion_page(page_id):
+    page_id = str(page_id or "").strip()
+    if not page_id:
+        return {}
+    response = requests.get(
+        f"https://api.notion.com/v1/pages/{page_id}",
+        headers=notion_api_headers(),
+        timeout=30
+    )
+    response.raise_for_status()
+    return response.json() or {}
+
+
 def register_director_record_in_catalog(director_catalog, record):
     if not isinstance(director_catalog, dict) or not record:
         return record
@@ -20552,6 +20636,10 @@ def notion_movie_page_to_film_row(page, directors_by_page_id=None, genres_by_pag
         "runtime": int(runtime_value) if isinstance(runtime_value, (int, float)) else (str(runtime_value).strip() if runtime_value not in (None, "") else ""),
         "overview": _text("Overview") or _text("Synopsis") or _text("Description"),
         "tmdb_rating": _number("Rating") if _number("Rating") not in (None, "") else "",
+        "torrent_hd": notion_url_value(props.get("Torrent HD")),
+        "torrent_fhd": notion_url_value(props.get("Torrent FHD")),
+        "magnet_hd": notion_url_value(props.get("Magnet HD")),
+        "magnet_fhd": notion_url_value(props.get("Magnet FHD")),
     }
 
 
@@ -21116,6 +21204,420 @@ def yts_url(title):
     return f"https://duckduckgo.com/?q={urllib.parse.quote_plus(query)}"
 
 
+def build_yts_magnet(hash_value, title):
+    hash_text = str(hash_value or "").strip()
+    if not hash_text:
+        return ""
+    encoded_title = urllib.parse.quote(str(title or "").strip())
+    tracker_params = "&".join(f"tr={urllib.parse.quote(tracker)}" for tracker in YTS_TRACKERS)
+    return f"magnet:?xt=urn:btih:{hash_text}&dn={encoded_title}&{tracker_params}"
+
+
+def yts_api_base_urls():
+    configured = str(YTS_API_BASE_URL or "").strip().rstrip("/")
+    candidates = [
+        configured,
+        "https://yts.rs/api/v2",
+        "https://yts.mx/api/v2",
+    ]
+    deduped = []
+    seen = set()
+    for candidate in candidates:
+        if not candidate or candidate in seen:
+            continue
+        seen.add(candidate)
+        deduped.append(candidate)
+    return deduped
+
+
+def _yts_request(params):
+    for base_url in yts_api_base_urls():
+        try:
+            response = requests.get(
+                f"{base_url}/list_movies.json",
+                params=params,
+                timeout=15,
+                headers={"User-Agent": "Dragon/1.0"},
+            )
+            if response.status_code != 200:
+                continue
+            data = response.json()
+            if data.get("status") != "ok":
+                continue
+            return data
+        except Exception:
+            continue
+    return None
+
+
+def _yts_movie_seed_count(movie):
+    best_seed_count = 0
+    for torrent in list((movie or {}).get("torrents", []) or []):
+        try:
+            best_seed_count = max(best_seed_count, int(torrent.get("seeds", 0) or 0))
+        except Exception:
+            continue
+    return best_seed_count
+
+
+def select_best_torrent_url(torrents, quality_preference):
+    preference = str(quality_preference or "").strip().lower()
+    if preference == "hd":
+        targets = ("720p", "720p.bluray", "720p.web")
+    elif preference == "fhd":
+        targets = ("1080p", "1080p.bluray", "1080p.web", "2160p")
+    else:
+        return ""
+
+    best_torrent = None
+    best_seeds = -1
+    for torrent in list(torrents or []):
+        if not isinstance(torrent, dict):
+            continue
+        quality = str(torrent.get("quality", "") or "").strip().lower()
+        torrent_type = str(torrent.get("type", "") or "").strip().lower()
+        quality_key = quality if not torrent_type else f"{quality}.{torrent_type}"
+        if not any(target in quality or target in quality_key for target in targets):
+            continue
+        torrent_url = str(torrent.get("url", "") or "").strip()
+        if not torrent_url:
+            continue
+        try:
+            seeds = int(torrent.get("seeds", 0) or 0)
+        except (TypeError, ValueError):
+            seeds = 0
+        if seeds > best_seeds:
+            best_torrent = torrent
+            best_seeds = seeds
+    return str((best_torrent or {}).get("url", "") or "").strip()
+
+
+def select_best_torrent(torrents, quality_preference):
+    preference = str(quality_preference or "").strip().lower()
+    if preference == "hd":
+        targets = ("720p", "720p.bluray", "720p.web")
+    elif preference == "fhd":
+        targets = ("1080p", "1080p.bluray", "1080p.web", "2160p")
+    else:
+        return {}
+
+    best_torrent = None
+    best_seeds = -1
+    for torrent in list(torrents or []):
+        if not isinstance(torrent, dict):
+            continue
+        quality = str(torrent.get("quality", "") or "").strip().lower()
+        torrent_type = str(torrent.get("type", "") or "").strip().lower()
+        quality_key = quality if not torrent_type else f"{quality}.{torrent_type}"
+        if not any(target in quality or target in quality_key for target in targets):
+            continue
+        try:
+            seeds = int(torrent.get("seeds", 0) or 0)
+        except (TypeError, ValueError):
+            seeds = 0
+        if seeds > best_seeds:
+            best_torrent = torrent
+            best_seeds = seeds
+    return dict(best_torrent or {})
+
+
+def search_yts_by_imdb(imdb_id):
+    imdb_id = str(imdb_id or "").strip()
+    if not imdb_id:
+        return None
+    try:
+        data = _yts_request({"query_term": imdb_id, "limit": 10})
+        movies = data.get("data", {}).get("movies", []) if isinstance(data, dict) else []
+        if not movies:
+            return None
+        best = movies[0]
+        return {
+            "yts_id": best.get("id"),
+            "yts_title": best.get("title", ""),
+            "yts_year": best.get("year"),
+            "yts_url": best.get("url", ""),
+            "torrents": best.get("torrents", []),
+            "imdb_id": imdb_id,
+            "match_method": "imdb_exact",
+        }
+    except Exception:
+        return None
+
+
+def search_yts_by_title_year(title, year):
+    title = str(title or "").strip()
+    year_str = str(year or "").strip()
+    if not title:
+        return None
+    try:
+        data = _yts_request({"query_term": title, "limit": 10})
+        movies = data.get("data", {}).get("movies", []) if isinstance(data, dict) else []
+        if not movies:
+            return None
+
+        wanted_key = normalized_match_key(title)
+        scored = []
+        for movie in movies:
+            score = 0
+            candidate_key = normalized_match_key(movie.get("title", ""))
+            if candidate_key == wanted_key:
+                score += 60
+            elif wanted_key and candidate_key and (wanted_key in candidate_key or candidate_key in wanted_key):
+                score += 35
+            if year_str and str(movie.get("year", "")) == year_str:
+                score += 30
+            if score > 0:
+                scored.append((score, _yts_movie_seed_count(movie), movie))
+
+        if not scored:
+            return None
+
+        scored.sort(key=lambda item: (-item[0], -item[1]))
+        best_score, _, best_movie = scored[0]
+        confidence = "high" if best_score >= 80 else ("medium" if best_score >= 50 else "low")
+        if confidence == "low":
+            return None
+
+        return {
+            "yts_id": best_movie.get("id"),
+            "yts_title": best_movie.get("title", ""),
+            "yts_year": best_movie.get("year"),
+            "yts_url": best_movie.get("url", ""),
+            "torrents": best_movie.get("torrents", []),
+            "imdb_id": best_movie.get("imdb_code", ""),
+            "match_method": f"title_scored_{confidence}",
+            "match_score": best_score,
+        }
+    except Exception:
+        return None
+
+
+def _load_yts_torrents_cache():
+    global YTS_TORRENTS_CACHE, YTS_TORRENTS_CACHE_LOADED
+    if YTS_TORRENTS_CACHE_LOADED:
+        return YTS_TORRENTS_CACHE if isinstance(YTS_TORRENTS_CACHE, dict) else {}
+    try:
+        loaded = load_json_file(YTS_TORRENTS_CACHE_PATH, {})
+    except Exception:
+        loaded = {}
+    YTS_TORRENTS_CACHE = loaded if isinstance(loaded, dict) else {}
+    YTS_TORRENTS_CACHE_LOADED = True
+    return YTS_TORRENTS_CACHE
+
+
+def _save_yts_torrents_cache(cache_data):
+    global YTS_TORRENTS_CACHE, YTS_TORRENTS_CACHE_LOADED
+    YTS_TORRENTS_CACHE = cache_data if isinstance(cache_data, dict) else {}
+    YTS_TORRENTS_CACHE_LOADED = True
+    save_json_file(YTS_TORRENTS_CACHE_PATH, YTS_TORRENTS_CACHE)
+
+
+def fetch_yts_torrents(film, force_refresh=False):
+    if not isinstance(film, dict):
+        return None
+
+    imdb_id = str(film.get("imdb_id", "") or "").strip()
+    if not imdb_id:
+        try:
+            tmdb_data = fetch_tmdb_enrichment(
+                film.get("name", ""),
+                category=film.get("category", ""),
+                year=film.get("year", ""),
+            )
+            if tmdb_data and tmdb_data.get("tmdb_id"):
+                imdb_id = str(fetch_tmdb_imdb_id(tmdb_data["tmdb_id"]) or "").strip()
+        except Exception:
+            imdb_id = ""
+
+    if imdb_id:
+        cache_key = f"imdb:{imdb_id}"
+    else:
+        title_key = normalized_match_key(film.get("name", ""))
+        year_key = normalize_year_value(film.get("year", ""))
+        cache_key = f"title:{title_key}:{year_key}"
+
+    cache_data = _load_yts_torrents_cache()
+    if not force_refresh and cache_key in cache_data:
+        entry = cache_data[cache_key]
+        if not is_cache_entry_stale({"updated_at": entry.get("fetched_at", "")}, max_age_seconds=86400 * 7):
+            return entry
+
+    result = None
+    if imdb_id:
+        result = search_yts_by_imdb(imdb_id)
+    if not result:
+        result = search_yts_by_title_year(film.get("name", ""), film.get("year", ""))
+    if not result:
+        return None
+
+    enriched_torrents = []
+    for torrent in list(result.get("torrents", []) or []):
+        hash_value = str(torrent.get("hash", "") or "").strip()
+        torrent_url = str(torrent.get("url", "") or "").strip()
+        if not hash_value and not torrent_url:
+            continue
+        enriched_torrents.append({
+            "hash": hash_value,
+            "quality": torrent.get("quality", ""),
+            "type": torrent.get("type", ""),
+            "seeds": torrent.get("seeds", 0),
+            "peers": torrent.get("peers", 0),
+            "size": torrent.get("size", ""),
+            "size_bytes": torrent.get("size_bytes", 0),
+            "magnet": build_yts_magnet(hash_value, film.get("name", "")) if hash_value else "",
+            "url": torrent_url,
+        })
+
+    result["torrents"] = enriched_torrents
+    result["fetched_at"] = current_timestamp()
+    cache_data[cache_key] = result
+    _save_yts_torrents_cache(cache_data)
+    return result
+
+
+def sync_yts_to_notion():
+    if not NOTION_TOKEN or not NOTION_DATABASE_ID:
+        raise RuntimeError("Missing NOTION_TOKEN or NOTION_DATABASE_ID.")
+
+    ensure_yts_torrent_properties()
+    updated_films = 0
+    hd_count = 0
+    fhd_count = 0
+    magnet_hd_count = 0
+    magnet_fhd_count = 0
+    for page in fetch_all_notion_database_pages():
+        props = (page or {}).get("properties", {}) or {}
+        page_id = str(page.get("id") or "").strip()
+        film = {
+            "name": notion_property_display_value(props.get("Name")),
+            "category": notion_property_display_value(props.get("category")),
+            "year": notion_property_display_value(props.get("Year")),
+        }
+        if not page_id or not film.get("name"):
+            continue
+
+        yts_data = fetch_yts_torrents(film, force_refresh=True)
+        torrents = list((yts_data or {}).get("torrents", []) or [])
+        hd_torrent = select_best_torrent(torrents, "hd")
+        fhd_torrent = select_best_torrent(torrents, "fhd")
+        hd_url = str(hd_torrent.get("url", "") or "").strip()
+        fhd_url = str(fhd_torrent.get("url", "") or "").strip()
+        magnet_hd = str(hd_torrent.get("magnet", "") or "").strip() or build_yts_magnet(hd_torrent.get("hash"), film.get("name", ""))
+        magnet_fhd = str(fhd_torrent.get("magnet", "") or "").strip() or build_yts_magnet(fhd_torrent.get("hash"), film.get("name", ""))
+        sync_log_line = (
+            f"[sync] {film.get('name', '')}: {len(torrents)} torrents -> "
+            f"HD={hd_url or 'None'}, FHD={fhd_url or 'None'}, "
+            f"Magnet HD={magnet_hd or 'None'}, Magnet FHD={magnet_fhd or 'None'}"
+        )
+        print(sync_log_line.encode("ascii", "backslashreplace").decode("ascii"))
+        payload = {
+            "Torrent HD": {"url": hd_url or None},
+            "Torrent FHD": {"url": fhd_url or None},
+            "Magnet HD": {"url": magnet_hd or None},
+            "Magnet FHD": {"url": magnet_fhd or None},
+        }
+        update_notion_page_properties(page_id, payload)
+        if hd_url:
+            hd_count += 1
+        if fhd_url:
+            fhd_count += 1
+        if magnet_hd:
+            magnet_hd_count += 1
+        if magnet_fhd:
+            magnet_fhd_count += 1
+        updated_films += 1
+
+    clear_runtime_cache()
+    refresh_film_cache_from_source()
+    return {
+        "updated_films": updated_films,
+        "hd_links": hd_count,
+        "fhd_links": fhd_count,
+        "magnet_hd_count": magnet_hd_count,
+        "magnet_fhd_count": magnet_fhd_count,
+    }
+
+
+def movie_player_sources(film, tmdb_data=None):
+    """Return enabled movie player sources with resolved embed URLs."""
+    if not isinstance(film, dict):
+        film = {}
+
+    resolved_tmdb = tmdb_data if isinstance(tmdb_data, dict) else None
+    if resolved_tmdb is None:
+        try:
+            resolved_tmdb = fetch_tmdb_enrichment(
+                film.get("name", "") or film.get("title", ""),
+                category=film.get("category", ""),
+                year=film.get("year", ""),
+            )
+        except Exception:
+            resolved_tmdb = None
+
+    title = str(film.get("name") or film.get("title") or "").strip()
+    title_query = urllib.parse.quote(title) if title else ""
+    tmdb_id = ""
+    if isinstance(resolved_tmdb, dict):
+        tmdb_id = str(resolved_tmdb.get("tmdb_id") or "").strip()
+
+    tmdb_type = str((resolved_tmdb or {}).get("tmdb_type") or "").strip().lower()
+    is_tv = tmdb_type in {"tv", "tv_season", "tv_episode"}
+    season = str((resolved_tmdb or {}).get("season_number") or film.get("season_number") or "").strip()
+    episode = str((resolved_tmdb or {}).get("episode_number") or film.get("episode_number") or "").strip()
+
+    resolved = []
+    vidsrc_urls = get_vidsrc_embed_urls(film)
+    if vidsrc_urls:
+        resolved.append({
+            "key": "vidsrc",
+            "label": "VidSrc",
+            "url": vidsrc_urls[0],
+            "urls": vidsrc_urls,
+        })
+
+    for source in PLAYER_SOURCES:
+        if not source.get("enabled"):
+            continue
+        source_key = str(source.get("key") or "").strip()
+        if source_key == "vidsrc":
+            continue
+
+        url = ""
+        if tmdb_id and is_tv and source.get("tv_url") and season and episode:
+            url = str(source.get("tv_url") or "").format(
+                tmdb_id=tmdb_id,
+                season=season,
+                episode=episode,
+                title_query=title_query,
+            )
+        elif tmdb_id and source.get("movie_url"):
+            url = str(source.get("movie_url") or "").format(
+                tmdb_id=tmdb_id,
+                season=season,
+                episode=episode,
+                title_query=title_query,
+            )
+        elif title_query and source.get("search_url"):
+            url = str(source.get("search_url") or "").format(
+                tmdb_id=tmdb_id,
+                season=season,
+                episode=episode,
+                title_query=title_query,
+            )
+
+        if not url:
+            continue
+
+        resolved.append({
+            "key": source_key,
+            "label": str(source.get("label") or "").strip(),
+            "url": url,
+            "urls": [url],
+        })
+
+    return resolved
+
+
 def get_vidsrc_embed_urls(film):
     """Return ordered embed URLs for the film, starting with the primary host."""
     if not isinstance(film, dict):
@@ -21165,6 +21667,10 @@ def get_vidsrc_embed_url(film):
 
 app.jinja_env.globals["vidsrc_embed_urls"] = get_vidsrc_embed_urls
 app.jinja_env.globals["vidsrc_embed_url"] = get_vidsrc_embed_url
+app.jinja_env.globals["extra_torrent_url"] = lambda film: f"https://extra-torrent.com/{slugify(film.get('name', ''))}-{film.get('year', '')}/" if film.get('name') else "#"
+app.jinja_env.globals["movie_player_sources"] = movie_player_sources
+app.jinja_env.globals["fetch_yts_torrents"] = fetch_yts_torrents
+app.jinja_env.globals["build_yts_magnet"] = build_yts_magnet
 
 def slugify(value):
     text = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
@@ -21366,6 +21872,43 @@ def build_film_entry(film):
             genre_copy["detail_url"] = ""
         genre_entries.append(genre_copy)
     item["genre_entries"] = genre_entries
+    return item
+
+
+def ensure_film_torrent_fields(detail, force_refresh=False):
+    item = dict(detail) if isinstance(detail, dict) else {}
+    if not item:
+        return item
+    has_hd = bool(str(item.get("torrent_hd", "") or "").strip())
+    has_fhd = bool(str(item.get("torrent_fhd", "") or "").strip())
+    has_magnet_hd = bool(str(item.get("magnet_hd", "") or "").strip())
+    has_magnet_fhd = bool(str(item.get("magnet_fhd", "") or "").strip())
+    if not force_refresh and ((has_hd or has_fhd) and (has_magnet_hd or has_magnet_fhd)):
+        return item
+    page_id = str(item.get("notion_page_id", "") or "").strip()
+    if not page_id:
+        return item
+    try:
+        live_page = fetch_notion_page(page_id)
+        live_row = notion_movie_page_to_film_row(live_page)
+    except requests.RequestException:
+        return item
+    except RuntimeError:
+        return item
+    if not isinstance(live_row, dict) or not live_row:
+        return item
+    live_hd = str(live_row.get("torrent_hd", "") or "").strip()
+    live_fhd = str(live_row.get("torrent_fhd", "") or "").strip()
+    live_magnet_hd = str(live_row.get("magnet_hd", "") or "").strip()
+    live_magnet_fhd = str(live_row.get("magnet_fhd", "") or "").strip()
+    if live_hd:
+        item["torrent_hd"] = live_hd
+    if live_fhd:
+        item["torrent_fhd"] = live_fhd
+    if live_magnet_hd:
+        item["magnet_hd"] = live_magnet_hd
+    if live_magnet_fhd:
+        item["magnet_fhd"] = live_magnet_fhd
     return item
 
 
@@ -23834,12 +24377,13 @@ def _resolve_pockettube_group_detail_context(entry_id):
                 return _build_pockettube_group_detail_context(item, feed_context)
     return None
 
-def get_video_detail_context(entry_id):
+def get_video_detail_context(entry_id, force_refresh=False):
     if entry_id.startswith("film-"):
-        films = [build_film_entry(film) for film in fetch_library_films_for_flagged_paths()]
+        films = [build_film_entry(film) for film in fetch_library_films_for_flagged_paths(force_refresh=force_refresh)]
         detail = next((film for film in films if film["entry_id"] == entry_id), None)
         if not detail:
             return None
+        detail = ensure_film_torrent_fields(detail, force_refresh=force_refresh)
         top_billed_cast = []
         try:
             tmdb_data = fetch_tmdb_enrichment(
@@ -23877,6 +24421,8 @@ def get_video_detail_context(entry_id):
             "entry": detail,
             "entry_type": "film",
             "player_video_id": detail.get("video_id", ""),
+            "player_sources": movie_player_sources(detail, tmdb_data),
+            "player_fallback_urls": get_vidsrc_embed_urls(detail),
             "tmdb_data": tmdb_data,
             "top_billed_cast": top_billed_cast,
             "related_entries": related,
@@ -26377,6 +26923,19 @@ def admin_review_movies():
     )
 
 
+@app.route("/admin/sync-yts-to-notion", methods=["POST"])
+def admin_sync_yts_to_notion():
+    if dragon_auth_enabled() and not dragon_is_authenticated():
+        return redirect(url_for("login", next=request.full_path if request.query_string else request.path))
+    next_url = request.form.get("next") or url_for("admin")
+    try:
+        summary = sync_yts_to_notion()
+        success_message = f"YTS sync finished. Updated {summary['updated_films']} films."
+        return redirect(append_query_param(next_url, success=success_message))
+    except Exception as exc:
+        return redirect(append_query_param(next_url, error=f"YTS sync failed: {exc}"))
+
+
 @app.route("/movies-final-review")
 def movies_final_review():
     review_payload = build_targeted_movie_review()
@@ -26521,7 +27080,8 @@ def movies_corrections_apply():
 
 @app.route("/video/<entry_id>")
 def video_detail(entry_id):
-    context = get_video_detail_context(entry_id)
+    force_refresh = str(request.args.get("refresh", "") or "").strip().lower() in {"1", "true", "yes", "on", "force"}
+    context = get_video_detail_context(entry_id, force_refresh=force_refresh)
     if not context:
         missing_entry = {
             "entry_id": entry_id,
