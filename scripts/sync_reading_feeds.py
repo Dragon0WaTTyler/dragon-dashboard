@@ -306,6 +306,59 @@ def run_sync(source_id: str = "", source_name: str = "", data_path: str = "", dr
     return 0
 
 
+def run_source_probe(source_id: str = "", source_name: str = "", data_path: str = "") -> int:
+    configured_data_path = configure_reading_data_path(data_path)
+    resolved_source_id = resolve_source_id(source_id=source_id, source_name=source_name)
+    if source_name and not resolved_source_id:
+        safe_print(f"Reading RSS probe aborted: no source matched name={source_name!r}")
+        return 1
+    if not resolved_source_id:
+        safe_print("Reading RSS probe aborted: source-id or source-name is required.")
+        return 1
+    data = dragon_app.load_reading_data()
+    source = next(
+        (
+            item
+            for item in list(data.get("sources", []) or [])
+            if isinstance(item, dict) and str(item.get("id", "") or "").strip() == resolved_source_id
+        ),
+        None,
+    )
+    if not source:
+        safe_print(f"Reading RSS probe aborted: source not found id={resolved_source_id!r}")
+        return 1
+    safe_print(
+        "Reading RSS probe started | "
+        f"source_id={resolved_source_id} | "
+        f"data_path={(configured_data_path or dragon_app.READING_DATA_PATH)}"
+    )
+    try:
+        result = dragon_app.fetch_reading_feed(source)
+    except Exception as exc:
+        safe_print(f"Reading RSS probe crashed: {type(exc).__name__}: {exc}")
+        safe_print(traceback.format_exc().rstrip())
+        return 1
+    display_result = dict(result or {})
+    display_result.setdefault("name", str(source.get("name", "") or "Unknown Source"))
+    display_result["count"] = int(display_result.get("raw_count", 0) or 0)
+    display_result["normalized"] = int(display_result.get("normalized_count", 0) or 0)
+    display_result["imported"] = 0
+    display_result["already_existing"] = 0
+    display_result["missing_key"] = 0
+    display_result["status"] = "ok" if bool(display_result.get("ok", False)) else str(display_result.get("status", "") or "error")
+    safe_print(f"Reading RSS probe result: {format_source_line(display_result)}")
+    safe_print(
+        "Probe summary | "
+        f"status={str(display_result.get('status', '') or 'unknown').strip().lower()} | "
+        f"fetched={int(display_result.get('count', 0) or 0)} | "
+        f"imported={int(display_result.get('imported', 0) or 0)} | "
+        f"status_code={int(display_result.get('status_code', 0) or 0)} | "
+        f"resolved_url={str(display_result.get('resolved_url', '') or '').strip() or 'n/a'} | "
+        f"tried_urls={' -> '.join([str(url or '').strip() for url in (display_result.get('tried_urls', []) or []) if str(url or '').strip()]) or 'n/a'}"
+    )
+    return 0
+
+
 def main() -> int:
     _install_signal_handlers()
     parser = argparse.ArgumentParser(description="Sync Dragon reading RSS sources into reading_data.json.")
@@ -313,8 +366,15 @@ def main() -> int:
     parser.add_argument("--source-name", default="", help="Optional specific reading source name to sync.")
     parser.add_argument("--data-path", default="", help="Optional alternate reading_data.json path for safe testing.")
     parser.add_argument("--dry-run", action="store_true", help="Copy the reading data to a temporary file before syncing.")
+    parser.add_argument("--inspect-source", action="store_true", help="Fetch a source feed and print diagnostics without saving anything.")
     args = parser.parse_args()
     try:
+        if bool(args.inspect_source):
+            return run_source_probe(
+                source_id=str(args.source_id or "").strip(),
+                source_name=str(args.source_name or "").strip(),
+                data_path=str(args.data_path or "").strip(),
+            )
         return run_sync(
             source_id=str(args.source_id or "").strip(),
             source_name=str(args.source_name or "").strip(),

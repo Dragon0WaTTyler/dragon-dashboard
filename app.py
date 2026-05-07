@@ -9807,7 +9807,7 @@ def reading_source_extra_fallback_urls(source):
         if normalized and normalized not in fallback_urls and normalized != primary_url:
             fallback_urls.append(normalized)
 
-    if "morocco world news" in name_key:
+    if "morocco world news" in name_key and "moroccoworldnews.com" in url:
         _add("https://www.moroccoworldnews.com/rss")
         _add("https://www.moroccoworldnews.com/feed/")
         _add("https://www.moroccoworldnews.com/feed")
