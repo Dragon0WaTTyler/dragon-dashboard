@@ -162,6 +162,9 @@ app.config.update(
 if not IS_PRODUCTION:
     os.environ.setdefault("OAUTHLIB_INSECURE_TRANSPORT", "1")
 
+READING_LOCAL_SYNC_DISABLED_MESSAGE = "Local RSS sync is disabled online. Use GitHub Actions sync."
+READING_GITHUB_SYNC_ONLINE_MESSAGE = "Reading sync is handled by GitHub Actions online."
+
 # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 #  CONFIGURATION
 # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
@@ -9968,6 +9971,32 @@ def reading_source_is_blocked(source):
     return "http 403" in error or "http 403" in message
 
 
+def reading_source_sync_looks_proxy_blocked(result):
+    result = result if isinstance(result, dict) else {}
+    status = str(result.get("status", "") or "").strip().lower()
+    status_code = int(result.get("status_code", 0) or 0)
+    error = str(result.get("error", "") or "").strip().lower()
+    reason = str(result.get("reason", "") or "").strip().lower()
+    timeout_reason = str(result.get("timeout_reason", "") or "").strip().lower()
+    feed_kind = str(result.get("feed_kind", "") or "").strip().lower()
+    blob = " ".join((status, error, reason, timeout_reason, feed_kind))
+    if status not in {"error", "blocked_source"}:
+        return False
+    if status_code == 403:
+        return True
+    return any(token in blob for token in ("proxyerror", "proxy error", "http 403", "403 forbidden", "forbidden"))
+
+
+def reading_sync_should_preserve_snapshot(source_results, active_source_count, imported_total=0):
+    source_results = list(source_results or [])
+    active_source_count = int(active_source_count or 0)
+    if not active_source_count or imported_total > 0:
+        return False
+    if len(source_results) != active_source_count:
+        return False
+    return all(reading_source_sync_looks_proxy_blocked(result) for result in source_results)
+
+
 def reading_source_sync_reason(source):
     source = source if isinstance(source, dict) else {}
     status = str(source.get("last_sync_status", "") or "").strip().lower()
@@ -10919,7 +10948,7 @@ def fetch_reading_feed(source):
 
 def sync_reading_sources(source_id=""):
     sync_started_at = time.monotonic()
-    data = load_reading_data()
+    data = copy.deepcopy(load_reading_data())
     source_id = str(source_id or "").strip()
     extract_full_content = bool(DRAGON_READING_SYNC_EXTRACT_FULL_CONTENT)
     extract_max_articles = int(DRAGON_READING_SYNC_EXTRACT_MAX_ARTICLES or 0)
@@ -11458,7 +11487,22 @@ def sync_reading_sources(source_id=""):
                 f"failed {extraction_summary['bbc_backfill_failed']}, "
                 f"skipped recent failures {extraction_summary['bbc_backfill_skipped_recent_failure']}"
             )
-    saved_data = save_reading_data(data, apply_retention=True, retention_reason="sync")
+    preserve_snapshot = reading_sync_should_preserve_snapshot(source_results, len(target_sources), imported_total=imported_total)
+    if preserve_snapshot:
+        print(
+            "[reading-sync] preserve snapshot | "
+            f"active_sources={len(target_sources)} | "
+            f"imported_total={imported_total} | "
+            "reason=proxy_or_403_failures"
+        )
+        saved_data = load_reading_data()
+        saved_data = copy.deepcopy(saved_data) if isinstance(saved_data, dict) else default_reading_data()
+        saved_data["last_sync_message"] = (
+            f"Proxy/403 failures from all active sources; keeping the existing snapshot unchanged. "
+            f"{READING_GITHUB_SYNC_ONLINE_MESSAGE}"
+        )
+    else:
+        saved_data = save_reading_data(data, apply_retention=True, retention_reason="sync")
     total_elapsed = time.monotonic() - sync_started_at
     failed_source_count = sum(1 for item in source_results if str(item.get("status", "")).strip().lower() in {"error", "blocked_source"})
     print(
@@ -12656,6 +12700,8 @@ def build_reading_admin_context():
         "reading_rss_warning_count": health_counts.get("warning", 0),
         "reading_rss_failing_count": health_counts.get("failing", 0),
         "reading_rss_inactive_count": health_counts.get("paused", 0),
+        "reading_sync_online_only": IS_PRODUCTION,
+        "reading_online_sync_note": "Online sync runs through GitHub Actions. Local RSS fetching is disabled on PythonAnywhere.",
         "reading_source_entry_count": source_entry_count,
         "reading_category_options": [(category, reading_category_label(category)) for category in READING_CATEGORIES],
         "reading_summary": {
@@ -15180,6 +15226,8 @@ def handle_admin_action(admin_data, form):
 
     if action == "reading_source_sync":
         source_id = str(form.get("source_id", "") or "").strip()
+        if IS_PRODUCTION:
+            raise ValueError(READING_LOCAL_SYNC_DISABLED_MESSAGE)
         result = sync_reading_sources(source_id=source_id)
         imported_total = int(result.get("imported_total", 0) or 0)
         active_source_count = int(result.get("active_source_count", 0) or 0)
@@ -15191,6 +15239,16 @@ def handle_admin_action(admin_data, form):
         return result.get("last_sync_message", f"Synced {imported_total} new item(s).")
 
     if action == "reading_sync_all":
+        if IS_PRODUCTION:
+            payload, status_code = trigger_reading_github_actions_sync()
+            if status_code != 200:
+                raise ValueError(str(payload.get("error", READING_GITHUB_SYNC_ONLINE_MESSAGE)) or READING_GITHUB_SYNC_ONLINE_MESSAGE)
+            status = str(payload.get("status", "") or "").strip().lower()
+            if status == "already_running":
+                return "Sync already running"
+            if status == "started":
+                return "GitHub Reading sync started"
+            raise ValueError(READING_GITHUB_SYNC_ONLINE_MESSAGE)
         result = sync_reading_sources()
         return result.get("last_sync_message", "Synced reading sources.")
 
@@ -27095,6 +27153,49 @@ def _reading_github_webhook_secret_valid(request_secret):
     return secrets.compare_digest(provided_secret, expected_secret)
 
 
+def trigger_reading_github_actions_sync():
+    headers = _reading_github_actions_headers()
+    if not headers:
+        return {"ok": False, "error": "Missing GITHUB_ACTIONS_TOKEN."}, 500
+
+    with READING_SYNC_TRIGGER_LOCK:
+        try:
+            _, status_payload = _reading_github_actions_latest_run()
+        except requests.RequestException as exc:
+            app.logger.warning("reading_trigger_sync lookup_failed: %s", exc)
+            return {"ok": False, "error": "Could not check the latest Reading workflow run."}, 502
+        except ValueError as exc:
+            app.logger.warning("reading_trigger_sync invalid_json_on_lookup: %s", exc)
+            return {"ok": False, "error": "Could not check the latest Reading workflow run."}, 502
+        except RuntimeError as exc:
+            app.logger.warning("reading_trigger_sync runtime_error_on_lookup: %s", exc)
+            return {"ok": False, "error": "Could not check the latest Reading workflow run."}, 502
+
+        if status_payload.get("status") in {"queued", "in_progress"}:
+            return {"status": "already_running"}, 200
+
+        try:
+            response = requests.post(
+                _reading_github_actions_dispatch_url(),
+                headers=headers,
+                json={"ref": READING_SYNC_GITHUB_BRANCH},
+                timeout=10,
+            )
+        except requests.RequestException as exc:
+            app.logger.warning("reading_trigger_sync dispatch_failed: %s", exc)
+            return {"ok": False, "error": "Could not trigger the Reading workflow."}, 502
+
+        if response.status_code != 204:
+            app.logger.warning(
+                "reading_trigger_sync dispatch_rejected status=%s body=%s",
+                response.status_code,
+                getattr(response, "text", "")[:500],
+            )
+            return {"ok": False, "error": "GitHub rejected the workflow dispatch request."}, 502
+
+    return {"status": "started"}, 200
+
+
 def _reading_repo_index_lock_path():
     return BASE_DIR / ".git" / "index.lock"
 
@@ -27203,46 +27304,8 @@ def reading_sync_status():
 
 @app.route("/reading/trigger-sync", methods=["POST"])
 def reading_trigger_sync():
-    headers = _reading_github_actions_headers()
-    if not headers:
-        return jsonify({"ok": False, "error": "Missing GITHUB_ACTIONS_TOKEN."}), 500
-
-    with READING_SYNC_TRIGGER_LOCK:
-        try:
-            _, status_payload = _reading_github_actions_latest_run()
-        except requests.RequestException as exc:
-            app.logger.warning("reading_trigger_sync lookup_failed: %s", exc)
-            return jsonify({"ok": False, "error": "Could not check the latest Reading workflow run."}), 502
-        except ValueError as exc:
-            app.logger.warning("reading_trigger_sync invalid_json_on_lookup: %s", exc)
-            return jsonify({"ok": False, "error": "Could not check the latest Reading workflow run."}), 502
-        except RuntimeError as exc:
-            app.logger.warning("reading_trigger_sync runtime_error_on_lookup: %s", exc)
-            return jsonify({"ok": False, "error": "Could not check the latest Reading workflow run."}), 502
-
-        if status_payload.get("status") in {"queued", "in_progress"}:
-            return jsonify({"status": "already_running"})
-
-        try:
-            response = requests.post(
-                _reading_github_actions_dispatch_url(),
-                headers=headers,
-                json={"ref": READING_SYNC_GITHUB_BRANCH},
-                timeout=10,
-            )
-        except requests.RequestException as exc:
-            app.logger.warning("reading_trigger_sync dispatch_failed: %s", exc)
-            return jsonify({"ok": False, "error": "Could not trigger the Reading workflow."}), 502
-
-        if response.status_code != 204:
-            app.logger.warning(
-                "reading_trigger_sync dispatch_rejected status=%s body=%s",
-                response.status_code,
-                getattr(response, "text", "")[:500],
-            )
-            return jsonify({"ok": False, "error": "GitHub rejected the workflow dispatch request."}), 502
-
-    return jsonify({"status": "started"})
+    payload, status_code = trigger_reading_github_actions_sync()
+    return jsonify(payload), status_code
 
 
 @app.route("/reading/github-snapshot-updated", methods=["POST"])
@@ -27581,6 +27644,8 @@ def reading_source_remove(source_id):
 @app.route("/reading/sync", methods=["POST"])
 def reading_sync():
     next_url = str(request.form.get("next", "") or url_for("reading")).strip() or url_for("reading")
+    if IS_PRODUCTION:
+        return jsonify({"ok": False, "error": READING_LOCAL_SYNC_DISABLED_MESSAGE}), 403
     source_id = str(request.form.get("source_id", "") or "").strip()
     result = sync_reading_sources(source_id=source_id)
     imported_total = int(result.get("imported_total", 0) or 0)

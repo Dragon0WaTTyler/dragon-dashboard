@@ -285,11 +285,22 @@
                 <button type="button" class="reading-admin-source-filter" data-filter="inactive" aria-pressed="false">Inactive</button>
             </div>
         </div>
+        {% if reading_admin.reading_sync_online_only %}
+        <div style="display:grid;gap:8px;justify-items:end;margin:0;">
+            <form method="post" style="margin:0;" data-reading-admin-sync-form>
+                <input type="hidden" name="action" value="reading_sync_all">
+                <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
+                <button type="submit" class="btn" id="reading-admin-sync-button" data-default-label="Sync All" data-loading-label="Starting sync..."><i data-lucide="refresh-cw"></i>Sync All</button>
+            </form>
+            <div class="muted" id="reading-admin-sync-message" style="max-width:280px;text-align:right;">{{ reading_admin.reading_online_sync_note }}</div>
+        </div>
+        {% else %}
         <form method="post" style="margin:0;">
             <input type="hidden" name="action" value="reading_sync_all">
             <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
             <button type="submit" class="btn"><i data-lucide="refresh-cw"></i>Sync All</button>
         </form>
+        {% endif %}
     </div>
 
     <form method="post" class="reading-admin-source-form">
@@ -340,12 +351,16 @@
                     </div>
                 </div>
                 <div class="reading-admin-source-actions">
+                    {% if reading_admin.reading_sync_online_only %}
+                    <span class="reading-admin-source-pill is-paused">Retry disabled online</span>
+                    {% else %}
                     <form method="post">
                         <input type="hidden" name="action" value="reading_source_sync">
                         <input type="hidden" name="source_id" value="{{ source.id }}">
                         <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
                         <button type="submit" class="btn"><i data-lucide="refresh-cw"></i>Retry</button>
                     </form>
+                    {% endif %}
                     {% if source.successful_url or source.last_successful_url %}
                     <form method="post">
                         <input type="hidden" name="action" value="reading_source_use_successful_url">
@@ -630,5 +645,120 @@
     applyFilter('all');
 })();
 </script>
+{% if reading_admin.reading_sync_online_only %}
+<script>
+(function () {
+    var form = document.querySelector('[data-reading-admin-sync-form]');
+    var button = document.getElementById('reading-admin-sync-button');
+    var message = document.getElementById('reading-admin-sync-message');
+    if (!form || !button || !message) {
+        return;
+    }
+
+    var triggerUrl = "{{ url_for('reading_trigger_sync') }}";
+    var statusUrl = "{{ url_for('reading_sync_status') }}";
+    var defaultLabel = button.dataset.defaultLabel || 'Sync All';
+    var loadingLabel = button.dataset.loadingLabel || 'Starting sync...';
+    var pollingTimer = null;
+    var triggerStartedAt = 0;
+    var pollAttempts = 0;
+    var maxPollAttempts = 90;
+
+    function setButtonState(isLoading) {
+        button.disabled = isLoading;
+        button.innerHTML = isLoading
+            ? '<i data-lucide="refresh-cw"></i>' + loadingLabel
+            : '<i data-lucide="refresh-cw"></i>' + defaultLabel;
+        if (window.lucide && typeof window.lucide.createIcons === 'function') {
+            window.lucide.createIcons();
+        }
+    }
+
+    function schedulePoll() {
+        if (pollAttempts >= maxPollAttempts) {
+            return;
+        }
+        pollingTimer = window.setTimeout(pollStatus, 10000);
+    }
+
+    async function pollStatus() {
+        pollAttempts += 1;
+        try {
+            var response = await fetch(statusUrl, {
+                method: 'GET',
+                headers: { 'Accept': 'application/json' },
+                cache: 'no-store',
+            });
+            if (!response.ok) {
+                schedulePoll();
+                return;
+            }
+            var payload = await response.json();
+            var updatedAtMs = payload && payload.updated_at ? Date.parse(payload.updated_at) : NaN;
+            var runVisibleAfterTrigger = Boolean(payload && payload.run_id) && (!Number.isFinite(updatedAtMs) || updatedAtMs >= triggerStartedAt - 2000);
+
+            if ((payload.status === 'completed' || payload.status === 'failed') && runVisibleAfterTrigger) {
+                window.location.reload();
+                return;
+            }
+            if (payload.status === 'queued' || payload.status === 'in_progress' || !runVisibleAfterTrigger) {
+                schedulePoll();
+                return;
+            }
+            schedulePoll();
+        } catch (error) {
+            schedulePoll();
+        }
+    }
+
+    form.addEventListener('submit', async function (event) {
+        event.preventDefault();
+        if (button.disabled) {
+            return;
+        }
+
+        if (pollingTimer) {
+            window.clearTimeout(pollingTimer);
+            pollingTimer = null;
+        }
+
+        triggerStartedAt = Date.now();
+        pollAttempts = 0;
+        message.textContent = loadingLabel;
+        setButtonState(true);
+
+        try {
+            var response = await fetch(triggerUrl, {
+                method: 'POST',
+                headers: { 'Accept': 'application/json' },
+                cache: 'no-store',
+            });
+            var payload = await response.json().catch(function () { return {}; });
+            if (!response.ok) {
+                message.textContent = payload.error || 'Reading sync is handled by GitHub Actions online.';
+                setButtonState(false);
+                return;
+            }
+            if (payload.status === 'already_running') {
+                message.textContent = 'Sync already running';
+                setButtonState(false);
+                return;
+            }
+            if (payload.status === 'started') {
+                message.textContent = 'GitHub Reading sync started';
+                setButtonState(false);
+                schedulePoll();
+                return;
+            }
+            message.textContent = 'Reading sync is handled by GitHub Actions online.';
+            setButtonState(false);
+        } catch (error) {
+            message.textContent = 'Reading sync is handled by GitHub Actions online.';
+            setButtonState(false);
+        }
+    });
+})();
+</script>
+{% endif %}
 {% endif %}
 {% endblock %}
