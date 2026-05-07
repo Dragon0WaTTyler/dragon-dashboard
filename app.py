@@ -21328,12 +21328,12 @@ def build_yts_download_url(hash_value):
 
 
 def build_yts_magnet(hash_value, title):
-    hash_text = str(hash_value or "").strip()
-    if not hash_text:
+    hash_value = str(hash_value or "").strip()
+    if not hash_value:
         return ""
-    encoded_title = urllib.parse.quote(str(title or "").strip())
-    tracker_params = "&".join(f"tr={urllib.parse.quote(tracker)}" for tracker in YTS_TRACKERS)
-    return f"magnet:?xt=urn:btih:{hash_text}&dn={encoded_title}&{tracker_params}"
+    encoded_title = urllib.parse.quote(str(title or "").strip(), safe="")
+    tracker_params = "&".join(f"tr={urllib.parse.quote(tracker, safe='')}" for tracker in YTS_TRACKERS)
+    return f"magnet:?xt=urn:btih:{hash_value}&dn={encoded_title}&{tracker_params}"
 
 
 def movie_download_link_values(movie):
@@ -22020,6 +22020,70 @@ def sync_yts_to_notion():
         "magnet_fhd_count": magnet_fhd_count,
         "films_without_links": films_without_links,
         "films_without_links_count": len(films_without_links),
+    }
+
+
+def sync_yts_magnets_only():
+    if not NOTION_TOKEN or not NOTION_DATABASE_ID:
+        raise RuntimeError("Missing NOTION_TOKEN or NOTION_DATABASE_ID.")
+
+    ensure_yts_torrent_properties()
+    updated_films = 0
+    magnet_hd_count = 0
+    magnet_fhd_count = 0
+
+    for page in fetch_all_notion_database_pages():
+        props = (page or {}).get("properties", {}) or {}
+        page_id = str(page.get("id") or "").strip()
+        film = {
+            "name": notion_property_display_value(props.get("Name")),
+            "category": notion_property_display_value(props.get("category")),
+            "year": notion_property_display_value(props.get("Year")),
+            "imdb_id": notion_property_display_value(props.get("IMDb ID")) or notion_property_display_value(props.get("IMDB ID")),
+        }
+        if not page_id or not film.get("name"):
+            continue
+        if is_yts_tv_series_category(film):
+            print(safe_console_text(f"[sync-magnets] Skipping TV series for YTS: {film.get('name', '')} [{film.get('category', '')}]"))
+            continue
+
+        yts_data = fetch_yts_torrents(film, force_refresh=True)
+        torrents = list((yts_data or {}).get("torrents", []) or [])
+        hd_torrent = select_best_torrent(torrents, "hd")
+        fhd_torrent = select_best_torrent(torrents, "fhd")
+        magnet_hd = build_yts_magnet(hd_torrent.get("hash"), film.get("name", ""))
+        magnet_fhd = build_yts_magnet(fhd_torrent.get("hash"), film.get("name", ""))
+
+        payload = {}
+        if magnet_hd:
+            payload["Magnet HD"] = {"url": magnet_hd}
+        if magnet_fhd:
+            payload["Magnet FHD"] = {"url": magnet_fhd}
+
+        print(
+            safe_console_text(
+                f"[sync-magnets] {film.get('name', '')}: "
+                f"Magnet HD={magnet_hd or 'None'}, Magnet FHD={magnet_fhd or 'None'}"
+            )
+        )
+
+        if not payload:
+            continue
+
+        update_result = update_notion_page_properties(page_id, payload, context="sync_yts_magnets_only")
+        if update_result:
+            updated_films += 1
+        if magnet_hd:
+            magnet_hd_count += 1
+        if magnet_fhd:
+            magnet_fhd_count += 1
+
+    clear_runtime_cache()
+    refresh_film_cache_from_source()
+    return {
+        "updated_films": updated_films,
+        "magnet_hd_count": magnet_hd_count,
+        "magnet_fhd_count": magnet_fhd_count,
     }
 
 
@@ -24952,6 +25016,14 @@ def get_video_detail_context(entry_id, force_refresh=False):
         if not detail:
             return None
         detail = ensure_film_torrent_fields(detail, force_refresh=force_refresh)
+        detail["torrent_hd"] = str(detail.get("torrent_hd", "") or detail.get("Torrent HD", "") or "").strip()
+        detail["torrent_fhd"] = str(detail.get("torrent_fhd", "") or detail.get("Torrent FHD", "") or "").strip()
+        detail["magnet_hd"] = str(detail.get("magnet_hd", "") or detail.get("Magnet HD", "") or "").strip()
+        detail["magnet_fhd"] = str(detail.get("magnet_fhd", "") or detail.get("Magnet FHD", "") or "").strip()
+        detail["Torrent HD"] = detail["torrent_hd"]
+        detail["Torrent FHD"] = detail["torrent_fhd"]
+        detail["Magnet HD"] = detail["magnet_hd"]
+        detail["Magnet FHD"] = detail["magnet_fhd"]
         top_billed_cast = []
         try:
             tmdb_data = fetch_tmdb_enrichment(
@@ -27513,6 +27585,32 @@ def admin_sync_yts_to_notion():
         return redirect(append_query_param(next_url, success=success_message))
     except Exception as exc:
         return redirect(append_query_param(next_url, error=f"YTS sync failed: {exc}"))
+
+
+@app.route("/admin/sync-yts-magnets-only", methods=["POST"])
+def admin_sync_yts_magnets_only():
+    if dragon_auth_enabled() and not dragon_is_authenticated():
+        return redirect(url_for("login", next=request.full_path if request.query_string else request.path))
+    next_url = request.form.get("next") or url_for("admin")
+    try:
+        summary = sync_yts_magnets_only()
+        session["admin_yts_sync_report"] = {
+            "mode": "magnets_only",
+            "updated_films": int(summary.get("updated_films", 0) or 0),
+            "magnet_hd_count": int(summary.get("magnet_hd_count", 0) or 0),
+            "magnet_fhd_count": int(summary.get("magnet_fhd_count", 0) or 0),
+            "films_without_links_count": 0,
+            "films_without_links": [],
+        }
+        success_message = (
+            "YTS magnets-only sync finished. "
+            f"Updated {summary['updated_films']} films, "
+            f"{summary['magnet_hd_count']} HD magnets, "
+            f"and {summary['magnet_fhd_count']} FHD magnets."
+        )
+        return redirect(append_query_param(next_url, success=success_message))
+    except Exception as exc:
+        return redirect(append_query_param(next_url, error=f"YTS magnets-only sync failed: {exc}"))
 
 
 @app.route("/movies-final-review")
