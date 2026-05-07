@@ -249,6 +249,7 @@
     </table>
 </section>
 {% elif panel_key == "reading" %}
+{% set reading_sync_online_ui = reading_admin.reading_sync_online_only or 'pythonanywhere.com' in (request.host|lower) or 'pythonanywhere' in (request.host|lower) %}
 <section class="surface-card section-card admin-section-shell">
     <div class="reading-admin-panel-head">
         <div style="min-width:0;flex:1 1 420px;">
@@ -285,7 +286,7 @@
                 <button type="button" class="reading-admin-source-filter" data-filter="inactive" aria-pressed="false">Inactive</button>
             </div>
         </div>
-        {% if reading_admin.reading_sync_online_only %}
+        {% if reading_sync_online_ui %}
         <div style="display:grid;gap:8px;justify-items:end;margin:0;">
             <form method="post" style="margin:0;" data-reading-admin-sync-form>
                 <input type="hidden" name="action" value="reading_sync_all">
@@ -351,8 +352,8 @@
                     </div>
                 </div>
                 <div class="reading-admin-source-actions">
-                    {% if reading_admin.reading_sync_online_only %}
-                    <span class="reading-admin-source-pill is-paused">Retry disabled online</span>
+                    {% if reading_sync_online_ui %}
+                    <span class="reading-admin-source-pill is-paused" aria-disabled="true">Retry disabled online</span>
                     {% else %}
                     <form method="post">
                         <input type="hidden" name="action" value="reading_source_sync">
@@ -645,7 +646,7 @@
     applyFilter('all');
 })();
 </script>
-{% if reading_admin.reading_sync_online_only %}
+{% if reading_sync_online_ui %}
 <script>
 (function () {
     var form = document.querySelector('[data-reading-admin-sync-form]');
