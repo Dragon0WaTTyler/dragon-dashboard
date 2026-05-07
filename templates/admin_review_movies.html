@@ -8,7 +8,7 @@
     </div>
     <h2>Admin Review Movies</h2>
     <p class="subhead">
-        Review one movie at a time and step through the current data-quality queue without changing Notion automatically.
+        Review one movie at a time and step through the current data-quality queue without changing Notion automatically. Download diagnostics and YTS suggestions are display-only.
     </p>
 </section>
 
@@ -27,6 +27,11 @@
         <div class="info-row"><span>Missing Director</span><strong>{{ summary.missing_director }}</strong></div>
         <div class="info-row"><span>Missing Overview</span><strong>{{ summary.missing_overview }}</strong></div>
         <div class="info-row"><span>Missing Download Links</span><strong>{{ summary.missing_download_links }}</strong></div>
+        <div class="info-row"><span>Complete Download Links</span><strong>{{ summary.complete_download_links }}</strong></div>
+        <div class="info-row"><span>Partial Download Links</span><strong>{{ summary.partial_download_links }}</strong></div>
+        <div class="info-row"><span>Empty Download Links</span><strong>{{ summary.empty_download_links }}</strong></div>
+        <div class="info-row"><span>Missing Torrent Only</span><strong>{{ summary.missing_torrent_only }}</strong></div>
+        <div class="info-row"><span>Missing Magnet Only</span><strong>{{ summary.missing_magnet_only }}</strong></div>
         <div class="info-row"><span>Proposals</span><strong>{{ summary.proposal_items }}</strong></div>
     </div>
 </section>
@@ -99,19 +104,30 @@
                 <p class="subhead" style="margin-top:14px; max-width:none;">{{ review_item.tmdb_status }}</p>
             </section>
 
-            {% if review_item.download_reason_label or review_item.download_yts_match_status %}
+            {% if review_item.download_link_category or review_item.download_reason_label or review_item.download_yts_match_status %}
             <section class="surface-card" style="padding:20px; border-radius:24px;">
                 <div class="hero-meta">
                     <span class="hero-badge matte-tag">Download Diagnostics</span>
-                    <span>{{ review_item.download_reason_label or 'Missing torrent/magnet link' }}</span>
+                    <span>Read-only · {{ review_item.download_link_category or review_item.download_reason_label or 'Missing torrent/magnet link' }}</span>
                 </div>
                 <div class="info-stack" style="margin-top:16px; display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px 18px;">
                     <div class="info-row"><span>Has Torrent Link</span><strong>{{ review_item.download_has_torrent_link }}</strong></div>
                     <div class="info-row"><span>Has Magnet Link</span><strong>{{ review_item.download_has_magnet_link }}</strong></div>
+                    <div class="info-row"><span>Link State</span><strong>{{ review_item.download_link_category or 'Missing' }}</strong></div>
                     <div class="info-row"><span>IMDb ID</span><strong>{{ review_item.download_imdb_id or 'Missing' }}</strong></div>
                     <div class="info-row"><span>TMDb ID</span><strong>{{ review_item.download_tmdb_id or 'Missing' }}</strong></div>
                     <div class="info-row"><span>YTS Match</span><strong>{{ review_item.download_yts_match_status or 'Not checked' }}</strong></div>
                     <div class="info-row"><span>Specific Issue</span><strong>{% if review_item.download_diagnostic and review_item.download_diagnostic.missing_labels %}{{ review_item.download_diagnostic.missing_labels | join(', ') }}{% else %}{{ review_item.download_reason_label or 'Missing torrent/magnet link' }}{% endif %}</strong></div>
+                </div>
+                <div class="hero-meta" style="margin-top:16px;">
+                    <span class="hero-badge matte-tag">Raw Notion Values</span>
+                    <span>Display only</span>
+                </div>
+                <div class="info-stack" style="margin-top:12px; display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:10px 18px; font-size:0.92rem;">
+                    <div class="info-row"><span>Torrent HD</span><strong>{{ review_item.download_raw_torrent_hd or 'Missing' }}</strong></div>
+                    <div class="info-row"><span>Torrent FHD</span><strong>{{ review_item.download_raw_torrent_fhd or 'Missing' }}</strong></div>
+                    <div class="info-row"><span>Magnet HD</span><strong>{{ review_item.download_raw_magnet_hd or 'Missing' }}</strong></div>
+                    <div class="info-row"><span>Magnet FHD</span><strong>{{ review_item.download_raw_magnet_fhd or 'Missing' }}</strong></div>
                 </div>
                 {% if review_item.download_suggested_yts_url or review_item.download_suggested_magnet %}
                 <div class="info-stack" style="margin-top:16px; display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px 18px;">

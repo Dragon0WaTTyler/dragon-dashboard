@@ -180,6 +180,8 @@ NOTION_BOOK_QUOTES_SOURCE_PAGE_ID = config_value("NOTION_BOOK_QUOTES_SOURCE_PAGE
 NOTION_BOOK_QUOTES_SOURCE_PAGE_TITLE = config_value("NOTION_BOOK_QUOTES_SOURCE_PAGE_TITLE", "مقولات من كتبي")
 TMDB_API_KEY         = config_value("TMDB_API_KEY", "")
 YTS_API_BASE_URL     = config_value("YTS_API_BASE_URL", "https://yts.rs/api/v2")
+YTS_DOWNLOAD_BASE_URL = config_value("YTS_DOWNLOAD_BASE_URL", "https://yts.bz")
+ALLOW_NOTION_TORRENT_LINK_WRITES = config_flag("ALLOW_NOTION_TORRENT_LINK_WRITES", False)
 VIDSRC_EMBED_URL     = config_value("VIDSRC_EMBED_URL", "https://vsembed.ru/embed")
 VIDSRC_FALLBACK_URLS = [
     "https://vidsrc.me/embed",
@@ -15391,7 +15393,15 @@ def fetch_all_films_from_notion():
                 "genres": genres_text,
                 "runtime": int(runtime_value) if isinstance(runtime_value, (int, float)) else (str(runtime_value).strip() if runtime_value not in (None, "") else ""),
                 "overview": overview_text,
-                "tmdb_rating": _number("Rating") if _number("Rating") not in (None, "") else ""
+                "tmdb_rating": _number("Rating") if _number("Rating") not in (None, "") else "",
+                "Torrent HD": notion_url_value(props.get("Torrent HD")),
+                "Torrent FHD": notion_url_value(props.get("Torrent FHD")),
+                "Magnet HD": notion_url_value(props.get("Magnet HD")),
+                "Magnet FHD": notion_url_value(props.get("Magnet FHD")),
+                "torrent_hd": notion_url_value(props.get("Torrent HD")),
+                "torrent_fhd": notion_url_value(props.get("Torrent FHD")),
+                "magnet_hd": notion_url_value(props.get("Magnet HD")),
+                "magnet_fhd": notion_url_value(props.get("Magnet FHD")),
             })
         if not has_more:
             print(f"[notion-fetch] page={page_number} complete: no more results")
@@ -17139,7 +17149,7 @@ def update_book_quote_text_on_page(page_id, property_name, combined_text):
             "rich_text": notion_rich_text(combined_text)
         }
     }
-    return update_notion_page_properties(page_id, payload)
+    return update_notion_page_properties(page_id, payload, context="append_book_quotes_to_notion_page")
 
 
 def resolve_book_quotes_source_page(source_page_id="", source_page_title=""):
@@ -18428,13 +18438,118 @@ def update_movie_genre_relations(page_id, relation_ids):
     return response.json() or {}
 
 
-def update_notion_page_properties(page_id, properties_payload):
+PROTECTED_MOVIE_LINK_FIELDS = {
+    "magnet fhd",
+    "torrent fhd",
+    "magnet hd",
+    "torrent hd",
+}
+PROTECTED_MOVIE_LINK_KEYWORDS = (
+    "magnet",
+    "torrent",
+    "yts",
+    "download",
+    "utorrent",
+)
+
+
+def normalize_protected_movie_link_field_value(property_name, property_value):
+    property_key = str(property_name or "").strip().lower()
+    if not isinstance(property_value, dict):
+        return ""
+    candidate_url = str(property_value.get("url", "") or "").strip()
+    if not candidate_url:
+        return ""
+    if property_key.startswith("torrent "):
+        return candidate_url if is_preferred_yts_download_url(candidate_url) else ""
+    if property_key.startswith("magnet "):
+        return candidate_url if is_valid_protected_magnet_url(candidate_url) else ""
+    return ""
+
+
+def sanitize_movie_page_update_payload(properties_payload, page_id="", context="", allow_property_names=None):
+    payload = properties_payload if isinstance(properties_payload, dict) else {}
+    if not payload:
+        return {}
+
+    allowlisted_names = {
+        str(name or "").strip().lower()
+        for name in list(allow_property_names or [])
+        if str(name or "").strip()
+    }
+    sanitized_payload = {}
+    blocked_fields = []
+    protected_fields_requested = []
+
+    for property_name, property_value in payload.items():
+        normalized_name = str(property_name or "").strip()
+        normalized_key = normalized_name.lower()
+        if not normalized_name:
+            continue
+        is_exact_protected_field = normalized_key in PROTECTED_MOVIE_LINK_FIELDS
+        if is_exact_protected_field:
+            protected_fields_requested.append(normalized_name)
+            continue
+        if normalized_key in allowlisted_names:
+            sanitized_payload[normalized_name] = property_value
+            continue
+
+        has_protected_keyword = any(keyword in normalized_key for keyword in PROTECTED_MOVIE_LINK_KEYWORDS)
+        if has_protected_keyword:
+            blocked_fields.append(f"{normalized_name} (keyword protected)")
+            continue
+
+        sanitized_payload[normalized_name] = property_value
+
+    live_properties = {}
+    if protected_fields_requested:
+        if not ALLOW_NOTION_TORRENT_LINK_WRITES:
+            blocked_fields.extend(
+                f"{field_name} (env flag ALLOW_NOTION_TORRENT_LINK_WRITES is disabled)"
+                for field_name in protected_fields_requested
+            )
+        else:
+            live_page = fetch_notion_page(page_id) if page_id else {}
+            live_properties = (live_page or {}).get("properties", {}) or {}
+            for field_name in protected_fields_requested:
+                current_url = notion_url_value(live_properties.get(field_name))
+                if current_url:
+                    blocked_fields.append(f"{field_name} (existing Notion value preserved)")
+                    continue
+                normalized_value = normalize_protected_movie_link_field_value(field_name, payload.get(field_name))
+                if not normalized_value:
+                    blocked_fields.append(f"{field_name} (empty or non-yts.bz/invalid candidate blocked)")
+                    continue
+                sanitized_payload[field_name] = {"url": normalized_value}
+
+    if blocked_fields:
+        context_label = str(context or "unknown").strip() or "unknown"
+        page_label = str(page_id or "unknown").strip() or "unknown"
+        print(
+            safe_console_text(
+                f"[notion-guard] Blocked protected movie link-field write via {context_label} "
+                f"for page {page_label}: {', '.join(blocked_fields)}"
+            )
+        )
+
+    return sanitized_payload
+
+
+def update_notion_page_properties(page_id, properties_payload, *, context="", allow_property_names=None):
     if not properties_payload:
+        return {}
+    sanitized_payload = sanitize_movie_page_update_payload(
+        properties_payload,
+        page_id=page_id,
+        context=context,
+        allow_property_names=allow_property_names,
+    )
+    if not sanitized_payload:
         return {}
     response = requests.patch(
         f"https://api.notion.com/v1/pages/{page_id}",
         headers=notion_api_headers(),
-        json={"properties": properties_payload},
+        json={"properties": sanitized_payload},
         timeout=30
     )
     response.raise_for_status()
@@ -19127,13 +19242,11 @@ def apply_tmdb_missing_overviews():
             continue
 
         try:
-            response = requests.patch(
-                f"https://api.notion.com/v1/pages/{page_id}",
-                headers=notion_api_headers(),
-                json={"properties": payload},
-                timeout=30
+            update_notion_page_properties(
+                page_id,
+                payload,
+                context="apply_tmdb_missing_overviews",
             )
-            response.raise_for_status()
             updated += 1
             updated_titles.append(movie_title)
         except requests.RequestException:
@@ -19228,13 +19341,11 @@ def apply_tmdb_poster_and_overview_cleanup():
             continue
 
         try:
-            response = requests.patch(
-                f"https://api.notion.com/v1/pages/{page_id}",
-                headers=notion_api_headers(),
-                json={"properties": payload},
-                timeout=30
+            update_notion_page_properties(
+                page_id,
+                payload,
+                context="apply_tmdb_missing_posters_and_overviews",
             )
-            response.raise_for_status()
             updated += 1
             changed_titles.append({"title": movie_title, "fields": field_changes})
         except requests.RequestException:
@@ -19497,13 +19608,11 @@ def apply_targeted_movie_corrections():
             skipped += 1
             continue
         try:
-            response = requests.patch(
-                f"https://api.notion.com/v1/pages/{item['page_id']}",
-                headers=notion_api_headers(),
-                json={"properties": payload},
-                timeout=30
+            update_notion_page_properties(
+                item["page_id"],
+                payload,
+                context="apply_targeted_movie_corrections",
             )
-            response.raise_for_status()
             updated += 1
             changed_titles.append({"title": item["title"], "fields": list(item.get("proposed_values", {}).keys())})
         except requests.RequestException:
@@ -19599,13 +19708,11 @@ def apply_tmdb_corrections():
 
     for item in plan["items"]:
         try:
-            response = requests.patch(
-                f"https://api.notion.com/v1/pages/{item['page_id']}",
-                headers=notion_api_headers(),
-                json={"properties": item["payload"]},
-                timeout=30
+            update_notion_page_properties(
+                item["page_id"],
+                item["payload"],
+                context="apply_tmdb_corrections",
             )
-            response.raise_for_status()
             updated += 1
             changed_titles.append(item["title"])
         except requests.RequestException:
@@ -19738,7 +19845,7 @@ def run_tmdb_sync_enrichment():
         update_payload = build_tmdb_notion_update_payload(properties, tmdb_data)
         if update_payload:
             try:
-                update_notion_page_properties(page_id, update_payload)
+                update_notion_page_properties(page_id, update_payload, context="sync_tmdb_metadata")
                 updated += 1
             except requests.RequestException as exc:
                 skipped.append({"title": movie_title, "reason": f"notion_update_error: {exc}"})
@@ -20638,6 +20745,10 @@ def notion_movie_page_to_film_row(page, directors_by_page_id=None, genres_by_pag
         "runtime": int(runtime_value) if isinstance(runtime_value, (int, float)) else (str(runtime_value).strip() if runtime_value not in (None, "") else ""),
         "overview": _text("Overview") or _text("Synopsis") or _text("Description"),
         "tmdb_rating": _number("Rating") if _number("Rating") not in (None, "") else "",
+        "Torrent HD": notion_url_value(props.get("Torrent HD")),
+        "Torrent FHD": notion_url_value(props.get("Torrent FHD")),
+        "Magnet HD": notion_url_value(props.get("Magnet HD")),
+        "Magnet FHD": notion_url_value(props.get("Magnet FHD")),
         "torrent_hd": notion_url_value(props.get("Torrent HD")),
         "torrent_fhd": notion_url_value(props.get("Torrent FHD")),
         "magnet_hd": notion_url_value(props.get("Magnet HD")),
@@ -21206,6 +21317,16 @@ def yts_url(title):
     return f"https://duckduckgo.com/?q={urllib.parse.quote_plus(query)}"
 
 
+def build_yts_download_url(hash_value):
+    hash_text = str(hash_value or "").strip().upper()
+    if not hash_text:
+        return ""
+    base_url = str(YTS_DOWNLOAD_BASE_URL or "https://yts.bz").strip().rstrip("/")
+    if not base_url:
+        base_url = "https://yts.bz"
+    return f"{base_url}/torrent/download/{urllib.parse.quote(hash_text)}"
+
+
 def build_yts_magnet(hash_value, title):
     hash_text = str(hash_value or "").strip()
     if not hash_text:
@@ -21215,35 +21336,88 @@ def build_yts_magnet(hash_value, title):
     return f"magnet:?xt=urn:btih:{hash_text}&dn={encoded_title}&{tracker_params}"
 
 
+def movie_download_link_values(movie):
+    item = movie if isinstance(movie, dict) else {}
+    return {
+        "torrent_hd": str(item.get("torrent_hd", "") or item.get("Torrent HD", "") or "").strip(),
+        "torrent_fhd": str(item.get("torrent_fhd", "") or item.get("Torrent FHD", "") or "").strip(),
+        "magnet_hd": str(item.get("magnet_hd", "") or item.get("Magnet HD", "") or "").strip(),
+        "magnet_fhd": str(item.get("magnet_fhd", "") or item.get("Magnet FHD", "") or "").strip(),
+    }
+
+
+def movie_download_link_state(movie):
+    values = movie_download_link_values(movie)
+    has_torrent_link = bool(values["torrent_hd"] or values["torrent_fhd"])
+    has_magnet_link = bool(values["magnet_hd"] or values["magnet_fhd"])
+    complete_download_links = has_torrent_link and has_magnet_link
+    partial_download_links = has_torrent_link ^ has_magnet_link
+    empty_download_links = not has_torrent_link and not has_magnet_link
+    missing_torrent_only = has_magnet_link and not has_torrent_link
+    missing_magnet_only = has_torrent_link and not has_magnet_link
+    if complete_download_links:
+        download_link_category = "complete_download_links"
+    elif empty_download_links:
+        download_link_category = "empty_download_links"
+    else:
+        download_link_category = "partial_download_links"
+    return {
+        **values,
+        "has_torrent_link": has_torrent_link,
+        "has_magnet_link": has_magnet_link,
+        "complete_download_links": complete_download_links,
+        "partial_download_links": partial_download_links,
+        "empty_download_links": empty_download_links,
+        "missing_torrent_only": missing_torrent_only,
+        "missing_magnet_only": missing_magnet_only,
+        "download_link_category": download_link_category,
+    }
+
+
 def movie_has_torrent_link(movie):
-    if not isinstance(movie, dict):
-        return False
-    for key in ("torrent_hd", "torrent_fhd", "torrent_url", "torrent", "download_url"):
-        if str(movie.get(key, "") or "").strip():
-            return True
-    return False
+    return movie_download_link_state(movie)["has_torrent_link"]
 
 
 def movie_has_magnet_link(movie):
-    if not isinstance(movie, dict):
+    return movie_download_link_state(movie)["has_magnet_link"]
+
+
+def is_preferred_yts_download_url(url):
+    url_text = str(url or "").strip()
+    if not url_text:
         return False
-    for key in ("magnet_hd", "magnet_fhd", "magnet_url", "magnet"):
-        value = str(movie.get(key, "") or "").strip()
-        if value:
-            return True
-    return False
+    parsed = urllib.parse.urlparse(url_text)
+    host = str(parsed.netloc or "").strip().lower()
+    path = str(parsed.path or "").strip().lower()
+    return host in {"yts.bz", "www.yts.bz"} and path.startswith("/torrent/download/")
 
 
-def build_movie_link_diagnostic(movie, yts_data=None):
+def is_valid_protected_magnet_url(url):
+    url_text = str(url or "").strip()
+    return url_text.lower().startswith("magnet:?xt=urn:btih:")
+
+
+def build_movie_link_diagnostic(movie, yts_data=None, download_state=None):
     item = movie if isinstance(movie, dict) else {}
-    has_torrent_link = movie_has_torrent_link(item)
-    has_magnet_link = movie_has_magnet_link(item)
+    state = download_state if isinstance(download_state, dict) else movie_download_link_state(item)
+    has_torrent_link = state["has_torrent_link"]
+    has_magnet_link = state["has_magnet_link"]
     imdb_id = str(item.get("imdb_id", "") or "").strip()
     tmdb_id = str(item.get("tmdb_id", "") or "").strip()
     diagnostic = {
         "reason_label": "",
         "has_torrent_link": has_torrent_link,
         "has_magnet_link": has_magnet_link,
+        "download_link_category": state["download_link_category"],
+        "complete_download_links": state["complete_download_links"],
+        "partial_download_links": state["partial_download_links"],
+        "empty_download_links": state["empty_download_links"],
+        "missing_torrent_only": state["missing_torrent_only"],
+        "missing_magnet_only": state["missing_magnet_only"],
+        "torrent_hd": state["torrent_hd"],
+        "torrent_fhd": state["torrent_fhd"],
+        "magnet_hd": state["magnet_hd"],
+        "magnet_fhd": state["magnet_fhd"],
         "imdb_id": imdb_id,
         "tmdb_id": tmdb_id,
         "yts_match_status": "not checked",
@@ -21285,7 +21459,7 @@ def build_movie_link_diagnostic(movie, yts_data=None):
     if not isinstance(best_torrent, dict):
         best_torrent = {}
 
-    torrent_url = str(best_torrent.get("url", "") or "").strip()
+    torrent_url = build_yts_download_url(best_torrent.get("hash")) or str(best_torrent.get("url", "") or "").strip()
     magnet = str(best_torrent.get("magnet", "") or "").strip() or build_yts_magnet(best_torrent.get("hash"), item.get("name", ""))
     quality = str(best_torrent.get("quality", "") or "").strip()
 
@@ -21747,7 +21921,7 @@ def fetch_yts_torrents(film, force_refresh=False):
     enriched_torrents = []
     for torrent in list(result.get("torrents", []) or []):
         hash_value = str(torrent.get("hash", "") or "").strip()
-        torrent_url = str(torrent.get("url", "") or "").strip()
+        torrent_url = build_yts_download_url(hash_value) or str(torrent.get("url", "") or "").strip()
         if not hash_value and not torrent_url:
             continue
         enriched_torrents.append({
@@ -21798,8 +21972,8 @@ def sync_yts_to_notion():
         torrents = list((yts_data or {}).get("torrents", []) or [])
         hd_torrent = select_best_torrent(torrents, "hd")
         fhd_torrent = select_best_torrent(torrents, "fhd")
-        hd_url = str(hd_torrent.get("url", "") or "").strip()
-        fhd_url = str(fhd_torrent.get("url", "") or "").strip()
+        hd_url = build_yts_download_url(hd_torrent.get("hash")) or str(hd_torrent.get("url", "") or "").strip()
+        fhd_url = build_yts_download_url(fhd_torrent.get("hash")) or str(fhd_torrent.get("url", "") or "").strip()
         magnet_hd = str(hd_torrent.get("magnet", "") or "").strip() or build_yts_magnet(hd_torrent.get("hash"), film.get("name", ""))
         magnet_fhd = str(fhd_torrent.get("magnet", "") or "").strip() or build_yts_magnet(fhd_torrent.get("hash"), film.get("name", ""))
         sync_log_line = (
@@ -21808,13 +21982,16 @@ def sync_yts_to_notion():
             f"Magnet HD={magnet_hd or 'None'}, Magnet FHD={magnet_fhd or 'None'}"
         )
         print(sync_log_line.encode("ascii", "backslashreplace").decode("ascii"))
-        payload = {
-            "Torrent HD": {"url": hd_url or None},
-            "Torrent FHD": {"url": fhd_url or None},
-            "Magnet HD": {"url": magnet_hd or None},
-            "Magnet FHD": {"url": magnet_fhd or None},
-        }
-        update_notion_page_properties(page_id, payload)
+        payload = {}
+        if hd_url:
+            payload["Torrent HD"] = {"url": hd_url}
+        if fhd_url:
+            payload["Torrent FHD"] = {"url": fhd_url}
+        if magnet_hd:
+            payload["Magnet HD"] = {"url": magnet_hd}
+        if magnet_fhd:
+            payload["Magnet FHD"] = {"url": magnet_fhd}
+        update_result = update_notion_page_properties(page_id, payload, context="sync_yts_to_notion")
         if hd_url:
             hd_count += 1
         if fhd_url:
@@ -21825,7 +22002,8 @@ def sync_yts_to_notion():
             magnet_fhd_count += 1
         if not any([hd_url, fhd_url, magnet_hd, magnet_fhd]):
             films_without_links.append(str(film.get("name", "") or "").strip())
-        updated_films += 1
+        if update_result:
+            updated_films += 1
 
     if films_without_links:
         print("[sync] Films still without YTS links:")
@@ -22210,12 +22388,16 @@ def ensure_film_torrent_fields(detail, force_refresh=False):
     live_magnet_fhd = str(live_row.get("magnet_fhd", "") or "").strip()
     if live_hd:
         item["torrent_hd"] = live_hd
+        item["Torrent HD"] = live_hd
     if live_fhd:
         item["torrent_fhd"] = live_fhd
+        item["Torrent FHD"] = live_fhd
     if live_magnet_hd:
         item["magnet_hd"] = live_magnet_hd
+        item["Magnet HD"] = live_magnet_hd
     if live_magnet_fhd:
         item["magnet_fhd"] = live_magnet_fhd
+        item["Magnet FHD"] = live_magnet_fhd
     return item
 
 
@@ -22860,6 +23042,11 @@ def build_admin_movie_review_queue():
         "missing_director": 0,
         "missing_overview": 0,
         "missing_download_links": 0,
+        "complete_download_links": 0,
+        "partial_download_links": 0,
+        "empty_download_links": 0,
+        "missing_torrent_only": 0,
+        "missing_magnet_only": 0,
         "proposal_items": 0,
     }
     current_year_limit = datetime.now().year + 1
@@ -22867,6 +23054,7 @@ def build_admin_movie_review_queue():
     for film in films:
         reasons = []
         link_diagnostic = None
+        download_state = movie_download_link_state(film)
         year_value = normalize_year_value(film.get("year", ""))
         tmdb_data = None
         tmdb_status = "Not checked in queue pass"
@@ -22896,10 +23084,15 @@ def build_admin_movie_review_queue():
             content_reasons.append("Missing overview")
             summary["missing_overview"] += 1
 
-        if not movie_has_torrent_link(film) or not movie_has_magnet_link(film):
-            link_diagnostic = build_movie_link_diagnostic(film)
-            reasons.extend(link_diagnostic.get("missing_labels", []) or [])
+        summary[download_state["download_link_category"]] += 1
+        if download_state["missing_torrent_only"]:
+            summary["missing_torrent_only"] += 1
+        if download_state["missing_magnet_only"]:
+            summary["missing_magnet_only"] += 1
+        if not download_state["complete_download_links"]:
             summary["missing_download_links"] += 1
+            link_diagnostic = build_movie_link_diagnostic(film, download_state=download_state)
+            reasons.extend(link_diagnostic.get("missing_labels", []) or [])
 
         should_check_tmdb = bool(content_reasons)
         if should_check_tmdb:
@@ -22966,12 +23159,22 @@ def build_admin_movie_review_queue():
         review_item["download_yts_match_status"] = (link_diagnostic or {}).get("yts_match_status", "")
         review_item["download_has_torrent_link"] = (link_diagnostic or {}).get("has_torrent_link", False)
         review_item["download_has_magnet_link"] = (link_diagnostic or {}).get("has_magnet_link", False)
+        review_item["download_link_category"] = (link_diagnostic or {}).get("download_link_category", download_state["download_link_category"])
+        review_item["download_complete_links"] = (link_diagnostic or {}).get("complete_download_links", download_state["complete_download_links"])
+        review_item["download_partial_links"] = (link_diagnostic or {}).get("partial_download_links", download_state["partial_download_links"])
+        review_item["download_empty_links"] = (link_diagnostic or {}).get("empty_download_links", download_state["empty_download_links"])
+        review_item["download_missing_torrent_only"] = (link_diagnostic or {}).get("missing_torrent_only", download_state["missing_torrent_only"])
+        review_item["download_missing_magnet_only"] = (link_diagnostic or {}).get("missing_magnet_only", download_state["missing_magnet_only"])
         review_item["download_imdb_id"] = (link_diagnostic or {}).get("imdb_id", "")
         review_item["download_tmdb_id"] = (link_diagnostic or {}).get("tmdb_id", "")
         review_item["download_suggested_yts_url"] = (link_diagnostic or {}).get("suggested_yts_url", "")
         review_item["download_suggested_torrent_quality"] = (link_diagnostic or {}).get("suggested_torrent_quality", "")
         review_item["download_suggested_torrent_url"] = (link_diagnostic or {}).get("suggested_torrent_url", "")
         review_item["download_suggested_magnet"] = (link_diagnostic or {}).get("suggested_magnet", "")
+        review_item["download_raw_torrent_hd"] = download_state["torrent_hd"]
+        review_item["download_raw_torrent_fhd"] = download_state["torrent_fhd"]
+        review_item["download_raw_magnet_hd"] = download_state["magnet_hd"]
+        review_item["download_raw_magnet_fhd"] = download_state["magnet_fhd"]
 
         review_items.append(review_item)
         try:
@@ -24531,7 +24734,7 @@ def apply_strong_csv_corrections(selected_keys=None):
             skipped_items.append({**item, "reason": "no_effective_change"})
             continue
         try:
-            update_notion_page_properties(item["notion_page_id"], payload)
+            update_notion_page_properties(item["notion_page_id"], payload, context="apply_csv_corrections")
             applied_items.append({**item, "applied_properties": sorted(payload.keys())})
         except requests.RequestException as exc:
             failed_items.append({**item, "reason": str(exc), "attempted_properties": sorted(payload.keys())})
@@ -27250,7 +27453,7 @@ def admin_review_movies():
             if not payload:
                 return redirect(url_for("admin_review_movies", index=index, notice="No safe field changes were found to apply."))
             try:
-                update_notion_page_properties(current_item["notion_page_id"], payload)
+                update_notion_page_properties(current_item["notion_page_id"], payload, context="admin_review_movies_apply")
                 clear_runtime_cache()
                 refresh_film_cache_from_source()
             except requests.RequestException as exc:
