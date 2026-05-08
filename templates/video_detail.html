@@ -515,7 +515,7 @@
         }
     }
 </style>
-<section class="page-hero">
+<section class="page-hero youtube-detail-hero">
     <div class="hero-meta">
         <span class="hero-badge{% if entry_type == 'youtube' %} matte-tag youtube-detail{% endif %}">{{ 'YouTube Detail' if entry_type == 'youtube' else 'Movie Detail' }}</span>
         {% if entry_type == 'youtube' %}
@@ -524,8 +524,8 @@
         <span>{{ entry.category or 'Library Entry' }}</span>
         {% endif %}
     </div>
-    <h2 class="title-scaled">{{ entry.title or entry.name }}</h2>
-    <p class="subhead">
+    <h2 class="title-scaled youtube-detail-title">{{ entry.title or entry.name }}</h2>
+    <p class="subhead youtube-detail-subhead">
         {% if entry_type == 'youtube' %}
         Focus view for a single video with its related playlist right below, so you can stay in context while moving through a lesson set or study queue.
         {% else %}
@@ -537,19 +537,6 @@
 {% if entry_type == 'youtube' %}
 <section class="detail-grid youtube-detail-grid video-detail-page">
     <div class="player-column youtube-player-column">
-        <section class="mode-toolbar">
-            <div class="mode-toolbar-copy">
-                <div class="hero-meta">
-                    <span class="hero-badge matte-tag">Viewing Modes</span>
-                    <span>{{ 'Player Controls' if player_video_id else 'Detail View' }}</span>
-                </div>
-            </div>
-            <div class="mode-toolbar-actions">
-                <button class="btn mode-toggle" id="cinemaModeToggle" type="button" aria-pressed="false"><i data-lucide="panel-top-open"></i><span>Cinema Mode</span></button>
-                <button class="btn mode-toggle" id="ultraCinemaToggle" type="button" aria-pressed="false"><i data-lucide="monitor-play"></i><span>Ultra Cinema</span></button>
-                <button class="btn mode-toggle" id="theaterModeToggle" type="button" aria-pressed="false"><i data-lucide="panel-top"></i><span>Theater Mode</span></button>
-            </div>
-        </section>
         <div class="player-shell youtube-player-shell">
             <div class="youtube-player-ratio">
                 {% if player_video_id %}
@@ -563,6 +550,19 @@
             </a>
             {% endif %}
         </div>
+        <section class="mode-toolbar youtube-mode-toolbar">
+            <div class="mode-toolbar-copy">
+                <div class="hero-meta">
+                    <span class="hero-badge matte-tag">Viewing Modes</span>
+                    <span>{{ 'Player Controls' if player_video_id else 'Detail View' }}</span>
+                </div>
+            </div>
+            <div class="mode-toolbar-actions">
+                <button class="btn mode-toggle" id="cinemaModeToggle" type="button" aria-pressed="false"><i data-lucide="panel-top-open"></i><span>Cinema Mode</span></button>
+                <button class="btn mode-toggle" id="ultraCinemaToggle" type="button" aria-pressed="false"><i data-lucide="monitor-play"></i><span>Ultra Cinema</span></button>
+                <button class="btn mode-toggle" id="theaterModeToggle" type="button" aria-pressed="false"><i data-lucide="panel-top"></i><span>Theater Mode</span></button>
+            </div>
+        </section>
     </div>
 
     <aside class="detail-sidebar youtube-detail-sidebar">
