@@ -17,6 +17,7 @@ import sqlite3
 import subprocess
 import time
 import threading
+import tempfile
 import traceback
 import unicodedata
 import xml.etree.ElementTree as ET
@@ -258,6 +259,7 @@ READING_SYNC_GITHUB_REPO = "dragon-dashboard"
 READING_SYNC_GITHUB_WORKFLOW = "sync-reading.yml"
 READING_SYNC_GITHUB_BRANCH = "main"
 READING_SYNC_GITHUB_API_BASE = "https://api.github.com"
+READING_SYNC_GITHUB_RAW_SNAPSHOT_URL = "https://raw.githubusercontent.com/Dragon0WaTTyler/dragon-dashboard/main/reading_data.json"
 READING_SYNC_TRIGGER_LOCK = threading.Lock()
 READING_GITHUB_REFRESH_LOCK = threading.Lock()
 MOVIE_WANT_TO_UNION_FETCH_FLAG_NAME = "MOVIE_WANT_TO_UNION_FETCH_ENABLED"
@@ -785,6 +787,42 @@ def load_reading_backup_payload():
         if isinstance(payload, dict):
             return payload
     return None
+
+
+def _reading_webhook_backup_path():
+    return READING_BACKUPS_DIR / "reading-data-webhook-backup.json"
+
+
+def _reading_format_mtime(path):
+    try:
+        stat_result = Path(path).stat()
+    except OSError:
+        return None
+    try:
+        return datetime.fromtimestamp(stat_result.st_mtime).astimezone().isoformat()
+    except Exception:
+        return None
+
+
+def _reading_snapshot_payload_is_valid(payload, downloaded_bytes):
+    if not isinstance(payload, dict):
+        return False, "Downloaded JSON must be an object."
+    if not isinstance(payload.get("entries"), list):
+        return False, "Downloaded JSON must contain an entries list."
+    if not isinstance(payload.get("sources"), list):
+        return False, "Downloaded JSON must contain a sources list."
+    if int(downloaded_bytes or 0) < 1024:
+        return False, "Downloaded file is too small to be a valid Reading snapshot."
+    return True, ""
+
+
+def _rotate_reading_webhook_backup():
+    if not READING_DATA_PATH.exists() or not READING_DATA_PATH.is_file():
+        return ""
+    READING_BACKUPS_DIR.mkdir(parents=True, exist_ok=True)
+    backup_path = _reading_webhook_backup_path()
+    shutil.copy2(READING_DATA_PATH, backup_path)
+    return str(backup_path)
 
 
 def collect_reading_recovery_trace_hits(limit=50):
@@ -27211,57 +27249,89 @@ def trigger_reading_github_actions_sync():
 
     return {"status": "started"}, 200
 
-
-def _reading_repo_index_lock_path():
-    return BASE_DIR / ".git" / "index.lock"
-
-
-def _run_reading_git_command(args, timeout_seconds=20):
-    return subprocess.run(
-        args,
-        cwd=str(BASE_DIR),
-        capture_output=True,
-        text=True,
-        timeout=max(int(timeout_seconds or 0), 1),
-        check=False,
-    )
-
-
 def refresh_deployed_reading_snapshot_from_github():
-    lock_path = _reading_repo_index_lock_path()
-    if lock_path.exists():
-        raise RuntimeError(f"Git index is locked at {lock_path}")
-
-    git_commands = [
-        ["git", "fetch", "origin", READING_SYNC_GITHUB_BRANCH],
-        ["git", "restore", "--worktree", "--source", f"origin/{READING_SYNC_GITHUB_BRANCH}", "--", "reading_data.json"],
-    ]
-    command_labels = []
-
     with READING_GITHUB_REFRESH_LOCK:
-        for command in git_commands:
-            command_labels.append(" ".join(command))
-            result = _run_reading_git_command(command, timeout_seconds=25)
-            if result.returncode != 0:
-                stderr = str(result.stderr or "").strip()
-                stdout = str(result.stdout or "").strip()
-                detail = stderr or stdout or f"exit code {result.returncode}"
-                raise RuntimeError(f"`{' '.join(command)}` failed: {detail[:400]}")
-            if lock_path.exists():
-                raise RuntimeError(f"Git index remained locked at {lock_path}")
+        old_mtime = _reading_format_mtime(READING_DATA_PATH)
+        app.logger.info("reading_snapshot_download started url=%s", READING_SYNC_GITHUB_RAW_SNAPSHOT_URL)
 
-        refreshed_data = _load_reading_data_uncached()
-        clear_reading_data_cache()
-        with READING_DATA_CACHE_LOCK:
-            READING_DATA_CACHE["fingerprint"] = _reading_data_cache_fingerprint()
-            READING_DATA_CACHE["data"] = refreshed_data
+        try:
+            with READING_HTTP_SESSION.get(
+                READING_SYNC_GITHUB_RAW_SNAPSHOT_URL,
+                timeout=30,
+                stream=True,
+            ) as response:
+                response.raise_for_status()
+                downloaded_bytes = 0
+                temp_path = None
+                try:
+                    with tempfile.NamedTemporaryFile(mode="wb", delete=False, dir=str(BASE_DIR), prefix="reading_data.", suffix=".download.tmp") as temp_file:
+                        temp_path = Path(temp_file.name)
+                        for chunk in response.iter_content(chunk_size=1024 * 1024):
+                            if not chunk:
+                                continue
+                            temp_file.write(chunk)
+                            downloaded_bytes += len(chunk)
+                    app.logger.info("reading_snapshot_download downloaded bytes=%s", downloaded_bytes)
+
+                    try:
+                        raw_payload = json.loads(temp_path.read_text(encoding="utf-8"))
+                    except Exception as exc:
+                        app.logger.warning("reading_snapshot_validation failed reason=invalid_json error=%s", exc)
+                        raise RuntimeError(f"Downloaded Reading snapshot is not valid JSON: {exc}") from exc
+
+                    is_valid, validation_error = _reading_snapshot_payload_is_valid(raw_payload, downloaded_bytes)
+                    if not is_valid:
+                        app.logger.warning("reading_snapshot_validation failed reason=%s", validation_error)
+                        raise RuntimeError(validation_error)
+
+                    normalized_payload, _ = normalize_reading_data(raw_payload)
+                    temp_path.write_text(json.dumps(normalized_payload, indent=2, ensure_ascii=False), encoding="utf-8")
+                    app.logger.info(
+                        "reading_snapshot_validation ok entries=%s sources=%s",
+                        len(normalized_payload.get("entries", []) or []),
+                        len(normalized_payload.get("sources", []) or []),
+                    )
+
+                    backup_path = ""
+                    try:
+                        backup_path = _rotate_reading_webhook_backup()
+                    except OSError as exc:
+                        app.logger.warning("reading_snapshot_backup failed error=%s", exc)
+
+                    temp_path.replace(READING_DATA_PATH)
+                    app.logger.info(
+                        "reading_snapshot_atomic_replace done path=%s backup=%s",
+                        READING_DATA_PATH,
+                        backup_path or "none",
+                    )
+
+                    clear_reading_data_cache()
+                    with READING_DATA_CACHE_LOCK:
+                        READING_DATA_CACHE["fingerprint"] = _reading_data_cache_fingerprint()
+                        READING_DATA_CACHE["data"] = normalized_payload
+                    app.logger.info("reading_snapshot_cache cleared")
+
+                    new_mtime = _reading_format_mtime(READING_DATA_PATH)
+                    entries_count = len(normalized_payload.get("entries", []) or [])
+                    sources_count = len(normalized_payload.get("sources", []) or [])
+                finally:
+                    if temp_path is not None and temp_path.exists():
+                        try:
+                            temp_path.unlink()
+                        except Exception:
+                            pass
+        except requests.RequestException as exc:
+            app.logger.warning("reading_snapshot_download failed error=%s", exc)
+            raise RuntimeError(f"Download failed: {exc}") from exc
 
     return {
         "ok": True,
-        "git_commands": command_labels,
-        "entry_count": len(refreshed_data.get("entries", []) or []) if isinstance(refreshed_data, dict) else 0,
-        "source_count": len(refreshed_data.get("sources", []) or []) if isinstance(refreshed_data, dict) else 0,
-        "fingerprint": _reading_data_cache_fingerprint(),
+        "status": "updated",
+        "old_mtime": old_mtime,
+        "new_mtime": new_mtime,
+        "downloaded_bytes": downloaded_bytes,
+        "entries_count": entries_count,
+        "sources_count": sources_count,
     }
 
 
@@ -27271,11 +27341,9 @@ def _reading_refresh_snapshot_worker(trigger_label="github"):
         app.logger.info(
             "reading_snapshot_refresh success trigger=%s entries=%s sources=%s",
             trigger_label,
-            result.get("entry_count", 0),
-            result.get("source_count", 0),
+            result.get("entries_count", 0),
+            result.get("sources_count", 0),
         )
-    except subprocess.TimeoutExpired:
-        app.logger.warning("reading_snapshot_refresh timeout trigger=%s", trigger_label)
     except Exception as exc:
         app.logger.warning("reading_snapshot_refresh failed trigger=%s error=%s", trigger_label, exc)
 
@@ -27338,15 +27406,31 @@ def reading_github_snapshot_updated():
         app.logger.info("reading_github_snapshot_updated skipped reason=refresh_in_progress")
         return jsonify({"ok": True, "status": "already_refreshing"}), 202
 
-    worker = threading.Thread(
-        target=_reading_refresh_snapshot_worker,
-        kwargs={"trigger_label": "github_webhook"},
-        daemon=True,
-        name="reading-github-snapshot-refresh",
+    try:
+        result = refresh_deployed_reading_snapshot_from_github()
+    except requests.RequestException as exc:
+        app.logger.warning("reading_github_snapshot_updated download_failed error=%s", exc)
+        return jsonify({"ok": False, "status": "download_failed", "error": str(exc)}), 502
+    except RuntimeError as exc:
+        error_message = str(exc)
+        status = "validation_failed"
+        if error_message.lower().startswith("download failed:"):
+            status = "download_failed"
+        elif "replace" in error_message.lower():
+            status = "replace_failed"
+        app.logger.warning("reading_github_snapshot_updated failed status=%s error=%s", status, exc)
+        return jsonify({"ok": False, "status": status, "error": error_message}), 502
+    except Exception as exc:
+        app.logger.warning("reading_github_snapshot_updated failed status=unexpected error=%s", exc)
+        return jsonify({"ok": False, "status": "refresh_failed", "error": str(exc)}), 500
+
+    app.logger.info(
+        "reading_github_snapshot_updated completed entries=%s sources=%s downloaded_bytes=%s",
+        result.get("entries_count", 0),
+        result.get("sources_count", 0),
+        result.get("downloaded_bytes", 0),
     )
-    worker.start()
-    app.logger.info("reading_github_snapshot_updated accepted")
-    return jsonify({"ok": True, "status": "refresh_started"}), 202
+    return jsonify(result), 200
 
 
 @app.route("/reading/article/<entry_id>")
