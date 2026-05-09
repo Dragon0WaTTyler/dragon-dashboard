@@ -101,43 +101,6 @@
             height: clamp(130px, 22vw, 220px) !important;
             max-height: 240px !important;
         }
-        .video-detail-page.detail-grid.youtube-detail-grid {
-            grid-template-columns: 1fr !important;
-        }
-        .video-detail-page .youtube-player-shell {
-            position: relative !important;
-        }
-        .video-detail-page .ipad-youtube-center-open {
-            display: inline-flex !important;
-            position: absolute !important;
-            left: 50% !important;
-            top: 50% !important;
-            -webkit-transform: translate(-50%, -50%) !important;
-            transform: translate(-50%, -50%) !important;
-            z-index: 9999 !important;
-            align-items: center;
-            justify-content: center;
-            gap: 10px;
-            min-height: 56px;
-            padding: 14px 22px;
-            border-radius: 999px;
-            background: rgba(0,0,0,.86);
-            border: 1px solid rgba(255,255,255,.22);
-            color: #fff;
-            text-decoration: none;
-            font-weight: 800;
-            box-shadow: 0 16px 44px rgba(0,0,0,.55);
-            -webkit-tap-highlight-color: transparent;
-        }
-        .video-detail-page .ipad-youtube-center-open:hover,
-        .video-detail-page .ipad-youtube-center-open:focus-visible {
-            background: rgba(0,0,0,.94);
-            outline: none;
-        }
-        .video-detail-page .youtube-player-ratio iframe,
-        .video-detail-page .youtube-player-shell iframe {
-            pointer-events: none !important;
-        }
     }
     @media (max-width: 640px) {
         .video-detail-related .video-detail-related-card .video-detail-thumb-frame {
@@ -515,118 +478,200 @@
         }
     }
 </style>
-<section class="page-hero youtube-detail-hero">
-    <div class="hero-meta">
-        <span class="hero-badge{% if entry_type == 'youtube' %} matte-tag youtube-detail{% endif %}">{{ 'YouTube Detail' if entry_type == 'youtube' else 'Movie Detail' }}</span>
-        {% if entry_type == 'youtube' %}
-        <span>{{ entry.playlist_name }}</span>
-        {% else %}
-        <span>{{ entry.category or 'Library Entry' }}</span>
-        {% endif %}
-    </div>
-    <h2 class="title-scaled youtube-detail-title">{{ entry.title or entry.name }}</h2>
-    <p class="subhead youtube-detail-subhead">
-        {% if entry_type == 'youtube' %}
-        Focus view for a single video with its related playlist right below, so you can stay in context while moving through a lesson set or study queue.
-        {% else %}
-        A more intentional film page for your library entry, centered on the poster, metadata, overview, and the related shelf below.
-        {% endif %}
-    </p>
+{% if entry_type == 'youtube' %}
+<section class="detail-grid video-detail-page">
+    <section class="page-hero">
+        <div class="hero-meta">
+            <span class="hero-badge matte-tag">YouTube Detail</span>
+            <span>{{ entry.playlist_name }}</span>
+        </div>
+        <h2 class="title-scaled">{{ entry.title or entry.name }}</h2>
+        <p class="subhead">Focus view for a single video with its related playlist, so you can stay in context while moving through a lesson set or study queue.</p>
+    </section>
+
+    <section class="selected-video-layout">
+        <div class="selected-video-player">
+            <div class="player-shell youtube-player-shell">
+                <div class="youtube-player-ratio">
+                    {% if player_video_id %}
+                    <iframe id="youtubePlayer" src="https://www.youtube.com/embed/{{ player_video_id }}?enablejsapi=1&rel=0&playsinline=1" title="{{ entry.title or entry.name }}" allowfullscreen allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"></iframe>
+                    {% endif %}
+                </div>
+                {% if player_video_id %}
+                <a class="ipad-youtube-center-open" href="https://www.youtube.com/watch?v={{ entry.video_id or player_video_id }}" target="_blank" rel="noopener noreferrer" aria-label="Open this video on YouTube">
+                    <span class="ipad-youtube-center-open-icon">▶</span>
+                    <span>Open on YouTube</span>
+                </a>
+                {% endif %}
+            </div>
+        </div>
+
+        <aside class="selected-video-side">
+            <section class="mode-toolbar selected-video-controls">
+                <div class="mode-toolbar-copy">
+                    <div class="hero-meta">
+                        <span class="hero-badge matte-tag">Viewing Modes</span>
+                        <span>{{ 'Player Controls' if player_video_id else 'Detail View' }}</span>
+                    </div>
+                </div>
+                <div class="mode-toolbar-actions">
+                    <button class="btn mode-toggle" id="cinemaModeToggle" type="button" aria-pressed="false"><i data-lucide="panel-top-open"></i><span>Cinema Mode</span></button>
+                    <button class="btn mode-toggle" id="ultraCinemaToggle" type="button" aria-pressed="false"><i data-lucide="monitor-play"></i><span>Ultra Cinema</span></button>
+                    <button class="btn mode-toggle" id="theaterModeToggle" type="button" aria-pressed="false"><i data-lucide="panel-top"></i><span>Theater Mode</span></button>
+                </div>
+            </section>
+
+            <section class="surface-card section-card selected-video-meta-card">
+                <div class="info-stack">
+                    <div class="info-row"><span>Type</span><strong>YouTube Video</strong></div>
+                    {% if entry.feed_source == 'pockettube_group' %}
+                    <div class="info-row"><span>Group</span><strong>{{ entry.group_name or entry.playlist_name }}</strong></div>
+                    <div class="info-row"><span>Source</span><strong>{{ entry.source_name or 'PocketTube' }}</strong></div>
+                    {% else %}
+                    <div class="info-row"><span>Playlist</span><strong>{{ entry.playlist_name }}</strong></div>
+                    {% endif %}
+                    <div class="info-row"><span>Video ID</span><strong>{{ entry.video_id }}</strong></div>
+                    <div class="info-row"><span>Duration</span><strong>{{ entry.duration or '0:00' }}</strong></div>
+                    {% if entry.feed_source == 'pockettube_group' and entry.published_display %}
+                    <div class="info-row"><span>Published</span><strong>{{ entry.published_display }}</strong></div>
+                    {% endif %}
+                </div>
+            </section>
+
+            <section class="surface-card section-card selected-video-actions-card">
+                {% if entry.feed_source == 'pockettube_group' and entry.group_back_url %}
+                <a class="btn" href="{{ entry.group_back_url }}" data-scroll-top="true" style="margin-bottom:10px;"><i data-lucide="corner-up-left"></i>Back to group</a>
+                <div class="muted" style="margin-bottom:10px; line-height:1.5;">
+                    {{ entry.group_back_context or entry.group_name or entry.playlist_name }}
+                </div>
+                {% endif %}
+                <div class="detail-controls">
+                    <button class="btn study-with-ai-btn" type="button" data-ai-mode="{{ 'german' if entry.section and 'german' in entry.section|lower else 'study' }}" data-ai-title="{{ entry.title or entry.name }}" data-ai-playlist="{{ entry.playlist_name or related_title }}" data-ai-section="{{ entry.section or '' }}" data-ai-video-id="{{ entry.video_id or '' }}"><i data-lucide="sparkles"></i>Study with AI</button>
+                    {% if entry.feed_source == 'pockettube_group' %}
+                    <button class="btn mode-toggle pockettube-watched-toggle" id="pockettubeWatchedBtn" type="button" data-entry-id="{{ entry.entry_id }}" data-video-id="{{ entry.video_id or '' }}" data-playlist-item-id="{{ entry.playlist_item_id or '' }}" data-state-key="{{ entry.state_key or entry.watch_key or entry.video_id or entry.entry_id or (entry.playlist_item_id or '') }}" data-watch-key="{{ entry.watch_key or entry.video_id or entry.entry_id or (entry.playlist_item_id or '') }}" aria-pressed="false"><i data-lucide="eye"></i><span>Mark Watched</span></button>
+                    {% endif %}
+                    <a class="btn youtube-open-btn" href="https://youtube.com/watch?v={{ entry.video_id }}" target="_blank" rel="noopener noreferrer"><i data-lucide="play-circle"></i>Open on YouTube</a>
+                    <a class="btn" href="{{ entry.playlist_url }}" target="_blank"><i data-lucide="list-video"></i>Open Playlist</a>
+                    {% if delete_endpoint %}
+                    <button class="btn" id="deleteFromYouTubeBtn" type="button"><i data-lucide="trash-2"></i>Remove from YouTube Playlist</button>
+                    {% endif %}
+                </div>
+                <div class="youtube-open-note">If the embed does not play well on an older iPad, <strong>Open on YouTube</strong> gives the cleanest playback.</div>
+                {% if entry.feed_source == 'pockettube_group' %}
+                <div class="muted" style="line-height:1.6;">
+                    {{ entry.channel_name or entry.category }}{% if entry.duration %} | {{ entry.duration }}{% endif %}{% if entry.group_name %} | {{ entry.group_name }}{% endif %}
+                </div>
+                {% endif %}
+                {% if delete_endpoint %}
+                <div id="deleteStatus" class="muted" style="display:none;"></div>
+                {% endif %}
+                {% if request.args.get('pockettube_debug') == '1' and entry.feed_source == 'pockettube_group' %}
+                <div id="pockettubeDetailDebug" style="margin-top:14px; padding:14px; border:2px dashed #ff0000; background:#fff; color:#111; font:600 13px/1.6 Arial, sans-serif; display:block; white-space:pre-wrap;">
+                    <div style="font-size:18px; font-weight:800; margin-bottom:8px;">PocketTube Detail Debug</div>
+                    <div>Current watched mode: <span data-pockettube-detail-debug-mode>unknown</span></div>
+                    <div>Video title: <span data-pockettube-detail-debug-title></span></div>
+                    <div>state_key: <span data-pockettube-detail-debug-state-key></span></div>
+                    <div>watch_key: <span data-pockettube-detail-debug-watch-key></span></div>
+                    <div>video_id: <span data-pockettube-detail-debug-video-id></span></div>
+                    <div>entry_id: <span data-pockettube-detail-debug-entry-id></span></div>
+                    <div>playlist_item_id: <span data-pockettube-detail-debug-playlist-item-id></span></div>
+                    <div>Watched now: <span data-pockettube-detail-debug-watched>unknown</span></div>
+                    <div>Watched map count: <span data-pockettube-detail-debug-count>0</span></div>
+                    <div>Last action: <span data-pockettube-detail-debug-last-action>none</span></div>
+                </div>
+                {% endif %}
+            </section>
+        </aside>
+    </section>
 </section>
 
-{% if entry_type == 'youtube' %}
-<section class="detail-grid youtube-detail-grid video-detail-page">
-    <div class="player-column youtube-player-column">
-        <div class="player-shell youtube-player-shell">
-            <div class="youtube-player-ratio">
-                {% if player_video_id %}
-                <iframe id="youtubePlayer" src="https://www.youtube.com/embed/{{ player_video_id }}?enablejsapi=1&rel=0&playsinline=1" title="{{ entry.title or entry.name }}" allowfullscreen allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"></iframe>
-                {% endif %}
+<section class="surface-card section-card youtube-related-section">
+    <div class="detail-header">
+        <div>
+            <div class="hero-meta">
+                <span class="hero-badge matte-tag">Related</span>
+                <span>{{ related_title }}</span>
             </div>
-            {% if player_video_id %}
-            <a class="ipad-youtube-center-open" href="https://www.youtube.com/watch?v={{ entry.video_id or player_video_id }}" target="_blank" rel="noopener noreferrer" aria-label="Open this video on YouTube">
-                <span class="ipad-youtube-center-open-icon">▶</span>
-                <span>Open on YouTube</span>
-            </a>
-            {% endif %}
+            <h3 class="title-scaled" style="margin-top:12px;">Continue Exploring</h3>
         </div>
-        <section class="mode-toolbar youtube-mode-toolbar">
-            <div class="mode-toolbar-copy">
-                <div class="hero-meta">
-                    <span class="hero-badge matte-tag">Viewing Modes</span>
-                    <span>{{ 'Player Controls' if player_video_id else 'Detail View' }}</span>
-                </div>
-            </div>
-            <div class="mode-toolbar-actions">
-                <button class="btn mode-toggle" id="cinemaModeToggle" type="button" aria-pressed="false"><i data-lucide="panel-top-open"></i><span>Cinema Mode</span></button>
-                <button class="btn mode-toggle" id="ultraCinemaToggle" type="button" aria-pressed="false"><i data-lucide="monitor-play"></i><span>Ultra Cinema</span></button>
-                <button class="btn mode-toggle" id="theaterModeToggle" type="button" aria-pressed="false"><i data-lucide="panel-top"></i><span>Theater Mode</span></button>
-            </div>
-        </section>
+        <div class="detail-controls related-controls">
+            {% if prev_entry %}
+            <a class="btn" href="{{ prev_entry_url or url_for('video_detail', entry_id=prev_entry.entry_id) }}" data-scroll-top="true"><i data-lucide="chevron-left"></i>Previous</a>
+            {% endif %}
+            {% if next_entry %}
+            <a class="btn" href="{{ next_entry_url or url_for('video_detail', entry_id=next_entry.entry_id) }}" data-scroll-top="true">Next<i data-lucide="chevron-right"></i></a>
+            {% endif %}
+            <button class="btn" id="shuffleRelatedVideo" type="button"><i data-lucide="play"></i>Shuffle Video</button>
+            <a class="btn{% if related_order == 'normal' %} mode-toggle is-armed{% endif %}" href="{{ build_query_url(request.args, related_order='normal', related_seed='', page=1) }}" data-scroll-top="true"><i data-lucide="list-ordered"></i>Normal Order</a>
+            <a class="btn{% if related_order == 'shuffle' %} mode-toggle is-armed{% endif %}" id="shuffleRelatedOrder" href="{{ build_query_url(request.args, related_order='shuffle', related_seed=related_seed or 'shuffle', page=1) }}" data-scroll-top="true"><i data-lucide="shuffle"></i>Shuffle Order</a>
+        </div>
     </div>
 
-    <aside class="detail-sidebar youtube-detail-sidebar">
-        <section class="surface-card section-card">
-            <div class="info-stack">
-                <div class="info-row"><span>Type</span><strong>YouTube Video</strong></div>
-                {% if entry.feed_source == 'pockettube_group' %}
-                <div class="info-row"><span>Group</span><strong>{{ entry.group_name or entry.playlist_name }}</strong></div>
-                <div class="info-row"><span>Source</span><strong>{{ entry.source_name or 'PocketTube' }}</strong></div>
+    {% if related_entries %}
+    <div id="relatedGrid" class="video-grid youtube-related-grid video-detail-related" style="margin-top:18px;">
+        {% for item in related_entries %}
+        <a class="content-card {{ 'video-card related-video-card video-detail-related-card' if item.source_type == 'youtube' else 'media-card' }}" href="{{ item.detail_url or url_for('video_detail', entry_id=item.entry_id) }}" {% if item.source_type == 'youtube' %}data-video-id="{{ item.video_id }}" data-video-duration="{{ item.duration_seconds or 0 }}" data-playlist-item-id="{{ item.playlist_item_id or '' }}" data-entry-id="{{ item.entry_id or '' }}" data-state-key="{{ item.state_key or item.watch_key or item.video_id or item.entry_id or (item.playlist_item_id or '') }}" data-watch-key="{{ item.watch_key or item.video_id or item.entry_id or (item.playlist_item_id or '') }}"{% endif %} data-scroll-top="true">
+            {% if item.source_type == 'youtube' %}
+            {% set related_thumb = item.thumb or item.thumbnail_url or item.thumbnail or item.image_url or ('https://img.youtube.com/vi/' ~ item.video_id ~ '/hqdefault.jpg' if item.video_id else '') %}
+            <div class="video-detail-thumb-frame">
+                <img class="video-thumb video-detail-thumb" src="{{ related_thumb }}" alt="{{ item.title }}" loading="eager" decoding="async" fetchpriority="high">
+                <div class="video-progress-track"><div class="video-progress-fill"></div></div>
+                <span class="duration-pill">{{ item.duration or '0:00' }}</span>
+                <span class="score-pill" data-pockettube-watched-badge style="display:none; position:absolute; top:12px; left:12px; z-index:2; padding:.3rem .55rem; font-size:.72rem;">Watched</span>
+            </div>
+            <div class="video-card-body">
+                <div class="card-title">{{ item.title or item.name }}</div>
+                <div class="card-meta">{{ item.channel_name or item.category }}{% if item.duration %} | {{ item.duration }}{% endif %}{% if item.playlist_name %} | {{ item.playlist_name }}{% endif %}</div>
+            </div>
+            {% else %}
+            <div class="media-poster">
+                {% if item.poster %}
+                <img src="{{ item.poster }}" alt="{{ item.title or item.name }}" loading="lazy" decoding="async">
                 {% else %}
-                <div class="info-row"><span>Playlist</span><strong>{{ entry.playlist_name }}</strong></div>
-                {% endif %}
-                <div class="info-row"><span>Video ID</span><strong>{{ entry.video_id }}</strong></div>
-                <div class="info-row"><span>Duration</span><strong>{{ entry.duration or '0:00' }}</strong></div>
-                {% if entry.feed_source == 'pockettube_group' and entry.published_display %}
-                <div class="info-row"><span>Published</span><strong>{{ entry.published_display }}</strong></div>
+                <div class="poster-placeholder">No Poster</div>
                 {% endif %}
             </div>
-        </section>
+            <div class="card-title">{{ item.title or item.name }}</div>
+            <div class="card-meta">{{ item.category }} | {{ item.status }}</div>
+            {% endif %}
+        </a>
+        {% endfor %}
+    </div>
 
-        <section class="surface-card section-card">
-            {% if entry.feed_source == 'pockettube_group' and entry.group_back_url %}
-            <a class="btn" href="{{ entry.group_back_url }}" data-scroll-top="true" style="margin-bottom:10px;"><i data-lucide="corner-up-left"></i>Back to group</a>
-            <div class="muted" style="margin-bottom:10px; line-height:1.5;">
-                {{ entry.group_back_context or entry.group_name or entry.playlist_name }}
-            </div>
+    {% if related_total_pages > 1 %}
+    <div class="pagination" style="margin-top:18px;">
+        {% if related_page > 1 %}
+        <a href="{{ build_query_url(request.args, page=1) }}" class="pagination-button pagination-nav" data-scroll-top="true">First</a>
+        <a href="{{ build_query_url(request.args, page=related_page - 1) }}" class="pagination-button pagination-nav" data-scroll-top="true">Previous</a>
+        {% endif %}
+        {% for item in pagination_numbers %}
+            {% if item == '...' %}
+            <span class="pagination-ellipsis">...</span>
+            {% elif item == related_page %}
+            <span class="pagination-button pagination-index active">{{ item }}</span>
+            {% else %}
+            <a href="{{ build_query_url(request.args, page=item) }}" class="pagination-button pagination-index" data-scroll-top="true">{{ item }}</a>
             {% endif %}
-            <button class="btn study-with-ai-btn" type="button" data-ai-mode="{{ 'german' if entry.section and 'german' in entry.section|lower else 'study' }}" data-ai-title="{{ entry.title or entry.name }}" data-ai-playlist="{{ entry.playlist_name or related_title }}" data-ai-section="{{ entry.section or '' }}" data-ai-video-id="{{ entry.video_id or '' }}"><i data-lucide="sparkles"></i>Study with AI</button>
-            {% if entry.feed_source == 'pockettube_group' %}
-            <button class="btn mode-toggle pockettube-watched-toggle" id="pockettubeWatchedBtn" type="button" data-entry-id="{{ entry.entry_id }}" data-video-id="{{ entry.video_id or '' }}" data-playlist-item-id="{{ entry.playlist_item_id or '' }}" data-state-key="{{ entry.state_key or entry.watch_key or entry.video_id or entry.entry_id or (entry.playlist_item_id or '') }}" data-watch-key="{{ entry.watch_key or entry.video_id or entry.entry_id or (entry.playlist_item_id or '') }}" style="margin-top:10px;" aria-pressed="false"><i data-lucide="eye"></i><span>Mark Watched</span></button>
-            {% endif %}
-            <div class="youtube-open-actions">
-                <a class="btn youtube-open-btn" href="https://youtube.com/watch?v={{ entry.video_id }}" target="_blank" rel="noopener noreferrer"><i data-lucide="play-circle"></i>Open on YouTube</a>
-                <div class="youtube-open-note">If the embed does not play well on an older iPad, <strong>Open on YouTube</strong> gives the cleanest playback.</div>
-            </div>
-            <a class="btn" href="{{ entry.playlist_url }}" target="_blank" style="margin-top:10px;"><i data-lucide="list-video"></i>Open Playlist</a>
-            {% if entry.feed_source == 'pockettube_group' %}
-            <div class="muted" style="margin-top:10px; line-height:1.6;">
-                {{ entry.channel_name or entry.category }}{% if entry.duration %} | {{ entry.duration }}{% endif %}{% if entry.group_name %} | {{ entry.group_name }}{% endif %}
-            </div>
-            {% endif %}
-            {% if delete_endpoint %}
-            <button class="btn" id="deleteFromYouTubeBtn" type="button" style="margin-top:10px;"><i data-lucide="trash-2"></i>Remove from YouTube Playlist</button>
-            <div id="deleteStatus" class="muted" style="margin-top:12px; display:none;"></div>
-            {% endif %}
-            {% if request.args.get('pockettube_debug') == '1' and entry.feed_source == 'pockettube_group' %}
-            <div id="pockettubeDetailDebug" style="margin-top:14px; padding:14px; border:2px dashed #ff0000; background:#fff; color:#111; font:600 13px/1.6 Arial, sans-serif; display:block; white-space:pre-wrap;">
-                <div style="font-size:18px; font-weight:800; margin-bottom:8px;">PocketTube Detail Debug</div>
-                <div>Current watched mode: <span data-pockettube-detail-debug-mode>unknown</span></div>
-                <div>Video title: <span data-pockettube-detail-debug-title></span></div>
-                <div>state_key: <span data-pockettube-detail-debug-state-key></span></div>
-                <div>watch_key: <span data-pockettube-detail-debug-watch-key></span></div>
-                <div>video_id: <span data-pockettube-detail-debug-video-id></span></div>
-                <div>entry_id: <span data-pockettube-detail-debug-entry-id></span></div>
-                <div>playlist_item_id: <span data-pockettube-detail-debug-playlist-item-id></span></div>
-                <div>Watched now: <span data-pockettube-detail-debug-watched>unknown</span></div>
-                <div>Watched map count: <span data-pockettube-detail-debug-count>0</span></div>
-                <div>Last action: <span data-pockettube-detail-debug-last-action>none</span></div>
-            </div>
-            {% endif %}
-        </section>
-    </aside>
+        {% endfor %}
+        {% if related_page < related_total_pages %}
+        <a href="{{ build_query_url(request.args, page=related_page + 1) }}" class="pagination-button pagination-nav" data-scroll-top="true">Next</a>
+        <a href="{{ build_query_url(request.args, page=related_total_pages) }}" class="pagination-button pagination-nav" data-scroll-top="true">Last</a>
+        {% endif %}
+    </div>
+    {% endif %}
+    {% else %}
+    <div class="empty-state" style="margin-top:18px;">No related entries available yet.</div>
+    {% endif %}
 </section>
 {% else %}
+<section class="page-hero">
+    <div class="hero-meta">
+        <span class="hero-badge">{{ 'Movie Detail' }}</span>
+        <span>{{ entry.category or 'Library Entry' }}</span>
+    </div>
+    <h2 class="title-scaled">{{ entry.title or entry.name }}</h2>
+    <p class="subhead">A more intentional film page for your library entry, centered on the poster, metadata, overview, and the related shelf below.</p>
+</section>
 {% set detail_title = entry.title or entry.name %}
 {% set detail_category = entry.category or category %}
 {% set player_sources = player_sources if player_sources is defined else [] %}
@@ -1231,86 +1276,6 @@
 </section>
 {% endif %}
 
-    <section class="surface-card section-card youtube-related-section">
-    <div class="detail-header">
-        <div>
-            <div class="hero-meta">
-                <span class="hero-badge matte-tag">Related</span>
-                <span>{{ related_title }}</span>
-            </div>
-            <h3 class="title-scaled" style="margin-top:12px;">Continue Exploring</h3>
-        </div>
-        {% if entry_type == 'youtube' %}
-        <div class="detail-controls youtube-detail-controls">
-            {% if prev_entry %}
-            <a class="btn" href="{{ prev_entry_url or url_for('video_detail', entry_id=prev_entry.entry_id) }}" data-scroll-top="true"><i data-lucide="chevron-left"></i>Previous</a>
-            {% endif %}
-            {% if next_entry %}
-            <a class="btn" href="{{ next_entry_url or url_for('video_detail', entry_id=next_entry.entry_id) }}" data-scroll-top="true">Next<i data-lucide="chevron-right"></i></a>
-            {% endif %}
-            <button class="btn" id="shuffleRelatedVideo" type="button"><i data-lucide="play"></i>Shuffle Video</button>
-            <a class="btn{% if related_order == 'normal' %} mode-toggle is-armed{% endif %}" href="{{ build_query_url(request.args, related_order='normal', related_seed='', page=1) }}" data-scroll-top="true"><i data-lucide="list-ordered"></i>Normal Order</a>
-            <a class="btn{% if related_order == 'shuffle' %} mode-toggle is-armed{% endif %}" id="shuffleRelatedOrder" href="{{ build_query_url(request.args, related_order='shuffle', related_seed=related_seed or 'shuffle', page=1) }}" data-scroll-top="true"><i data-lucide="shuffle"></i>Shuffle Order</a>
-        </div>
-        {% endif %}
-    </div>
-
-    {% if related_entries %}
-    <div id="relatedGrid" class="{{ 'video-grid youtube-related-grid video-detail-related' if entry_type == 'youtube' else 'movie-grid' }}" style="margin-top:18px;">
-        {% for item in related_entries %}
-        <a class="content-card {{ 'video-card related-video-card video-detail-related-card' if item.source_type == 'youtube' else 'media-card' }}" href="{{ item.detail_url or url_for('video_detail', entry_id=item.entry_id) }}" {% if item.source_type == 'youtube' %}data-video-id="{{ item.video_id }}" data-video-duration="{{ item.duration_seconds or 0 }}" data-playlist-item-id="{{ item.playlist_item_id or '' }}" data-entry-id="{{ item.entry_id or '' }}" data-state-key="{{ item.state_key or item.watch_key or item.video_id or item.entry_id or (item.playlist_item_id or '') }}" data-watch-key="{{ item.watch_key or item.video_id or item.entry_id or (item.playlist_item_id or '') }}"{% endif %} data-scroll-top="true">
-            {% if item.source_type == 'youtube' %}
-            {% set related_thumb = item.thumb or item.thumbnail_url or item.thumbnail or item.image_url or ('https://img.youtube.com/vi/' ~ item.video_id ~ '/hqdefault.jpg' if item.video_id else '') %}
-            <div class="video-detail-thumb-frame">
-                <img class="video-thumb video-detail-thumb" src="{{ related_thumb }}" alt="{{ item.title }}" loading="eager" decoding="async" fetchpriority="high">
-                <div class="video-progress-track"><div class="video-progress-fill"></div></div>
-                <span class="duration-pill">{{ item.duration or '0:00' }}</span>
-                <span class="score-pill" data-pockettube-watched-badge style="display:none; position:absolute; top:12px; left:12px; z-index:2; padding:.3rem .55rem; font-size:.72rem;">Watched</span>
-            </div>
-            <div class="video-card-body">
-                <div class="card-title">{{ item.title or item.name }}</div>
-                <div class="card-meta">{{ item.channel_name or item.category }}{% if item.duration %} | {{ item.duration }}{% endif %}{% if item.playlist_name %} | {{ item.playlist_name }}{% endif %}</div>
-            </div>
-            {% else %}
-            <div class="media-poster">
-                {% if item.poster %}
-                <img src="{{ item.poster }}" alt="{{ item.title or item.name }}" loading="lazy" decoding="async">
-                {% else %}
-                <div class="poster-placeholder">No Poster</div>
-                {% endif %}
-            </div>
-            <div class="card-title">{{ item.title or item.name }}</div>
-            <div class="card-meta">{{ item.category }} | {{ item.status }}</div>
-            {% endif %}
-        </a>
-        {% endfor %}
-    </div>
-
-    {% if related_total_pages > 1 %}
-    <div class="pagination" style="margin-top:18px;">
-        {% if related_page > 1 %}
-        <a href="{{ build_query_url(request.args, page=1) }}" class="pagination-button pagination-nav" data-scroll-top="true">First</a>
-        <a href="{{ build_query_url(request.args, page=related_page - 1) }}" class="pagination-button pagination-nav" data-scroll-top="true">Previous</a>
-        {% endif %}
-        {% for item in pagination_numbers %}
-            {% if item == '...' %}
-            <span class="pagination-ellipsis">...</span>
-            {% elif item == related_page %}
-            <span class="pagination-button pagination-index active">{{ item }}</span>
-            {% else %}
-            <a href="{{ build_query_url(request.args, page=item) }}" class="pagination-button pagination-index" data-scroll-top="true">{{ item }}</a>
-            {% endif %}
-        {% endfor %}
-        {% if related_page < related_total_pages %}
-        <a href="{{ build_query_url(request.args, page=related_page + 1) }}" class="pagination-button pagination-nav" data-scroll-top="true">Next</a>
-        <a href="{{ build_query_url(request.args, page=related_total_pages) }}" class="pagination-button pagination-nav" data-scroll-top="true">Last</a>
-        {% endif %}
-    </div>
-    {% endif %}
-    {% else %}
-    <div class="empty-state" style="margin-top:18px;">No related entries available yet.</div>
-    {% endif %}
-</section>
 {% endblock %}
 
 {% block global_modals %}

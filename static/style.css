@@ -48,7 +48,7 @@ h2{font-size:clamp(2.2rem,4vw,3.6rem);margin-top:14px;letter-spacing:-.03em}.det
 /* Tablet and phone V1 responsive pass */
 .top-tabs{scrollbar-width:none}
 .top-tabs::-webkit-scrollbar{display:none}
-.youtube-detail-grid,.youtube-player-column,.youtube-detail-sidebar,.youtube-related-section,.youtube-related-grid,.youtube-related-grid > *,#relatedGrid.video-grid,.mode-toolbar,.mode-toolbar-actions,.detail-controls,.playlist-controls,.page-shell,.workspace-main{min-width:0}
+.selected-video-layout,.selected-video-player,.selected-video-side,.youtube-player-shell,#relatedGrid.video-grid,.mode-toolbar,.mode-toolbar-actions,.detail-controls,.playlist-controls,.page-shell,.workspace-main{min-width:0}
 .youtube-player-shell{display:block;width:100%;max-width:100%;min-width:0;overflow:visible}
 .youtube-player-ratio{position:relative;display:block;width:100%;height:0;padding-top:56.25%;overflow:hidden;background:#111;border-radius:inherit}
 .youtube-player-ratio iframe{position:absolute !important;top:0 !important;left:0 !important;width:100% !important;height:100% !important;display:block !important;border:0 !important;max-width:100% !important;max-height:none !important;aspect-ratio:auto !important}
@@ -106,30 +106,59 @@ h2{font-size:clamp(2.2rem,4vw,3.6rem);margin-top:14px;letter-spacing:-.03em}.det
 .youtube-open-note strong{color:var(--text);font-weight:600}
 .ipad-youtube-center-open{display:none}
 .ipad-youtube-center-open .ipad-youtube-center-open-icon{font-size:1.1rem;line-height:1}
-.video-detail-page .youtube-player-column{gap:10px}
-.video-detail-page .youtube-mode-toolbar{padding:9px 12px}
-.video-detail-page .youtube-mode-toolbar .mode-toolbar-copy .hero-meta{gap:8px}
-.video-detail-page .youtube-mode-toolbar .mode-toolbar-actions{gap:8px}
-.video-detail-page .youtube-mode-toolbar .mode-toolbar-actions .btn,
-.video-detail-page .youtube-mode-toolbar .mode-toolbar-actions .mode-toggle{min-height:42px;padding:10px 12px}
-.youtube-detail-hero{padding:20px 24px 18px}
-.youtube-detail-hero .youtube-detail-title{font-size:clamp(1.7rem,2.4vw,2.8rem);line-height:1.08;margin-top:10px}
-.youtube-detail-hero .youtube-detail-subhead{max-width:62rem;margin-top:8px;font-size:.92rem;line-height:1.55}
-.video-detail-page .youtube-detail-sidebar{gap:14px}
-.video-detail-page .youtube-detail-sidebar .section-card{padding:16px}
-.video-detail-page .youtube-detail-sidebar .info-stack{gap:12px}
-.video-detail-page .youtube-detail-sidebar .info-row{padding-bottom:8px}
-.video-detail-page .youtube-detail-sidebar .btn,
-.video-detail-page .youtube-detail-sidebar .mode-toggle{min-height:42px}
-.video-detail-page .youtube-open-actions{gap:8px}
-.video-detail-page .youtube-open-actions .btn{min-height:42px}
+.video-detail-page.detail-grid{
+ grid-template-columns:1fr;
+ width:100%;
+ max-width:none;
+ margin:0;
+ align-items:start;
+ justify-items:stretch;
+}
+.video-detail-page .selected-video-layout{
+ display:grid;
+ grid-template-columns:minmax(0,1fr) minmax(320px,380px);
+ gap:18px;
+ align-items:start;
+ width:100%;
+ min-width:0;
+}
+.video-detail-page .selected-video-player{
+ min-width:0;
+}
+.video-detail-page .selected-video-side{
+ display:grid;
+ gap:16px;
+ min-width:0;
+}
+.video-detail-page .selected-video-controls{
+ margin:0;
+}
+.video-detail-page .selected-video-side .section-card{
+ margin:0;
+}
+.video-detail-page.detail-grid .youtube-player-shell{
+ width:100%;
+ max-width:none;
+ margin:0;
+}
+.video-detail-page .selected-video-actions-card .detail-controls{
+ margin-top:0;
+}
+.video-detail-page .selected-video-meta-card .info-stack{
+ gap:12px;
+}
+.video-detail-page .selected-video-side .mode-toolbar{
+ padding:14px 16px;
+ border:1px solid var(--border);
+ border-radius:28px;
+ background:var(--panel);
+ box-shadow:var(--shadow);
+}
 
-@media (min-width:700px) and (max-width:1100px){
- .video-detail-page.detail-grid.youtube-detail-grid{grid-template-columns:1fr !important}
- .video-detail-page .youtube-player-shell{position:relative !important}
- .video-detail-page .ipad-youtube-center-open{display:inline-flex !important;position:absolute !important;left:50% !important;top:50% !important;-webkit-transform:translate(-50%,-50%) !important;transform:translate(-50%,-50%) !important;z-index:9999 !important;align-items:center;justify-content:center;gap:10px;min-height:56px;padding:14px 22px;border-radius:999px;background:rgba(0,0,0,.86);border:1px solid rgba(255,255,255,.22);color:#fff;text-decoration:none;font-weight:800;box-shadow:0 16px 44px rgba(0,0,0,.55);-webkit-tap-highlight-color:transparent}
- .video-detail-page .ipad-youtube-center-open:hover,.video-detail-page .ipad-youtube-center-open:focus-visible{background:rgba(0,0,0,.94);outline:none}
- .video-detail-page .youtube-player-ratio iframe,.video-detail-page .youtube-player-shell iframe{pointer-events:none !important}
+@media (max-width:1000px){
+ .video-detail-page .selected-video-layout{
+  grid-template-columns:1fr;
+ }
 }
 
 @media (max-width:1180px){
@@ -161,25 +190,17 @@ h2{font-size:clamp(2.2rem,4vw,3.6rem);margin-top:14px;letter-spacing:-.03em}.det
   .top-tabs .sync-tab{height:44px;padding:0 14px}
   .page-shell,body.sidebar-collapsed .page-shell{padding-top:8px}
   .video-grid,.movie-grid,.top-rated-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
-  .youtube-detail-grid{grid-template-columns:1fr;gap:18px}
-  .youtube-player-shell{margin:0 auto}
-  .youtube-detail-sidebar{gap:16px}
   .youtube-related-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
   .youtube-open-note{display:block}
-  .youtube-detail-hero{padding:18px 20px 16px}
 }
 
 @media (max-width:1024px){
   .workspace-main{padding:14px 14px 24px}
   .page-hero,.section-card,.brain-card{padding:20px}
-  .youtube-detail-grid{grid-template-columns:1fr}
   .youtube-player-shell{width:100%;max-width:100%}
   .mode-toolbar{padding:10px;gap:10px}
   .mode-toolbar-actions{gap:8px}
-  .youtube-detail-sidebar .btn,.youtube-detail-sidebar .mode-toggle{width:100%;justify-content:center}
   .youtube-related-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
-  .youtube-open-actions{width:100%}
-  .youtube-open-actions .btn{width:100%;min-height:44px;justify-content:center}
   .youtube-open-note{display:block}
 }
 
@@ -203,8 +224,6 @@ h2{font-size:clamp(2.2rem,4vw,3.6rem);margin-top:14px;letter-spacing:-.03em}.det
   .page-hero,.section-card,.brain-card,.surface-card,.player-shell{border-radius:22px}
   .youtube-related-grid,.movie-grid,.top-rated-grid,.video-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
   .youtube-player-shell{max-width:100%}
-  .youtube-detail-controls{overflow-x:auto;-webkit-overflow-scrolling:touch;flex-wrap:nowrap}
-  .youtube-detail-controls .btn{flex:0 0 auto}
   .ai-sidebar-toggle{right:16px;bottom:16px;width:54px;height:54px}
 }
 
@@ -218,8 +237,6 @@ h2{font-size:clamp(2.2rem,4vw,3.6rem);margin-top:14px;letter-spacing:-.03em}.det
   .youtube-player-shell{width:100%}
   .mode-toolbar-actions{width:100%}
   .mode-toolbar-actions .btn,.mode-toolbar-actions .mode-toggle{flex:1 1 calc(50% - 8px)}
-  .youtube-detail-sidebar .btn,.youtube-detail-sidebar .mode-toggle{width:100%}
-  .youtube-open-actions .btn{min-height:46px}
   .youtube-open-note{font-size:.82rem}
   .ai-sidebar-toggle{right:12px;bottom:12px;width:50px;height:50px}
 }
@@ -229,7 +246,7 @@ h2{font-size:clamp(2.2rem,4vw,3.6rem);margin-top:14px;letter-spacing:-.03em}.det
   .page-shell,body.sidebar-collapsed .page-shell{padding-top:4px}
   .page-hero,.section-card,.brain-card,.surface-card,.player-shell{padding:14px;border-radius:20px}
   .top-tab{padding:8px 10px}
-  .mode-toolbar-actions .btn,.mode-toolbar-actions .mode-toggle,.youtube-detail-controls .btn{width:100%;flex:1 1 100%}
+  .mode-toolbar-actions .btn,.mode-toolbar-actions .mode-toggle{width:100%;flex:1 1 100%}
   .youtube-related-grid,.movie-grid,.top-rated-grid,.video-grid{grid-template-columns:1fr}
   .ai-sidebar-toggle{width:46px;height:46px}
   .ai-sidebar-toggle-label{font-size:.64rem}
