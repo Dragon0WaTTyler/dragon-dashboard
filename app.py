@@ -26,20 +26,61 @@ from datetime import datetime, timedelta, timezone
 from html import escape, unescape
 from html.parser import HTMLParser
 from pathlib import Path
-from flask import Flask, Response, flash, jsonify, redirect, render_template, request, session, send_file, url_for
+from flask import Response, flash, jsonify, redirect, render_template, request, session, send_file, url_for
 from markupsafe import Markup
-from werkzeug.middleware.proxy_fix import ProxyFix
+from domains.youtube.services import (
+    YouTubePlaylistService,
+    YouTubeRecommendationService,
+    YouTubeVideoService,
+)
+from dragon.cache import DragonCache, build_cache_store, build_runtime_cache, clone_json_compatible, load_json_file, save_json_file
+from dragon.config import build_runtime_config, config_flag, config_int, config_value, emit_environment_diagnostics
+from dragon.constants import (
+    READING_GITHUB_SYNC_ONLINE_MESSAGE,
+    READING_LOCAL_SYNC_DISABLED_MESSAGE,
+    READING_MAP_NEWS_ENGLISH_FEED_URL,
+    READING_MAP_NEWS_ENGLISH_NAME,
+    READING_MOROCCO_WORLD_NEWS_NAME,
+)
+from dragon.extensions import create_app as build_dragon_app
+from dragon.paths import (
+    ADMIN_DATA_PATH,
+    BASE_DIR,
+    BOOK_QUOTES_SNAPSHOT_PATH,
+    BOOKS_SNAPSHOT_PATH,
+    CACHE_DATA_PATH,
+    CHAT_HISTORY_DB_PATH,
+    CHESS_COURSES_PATH,
+    CHESS_DATA_PATH,
+    CORRECTION_REPORTS_DIR,
+    CSV_CORRECTIONS_DIR,
+    DELETED_HISTORY_PATH,
+    DURATION_CACHE_PATH,
+    EXPORTS_DIR,
+    LICHESS_PUZZLE_SAMPLE_DATA_PATH,
+    LICHESS_PUZZLE_SAMPLE_PATH,
+    MISMATCH_CSV_PATH,
+    PLAYLISTS_PATH,
+    READING_BACKUPS_DIR,
+    READING_DATA_PATH,
+    READING_TTS_CACHE_DIR,
+    YOUTUBE_CLIENT_SECRET_PATH,
+    YOUTUBE_TOKEN_PATH,
+    YTS_TORRENTS_CACHE_PATH,
+)
+from dragon.state import RUNTIME_STATE
+
+BOOKS_RUNTIME = RUNTIME_STATE.books
+READING_RUNTIME = RUNTIME_STATE.reading
+TMDB_RUNTIME = RUNTIME_STATE.tmdb
+YOUTUBE_RUNTIME = RUNTIME_STATE.youtube
+YTS_RUNTIME = RUNTIME_STATE.yts
 edge_tts = None
 genai = None
 try:
     import feedparser
 except ImportError:
     feedparser = None
-
-try:
-    from dotenv import load_dotenv
-except ImportError:
-    load_dotenv = None
 
 try:
     import chess as chesslib
@@ -63,31 +104,6 @@ except ImportError:
     build = None
     HttpError = Exception
 
-BASE_DIR = Path(__file__).resolve().parent
-DOTENV_PATH = BASE_DIR / ".env"
-if load_dotenv:
-    load_dotenv(dotenv_path=str(DOTENV_PATH), override=False, encoding="utf-8")
-
-
-def load_local_env(path):
-    values = {}
-    if not path.exists():
-        return values
-    try:
-        for raw_line in path.read_text(encoding="utf-8").splitlines():
-            line = raw_line.strip()
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-            key, value = line.split("=", 1)
-            key = key.strip()
-            value = value.strip().strip("'\"")
-            if key:
-                values[key] = value
-    except Exception:
-        return {}
-    return values
-
-
 def _get_edge_tts_module():
     global edge_tts
     if edge_tts is None:
@@ -99,75 +115,27 @@ def _get_edge_tts_module():
     return edge_tts
 
 
-LOCAL_ENV = load_local_env(BASE_DIR / ".env")
+emit_environment_diagnostics()
+
+RUNTIME_CONFIG = build_runtime_config()
+FLASK_ENV_NAME = RUNTIME_CONFIG.flask_env_name
+IS_PRODUCTION = RUNTIME_CONFIG.is_production
+FLASK_SECRET_KEY = RUNTIME_CONFIG.flask_secret_key
+_APP_INSTANCE = None
 
 
-def config_value(name, default=""):
-    env_value = os.environ.get(name)
-    if env_value not in (None, ""):
-        return env_value
-    file_value = LOCAL_ENV.get(name)
-    if file_value not in (None, ""):
-        return file_value
-    return default
+def create_app():
+    global _APP_INSTANCE
+    if _APP_INSTANCE is None:
+        _APP_INSTANCE = build_dragon_app(
+            __name__,
+            secret_key=FLASK_SECRET_KEY,
+            is_production=IS_PRODUCTION,
+        )
+    return _APP_INSTANCE
 
 
-def config_flag(name, default=False):
-    raw_value = config_value(name, "1" if default else "0")
-    return str(raw_value or "").strip().lower() not in {"", "0", "false", "no", "off"}
-
-
-def config_int(name, default=0, minimum=None, maximum=None):
-    raw_value = config_value(name, str(default))
-    try:
-        value = int(str(raw_value or "").strip())
-    except Exception:
-        value = int(default)
-    if minimum is not None:
-        value = max(int(minimum), value)
-    if maximum is not None:
-        value = min(int(maximum), value)
-    return value
-
-
-print(f"[env] .env path: {DOTENV_PATH} | exists: {DOTENV_PATH.exists()}")
-print(f"[env] NOTION_TOKEN detected: {bool(os.environ.get('NOTION_TOKEN') or LOCAL_ENV.get('NOTION_TOKEN'))}")
-print(f"[env] NOTION_DATABASE_ID detected: {bool(os.environ.get('NOTION_DATABASE_ID') or LOCAL_ENV.get('NOTION_DATABASE_ID'))}")
-print(f"[env] NOTION_BOOKS_DATABASE_ID detected: {bool(os.environ.get('NOTION_BOOKS_DATABASE_ID') or LOCAL_ENV.get('NOTION_BOOKS_DATABASE_ID'))}")
-print(f"[env] NOTION_BOOK_QUOTES_DATABASE_ID detected: {bool(os.environ.get('NOTION_BOOK_QUOTES_DATABASE_ID') or LOCAL_ENV.get('NOTION_BOOK_QUOTES_DATABASE_ID'))}")
-print(f"[env] NOTION_BOOK_QUOTES_SOURCE_PAGE_ID detected: {bool(os.environ.get('NOTION_BOOK_QUOTES_SOURCE_PAGE_ID') or LOCAL_ENV.get('NOTION_BOOK_QUOTES_SOURCE_PAGE_ID'))}")
-
-
-app = Flask(__name__)
-app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
-app.logger.setLevel(logging.INFO)
-for handler in list(app.logger.handlers):
-    handler.setLevel(logging.INFO)
-
-FLASK_ENV_NAME = str(config_value("FLASK_ENV", "") or "").strip().lower()
-IS_PRODUCTION = FLASK_ENV_NAME == "production" or config_flag("RENDER", False)
-FLASK_SECRET_KEY = config_value("FLASK_SECRET_KEY", "")
-if not FLASK_SECRET_KEY:
-    if IS_PRODUCTION:
-        raise RuntimeError("Missing FLASK_SECRET_KEY. Set it in the environment before running Dragon online.")
-    FLASK_SECRET_KEY = secrets.token_urlsafe(32)
-app.secret_key = FLASK_SECRET_KEY
-app.config.update(
-    SESSION_COOKIE_HTTPONLY=True,
-    SESSION_COOKIE_SAMESITE="Lax",
-    SESSION_COOKIE_SECURE=IS_PRODUCTION,
-    PREFERRED_URL_SCHEME="https" if IS_PRODUCTION else "http",
-)
-
-# Allow OAuth over http://localhost during local development only.
-if not IS_PRODUCTION:
-    os.environ.setdefault("OAUTHLIB_INSECURE_TRANSPORT", "1")
-
-READING_LOCAL_SYNC_DISABLED_MESSAGE = "Local RSS sync is disabled online. Use GitHub Actions sync."
-READING_GITHUB_SYNC_ONLINE_MESSAGE = "Reading sync is handled by GitHub Actions online."
-READING_MAP_NEWS_ENGLISH_FEED_URL = "https://www.mapnews.ma/en/rss.xml"
-READING_MAP_NEWS_ENGLISH_NAME = "MAP News English"
-READING_MOROCCO_WORLD_NEWS_NAME = "Morocco World News"
+app = create_app()
 
 # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 #  CONFIGURATION
@@ -241,9 +209,6 @@ DRAGON_READING_SYNC_BACKFILL_BBC = config_flag("DRAGON_READING_SYNC_BACKFILL_BBC
 DRAGON_READING_SYNC_BBC_BACKFILL_MAX = config_int("DRAGON_READING_SYNC_BBC_BACKFILL_MAX", 12, minimum=0, maximum=50)
 GITHUB_ACTIONS_TOKEN = config_value("GITHUB_ACTIONS_TOKEN", "")
 DRAGON_GITHUB_WEBHOOK_SECRET = config_value("DRAGON_GITHUB_WEBHOOK_SECRET", "")
-YTS_TORRENTS_CACHE_PATH = BASE_DIR / "yts_torrents_cache.json"
-YTS_TORRENTS_CACHE = {}
-YTS_TORRENTS_CACHE_LOADED = False
 YTS_TRACKERS = [
     "udp://open.demonii.com:1337/announce",
     "udp://tracker.openbittorrent.com:80",
@@ -260,8 +225,6 @@ READING_SYNC_GITHUB_WORKFLOW = "sync-reading.yml"
 READING_SYNC_GITHUB_BRANCH = "main"
 READING_SYNC_GITHUB_API_BASE = "https://api.github.com"
 READING_SYNC_GITHUB_RAW_SNAPSHOT_URL = "https://raw.githubusercontent.com/Dragon0WaTTyler/dragon-dashboard/main/reading_data.json"
-READING_SYNC_TRIGGER_LOCK = threading.Lock()
-READING_GITHUB_REFRESH_LOCK = threading.Lock()
 MOVIE_WANT_TO_UNION_FETCH_FLAG_NAME = "MOVIE_WANT_TO_UNION_FETCH_ENABLED"
 DEFAULT_MOVIE_FETCH_EXPERIMENT_UI_COUNT = 506
 MOVIE_FETCH_EXPERIMENT_ANCHOR_TITLES = (
@@ -291,21 +254,10 @@ MOVIE_WANT_TO_UNION_COMPARE_STRATEGIES = (
     "category_equals_anime",
     "category_equals_shortmovie",
 )
-DURATION_CACHE_PATH  = Path(__file__).resolve().parent / "youtube_duration_cache.json"
-PLAYLISTS_PATH       = BASE_DIR / "playlists.json"
-ADMIN_DATA_PATH      = BASE_DIR / "admin_data.json"
-DELETED_HISTORY_PATH = BASE_DIR / "deleted_history.json"
-READING_DATA_PATH    = BASE_DIR / "reading_data.json"
-READING_BACKUPS_DIR  = BASE_DIR / "backups" / "reading"
-READING_TTS_CACHE_DIR = BASE_DIR / "cache" / "reading_tts"
-CHESS_DATA_PATH      = BASE_DIR / "chess_data.json"  # local personal chess state; keep out of commits
-CHESS_COURSES_PATH   = BASE_DIR / "chess_courses.json"  # local curated chess courses; keep out of commits
-LICHESS_PUZZLE_SAMPLE_PATH = BASE_DIR / "lichess_puzzles_sample.csv"
-LICHESS_PUZZLE_SAMPLE_DATA_PATH = BASE_DIR / "data" / "lichess_puzzles_sample.csv"
-YOUTUBE_TOKEN_PATH   = BASE_DIR / "youtube_token.json"
-CACHE_DATA_PATH      = BASE_DIR / "cache_data.json"
-CHAT_HISTORY_DB_PATH = BASE_DIR / "chat_history.db"
 CACHE_MAX_AGE_SECONDS = 24 * 60 * 60
+BOOKS_RUNTIME_TTL_SECONDS = 10 * 60
+BOOKS_SNAPSHOT_TTL_SECONDS = 6 * 60 * 60
+BOOKS_REFRESH_COOLDOWN_SECONDS = 5 * 60
 READING_BACKUP_KEEP_COUNT = 8
 READING_TTS_MAX_CHARS = 12000
 READING_TTS_MIN_CHARS = 120
@@ -313,33 +265,9 @@ READING_TTS_DEFAULT_VOICES = {
     "ar": "ar-EG-SalmaNeural",
     "en": "en-US-AriaNeural",
 }
-READING_TTS_GENERATION_LOCK = threading.Lock()
 READING_TTS_SYNC_LEAD_SECONDS = 0.08
 READING_TTS_TIMINGS_VERSION = 3
 READING_TTS_MAX_AUDIO_START_OFFSET_SECONDS = 0.24
-BOOK_COVER_CACHE = {}
-BOOKS_ENTRIES_CACHE = {"entries": None, "error": "", "updated_at": 0}
-BOOK_QUOTES_IMPORT_CACHE = {"books": None, "updated_at": 0}
-BOOK_QUOTES_ENTRIES_CACHE = {"entries": None, "error": "", "updated_at": 0}
-possible_names = [
-    "client_secret.json",
-    "client_secrets.json",
-    "client_secret.json.json",
-    "client_secret",
-]
-CLIENT_SECRETS_FILE = next(
-    (
-        str(candidate)
-        for candidate in (
-            [BASE_DIR / filename for filename in possible_names]
-            + sorted(BASE_DIR.glob("client_secret*"))
-            + sorted(BASE_DIR.glob("client_secrets*"))
-        )
-        if candidate.exists() and candidate.is_file()
-    ),
-    os.path.join(os.path.dirname(__file__), "client_secret.json")
-)
-YOUTUBE_CLIENT_SECRET_PATH = Path(CLIENT_SECRETS_FILE)
 YOUTUBE_OAUTH_SCOPES = ["https://www.googleapis.com/auth/youtube.force-ssl"]
 
 if IS_PRODUCTION and (not DRAGON_ADMIN_USERNAME or not DRAGON_ADMIN_PASSWORD):
@@ -417,10 +345,6 @@ TITLE_NOISE_TOKENS = (
     "1080p", "720p", "2160p", "bluray", "brrip", "webrip", "web-dl",
     "hdrip", "x264", "x265", "yify", "dvdrip"
 )
-CSV_CORRECTIONS_DIR = BASE_DIR / "csv_corrections"
-CORRECTION_REPORTS_DIR = BASE_DIR / "correction_reports"
-EXPORTS_DIR = BASE_DIR / "exports"
-MISMATCH_CSV_PATH = Path(r"C:\Users\walid\Downloads\movie_metadata_mismatches.csv")
 CSV_CORRECTION_SCHEMA = ("original_title", "corrected_title", "director", "year", "notes")
 MOVIE_EXPORT_FIELDS = (
     "name",
@@ -513,31 +437,22 @@ GENRE_RELATION_PROPERTY = "Genre Entry"
 GENRE_KEY_PROPERTY = "Genre Key"
 GENRE_ALIASES_PROPERTY = "Aliases"
 
-YOUTUBE_DURATION_CACHE = {}
 RUNTIME_CACHE_LOCK = threading.Lock()
-CACHE_DATA_LOCK = threading.Lock()
-RUNTIME_CACHE = {
-    "initialized": False,
-    "films": None,
-    "library_films": {},
-    "want_to_union_films": None,
-    "youtube_playlists": {},
-    "youtube_channel_debug": {},
-    "youtube_channel_latest_uploads": {},
-    "youtube_channel_group_feed_videos": {},
-    "youtube_section_picks": {},
-    "refreshing": {}
-}
+RUNTIME_CACHE = build_runtime_cache()
+CACHE_DATA_STORE = build_cache_store(CACHE_DATA_PATH)
+YTS_TORRENTS_CACHE_STORE = DragonCache(YTS_TORRENTS_CACHE_PATH, default_factory=dict)
 GEMINI_MODEL_NAME_CACHE = None
-TMDB_LOOKUP_CACHE = {}
-TMDB_PERSON_LOOKUP_CACHE = {}
-TMDB_EXTERNAL_IDS_CACHE = {}
-TMDB_COUNTRY_NAME_CACHE = None
 TMDB_COUNTRY_DISPLAY_ALIASES = {
     "United States of America": "United States",
     "United Kingdom of Great Britain and Northern Ireland": "United Kingdom",
     "Korea (the Republic of)": "South Korea",
 }
+YOUTUBE_RUNTIME.playlist_index = RUNTIME_CACHE["youtube_playlists"]
+YOUTUBE_RUNTIME.channel_debug_index = RUNTIME_CACHE["youtube_channel_debug"]
+YOUTUBE_RUNTIME.latest_uploads_index = RUNTIME_CACHE["youtube_channel_latest_uploads"]
+YOUTUBE_RUNTIME.group_feed_videos_index = RUNTIME_CACHE["youtube_channel_group_feed_videos"]
+YOUTUBE_RUNTIME.section_pick_index = RUNTIME_CACHE["youtube_section_picks"]
+YOUTUBE_RUNTIME.section_feed_index = RUNTIME_CACHE["youtube_section_feeds"]
 FILM_DISCUSSION_PROMPT = """â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—
 â•‘        ðŸŽž  FILM DISCUSSION PROMPT        â•‘
 â•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
@@ -698,36 +613,6 @@ for mine too. This is a conversation, not a review.
 â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—
 â•‘       PASTE YOUR MOVIE LIST BELOW        â•‘
 â•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•"""
-
-
-def load_json_file(path, default):
-    if not path.exists():
-        return default
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except Exception:
-        return default
-
-
-def save_json_file(path, payload):
-    path = Path(path)
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        temp_path = path.with_name(f"{path.name}.tmp")
-        temp_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
-        temp_path.replace(path)
-        return True
-    except OSError as exc:
-        # On PythonAnywhere, disk quota exhaustion should not take the whole route down.
-        if getattr(exc, "errno", None) in {28, 122}:
-            print(f"[warn] Skipping write for {path.name}: disk quota exceeded")
-            return False
-        raise
-
-
-READING_DATA_CACHE = {"fingerprint": None, "data": None}
-READING_DATA_CACHE_LOCK = threading.Lock()
-
 
 def _reading_data_cache_fingerprint():
     try:
@@ -10539,22 +10424,22 @@ def load_reading_data():
 
 def load_reading_data_cached():
     fingerprint = _reading_data_cache_fingerprint()
-    with READING_DATA_CACHE_LOCK:
-        cached_fingerprint = READING_DATA_CACHE.get("fingerprint")
-        cached_data = READING_DATA_CACHE.get("data")
+    with READING_RUNTIME.data_cache_lock:
+        cached_fingerprint = READING_RUNTIME.data_cache.get("fingerprint")
+        cached_data = READING_RUNTIME.data_cache.get("data")
         if fingerprint and cached_fingerprint == fingerprint and cached_data is not None:
             return cached_data
     data = _load_reading_data_uncached()
-    with READING_DATA_CACHE_LOCK:
-        READING_DATA_CACHE["fingerprint"] = _reading_data_cache_fingerprint()
-        READING_DATA_CACHE["data"] = data
+    with READING_RUNTIME.data_cache_lock:
+        READING_RUNTIME.data_cache["fingerprint"] = _reading_data_cache_fingerprint()
+        READING_RUNTIME.data_cache["data"] = data
     return data
 
 
 def clear_reading_data_cache():
-    with READING_DATA_CACHE_LOCK:
-        READING_DATA_CACHE["fingerprint"] = None
-        READING_DATA_CACHE["data"] = None
+    with READING_RUNTIME.data_cache_lock:
+        READING_RUNTIME.data_cache["fingerprint"] = None
+        READING_RUNTIME.data_cache["data"] = None
 
 
 def save_reading_data(data, apply_retention=False, retention_reason="save"):
@@ -12794,20 +12679,14 @@ def is_cache_entry_stale(entry, max_age_seconds=CACHE_MAX_AGE_SECONDS):
 
 
 def load_cache_data():
-    with CACHE_DATA_LOCK:
-        data = load_json_file(CACHE_DATA_PATH, {})
-        if not isinstance(data, dict):
-            data = {}
-        data.setdefault("films", {})
-        data.setdefault("youtube_playlists", {})
-        data.setdefault("youtube_section_feeds", {})
-        data.setdefault("youtube_channel_latest_uploads", {})
-        return data
+    data = CACHE_DATA_STORE.load()
+    if not isinstance(data, dict):
+        return {}
+    return data
 
 
 def save_cache_data(cache_data):
-    with CACHE_DATA_LOCK:
-        save_json_file(CACHE_DATA_PATH, cache_data)
+    CACHE_DATA_STORE.save(cache_data)
 
 
 def set_cache_entry(cache_data, key, payload):
@@ -12926,7 +12805,7 @@ def get_persisted_youtube_section_feed_entry(key, force_refresh=False, allow_sta
         return None, stale
     freshness = "stale" if stale else "fresh"
     print(f"[youtube-group-cache] key={key} source=disk-{freshness}")
-    return json.loads(json.dumps(data)), stale
+    return clone_json_compatible(data), stale
 
 
 def set_persisted_youtube_section_feed_entry(key, payload):
@@ -12934,7 +12813,7 @@ def set_persisted_youtube_section_feed_entry(key, payload):
     cache_data.setdefault("youtube_section_feeds", {})
     cache_data["youtube_section_feeds"][key] = {
         "updated_at": current_timestamp(),
-        "data": json.loads(json.dumps(payload)),
+        "data": clone_json_compatible(payload),
     }
     save_cache_data(cache_data)
 
@@ -12952,7 +12831,7 @@ def get_persisted_youtube_channel_latest_entry(key, force_refresh=False, allow_s
     data = entry.get("data", {})
     if not isinstance(data, dict):
         return None, stale
-    return json.loads(json.dumps(data)), stale
+    return clone_json_compatible(data), stale
 
 
 def set_persisted_youtube_channel_latest_entry(key, payload):
@@ -12960,7 +12839,7 @@ def set_persisted_youtube_channel_latest_entry(key, payload):
     cache_data.setdefault("youtube_channel_latest_uploads", {})
     cache_data["youtube_channel_latest_uploads"][key] = {
         "updated_at": current_timestamp(),
-        "data": json.loads(json.dumps(payload if isinstance(payload, dict) else {})),
+        "data": clone_json_compatible(payload if isinstance(payload, dict) else {}),
     }
     save_cache_data(cache_data)
 
@@ -13003,6 +12882,112 @@ def clear_persisted_youtube_section_feed_cache(keys=None):
         save_cache_data(cache_data)
 
 
+def _youtube_trace_enabled():
+    return True
+
+
+def _youtube_trace_timestamp(value):
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    parsed = parse_timestamp(text)
+    if not parsed:
+        return text
+    try:
+        return parsed.astimezone().isoformat()
+    except Exception:
+        return text
+
+
+def _youtube_trace_video_stats(videos):
+    newest_value = ""
+    newest_video_id = ""
+    newest_title = ""
+    count = 0
+    for video in videos or []:
+        if not isinstance(video, dict):
+            continue
+        count += 1
+        published_at = _youtube_trace_timestamp(video.get("published_at", ""))
+        if published_at and (not newest_value or published_at > newest_value):
+            newest_value = published_at
+            newest_video_id = str(video.get("video_id", "") or "").strip()
+            newest_title = str(video.get("title", "") or video.get("name", "") or "").strip()
+    return {
+        "count": count,
+        "newest_published_at": newest_value or "-",
+        "newest_video_id": newest_video_id or "-",
+        "newest_title": newest_title or "-",
+    }
+
+
+def _youtube_trace(event, **fields):
+    if not _youtube_trace_enabled():
+        return
+    parts = [f"event={event}"]
+    for key, value in fields.items():
+        if isinstance(value, bool):
+            value = int(value)
+        if value in (None, ""):
+            continue
+        parts.append(f"{key}={value}")
+    message = "[youtube-trace] " + " ".join(parts)
+    safe_message = message.encode("ascii", errors="backslashreplace").decode("ascii")
+    print(safe_message)
+
+
+def invalidate_youtube_derived_caches(reason="", clear_channel_latest=True, clear_section_feeds=True):
+    reason_text = str(reason or "").strip() or "unspecified"
+    with RUNTIME_CACHE_LOCK:
+        before_runtime = {
+            "runtime_latest_id": id(YOUTUBE_RUNTIME.latest_uploads_index),
+            "runtime_latest_size": len(YOUTUBE_RUNTIME.latest_uploads_index or {}),
+            "runtime_section_feed_id": id(YOUTUBE_RUNTIME.section_feed_index),
+            "runtime_section_feed_size": len(YOUTUBE_RUNTIME.section_feed_index or {}),
+            "runtime_group_feed_id": id(YOUTUBE_RUNTIME.group_feed_videos_index),
+            "runtime_group_feed_size": len(YOUTUBE_RUNTIME.group_feed_videos_index or {}),
+            "runtime_channel_debug_id": id(YOUTUBE_RUNTIME.channel_debug_index),
+            "runtime_channel_debug_size": len(YOUTUBE_RUNTIME.channel_debug_index or {}),
+        }
+    with RUNTIME_CACHE_LOCK:
+        YOUTUBE_RUNTIME.channel_debug_index.clear()
+        YOUTUBE_RUNTIME.section_pick_index.clear()
+        YOUTUBE_RUNTIME.group_feed_videos_index.clear()
+        if clear_section_feeds:
+            YOUTUBE_RUNTIME.section_feed_index.clear()
+        if clear_channel_latest:
+            YOUTUBE_RUNTIME.latest_uploads_index.clear()
+    if clear_section_feeds:
+        clear_persisted_youtube_section_feed_cache()
+    if clear_channel_latest:
+        clear_persisted_youtube_channel_latest_cache()
+    with RUNTIME_CACHE_LOCK:
+        after_runtime = {
+            "runtime_latest_id_after": id(YOUTUBE_RUNTIME.latest_uploads_index),
+            "runtime_latest_size_after": len(YOUTUBE_RUNTIME.latest_uploads_index or {}),
+            "runtime_section_feed_id_after": id(YOUTUBE_RUNTIME.section_feed_index),
+            "runtime_section_feed_size_after": len(YOUTUBE_RUNTIME.section_feed_index or {}),
+            "runtime_group_feed_id_after": id(YOUTUBE_RUNTIME.group_feed_videos_index),
+            "runtime_group_feed_size_after": len(YOUTUBE_RUNTIME.group_feed_videos_index or {}),
+            "runtime_channel_debug_id_after": id(YOUTUBE_RUNTIME.channel_debug_index),
+            "runtime_channel_debug_size_after": len(YOUTUBE_RUNTIME.channel_debug_index or {}),
+        }
+    _youtube_trace(
+        "invalidate_derived",
+        reason=reason_text,
+        clear_channel_latest=clear_channel_latest,
+        clear_section_feeds=clear_section_feeds,
+        **before_runtime,
+        **after_runtime,
+    )
+    app.logger.info(
+        "[youtube-derived-cache] action=invalidate reason=%s clear_channel_latest=%s clear_section_feeds=%s",
+        reason_text,
+        clear_channel_latest,
+        clear_section_feeds,
+    )
+
+
 def schedule_youtube_cache_refresh(cache_key, refresh_fn):
     with RUNTIME_CACHE_LOCK:
         refreshing = RUNTIME_CACHE.setdefault("refreshing", {})
@@ -13013,10 +12998,21 @@ def schedule_youtube_cache_refresh(cache_key, refresh_fn):
     def _runner():
         try:
             print(f"[youtube-group-cache] key={cache_key} refresh=background-start")
+            started_at = time.monotonic()
             refresh_fn()
             print(f"[youtube-group-cache] key={cache_key} refresh=background-done")
+            _youtube_trace(
+                "background_refresh_done",
+                cache_key=cache_key,
+                elapsed_ms=int((time.monotonic() - started_at) * 1000),
+            )
         except Exception as exc:
             print(f"[youtube-group-cache] key={cache_key} refresh=background-failed error={type(exc).__name__}: {exc}")
+            _youtube_trace(
+                "background_refresh_failed",
+                cache_key=cache_key,
+                error=type(exc).__name__,
+            )
         finally:
             with RUNTIME_CACHE_LOCK:
                 RUNTIME_CACHE.setdefault("refreshing", {})[cache_key] = False
@@ -13031,8 +13027,9 @@ def is_youtube_cache_refresh_pending(cache_key):
 
 
 def apply_cached_durations(videos):
+    ensure_duration_cache_loaded()
     for video in videos:
-        duration = YOUTUBE_DURATION_CACHE.get(video.get("video_id", ""), {"seconds": 0, "display": "0:00"})
+        duration = YOUTUBE_RUNTIME.duration_cache.get(video.get("video_id", ""), {"seconds": 0, "display": "0:00"})
         video["duration_seconds"] = duration.get("seconds", 0)
         video["duration"] = duration.get("display", "0:00")
     return videos
@@ -13043,24 +13040,24 @@ def clear_runtime_cache():
         RUNTIME_CACHE["films"] = None
         RUNTIME_CACHE["library_films"] = {}
         RUNTIME_CACHE["want_to_union_films"] = None
-        RUNTIME_CACHE["youtube_playlists"] = {}
-        RUNTIME_CACHE["youtube_channel_debug"] = {}
-        RUNTIME_CACHE["youtube_section_picks"] = {}
-        RUNTIME_CACHE["youtube_section_feeds"] = {}
-        RUNTIME_CACHE["youtube_channel_latest_uploads"] = {}
-        RUNTIME_CACHE["youtube_channel_group_feed_videos"] = {}
+        YOUTUBE_RUNTIME.playlist_index.clear()
+        YOUTUBE_RUNTIME.channel_debug_index.clear()
+        YOUTUBE_RUNTIME.section_pick_index.clear()
+        YOUTUBE_RUNTIME.section_feed_index.clear()
+        YOUTUBE_RUNTIME.latest_uploads_index.clear()
+        YOUTUBE_RUNTIME.group_feed_videos_index.clear()
         RUNTIME_CACHE["refreshing"] = {}
         RUNTIME_CACHE["initialized"] = False
 
 
 def clear_youtube_runtime_cache():
     with RUNTIME_CACHE_LOCK:
-        RUNTIME_CACHE["youtube_playlists"] = {}
-        RUNTIME_CACHE["youtube_channel_debug"] = {}
-        RUNTIME_CACHE["youtube_section_picks"] = {}
-        RUNTIME_CACHE["youtube_section_feeds"] = {}
-        RUNTIME_CACHE["youtube_channel_latest_uploads"] = {}
-        RUNTIME_CACHE["youtube_channel_group_feed_videos"] = {}
+        YOUTUBE_RUNTIME.playlist_index.clear()
+        YOUTUBE_RUNTIME.channel_debug_index.clear()
+        YOUTUBE_RUNTIME.section_pick_index.clear()
+        YOUTUBE_RUNTIME.section_feed_index.clear()
+        YOUTUBE_RUNTIME.latest_uploads_index.clear()
+        YOUTUBE_RUNTIME.group_feed_videos_index.clear()
 
 
 def reset_playlists_metadata():
@@ -13281,9 +13278,9 @@ def remove_video_from_local_playlists_cache(video):
 
     if target_playlist_id:
         with RUNTIME_CACHE_LOCK:
-            runtime_videos = RUNTIME_CACHE["youtube_playlists"].get(target_playlist_id)
+            runtime_videos = YOUTUBE_RUNTIME.playlist_index.get(target_playlist_id)
             if runtime_videos is not None:
-                RUNTIME_CACHE["youtube_playlists"][target_playlist_id], _ = prune(runtime_videos)
+                YOUTUBE_RUNTIME.playlist_index[target_playlist_id], _ = prune(runtime_videos)
 
 
 def describe_http_error(exc):
@@ -13963,7 +13960,7 @@ def _youtube_channel_upload_playlist_id(channel_id):
         return ""
     cache_key = _youtube_channel_latest_video_cache_key(channel_id)
     with RUNTIME_CACHE_LOCK:
-        channel_cache = RUNTIME_CACHE.setdefault("youtube_channel_latest_uploads", {})
+        channel_cache = YOUTUBE_RUNTIME.latest_uploads_index
         cached = channel_cache.get(cache_key, {})
         if isinstance(cached, dict) and cached.get("uploads_playlist_id"):
             return str(cached.get("uploads_playlist_id", "") or "").strip()
@@ -13998,7 +13995,7 @@ def _youtube_channel_upload_playlist_id(channel_id):
         if uploads_playlist_id:
             break
     with RUNTIME_CACHE_LOCK:
-        RUNTIME_CACHE.setdefault("youtube_channel_latest_uploads", {})[cache_key] = {
+        YOUTUBE_RUNTIME.latest_uploads_index[cache_key] = {
             "channel_id": channel_id,
             "uploads_playlist_id": uploads_playlist_id,
             "updated_at": current_timestamp(),
@@ -14062,56 +14059,257 @@ def _fetch_youtube_channel_latest_video_via_rss(channel_id):
     }
 
 
-def _youtube_channel_latest_video_summary(channel_id, channel_name="", fallback_video=None, fetch_live=True):
+def _extract_youtube_text_content(value):
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, dict):
+        simple = str(value.get("content", "") or "").strip()
+        if simple:
+            return simple
+        parts = []
+        for run in value.get("runs", []) or []:
+            text = _extract_youtube_text_content(run)
+            if text:
+                parts.append(text)
+        return "".join(parts).strip()
+    if isinstance(value, list):
+        parts = []
+        for item in value:
+            text = _extract_youtube_text_content(item)
+            if text:
+                parts.append(text)
+        return " ".join(parts).strip()
+    return ""
+
+
+def _parse_relative_youtube_time_to_timestamp(value):
+    text = str(value or "").strip().lower()
+    if not text:
+        return ""
+    if text in {"today", "just now"}:
+        return current_timestamp()
+    if text == "yesterday":
+        return (datetime.now().astimezone() - timedelta(days=1)).isoformat()
+    cleaned = text.replace("streamed", "").replace("premiered", "").replace("updated", "").strip()
+    match = re.search(
+        r"(\d+)\s+(second|minute|hour|day|week|month|year)s?\s+ago",
+        cleaned,
+    )
+    if not match:
+        return ""
+    amount = max(int(match.group(1) or 0), 0)
+    unit = str(match.group(2) or "").strip().lower()
+    now_value = datetime.now().astimezone()
+    if unit == "second":
+        resolved = now_value - timedelta(seconds=amount)
+    elif unit == "minute":
+        resolved = now_value - timedelta(minutes=amount)
+    elif unit == "hour":
+        resolved = now_value - timedelta(hours=amount)
+    elif unit == "day":
+        resolved = now_value - timedelta(days=amount)
+    elif unit == "week":
+        resolved = now_value - timedelta(weeks=amount)
+    elif unit == "month":
+        resolved = now_value - timedelta(days=amount * 30)
+    elif unit == "year":
+        resolved = now_value - timedelta(days=amount * 365)
+    else:
+        return ""
+    return resolved.isoformat()
+
+
+def _fetch_youtube_channel_latest_video_via_channel_page(channel_id, channel_name=""):
+    channel_id = str(channel_id or "").strip()
+    if not channel_id:
+        return {}
+    channel_name = str(channel_name or "").strip()
+    url = f"https://www.youtube.com/channel/{channel_id}/videos?view=0&sort=dd&flow=grid&hl=en&gl=US"
+    headers = {
+        "User-Agent": "Mozilla/5.0",
+        "Accept-Language": "en-US,en;q=0.9",
+    }
+    try:
+        response = requests.get(url, headers=headers, timeout=12)
+    except Exception:
+        return {}
+    if response.status_code != 200:
+        return {}
+    match = re.search(r"var ytInitialData = (\{.*?\});", response.text)
+    if not match:
+        return {}
+    try:
+        data = json.loads(match.group(1))
+    except Exception:
+        return {}
+    tabs = (
+        (((data.get("contents", {}) or {}).get("twoColumnBrowseResultsRenderer", {}) or {}).get("tabs", []))
+        if isinstance(data, dict)
+        else []
+    )
+    selected_tab = None
+    for tab in tabs or []:
+        tab_renderer = tab.get("tabRenderer", {}) if isinstance(tab, dict) else {}
+        if bool(tab_renderer.get("selected")):
+            selected_tab = tab_renderer
+            break
+    if not isinstance(selected_tab, dict):
+        return {}
+    rich_grid = (((selected_tab.get("content", {}) or {}).get("richGridRenderer", {}) or {}).get("contents", []))
+    for item in rich_grid or []:
+        if not isinstance(item, dict):
+            continue
+        content = (item.get("richItemRenderer", {}) or {}).get("content", {})
+        if not isinstance(content, dict):
+            continue
+        lockup = (content.get("lockupViewModel", {}) or {})
+        video_id = ""
+        title = ""
+        duration = ""
+        thumbnail_url = ""
+        relative_published = ""
+        if lockup:
+            video_id = str(lockup.get("contentId", "") or "").strip()
+            overlays = (((lockup.get("contentImage", {}) or {}).get("thumbnailViewModel", {}) or {}).get("overlays", []))
+            for overlay in overlays or []:
+                badge = ((((overlay.get("thumbnailBottomOverlayViewModel", {}) or {}).get("badges", []) or [{}])[0].get("thumbnailBadgeViewModel", {}) or {}))
+                if not video_id:
+                    video_id = str(badge.get("animationActivationTargetId", "") or "").strip()
+                if not duration:
+                    duration = str(badge.get("text", "") or "").strip()
+            sources = ((((lockup.get("contentImage", {}) or {}).get("thumbnailViewModel", {}) or {}).get("image", {}) or {}).get("sources", []))
+            for source in sources or []:
+                source_url = str((source or {}).get("url", "") or "").strip()
+                if source_url:
+                    thumbnail_url = source_url
+            metadata = (((lockup.get("metadata", {}) or {}).get("lockupMetadataViewModel", {}) or {}))
+            title = _extract_youtube_text_content(metadata.get("title", {}))
+            for row in (((metadata.get("metadata", {}) or {}).get("contentMetadataViewModel", {}) or {}).get("metadataRows", [])) or []:
+                parts = row.get("metadataParts", []) if isinstance(row, dict) else []
+                if len(parts) >= 2:
+                    relative_published = _extract_youtube_text_content((parts[1] or {}).get("text", {}))
+                    if relative_published:
+                        break
+        video_renderer = (content.get("videoRenderer", {}) or {})
+        if video_renderer and not video_id:
+            video_id = str(video_renderer.get("videoId", "") or "").strip()
+            title = _extract_youtube_text_content(video_renderer.get("title", {})) or title
+            relative_published = _extract_youtube_text_content(video_renderer.get("publishedTimeText", {})) or relative_published
+            duration = _extract_youtube_text_content(
+                (((video_renderer.get("thumbnailOverlays", []) or [{}])[0].get("thumbnailOverlayTimeStatusRenderer", {}) or {}).get("text", {}))
+            ) or duration
+            thumbnails = (((video_renderer.get("thumbnail", {}) or {}).get("thumbnails", [])) if isinstance(video_renderer, dict) else [])
+            for thumb in thumbnails or []:
+                thumb_url = str((thumb or {}).get("url", "") or "").strip()
+                if thumb_url:
+                    thumbnail_url = thumb_url
+        if not video_id:
+            continue
+        published_at = _parse_relative_youtube_time_to_timestamp(relative_published)
+        return {
+            "title": title,
+            "video_id": video_id,
+            "playlist_id": "",
+            "playlist_item_id": "",
+            "playlist_name": "Channel Videos",
+            "channel_name": channel_name or "Unknown Channel",
+            "channel_id": channel_id,
+            "thumb": thumbnail_url or f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg",
+            "duration": duration,
+            "published_at": published_at,
+            "url": f"https://www.youtube.com/watch?v={video_id}",
+        }
+    return {}
+
+
+def _youtube_channel_latest_video_summary(channel_id, channel_name="", fallback_video=None, fetch_live=True, force_refresh=False):
     channel_id = str(channel_id or "").strip()
     cache_key = _youtube_channel_latest_video_cache_key(channel_id or channel_name)
-    with RUNTIME_CACHE_LOCK:
-        channel_cache = RUNTIME_CACHE.setdefault("youtube_channel_latest_uploads", {})
-        cached = channel_cache.get(cache_key, {})
-        if isinstance(cached, dict) and isinstance(cached.get("latest_video"), dict):
-            return json.loads(json.dumps(cached.get("latest_video", {})))
-    persisted_entry, _persisted_stale = get_persisted_youtube_channel_latest_entry(cache_key, allow_stale=True)
-    if isinstance(persisted_entry, dict) and isinstance(persisted_entry.get("latest_video"), dict):
+
+    def clear_channel_latest(reason):
         with RUNTIME_CACHE_LOCK:
-            RUNTIME_CACHE.setdefault("youtube_channel_latest_uploads", {})[cache_key] = json.loads(json.dumps(persisted_entry))
-        return json.loads(json.dumps(persisted_entry.get("latest_video", {})))
+            YOUTUBE_RUNTIME.latest_uploads_index.pop(cache_key, None)
+        clear_persisted_youtube_channel_latest_cache(keys=[cache_key])
+        _youtube_trace(
+            "latest_per_channel_clear",
+            channel_id=channel_id or "-",
+            cache_key=cache_key,
+            reason=reason,
+        )
+
+    if not force_refresh:
+        with RUNTIME_CACHE_LOCK:
+            channel_cache = YOUTUBE_RUNTIME.latest_uploads_index
+            cached = channel_cache.get(cache_key, {})
+            if isinstance(cached, dict) and isinstance(cached.get("latest_video"), dict):
+                runtime_stale = is_cache_entry_stale({"updated_at": cached.get("updated_at", "")})
+                if runtime_stale:
+                    channel_cache.pop(cache_key, None)
+                    _youtube_trace(
+                        "latest_per_channel_skip",
+                        channel_id=channel_id or "-",
+                        cache_key=cache_key,
+                        source="runtime",
+                        reason="stale_entry",
+                        latest_updated_at=_youtube_trace_timestamp(cached.get("updated_at", "")),
+                    )
+                else:
+                    _youtube_trace(
+                        "latest_per_channel_read",
+                        channel_id=channel_id or "-",
+                        cache_key=cache_key,
+                        source="runtime",
+                        fetch_live=fetch_live,
+                        force_refresh=force_refresh,
+                        latest_updated_at=_youtube_trace_timestamp(cached.get("updated_at", "")),
+                        **_youtube_trace_video_stats([cached.get("latest_video", {})]),
+                    )
+                    return json.loads(json.dumps(cached.get("latest_video", {})))
+        persisted_entry, _persisted_stale = get_persisted_youtube_channel_latest_entry(cache_key, allow_stale=True)
+        if isinstance(persisted_entry, dict) and isinstance(persisted_entry.get("latest_video"), dict):
+            if _persisted_stale:
+                clear_channel_latest("stale_persisted_entry")
+                _youtube_trace(
+                    "latest_per_channel_skip",
+                    channel_id=channel_id or "-",
+                    cache_key=cache_key,
+                    source="disk",
+                    reason="stale_entry",
+                    latest_updated_at=_youtube_trace_timestamp(persisted_entry.get("updated_at", "")),
+                )
+            else:
+                with RUNTIME_CACHE_LOCK:
+                    YOUTUBE_RUNTIME.latest_uploads_index[cache_key] = json.loads(json.dumps(persisted_entry))
+                _youtube_trace(
+                    "latest_per_channel_read",
+                    channel_id=channel_id or "-",
+                    cache_key=cache_key,
+                    source="disk",
+                    persisted_stale=_persisted_stale,
+                    fetch_live=fetch_live,
+                    force_refresh=force_refresh,
+                    latest_updated_at=_youtube_trace_timestamp(persisted_entry.get("updated_at", "")),
+                    **_youtube_trace_video_stats([persisted_entry.get("latest_video", {})]),
+                )
+                return json.loads(json.dumps(persisted_entry.get("latest_video", {})))
     if not fetch_live:
-        if fallback_video:
-            return build_youtube_channel_video_summary(fallback_video)
-        return {}
-    if not YOUTUBE_API_KEY:
-        latest_video = _fetch_youtube_channel_latest_video_via_rss(channel_id)
-        if latest_video:
-            payload = {
-                "channel_id": channel_id,
-                "uploads_playlist_id": "",
-                "latest_video": json.loads(json.dumps(latest_video)),
-                "latest_source": "rss_latest",
-                "updated_at": current_timestamp(),
-            }
-            with RUNTIME_CACHE_LOCK:
-                RUNTIME_CACHE.setdefault("youtube_channel_latest_uploads", {})[cache_key] = json.loads(json.dumps(payload))
-            set_persisted_youtube_channel_latest_entry(cache_key, payload)
-            return json.loads(json.dumps(latest_video))
         if fallback_video:
             return build_youtube_channel_video_summary(fallback_video)
         return {}
 
     fallback_video = fallback_video if isinstance(fallback_video, dict) else {}
     if not channel_id:
+        if force_refresh:
+            clear_channel_latest("force_refresh_missing_channel_id")
         if fallback_video:
             return build_youtube_channel_video_summary(fallback_video)
         return {}
 
     uploads_playlist_id = _youtube_channel_upload_playlist_id(channel_id)
-    if not uploads_playlist_id:
-        if fallback_video:
-            return build_youtube_channel_video_summary(fallback_video)
-        return {}
 
     latest_video = {}
     latest_source = "none"
-    if YOUTUBE_API_KEY:
+    if YOUTUBE_API_KEY and uploads_playlist_id:
         params = {
             "part": "snippet",
             "playlistId": uploads_playlist_id,
@@ -14145,13 +14343,53 @@ def _youtube_channel_latest_video_summary(channel_id, channel_name="", fallback_
                     break
         except Exception:
             latest_video = {}
+    elif uploads_playlist_id:
+        service = build_youtube_service()
+        if service:
+            try:
+                response = service.playlistItems().list(
+                    part="snippet",
+                    playlistId=uploads_playlist_id,
+                    maxResults=1,
+                ).execute() or {}
+                for item in response.get("items", []) or []:
+                    snippet = item.get("snippet", {}) or {}
+                    resource = snippet.get("resourceId", {}) or {}
+                    video_id = str(resource.get("videoId", "") or "").strip()
+                    if not video_id:
+                        continue
+                    latest_video = {
+                        "title": str(snippet.get("title", "") or "").strip(),
+                        "video_id": video_id,
+                        "playlist_id": uploads_playlist_id,
+                        "playlist_item_id": str(item.get("id", "") or "").strip(),
+                        "playlist_name": "Uploads",
+                        "channel_name": str(snippet.get("videoOwnerChannelTitle") or snippet.get("channelTitle") or channel_name or "").strip() or channel_name or "Unknown Channel",
+                        "channel_id": str(snippet.get("videoOwnerChannelId") or snippet.get("channelId") or channel_id).strip(),
+                        "thumb": get_best_thumbnail(snippet, video_id),
+                        "duration": get_youtube_duration(video_id).get("display", "0:00"),
+                        "published_at": str(snippet.get("publishedAt", "") or "").strip(),
+                        "url": f"https://www.youtube.com/watch?v={video_id}&list={uploads_playlist_id}",
+                    }
+                    latest_source = "oauth_latest"
+                    break
+            except Exception:
+                latest_video = {}
     if not latest_video:
         latest_video = _fetch_youtube_channel_latest_video_via_rss(channel_id)
         if latest_video:
             latest_source = "rss_latest"
+    if not latest_video:
+        latest_video = _fetch_youtube_channel_latest_video_via_channel_page(channel_id, channel_name=channel_name)
+        if latest_video:
+            latest_source = "channel_page_latest"
 
     if not latest_video and fallback_video:
         latest_video = build_youtube_channel_video_summary(fallback_video)
+    if not latest_video and force_refresh:
+        clear_reason = "force_refresh_missing_uploads_playlist" if not uploads_playlist_id else "force_refresh_empty_live_result"
+        clear_channel_latest(clear_reason)
+        return {}
 
     payload = {
         "channel_id": channel_id,
@@ -14160,9 +14398,24 @@ def _youtube_channel_latest_video_summary(channel_id, channel_name="", fallback_
         "latest_source": latest_source,
         "updated_at": current_timestamp(),
     }
+    previous_runtime_payload = None
     with RUNTIME_CACHE_LOCK:
-        RUNTIME_CACHE.setdefault("youtube_channel_latest_uploads", {})[cache_key] = json.loads(json.dumps(payload))
+        previous_runtime_payload = YOUTUBE_RUNTIME.latest_uploads_index.get(cache_key)
+    with RUNTIME_CACHE_LOCK:
+        YOUTUBE_RUNTIME.latest_uploads_index[cache_key] = json.loads(json.dumps(payload))
     set_persisted_youtube_channel_latest_entry(cache_key, payload)
+    _youtube_trace(
+        "latest_per_channel_rebuild",
+        channel_id=channel_id or "-",
+        cache_key=cache_key,
+        fetch_live=fetch_live,
+        force_refresh=force_refresh,
+        latest_source=latest_source or "none",
+        runtime_payload_id_before=id(previous_runtime_payload) if previous_runtime_payload is not None else "none",
+        runtime_payload_id_after=id(YOUTUBE_RUNTIME.latest_uploads_index.get(cache_key)),
+        uploads_playlist_id=uploads_playlist_id or "-",
+        **_youtube_trace_video_stats([latest_video]),
+    )
     return json.loads(json.dumps(latest_video))
 
 
@@ -14310,7 +14563,7 @@ def fetch_youtube_channel_group_feed_videos(channel_id, channel_name="", limit=4
         limit = 4
     cache_key = _youtube_channel_group_feed_cache_key(channel_name or channel_id, channel_id or channel_name, limit)
     with RUNTIME_CACHE_LOCK:
-        cached_feeds = RUNTIME_CACHE.setdefault("youtube_channel_group_feed_videos", {})
+        cached_feeds = YOUTUBE_RUNTIME.group_feed_videos_index
         cached = cached_feeds.get(cache_key)
         if isinstance(cached, list):
             return json.loads(json.dumps(cached))
@@ -14340,7 +14593,7 @@ def fetch_youtube_channel_group_feed_videos(channel_id, channel_name="", limit=4
         })
     videos = apply_cached_durations(videos)
     with RUNTIME_CACHE_LOCK:
-        RUNTIME_CACHE.setdefault("youtube_channel_group_feed_videos", {})[cache_key] = json.loads(json.dumps(videos))
+        YOUTUBE_RUNTIME.group_feed_videos_index[cache_key] = json.loads(json.dumps(videos))
     return json.loads(json.dumps(videos))
 
 
@@ -14364,6 +14617,7 @@ def refresh_pockettube_section_latest_uploads(section_name, admin_data=None, max
             channel_name=record.get("channel_name", ""),
             fallback_video=None,
             fetch_live=True,
+            force_refresh=True,
         )
         cache_key = _youtube_channel_latest_video_cache_key(channel_id)
         cache_keys.append(cache_key)
@@ -14378,7 +14632,25 @@ def refresh_pockettube_section_latest_uploads(section_name, admin_data=None, max
     preferred_source = "none"
     if source_counter:
         preferred_source = sorted(source_counter.items(), key=lambda item: (-int(item[1] or 0), item[0]))[0][0]
+    latest_stats = _youtube_trace_video_stats(latest_items)
+    stale_runtime_feed = None
+    with RUNTIME_CACHE_LOCK:
+        stale_runtime_feed = YOUTUBE_RUNTIME.section_feed_index.get(_youtube_section_feed_cache_key(section_name))
+        YOUTUBE_RUNTIME.section_feed_index.pop(_youtube_section_feed_cache_key(section_name), None)
     clear_persisted_youtube_section_feed_cache(keys=[_youtube_section_feed_cache_key(section_name)])
+    _youtube_trace(
+        "latest_pool_refresh_complete",
+        section_name=canonical_section_name(section_name),
+        channels_total=len(channels),
+        channels_requested=len(target_channels),
+        channels_fetched=fetched,
+        latest_videos_found=found,
+        latest_source=preferred_source or "none",
+        stale_runtime_feed_survived=bool(isinstance(stale_runtime_feed, dict)),
+        stale_runtime_feed_id=id(stale_runtime_feed) if stale_runtime_feed is not None else "none",
+        stale_runtime_feed_updated_at=_youtube_trace_timestamp((stale_runtime_feed or {}).get("updated_at", "")),
+        **latest_stats,
+    )
     return {
         "attempted": True,
         "section_name": canonical_section_name(section_name),
@@ -14395,9 +14667,40 @@ def refresh_pockettube_section_latest_uploads(section_name, admin_data=None, max
     }
 
 
+def _refresh_pockettube_section_runtime_cache(section_name, admin_data=None, limit=24, max_channels=200):
+    admin_data = admin_data if isinstance(admin_data, dict) else load_admin_data()
+    latest_result = refresh_pockettube_section_latest_uploads(
+        section_name,
+        admin_data=admin_data,
+        max_channels=max_channels,
+    )
+    section_key = _youtube_section_feed_cache_key(section_name)
+    with RUNTIME_CACHE_LOCK:
+        YOUTUBE_RUNTIME.channel_debug_index[f"pockettube_latest:{section_key}"] = json.loads(json.dumps(latest_result))
+    _youtube_trace(
+        "section_runtime_refresh_start",
+        section_name=canonical_section_name(section_name),
+        section_key=section_key,
+        latest_videos_found=latest_result.get("latest_videos_found", 0),
+        newest_published_at=_youtube_trace_video_stats(latest_result.get("latest_items", [])).get("newest_published_at", "-"),
+    )
+    return build_youtube_section_feed_context(
+        section_name,
+        admin_data=admin_data,
+        limit=limit,
+        force_refresh=True,
+    )
+
+
 def build_youtube_section_feed_context(section_name, admin_data=None, limit=24, force_refresh=False):
     admin_data = admin_data if isinstance(admin_data, dict) else load_admin_data()
     section_key = _youtube_section_feed_cache_key(section_name)
+    _youtube_trace(
+        "section_feed_request",
+        section_name=canonical_section_name(section_name),
+        section_key=section_key,
+        force_refresh=force_refresh,
+    )
 
     def has_pockettube_feed_content(payload):
         if not isinstance(payload, dict):
@@ -14410,9 +14713,29 @@ def build_youtube_section_feed_context(section_name, admin_data=None, limit=24, 
         return bool(feed_count or channel_count or page_items)
 
     with RUNTIME_CACHE_LOCK:
-        cached_feeds = RUNTIME_CACHE.setdefault("youtube_section_feeds", {})
+        cached_feeds = YOUTUBE_RUNTIME.section_feed_index
         cached = cached_feeds.get(section_key)
         if isinstance(cached, dict) and not force_refresh:
+            runtime_stale = is_cache_entry_stale({"updated_at": cached.get("updated_at", "")})
+            _youtube_trace(
+                "section_feed_runtime_read",
+                section_name=canonical_section_name(section_name),
+                section_key=section_key,
+                runtime_feed_id=id(cached),
+                runtime_feed_updated_at=_youtube_trace_timestamp(cached.get("updated_at", "")),
+                runtime_stale=runtime_stale,
+                has_content=has_pockettube_feed_content(cached),
+                **_youtube_trace_video_stats(cached.get("feed_all", []) or cached.get("feed_items", [])),
+            )
+            if runtime_stale and not is_youtube_cache_refresh_pending(f"youtube_section_feeds:{section_key}"):
+                schedule_youtube_cache_refresh(
+                    f"youtube_section_feeds:{section_key}",
+                    lambda: _refresh_pockettube_section_runtime_cache(
+                        section_name,
+                        admin_data=admin_data,
+                        limit=limit,
+                    ),
+                )
             if has_pockettube_feed_content(cached):
                 return _apply_pockettube_feed_pagination(cached)
             app.logger.info("[youtube-group-cache] key=%s source=runtime-empty-rebuild", section_key)
@@ -14420,13 +14743,26 @@ def build_youtube_section_feed_context(section_name, admin_data=None, limit=24, 
 
     persisted_entry, persisted_stale = get_persisted_youtube_section_feed_entry(section_key, force_refresh=force_refresh, allow_stale=True)
     if persisted_entry is not None and not force_refresh:
+        _youtube_trace(
+            "section_feed_disk_read",
+            section_name=canonical_section_name(section_name),
+            section_key=section_key,
+            persisted_stale=persisted_stale,
+            persisted_updated_at=_youtube_trace_timestamp(persisted_entry.get("updated_at", "")),
+            has_content=has_pockettube_feed_content(persisted_entry),
+            **_youtube_trace_video_stats(persisted_entry.get("feed_all", []) or persisted_entry.get("feed_items", [])),
+        )
         if has_pockettube_feed_content(persisted_entry):
             with RUNTIME_CACHE_LOCK:
-                RUNTIME_CACHE.setdefault("youtube_section_feeds", {})[section_key] = json.loads(json.dumps(persisted_entry))
+                YOUTUBE_RUNTIME.section_feed_index[section_key] = json.loads(json.dumps(persisted_entry))
             if persisted_stale and not is_youtube_cache_refresh_pending(f"youtube_section_feeds:{section_key}"):
                 schedule_youtube_cache_refresh(
                     f"youtube_section_feeds:{section_key}",
-                    lambda: build_youtube_section_feed_context(section_name, admin_data=admin_data, limit=limit, force_refresh=True),
+                    lambda: _refresh_pockettube_section_runtime_cache(
+                        section_name,
+                        admin_data=admin_data,
+                        limit=limit,
+                    ),
                 )
             return _apply_pockettube_feed_pagination(persisted_entry)
         app.logger.info("[youtube-group-cache] key=%s source=disk-empty-rebuild", section_key)
@@ -14459,14 +14795,26 @@ def build_youtube_section_feed_context(section_name, admin_data=None, limit=24, 
             "group_key": pockettube_context.get("group_key", ""),
             "source_name": pockettube_context.get("source_name", "PocketTube"),
             "fingerprint": pockettube_context.get("fingerprint", ""),
+            "updated_at": current_timestamp(),
             "matched_sections": pockettube_context.get("matched_sections", 0),
             "pockettube_group_visible": False,
             "empty_reason": "no_channels",
             "available_video_count": 0,
         }
         with RUNTIME_CACHE_LOCK:
-            RUNTIME_CACHE.setdefault("youtube_section_feeds", {})[section_key] = json.loads(json.dumps(empty_context))
+            YOUTUBE_RUNTIME.section_feed_index[section_key] = json.loads(json.dumps(empty_context))
         set_persisted_youtube_section_feed_entry(section_key, empty_context)
+        _youtube_trace(
+            "section_feed_rebuild",
+            section_name=canonical_section_name(section_name),
+            section_key=section_key,
+            rebuilt=1,
+            runtime_replacement=1,
+            channel_count=0,
+            feed_count=0,
+            newest_published_at="-",
+            source_used="none",
+        )
         return _apply_pockettube_feed_pagination(empty_context)
 
     section_profile.update({
@@ -14484,7 +14832,7 @@ def build_youtube_section_feed_context(section_name, admin_data=None, limit=24, 
     feed_source_used = "local_playlist_cache" if int(local_video_diagnostics.get("local_matched_video_count", 0) or 0) > 0 else "none"
     with RUNTIME_CACHE_LOCK:
         latest_fetch_diagnostics = json.loads(json.dumps(
-            (RUNTIME_CACHE.setdefault("youtube_channel_debug", {}) or {}).get(
+            (YOUTUBE_RUNTIME.channel_debug_index or {}).get(
                 f"pockettube_latest:{section_key}",
                 {},
             ) or {}
@@ -14581,6 +14929,9 @@ def build_youtube_section_feed_context(section_name, admin_data=None, limit=24, 
 
     feed_items.sort(key=_pockettube_feed_sort_key)
     feed_items = _enrich_pockettube_feed_videos(feed_items, fetch_missing=True)
+    previous_runtime_feed = None
+    with RUNTIME_CACHE_LOCK:
+        previous_runtime_feed = YOUTUBE_RUNTIME.section_feed_index.get(section_key)
     feed_context = {
         "name": pockettube_context.get("section_name", section_name) or section_name,
         "slug": section_slug(section_name),
@@ -14603,6 +14954,7 @@ def build_youtube_section_feed_context(section_name, admin_data=None, limit=24, 
         "group_key": pockettube_context.get("group_key", ""),
         "source_name": pockettube_context.get("source_name", "PocketTube"),
         "fingerprint": pockettube_context.get("fingerprint", ""),
+        "updated_at": current_timestamp(),
         "matched_sections": pockettube_context.get("matched_sections", 0),
         "pockettube_group_visible": True,
         "empty_reason": "no_local_videos" if not feed_items else "",
@@ -14612,8 +14964,23 @@ def build_youtube_section_feed_context(section_name, admin_data=None, limit=24, 
         "latest_fetch_diagnostics": latest_fetch_diagnostics,
     }
     with RUNTIME_CACHE_LOCK:
-        RUNTIME_CACHE.setdefault("youtube_section_feeds", {})[section_key] = json.loads(json.dumps(feed_context))
+        YOUTUBE_RUNTIME.section_feed_index[section_key] = json.loads(json.dumps(feed_context))
     set_persisted_youtube_section_feed_entry(section_key, feed_context)
+    _youtube_trace(
+        "section_feed_rebuild",
+        section_name=canonical_section_name(section_name),
+        section_key=section_key,
+        rebuilt=1,
+        runtime_replacement=1,
+        previous_runtime_feed_id=id(previous_runtime_feed) if previous_runtime_feed is not None else "none",
+        new_runtime_feed_id=id(YOUTUBE_RUNTIME.section_feed_index.get(section_key)),
+        channel_count=len(channel_groups),
+        latest_cached_count=latest_cached_count,
+        feed_source_used=feed_source_used or "none",
+        latest_fetch_attempted=(latest_fetch_diagnostics or {}).get("attempted", False),
+        latest_fetch_found=(latest_fetch_diagnostics or {}).get("latest_videos_found", 0),
+        **_youtube_trace_video_stats(feed_items),
+    )
     return _apply_pockettube_feed_pagination(feed_context)
 
 
@@ -15488,7 +15855,10 @@ def initialize_runtime_cache_once():
     with RUNTIME_CACHE_LOCK:
         initialized = RUNTIME_CACHE["initialized"]
     if not initialized:
-        warm_runtime_cache()
+        with RUNTIME_CACHE_LOCK:
+            if not RUNTIME_CACHE["initialized"]:
+                RUNTIME_CACHE["initialized"] = True
+                print("[movie-source-cache] init=lazy")
 
 def refresh_film_cache_from_source():
     films = fetch_all_films_from_notion()
@@ -15509,8 +15879,8 @@ def refresh_all_cached_data(refresh_films=True, refresh_youtube=True, pockettube
     if not refresh_youtube:
         return
     with RUNTIME_CACHE_LOCK:
-        RUNTIME_CACHE["youtube_playlists"] = {}
-        RUNTIME_CACHE["youtube_section_feeds"] = {}
+        YOUTUBE_RUNTIME.playlist_index.clear()
+    invalidate_youtube_derived_caches(reason="refresh_all_cached_data")
     playlists = load_playlists()
     for section_playlists in playlists.values():
         for playlist in section_playlists:
@@ -15523,10 +15893,9 @@ def refresh_all_cached_data(refresh_films=True, refresh_youtube=True, pockettube
             max_channels=pockettube_max_channels,
         )
         with RUNTIME_CACHE_LOCK:
-            RUNTIME_CACHE.setdefault("youtube_channel_debug", {})[
+            YOUTUBE_RUNTIME.channel_debug_index[
                 f"pockettube_latest:{_youtube_section_feed_cache_key(pockettube_section_name)}"
             ] = json.loads(json.dumps(latest_result))
-    clear_persisted_youtube_section_feed_cache()
 
 # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 #  NOTION FETCH (unchanged)
@@ -16094,22 +16463,21 @@ def tmdb_request(path, params=None):
 
 
 def tmdb_country_name_lookup():
-    global TMDB_COUNTRY_NAME_CACHE
-    if isinstance(TMDB_COUNTRY_NAME_CACHE, dict):
-        return TMDB_COUNTRY_NAME_CACHE
+    if isinstance(TMDB_RUNTIME.country_name_cache, dict):
+        return TMDB_RUNTIME.country_name_cache
     country_map = {}
     try:
         data = tmdb_request("/configuration/countries", {"language": "en-US"})
     except Exception:
-        TMDB_COUNTRY_NAME_CACHE = {}
-        return TMDB_COUNTRY_NAME_CACHE
+        TMDB_RUNTIME.country_name_cache = {}
+        return TMDB_RUNTIME.country_name_cache
     for item in data or []:
         code = str(item.get("iso_3166_1") or "").strip().upper()
         name = str(item.get("english_name") or item.get("native_name") or "").strip()
         if code and name:
             country_map[code] = name
-    TMDB_COUNTRY_NAME_CACHE = country_map
-    return TMDB_COUNTRY_NAME_CACHE
+    TMDB_RUNTIME.country_name_cache = country_map
+    return TMDB_RUNTIME.country_name_cache
 
 
 def extract_tmdb_origin_countries(details, media_type):
@@ -16211,8 +16579,8 @@ def fetch_tmdb_person_profile(person_name="", tmdb_person_id=None):
     cache_key = f"id:{person_id}" if person_id else normalized_person_key(normalized_name)
     if not cache_key:
         return None
-    if cache_key in TMDB_PERSON_LOOKUP_CACHE:
-        return TMDB_PERSON_LOOKUP_CACHE[cache_key]
+    if cache_key in TMDB_RUNTIME.person_lookup_cache:
+        return TMDB_RUNTIME.person_lookup_cache[cache_key]
 
     best_score = 120 if person_id else None
     best_match = None
@@ -16233,14 +16601,14 @@ def fetch_tmdb_person_profile(person_name="", tmdb_person_id=None):
             popularity = float(item.get("popularity") or 0)
             scored.append((candidate_score, popularity, item))
         if not scored:
-            TMDB_PERSON_LOOKUP_CACHE[cache_key] = None
+            TMDB_RUNTIME.person_lookup_cache[cache_key] = None
             return None
         scored.sort(key=lambda item: (item[0], item[1]), reverse=True)
         best_score, _, best_match = scored[0]
         person_id = best_match.get("id")
 
     if not person_id:
-        TMDB_PERSON_LOOKUP_CACHE[cache_key] = None
+        TMDB_RUNTIME.person_lookup_cache[cache_key] = None
         return None
 
     details = tmdb_request(f"/person/{person_id}", {"language": "en-US"})
@@ -16253,7 +16621,7 @@ def fetch_tmdb_person_profile(person_name="", tmdb_person_id=None):
         "profile_url": tmdb_image_url(details.get("profile_path") or best_match.get("profile_path"), size="w500"),
         "biography": str(details.get("biography") or "").strip(),
     }
-    TMDB_PERSON_LOOKUP_CACHE[cache_key] = result
+    TMDB_RUNTIME.person_lookup_cache[cache_key] = result
     return result
 
 
@@ -16262,8 +16630,8 @@ def fetch_tmdb_enrichment(movie_title, category="", year=""):
     media_type = tmdb_media_type_for_category(category)
     preferred_year = normalize_year_value(year)
     cache_key = f"{media_type}|{normalized_title.lower()}|{preferred_year}"
-    if cache_key in TMDB_LOOKUP_CACHE:
-        return TMDB_LOOKUP_CACHE[cache_key]
+    if cache_key in TMDB_RUNTIME.lookup_cache:
+        return TMDB_RUNTIME.lookup_cache[cache_key]
 
     search_data = tmdb_request(f"/search/{media_type}", {
         "query": normalized_title,
@@ -16273,12 +16641,12 @@ def fetch_tmdb_enrichment(movie_title, category="", year=""):
     })
     match = best_tmdb_match(search_data.get("results", []), normalized_title, media_type, preferred_year=preferred_year)
     if not match:
-        TMDB_LOOKUP_CACHE[cache_key] = None
+        TMDB_RUNTIME.lookup_cache[cache_key] = None
         return None
 
     movie_id = match.get("id")
     if not movie_id:
-        TMDB_LOOKUP_CACHE[cache_key] = None
+        TMDB_RUNTIME.lookup_cache[cache_key] = None
         return None
 
     match_score = score_tmdb_candidate(match, normalized_title, media_type, preferred_year=preferred_year) or 0
@@ -16330,7 +16698,7 @@ def fetch_tmdb_enrichment(movie_title, category="", year=""):
         "origin_countries": extract_tmdb_origin_countries(details, media_type),
         "top_billed_cast": extract_top_billed_cast(credits, limit=8),
     }
-    TMDB_LOOKUP_CACHE[cache_key] = result
+    TMDB_RUNTIME.lookup_cache[cache_key] = result
     return result
 
 
@@ -16338,15 +16706,15 @@ def fetch_tmdb_imdb_id(tmdb_id):
     if not tmdb_id:
         return None
     cache_key = f"imdb:{tmdb_id}"
-    if cache_key in TMDB_EXTERNAL_IDS_CACHE:
-        return TMDB_EXTERNAL_IDS_CACHE[cache_key]
+    if cache_key in TMDB_RUNTIME.external_ids_cache:
+        return TMDB_RUNTIME.external_ids_cache[cache_key]
     try:
         data = tmdb_request(f"/movie/{tmdb_id}/external_ids")
         imdb_id = data.get("imdb_id")
-        TMDB_EXTERNAL_IDS_CACHE[cache_key] = imdb_id
+        TMDB_RUNTIME.external_ids_cache[cache_key] = imdb_id
         return imdb_id
     except Exception:
-        TMDB_EXTERNAL_IDS_CACHE[cache_key] = None
+        TMDB_RUNTIME.external_ids_cache[cache_key] = None
         return None
 
 
@@ -16667,7 +17035,7 @@ def fetch_google_books_cover_url(title, authors):
 
 def resolve_book_cover_url(page, title, authors, properties):
     cache_key = normalize_book_cover_cache_key(title, authors)
-    cached_value = BOOK_COVER_CACHE.get(cache_key)
+    cached_value = BOOKS_RUNTIME.cover_cache.get(cache_key)
     if cached_value is not None:
         return cached_value
 
@@ -16686,7 +17054,7 @@ def resolve_book_cover_url(page, title, authors, properties):
     for candidate in cover_candidates:
         file_url = books_notion_file_url(candidate)
         if file_url:
-            BOOK_COVER_CACHE[cache_key] = file_url
+            BOOKS_RUNTIME.cover_cache[cache_key] = file_url
             return file_url
 
     for source_fetcher in (fetch_openlibrary_cover_url, fetch_google_books_cover_url):
@@ -16695,10 +17063,10 @@ def resolve_book_cover_url(page, title, authors, properties):
         except Exception:
             cover_url = ""
         if cover_url:
-            BOOK_COVER_CACHE[cache_key] = cover_url
+            BOOKS_RUNTIME.cover_cache[cache_key] = cover_url
             return cover_url
 
-    BOOK_COVER_CACHE[cache_key] = ""
+    BOOKS_RUNTIME.cover_cache[cache_key] = ""
     return ""
 
 
@@ -16843,21 +17211,167 @@ def notion_book_quote_page_to_entry(page, schema):
     }
 
 
+def _books_snapshot_payload(entries=None, error="", updated_at=""):
+    return {
+        "updated_at": str(updated_at or current_timestamp()).strip(),
+        "entries": [dict(entry) for entry in (entries or []) if isinstance(entry, dict)],
+        "error": str(error or "").strip(),
+    }
+
+
+def _load_books_snapshot(path):
+    payload = load_json_file(path, {})
+    if not isinstance(payload, dict):
+        payload = {}
+    entries = payload.get("entries", [])
+    return {
+        "updated_at": str(payload.get("updated_at", "") or "").strip(),
+        "entries": [dict(entry) for entry in entries if isinstance(entry, dict)] if isinstance(entries, list) else [],
+        "error": str(payload.get("error", "") or "").strip(),
+    }
+
+
+def _save_books_snapshot(path, entries, error=""):
+    payload = _books_snapshot_payload(entries=entries, error=error)
+    save_json_file(path, payload)
+    return payload
+
+
+def _snapshot_age_seconds(updated_at):
+    timestamp = parse_timestamp(updated_at)
+    if not timestamp:
+        return None
+    return max((datetime.now().astimezone() - timestamp).total_seconds(), 0.0)
+
+
+def _entries_cache_result(runtime_cache):
+    return {
+        "entries": list(runtime_cache.entries or []),
+        "error": str(runtime_cache.error or ""),
+    }
+
+
+def _update_entries_runtime_cache(runtime_cache, entries, error="", snapshot_loaded=False):
+    runtime_cache.entries = [dict(entry) for entry in (entries or []) if isinstance(entry, dict)]
+    runtime_cache.error = str(error or "")
+    now_value = time.time()
+    runtime_cache.updated_at = now_value
+    if snapshot_loaded:
+        runtime_cache.last_snapshot_loaded_at = now_value
+    return _entries_cache_result(runtime_cache)
+
+
+def _log_entries_cache_event(cache_name, **fields):
+    field_parts = [f"{key}={value}" for key, value in fields.items() if value not in (None, "")]
+    suffix = " " + " ".join(field_parts) if field_parts else ""
+    print(f"[lazy-cache] key={cache_name}{suffix}")
+
+
+def _schedule_entries_cache_refresh(cache_name, runtime_cache, refresh_fn, reason, cooldown_seconds=BOOKS_REFRESH_COOLDOWN_SECONDS):
+    now_value = time.time()
+    with runtime_cache.refresh_lock:
+        if runtime_cache.refreshing:
+            _log_entries_cache_event(cache_name, cache_hit="stale", refresh_reason="already_refreshing")
+            return False
+        if runtime_cache.last_refresh_started_at and (now_value - runtime_cache.last_refresh_started_at) < cooldown_seconds:
+            _log_entries_cache_event(cache_name, cache_hit="stale", refresh_reason="cooldown")
+            return False
+        runtime_cache.refreshing = True
+        runtime_cache.last_refresh_started_at = now_value
+
+    def _runner():
+        started_at = time.monotonic()
+        try:
+            _log_entries_cache_event(cache_name, refresh_reason=reason, phase="background_start")
+            refresh_fn(force_refresh=True)
+            elapsed_ms = int((time.monotonic() - started_at) * 1000)
+            _log_entries_cache_event(cache_name, refresh_reason=reason, load_ms=elapsed_ms, phase="background_done")
+        except Exception as exc:
+            _log_entries_cache_event(cache_name, refresh_reason=reason, phase="background_failed", error=type(exc).__name__)
+        finally:
+            with runtime_cache.refresh_lock:
+                runtime_cache.refreshing = False
+                runtime_cache.last_refresh_completed_at = time.time()
+
+    threading.Thread(target=_runner, daemon=True).start()
+    return True
+
+
+def _delete_snapshot_file(path):
+    try:
+        Path(path).unlink(missing_ok=True)
+    except Exception:
+        pass
+
+
+def invalidate_books_entries_cache():
+    BOOKS_RUNTIME.books_entries.entries = None
+    BOOKS_RUNTIME.books_entries.error = ""
+    BOOKS_RUNTIME.books_entries.updated_at = 0.0
+    BOOKS_RUNTIME.books_entries.last_snapshot_loaded_at = 0.0
+    _delete_snapshot_file(BOOKS_SNAPSHOT_PATH)
+
+
+def invalidate_book_quotes_entries_cache():
+    BOOKS_RUNTIME.quotes_entries.entries = None
+    BOOKS_RUNTIME.quotes_entries.error = ""
+    BOOKS_RUNTIME.quotes_entries.updated_at = 0.0
+    BOOKS_RUNTIME.quotes_entries.last_snapshot_loaded_at = 0.0
+    _delete_snapshot_file(BOOK_QUOTES_SNAPSHOT_PATH)
+
+
 def fetch_book_quotes_entries(force_refresh=False):
-    cache_age_seconds = 120
-    cached_entries = BOOK_QUOTES_ENTRIES_CACHE.get("entries")
-    cached_updated_at = float(BOOK_QUOTES_ENTRIES_CACHE.get("updated_at") or 0)
-    if not force_refresh and cached_entries is not None and (time.time() - cached_updated_at) < cache_age_seconds:
-        return {
-            "entries": list(cached_entries or []),
-            "error": str(BOOK_QUOTES_ENTRIES_CACHE.get("error") or ""),
-        }
+    cached_entries = BOOKS_RUNTIME.quotes_entries.entries
+    cached_updated_at = float(BOOKS_RUNTIME.quotes_entries.updated_at or 0)
+    runtime_age_seconds = (time.time() - cached_updated_at) if cached_entries is not None and cached_updated_at else None
+    if not force_refresh and cached_entries is not None and runtime_age_seconds is not None and runtime_age_seconds < BOOKS_RUNTIME_TTL_SECONDS:
+        _log_entries_cache_event("quotes", cache_hit="runtime", snapshot_age=int(runtime_age_seconds), refresh_reason="fresh_runtime")
+        return _entries_cache_result(BOOKS_RUNTIME.quotes_entries)
+
+    snapshot = _load_books_snapshot(BOOK_QUOTES_SNAPSHOT_PATH)
+    snapshot_entries = snapshot.get("entries", [])
+    snapshot_error = snapshot.get("error", "")
+    snapshot_available = bool(snapshot.get("updated_at")) or BOOK_QUOTES_SNAPSHOT_PATH.exists()
+    snapshot_age_seconds = _snapshot_age_seconds(snapshot.get("updated_at", ""))
+    snapshot_stale = snapshot_age_seconds is None or snapshot_age_seconds >= BOOKS_SNAPSHOT_TTL_SECONDS
+
+    if not force_refresh and snapshot_available:
+        result = _update_entries_runtime_cache(
+            BOOKS_RUNTIME.quotes_entries,
+            snapshot_entries,
+            error=snapshot_error,
+            snapshot_loaded=True,
+        )
+        _log_entries_cache_event(
+            "quotes",
+            cache_hit="snapshot",
+            snapshot_age=int(snapshot_age_seconds or 0),
+            refresh_reason="stale_snapshot" if snapshot_stale else "fresh_snapshot",
+        )
+        if snapshot_stale:
+            _schedule_entries_cache_refresh(
+                "quotes",
+                BOOKS_RUNTIME.quotes_entries,
+                fetch_book_quotes_entries,
+                reason="snapshot_stale",
+            )
+        return result
+
+    if not force_refresh and cached_entries is not None:
+        _log_entries_cache_event("quotes", cache_hit="runtime_stale", refresh_reason="snapshot_missing")
+        _schedule_entries_cache_refresh(
+            "quotes",
+            BOOKS_RUNTIME.quotes_entries,
+            fetch_book_quotes_entries,
+            reason="runtime_stale",
+        )
+        return _entries_cache_result(BOOKS_RUNTIME.quotes_entries)
 
     database_id = str(NOTION_BOOK_QUOTES_DATABASE_ID or "").strip()
     if not database_id:
         result = {"entries": [], "error": "Set NOTION_BOOK_QUOTES_DATABASE_ID to enable Book Quotes."}
-        BOOK_QUOTES_ENTRIES_CACHE.update({"entries": [], "error": result["error"], "updated_at": time.time()})
-        return result
+        _save_books_snapshot(BOOK_QUOTES_SNAPSHOT_PATH, [], error=result["error"])
+        return _update_entries_runtime_cache(BOOKS_RUNTIME.quotes_entries, [], error=result["error"])
 
     try:
         database_payload = resolve_book_quotes_database(database_id=database_id)
@@ -16865,13 +17379,16 @@ def fetch_book_quotes_entries(force_refresh=False):
         blockers = validate_book_quotes_database_schema(schema)
         if blockers:
             result = {"entries": [], "error": "; ".join(blockers)}
-            BOOK_QUOTES_ENTRIES_CACHE.update({"entries": [], "error": result["error"], "updated_at": time.time()})
-            return result
+            _save_books_snapshot(BOOK_QUOTES_SNAPSHOT_PATH, [], error=result["error"])
+            return _update_entries_runtime_cache(BOOKS_RUNTIME.quotes_entries, [], error=result["error"])
         pages = fetch_all_notion_database_pages(database_id=schema.get("database_id", database_id))
     except Exception as exc:
-        result = {"entries": [], "error": f"Could not load Book Quotes from Notion: {exc}"}
-        BOOK_QUOTES_ENTRIES_CACHE.update({"entries": [], "error": result["error"], "updated_at": time.time()})
-        return result
+        error_message = f"Could not load Book Quotes from Notion: {exc}"
+        fallback_entries = snapshot_entries if snapshot_available else (cached_entries or [])
+        if fallback_entries or snapshot_available:
+            _log_entries_cache_event("quotes", cache_hit="fallback", refresh_reason="notion_error")
+            return _update_entries_runtime_cache(BOOKS_RUNTIME.quotes_entries, fallback_entries, error=error_message)
+        return _update_entries_runtime_cache(BOOKS_RUNTIME.quotes_entries, [], error=error_message)
 
     entries = []
     for page in pages:
@@ -16887,9 +17404,9 @@ def fetch_book_quotes_entries(force_refresh=False):
             item.get("quote", "").lower(),
         )
     )
-    result = {"entries": entries, "error": ""}
-    BOOK_QUOTES_ENTRIES_CACHE.update({"entries": list(entries), "error": "", "updated_at": time.time()})
-    return result
+    _save_books_snapshot(BOOK_QUOTES_SNAPSHOT_PATH, entries, error="")
+    _log_entries_cache_event("quotes", cache_miss="live", refresh_reason="notion_fetch")
+    return _update_entries_runtime_cache(BOOKS_RUNTIME.quotes_entries, entries, error="")
 
 
 def fetch_book_quotes_for_entry(book_page_id, force_refresh=False):
@@ -16908,26 +17425,66 @@ def fetch_book_quotes_for_entry(book_page_id, force_refresh=False):
 
 
 def fetch_books_entries(force_refresh=False):
-    cache_age_seconds = 120
-    cached_entries = BOOKS_ENTRIES_CACHE.get("entries")
-    cached_updated_at = float(BOOKS_ENTRIES_CACHE.get("updated_at") or 0)
-    if not force_refresh and cached_entries is not None and (time.time() - cached_updated_at) < cache_age_seconds:
-        return {
-            "entries": list(cached_entries or []),
-            "error": str(BOOKS_ENTRIES_CACHE.get("error") or ""),
-        }
+    cached_entries = BOOKS_RUNTIME.books_entries.entries
+    cached_updated_at = float(BOOKS_RUNTIME.books_entries.updated_at or 0)
+    runtime_age_seconds = (time.time() - cached_updated_at) if cached_entries is not None and cached_updated_at else None
+    if not force_refresh and cached_entries is not None and runtime_age_seconds is not None and runtime_age_seconds < BOOKS_RUNTIME_TTL_SECONDS:
+        _log_entries_cache_event("books", cache_hit="runtime", snapshot_age=int(runtime_age_seconds), refresh_reason="fresh_runtime")
+        return _entries_cache_result(BOOKS_RUNTIME.books_entries)
+
+    snapshot = _load_books_snapshot(BOOKS_SNAPSHOT_PATH)
+    snapshot_entries = snapshot.get("entries", [])
+    snapshot_error = snapshot.get("error", "")
+    snapshot_available = bool(snapshot.get("updated_at")) or BOOKS_SNAPSHOT_PATH.exists()
+    snapshot_age_seconds = _snapshot_age_seconds(snapshot.get("updated_at", ""))
+    snapshot_stale = snapshot_age_seconds is None or snapshot_age_seconds >= BOOKS_SNAPSHOT_TTL_SECONDS
+
+    if not force_refresh and snapshot_available:
+        result = _update_entries_runtime_cache(
+            BOOKS_RUNTIME.books_entries,
+            snapshot_entries,
+            error=snapshot_error,
+            snapshot_loaded=True,
+        )
+        _log_entries_cache_event(
+            "books",
+            cache_hit="snapshot",
+            snapshot_age=int(snapshot_age_seconds or 0),
+            refresh_reason="stale_snapshot" if snapshot_stale else "fresh_snapshot",
+        )
+        if snapshot_stale:
+            _schedule_entries_cache_refresh(
+                "books",
+                BOOKS_RUNTIME.books_entries,
+                fetch_books_entries,
+                reason="snapshot_stale",
+            )
+        return result
+
+    if not force_refresh and cached_entries is not None:
+        _log_entries_cache_event("books", cache_hit="runtime_stale", refresh_reason="snapshot_missing")
+        _schedule_entries_cache_refresh(
+            "books",
+            BOOKS_RUNTIME.books_entries,
+            fetch_books_entries,
+            reason="runtime_stale",
+        )
+        return _entries_cache_result(BOOKS_RUNTIME.books_entries)
 
     database_id = str(NOTION_BOOKS_DATABASE_ID or "").strip()
     if not database_id:
         result = {"entries": [], "error": "Set NOTION_BOOKS_DATABASE_ID to enable Books."}
-        BOOKS_ENTRIES_CACHE.update({"entries": [], "error": result["error"], "updated_at": time.time()})
-        return result
+        _save_books_snapshot(BOOKS_SNAPSHOT_PATH, [], error=result["error"])
+        return _update_entries_runtime_cache(BOOKS_RUNTIME.books_entries, [], error=result["error"])
     try:
         pages = fetch_all_notion_database_pages(database_id=database_id)
     except Exception as exc:
-        result = {"entries": [], "error": f"Could not load Books from Notion: {exc}"}
-        BOOKS_ENTRIES_CACHE.update({"entries": [], "error": result["error"], "updated_at": time.time()})
-        return result
+        error_message = f"Could not load Books from Notion: {exc}"
+        fallback_entries = snapshot_entries if snapshot_available else (cached_entries or [])
+        if fallback_entries or snapshot_available:
+            _log_entries_cache_event("books", cache_hit="fallback", refresh_reason="notion_error")
+            return _update_entries_runtime_cache(BOOKS_RUNTIME.books_entries, fallback_entries, error=error_message)
+        return _update_entries_runtime_cache(BOOKS_RUNTIME.books_entries, [], error=error_message)
 
     entries = []
     for page in pages:
@@ -16944,9 +17501,9 @@ def fetch_books_entries(force_refresh=False):
         ),
         reverse=True,
     )
-    result = {"entries": entries, "error": ""}
-    BOOKS_ENTRIES_CACHE.update({"entries": list(entries), "error": "", "updated_at": time.time()})
-    return result
+    _save_books_snapshot(BOOKS_SNAPSHOT_PATH, entries, error="")
+    _log_entries_cache_event("books", cache_miss="live", refresh_reason="notion_fetch")
+    return _update_entries_runtime_cache(BOOKS_RUNTIME.books_entries, entries, error="")
 
 
 def filter_books_entries(entries, search_text="", status_filter="all"):
@@ -17280,13 +17837,14 @@ def manual_book_quote_match_override(group_title, books):
 
 def fetch_books_match_catalog(force_refresh=False):
     cache_age_seconds = 120
-    cached_catalog = BOOK_QUOTES_IMPORT_CACHE.get("books")
-    cached_updated_at = float(BOOK_QUOTES_IMPORT_CACHE.get("updated_at") or 0)
+    cached_catalog = BOOKS_RUNTIME.quotes_import.books
+    cached_updated_at = float(BOOKS_RUNTIME.quotes_import.updated_at or 0)
     if not force_refresh and cached_catalog is not None and (time.time() - cached_updated_at) < cache_age_seconds:
         return list(cached_catalog or [])
     fetched = fetch_books_entries(force_refresh=force_refresh)
     entries = list(fetched.get("entries", []) or [])
-    BOOK_QUOTES_IMPORT_CACHE.update({"books": list(entries), "updated_at": time.time()})
+    BOOKS_RUNTIME.quotes_import.books = list(entries)
+    BOOKS_RUNTIME.quotes_import.updated_at = time.time()
     return entries
 
 
@@ -17639,6 +18197,10 @@ def import_book_quotes_from_notion(source_page_id="", source_page_title="", dry_
             "updated": True,
             "resulting_length": len(merged_text),
         })
+
+    if not dry_run and updated_books:
+        invalidate_books_entries_cache()
+        invalidate_book_quotes_entries_cache()
 
     return build_book_quotes_import_report(
         source_page=source_page,
@@ -18134,6 +18696,9 @@ def migrate_book_quotes_rich_text_to_database(dry_run=True, database_id=""):
                 continue
             create_notion_database_page(schema.get("database_id", ""), properties_payload)
             created_rows.append(quote_record)
+
+    if not dry_run and created_rows:
+        invalidate_book_quotes_entries_cache()
 
     return build_book_quotes_migration_report(
         schema=schema,
@@ -19498,7 +20063,7 @@ def build_tmdb_overview_update_payload(page_properties, tmdb_data):
 
 
 def apply_tmdb_missing_overviews():
-    TMDB_LOOKUP_CACHE.clear()
+    TMDB_RUNTIME.lookup_cache.clear()
     pages = fetch_all_notion_database_pages()
     updated = 0
     skipped_existing = 0
@@ -19564,7 +20129,7 @@ def apply_tmdb_missing_overviews():
 
 
 def apply_tmdb_poster_and_overview_cleanup():
-    TMDB_LOOKUP_CACHE.clear()
+    TMDB_RUNTIME.lookup_cache.clear()
     pages = fetch_all_notion_database_pages()
     updated = 0
     skipped = 0
@@ -19927,7 +20492,7 @@ def apply_targeted_movie_corrections():
 
 
 def build_tmdb_correction_plan():
-    TMDB_LOOKUP_CACHE.clear()
+    TMDB_RUNTIME.lookup_cache.clear()
     ensure_tmdb_enrichment_properties()
     pages = fetch_all_notion_database_pages()
     plan_items = []
@@ -20062,8 +20627,8 @@ def run_tmdb_sync_enrichment():
     except requests.RequestException as exc:
         return {"status": "error", "message": f"Failed to query Notion database: {exc}"}, 502
 
-    TMDB_LOOKUP_CACHE.clear()
-    TMDB_PERSON_LOOKUP_CACHE.clear()
+    TMDB_RUNTIME.lookup_cache.clear()
+    TMDB_RUNTIME.person_lookup_cache.clear()
 
     matched = []
     skipped = []
@@ -20215,20 +20780,32 @@ def extract_playlist_id(url):
     return url
 
 def load_duration_cache():
-    global YOUTUBE_DURATION_CACHE
+    if YOUTUBE_RUNTIME.duration_cache_loaded:
+        return YOUTUBE_RUNTIME.duration_cache
     if not DURATION_CACHE_PATH.exists():
-        YOUTUBE_DURATION_CACHE = {}
-        return
+        YOUTUBE_RUNTIME.duration_cache = {}
+        YOUTUBE_RUNTIME.duration_cache_loaded = True
+        return YOUTUBE_RUNTIME.duration_cache
     try:
-        YOUTUBE_DURATION_CACHE = json.loads(DURATION_CACHE_PATH.read_text(encoding="utf-8"))
+        loaded = json.loads(DURATION_CACHE_PATH.read_text(encoding="utf-8"))
+        YOUTUBE_RUNTIME.duration_cache = loaded if isinstance(loaded, dict) else {}
     except Exception:
-        YOUTUBE_DURATION_CACHE = {}
+        YOUTUBE_RUNTIME.duration_cache = {}
+    YOUTUBE_RUNTIME.duration_cache_loaded = True
+    return YOUTUBE_RUNTIME.duration_cache
+
+
+def ensure_duration_cache_loaded():
+    if not YOUTUBE_RUNTIME.duration_cache_loaded:
+        load_duration_cache()
+    return YOUTUBE_RUNTIME.duration_cache
 
 def save_duration_cache():
     try:
-        DURATION_CACHE_PATH.write_text(json.dumps(YOUTUBE_DURATION_CACHE, indent=2), encoding="utf-8")
+        DURATION_CACHE_PATH.write_text(json.dumps(YOUTUBE_RUNTIME.duration_cache, indent=2), encoding="utf-8")
     except Exception:
         pass
+    YOUTUBE_RUNTIME.duration_cache_loaded = True
 
 def parse_iso8601_duration(value):
     match = re.match(r"PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?", value or "")
@@ -20367,21 +20944,22 @@ def _build_pockettube_shuffle_pool(feed_context):
 
 
 def _enrich_pockettube_feed_videos(videos, fetch_missing=True):
+    ensure_duration_cache_loaded()
     items = [dict(video) for video in (videos or []) if isinstance(video, dict)]
     video_ids = [str(item.get("video_id", "") or "").strip() for item in items if str(item.get("video_id", "") or "").strip()]
     if fetch_missing and video_ids and (YOUTUBE_API_KEY or youtube_oauth_ready()):
         missing_video_ids = [
             video_id for video_id in video_ids
-            if not isinstance(YOUTUBE_DURATION_CACHE.get(video_id, {}), dict)
-            or "live_broadcast_content" not in (YOUTUBE_DURATION_CACHE.get(video_id, {}) or {})
-            or "channel_id" not in (YOUTUBE_DURATION_CACHE.get(video_id, {}) or {})
+            if not isinstance(YOUTUBE_RUNTIME.duration_cache.get(video_id, {}), dict)
+            or "live_broadcast_content" not in (YOUTUBE_RUNTIME.duration_cache.get(video_id, {}) or {})
+            or "channel_id" not in (YOUTUBE_RUNTIME.duration_cache.get(video_id, {}) or {})
         ]
         if missing_video_ids:
             fetch_youtube_video_metadata(missing_video_ids)
     enriched = []
     for item in items:
         video_id = str(item.get("video_id", "") or "").strip()
-        cached_meta = YOUTUBE_DURATION_CACHE.get(video_id, {}) if video_id else {}
+        cached_meta = YOUTUBE_RUNTIME.duration_cache.get(video_id, {}) if video_id else {}
         duration_info = cached_meta if isinstance(cached_meta, dict) else {}
         thumb = str(item.get("thumb", "") or "").strip()
         thumbnail_url = str(item.get("thumbnail_url", "") or "").strip() or thumb
@@ -20417,11 +20995,12 @@ def _enrich_pockettube_feed_videos(videos, fetch_missing=True):
 
 
 def fetch_youtube_video_metadata(video_ids):
+    ensure_duration_cache_loaded()
     missing = []
     for video_id in video_ids:
         if not video_id:
             continue
-        cached = YOUTUBE_DURATION_CACHE.get(video_id, {})
+        cached = YOUTUBE_RUNTIME.duration_cache.get(video_id, {})
         if not isinstance(cached, dict):
             missing.append(video_id)
             continue
@@ -20461,7 +21040,7 @@ def fetch_youtube_video_metadata(video_ids):
             snippet = item.get("snippet", {}) or {}
             live_details = item.get("liveStreamingDetails", {}) or {}
             duration_seconds = parse_iso8601_duration(item.get("contentDetails", {}).get("duration", ""))
-            YOUTUBE_DURATION_CACHE[item["id"]] = {
+            YOUTUBE_RUNTIME.duration_cache[item["id"]] = {
                 "seconds": duration_seconds,
                 "display": format_duration(duration_seconds),
                 "live_broadcast_content": str(snippet.get("liveBroadcastContent", "") or "").strip().lower(),
@@ -20484,7 +21063,7 @@ def fetch_youtube_video_metadata(video_ids):
             found.add(item["id"])
         for video_id in chunk:
             if video_id not in found:
-                YOUTUBE_DURATION_CACHE[video_id] = {"seconds": 0, "display": "0:00"}
+                YOUTUBE_RUNTIME.duration_cache[video_id] = {"seconds": 0, "display": "0:00"}
     save_duration_cache()
 
 
@@ -20506,6 +21085,7 @@ def _iter_local_cached_youtube_playlist_videos(cache_data=None):
 
 
 def hydrate_cached_youtube_playlist_channel_ids(limit=2500, fetch_missing=False):
+    ensure_duration_cache_loaded()
     cache_data = load_cache_data()
     missing_video_ids = []
     scanned_videos = 0
@@ -20518,7 +21098,7 @@ def hydrate_cached_youtube_playlist_channel_ids(limit=2500, fetch_missing=False)
         if updated_at and (not last_cache_update or updated_at > last_cache_update):
             last_cache_update = updated_at
         current_channel_id = str(video.get("channel_id", "") or "").strip()
-        cached_meta = YOUTUBE_DURATION_CACHE.get(str(video.get("video_id", "") or "").strip(), {})
+        cached_meta = YOUTUBE_RUNTIME.duration_cache.get(str(video.get("video_id", "") or "").strip(), {})
         if not current_channel_id and isinstance(cached_meta, dict):
             hydrated_channel_id = str(cached_meta.get("channel_id", "") or "").strip()
             if hydrated_channel_id:
@@ -20543,7 +21123,7 @@ def hydrate_cached_youtube_playlist_channel_ids(limit=2500, fetch_missing=False)
             current_channel_id = str(video.get("channel_id", "") or "").strip()
             if current_channel_id:
                 continue
-            cached_meta = YOUTUBE_DURATION_CACHE.get(str(video.get("video_id", "") or "").strip(), {})
+            cached_meta = YOUTUBE_RUNTIME.duration_cache.get(str(video.get("video_id", "") or "").strip(), {})
             if not isinstance(cached_meta, dict):
                 continue
             hydrated_channel_id = str(cached_meta.get("channel_id", "") or "").strip()
@@ -20575,6 +21155,7 @@ def hydrate_cached_youtube_playlist_channel_ids(limit=2500, fetch_missing=False)
 
 
 def _build_local_pockettube_channel_video_lookup(channels, per_channel_limit=1):
+    ensure_duration_cache_loaded()
     channel_id_set = {
         str(record.get("channel_id", "") or "").strip()
         for record in (channels or [])
@@ -20588,7 +21169,7 @@ def _build_local_pockettube_channel_video_lookup(channels, per_channel_limit=1):
 
     for playlist_id, _, index, raw_video in _iter_local_cached_youtube_playlist_videos(cache_data):
         video = dict(raw_video)
-        cached_meta = YOUTUBE_DURATION_CACHE.get(str(video.get("video_id", "") or "").strip(), {})
+        cached_meta = YOUTUBE_RUNTIME.duration_cache.get(str(video.get("video_id", "") or "").strip(), {})
         if not video.get("channel_id") and isinstance(cached_meta, dict):
             video["channel_id"] = str(cached_meta.get("channel_id", "") or "").strip()
         if not video.get("channel_name") and isinstance(cached_meta, dict):
@@ -20634,9 +21215,10 @@ def _build_local_pockettube_channel_video_lookup(channels, per_channel_limit=1):
     return local_lookup, diagnostics
 
 def get_youtube_duration(video_id):
-    if video_id not in YOUTUBE_DURATION_CACHE:
+    ensure_duration_cache_loaded()
+    if video_id not in YOUTUBE_RUNTIME.duration_cache:
         fetch_youtube_video_metadata([video_id])
-    return YOUTUBE_DURATION_CACHE.get(video_id, {"seconds": 0, "display": "0:00"})
+    return YOUTUBE_RUNTIME.duration_cache.get(video_id, {"seconds": 0, "display": "0:00"})
 
 def build_pagination(current_page, total_pages, window=2):
     pages = []
@@ -20666,9 +21248,6 @@ def paginate_items(items, page, per_page):
         "total_pages": total_pages,
         "pagination": build_pagination(page, total_pages)
     }
-
-load_duration_cache()
-
 
 def build_shuffled_related_entries(entries, seed_value):
     shuffled = list(entries)
@@ -21579,34 +22158,79 @@ def get_all_playlist_videos(playlist_id, max_total=5000, force_refresh=False):
         if isinstance(maybe_cached, list):
             cached_videos = [dict(video) for video in maybe_cached if isinstance(video, dict)]
     has_cached_videos = bool(cached_videos)
-    with RUNTIME_CACHE_LOCK:
-        runtime_entry = RUNTIME_CACHE["youtube_playlists"].get(playlist_id)
-        if runtime_entry is not None and not force_refresh and not is_cache_entry_stale(playlist_entry) and has_cached_videos:
-            return apply_cached_durations([dict(video) for video in runtime_entry])
+    cache_stale = is_cache_entry_stale(playlist_entry) if isinstance(playlist_entry, dict) else True
+    snapshot_age_seconds = None
+    if isinstance(playlist_entry, dict):
+        snapshot_timestamp = parse_timestamp(playlist_entry.get("updated_at", ""))
+        if snapshot_timestamp:
+            snapshot_age_seconds = max((datetime.now().astimezone() - snapshot_timestamp).total_seconds(), 0.0)
 
-    if not force_refresh and not is_cache_entry_stale(playlist_entry) and has_cached_videos:
-        videos = cached_videos
+    with RUNTIME_CACHE_LOCK:
+        runtime_entry = YOUTUBE_RUNTIME.playlist_index.get(playlist_id)
+        if runtime_entry is not None and not force_refresh and has_cached_videos:
+            videos = apply_cached_durations([dict(video) for video in runtime_entry])
+            if cache_stale:
+                print(
+                    f"[youtube-playlist-cache] key={playlist_id} "
+                    f"cache_hit=runtime snapshot_age={int(snapshot_age_seconds or 0)} "
+                    "refresh_reason=stale_snapshot"
+                )
+                schedule_youtube_cache_refresh(
+                    f"playlist:{playlist_id}",
+                    lambda: get_all_playlist_videos(playlist_id, max_total=max_total, force_refresh=True),
+                )
+            return videos
+
+    if not force_refresh and has_cached_videos:
+        videos = [dict(video) for video in cached_videos]
         with RUNTIME_CACHE_LOCK:
-            RUNTIME_CACHE["youtube_playlists"][playlist_id] = [dict(video) for video in videos]
-        return apply_cached_durations([dict(video) for video in videos])
+            YOUTUBE_RUNTIME.playlist_index[playlist_id] = [dict(video) for video in videos]
+        if cache_stale:
+            print(
+                f"[youtube-playlist-cache] key={playlist_id} "
+                f"cache_hit=snapshot snapshot_age={int(snapshot_age_seconds or 0)} "
+                "refresh_reason=stale_snapshot"
+            )
+            schedule_youtube_cache_refresh(
+                f"playlist:{playlist_id}",
+                lambda: get_all_playlist_videos(playlist_id, max_total=max_total, force_refresh=True),
+            )
+        return apply_cached_durations(videos)
 
     videos = fetch_playlist_videos_from_youtube(playlist_id, max_total=max_total)
     if videos:
+        source_changed = videos != cached_videos
+        old_runtime_videos = None
+        with RUNTIME_CACHE_LOCK:
+            old_runtime_videos = YOUTUBE_RUNTIME.playlist_index.get(playlist_id)
         set_playlist_cache_entry(cache_data, playlist_id, videos)
         save_cache_data(cache_data)
         with RUNTIME_CACHE_LOCK:
-            RUNTIME_CACHE["youtube_playlists"][playlist_id] = [dict(video) for video in videos]
+            YOUTUBE_RUNTIME.playlist_index[playlist_id] = [dict(video) for video in videos]
+        _youtube_trace(
+            "source_playlist_refresh",
+            playlist_id=playlist_id,
+            force_refresh=force_refresh,
+            source_changed=source_changed,
+            runtime_list_id_before=id(old_runtime_videos) if old_runtime_videos is not None else "none",
+            runtime_list_id_after=id(YOUTUBE_RUNTIME.playlist_index.get(playlist_id)),
+            snapshot_size_before=len(cached_videos),
+            snapshot_size_after=len(videos),
+            **_youtube_trace_video_stats(videos),
+        )
+        if source_changed:
+            invalidate_youtube_derived_caches(reason=f"playlist_refresh:{playlist_id}")
         return apply_cached_durations([dict(video) for video in videos])
 
     if cached_videos:
         with RUNTIME_CACHE_LOCK:
-            RUNTIME_CACHE["youtube_playlists"][playlist_id] = [dict(video) for video in cached_videos]
+            YOUTUBE_RUNTIME.playlist_index[playlist_id] = [dict(video) for video in cached_videos]
         return apply_cached_durations([dict(video) for video in cached_videos])
 
     set_playlist_cache_entry(cache_data, playlist_id, [])
     save_cache_data(cache_data)
     with RUNTIME_CACHE_LOCK:
-        RUNTIME_CACHE["youtube_playlists"][playlist_id] = []
+        YOUTUBE_RUNTIME.playlist_index[playlist_id] = []
     return []
 
 def yts_url(title):
@@ -22101,23 +22725,21 @@ def _fetch_yts_tmdb_enrichment(film):
 
 
 def _load_yts_torrents_cache():
-    global YTS_TORRENTS_CACHE, YTS_TORRENTS_CACHE_LOADED
-    if YTS_TORRENTS_CACHE_LOADED:
-        return YTS_TORRENTS_CACHE if isinstance(YTS_TORRENTS_CACHE, dict) else {}
+    if YTS_RUNTIME.torrents_cache_loaded:
+        return YTS_RUNTIME.torrents_cache if isinstance(YTS_RUNTIME.torrents_cache, dict) else {}
     try:
-        loaded = load_json_file(YTS_TORRENTS_CACHE_PATH, {})
+        loaded = YTS_TORRENTS_CACHE_STORE.load()
     except Exception:
         loaded = {}
-    YTS_TORRENTS_CACHE = loaded if isinstance(loaded, dict) else {}
-    YTS_TORRENTS_CACHE_LOADED = True
-    return YTS_TORRENTS_CACHE
+    YTS_RUNTIME.torrents_cache = loaded if isinstance(loaded, dict) else {}
+    YTS_RUNTIME.torrents_cache_loaded = True
+    return YTS_RUNTIME.torrents_cache
 
 
 def _save_yts_torrents_cache(cache_data):
-    global YTS_TORRENTS_CACHE, YTS_TORRENTS_CACHE_LOADED
-    YTS_TORRENTS_CACHE = cache_data if isinstance(cache_data, dict) else {}
-    YTS_TORRENTS_CACHE_LOADED = True
-    save_json_file(YTS_TORRENTS_CACHE_PATH, YTS_TORRENTS_CACHE)
+    YTS_RUNTIME.torrents_cache = cache_data if isinstance(cache_data, dict) else {}
+    YTS_RUNTIME.torrents_cache_loaded = True
+    YTS_TORRENTS_CACHE_STORE.save(YTS_RUNTIME.torrents_cache)
 
 
 def fetch_yts_torrents(film, force_refresh=False):
@@ -25163,7 +25785,7 @@ def collect_all_youtube_entries():
 def _iter_cached_pockettube_group_feeds():
     seen_section_keys = set()
     with RUNTIME_CACHE_LOCK:
-        runtime_feeds = dict(RUNTIME_CACHE.get("youtube_section_feeds", {}) or {})
+        runtime_feeds = dict(YOUTUBE_RUNTIME.section_feed_index or {})
     for section_key, payload in runtime_feeds.items():
         if section_key in seen_section_keys or not isinstance(payload, dict):
             continue
@@ -26279,29 +26901,49 @@ def refresh():
     return redirect(next_url)
 
 
+YOUTUBE_RECOMMENDATION_SERVICE = YouTubeRecommendationService(
+    build_shuffled_related_entries=build_shuffled_related_entries,
+    paginate_items=paginate_items,
+    build_related_video_detail_url=build_related_video_detail_url,
+)
+
+YOUTUBE_PLAYLIST_SERVICE = YouTubePlaylistService(
+    load_admin_data=load_admin_data,
+    build_youtube_section_playlists=build_youtube_section_playlists,
+    canonical_section_name=canonical_section_name,
+    youtube_section_blueprint=youtube_section_blueprint,
+    build_youtube_channel_curation_context=build_youtube_channel_curation_context,
+    build_youtube_section_feed_context=build_youtube_section_feed_context,
+    ai_context_for_section=ai_context_for_section,
+    build_query_url=build_query_url,
+    build_combined_sections=build_combined_sections,
+    pockettube_section_membership_context=_pockettube_section_membership_context,
+    normalize_youtube_section_record=normalize_youtube_section_record,
+    section_slug=section_slug,
+    normalize_section_name=normalize_section_name,
+    pockettube_latest_import_snapshot=_pockettube_latest_import_snapshot,
+    iter_cached_pockettube_group_feeds=_iter_cached_pockettube_group_feeds,
+    pockettube_display_name=_pockettube_display_name,
+    normalize_pockettube_group_key=normalize_pockettube_group_key,
+)
+
+YOUTUBE_VIDEO_SERVICE = YouTubeVideoService(
+    get_video_detail_context=get_video_detail_context,
+    recommendation_service=YOUTUBE_RECOMMENDATION_SERVICE,
+    get_section_route=get_section_route,
+    ai_context_for_video=ai_context_for_video,
+    score_display=SCORE_DISPLAY,
+    score_color=SCORE_COLOR,
+    yts_url=yts_url,
+    build_query_url=build_query_url,
+)
+
+
 def render_section_page(section_name, title=None, quick_delete_enabled=False):
-    admin_data = load_admin_data()
-    playlists_with_videos, default_limit, section_channel_groups = build_youtube_section_playlists(section_name, admin_data=admin_data)
-    section_title = canonical_section_name(title or section_name)
-    section_profile = youtube_section_blueprint(section_name)
-    section_curation_context = build_youtube_channel_curation_context(section_name, admin_data=admin_data)
-    section_feed_context = build_youtube_section_feed_context(section_name, admin_data=admin_data)
-    section_profile.update(section_curation_context)
-    section_profile["channel_groups"] = section_channel_groups
-    ai_context = ai_context_for_section(section_name)
-    return render_template(
-        "youtube_section.html",
-        title=section_title,
-        playlists=playlists_with_videos,
-        default_limit=default_limit,
+    return YOUTUBE_PLAYLIST_SERVICE.render_section_page(
+        section_name,
+        title=title,
         quick_delete_enabled=quick_delete_enabled,
-        section_profile=section_profile,
-        section_channel_groups=section_channel_groups,
-        section_channel_curation=section_curation_context,
-        section_feed_context=section_feed_context,
-        build_query_url=build_query_url,
-        ai_default_mode=ai_context["mode"],
-        ai_page_context=ai_context["page_context"]
     )
 
 
@@ -27036,7 +27678,7 @@ def books_entry_cover(entry_id):
     title = entry.get("title") or ""
     authors = entry.get("authors_display") or ""
     cache_key = normalize_book_cover_cache_key(title, authors)
-    cached_value = BOOK_COVER_CACHE.get(cache_key)
+    cached_value = BOOKS_RUNTIME.cover_cache.get(cache_key)
     if cached_value is None:
         cached_value = ""
         for source_fetcher in (fetch_openlibrary_cover_url, fetch_google_books_cover_url):
@@ -27046,7 +27688,7 @@ def books_entry_cover(entry_id):
                 cached_value = ""
             if cached_value:
                 break
-        BOOK_COVER_CACHE[cache_key] = cached_value
+        BOOKS_RUNTIME.cover_cache[cache_key] = cached_value
 
     if cached_value:
         return redirect(cached_value, code=302)
@@ -27212,7 +27854,7 @@ def trigger_reading_github_actions_sync():
     if not headers:
         return {"ok": False, "error": "Missing GITHUB_ACTIONS_TOKEN."}, 500
 
-    with READING_SYNC_TRIGGER_LOCK:
+    with READING_RUNTIME.sync_trigger_lock:
         try:
             _, status_payload = _reading_github_actions_latest_run()
         except requests.RequestException as exc:
@@ -27250,7 +27892,7 @@ def trigger_reading_github_actions_sync():
     return {"status": "started"}, 200
 
 def refresh_deployed_reading_snapshot_from_github():
-    with READING_GITHUB_REFRESH_LOCK:
+    with READING_RUNTIME.github_refresh_lock:
         old_mtime = _reading_format_mtime(READING_DATA_PATH)
         app.logger.info("reading_snapshot_download started url=%s", READING_SYNC_GITHUB_RAW_SNAPSHOT_URL)
 
@@ -27306,9 +27948,9 @@ def refresh_deployed_reading_snapshot_from_github():
                     )
 
                     clear_reading_data_cache()
-                    with READING_DATA_CACHE_LOCK:
-                        READING_DATA_CACHE["fingerprint"] = _reading_data_cache_fingerprint()
-                        READING_DATA_CACHE["data"] = normalized_payload
+                    with READING_RUNTIME.data_cache_lock:
+                        READING_RUNTIME.data_cache["fingerprint"] = _reading_data_cache_fingerprint()
+                        READING_RUNTIME.data_cache["data"] = normalized_payload
                     app.logger.info("reading_snapshot_cache cleared")
 
                     new_mtime = _reading_format_mtime(READING_DATA_PATH)
@@ -27402,7 +28044,7 @@ def reading_github_snapshot_updated():
     if not _reading_github_webhook_secret_valid(provided_secret):
         app.logger.warning("reading_github_snapshot_updated rejected reason=invalid_secret")
         return jsonify({"ok": False, "error": "Forbidden"}), 403
-    if READING_GITHUB_REFRESH_LOCK.locked():
+    if READING_RUNTIME.github_refresh_lock.locked():
         app.logger.info("reading_github_snapshot_updated skipped reason=refresh_in_progress")
         return jsonify({"ok": True, "status": "already_refreshing"}), 202
 
@@ -27619,7 +28261,7 @@ def reading_article_audio(entry_id):
 
     cache_path = Path(tts_payload["cache_path"])
     if not cache_path.exists() or not Path(tts_payload["timings_path"]).exists():
-        with READING_TTS_GENERATION_LOCK:
+        with READING_RUNTIME.tts_generation_lock:
             if not cache_path.exists() or not Path(tts_payload["timings_path"]).exists():
                 try:
                     ensure_reading_tts_cache(tts_payload)
@@ -27670,7 +28312,7 @@ def reading_article_audio_timings(entry_id):
 
     timings_path = Path(tts_payload["timings_path"])
     if not timings_path.exists():
-        with READING_TTS_GENERATION_LOCK:
+        with READING_RUNTIME.tts_generation_lock:
             if not timings_path.exists():
                 try:
                     ensure_reading_tts_cache(tts_payload)
@@ -28107,122 +28749,7 @@ def movies_corrections_apply():
 
 @app.route("/video/<entry_id>")
 def video_detail(entry_id):
-    force_refresh = str(request.args.get("refresh", "") or "").strip().lower() in {"1", "true", "yes", "on", "force"}
-    context = get_video_detail_context(entry_id, force_refresh=force_refresh)
-    if not context:
-        missing_entry = {
-            "entry_id": entry_id,
-            "title": "Missing Video",
-            "name": "Missing Video",
-            "playlist_name": "",
-            "playlist_url": "",
-            "video_id": "",
-            "duration": "",
-            "section": "",
-            "url": "",
-        }
-        return render_template(
-            "video_detail.html",
-            missing=True,
-            entry=missing_entry,
-            entry_type="youtube",
-            related_title="Missing video",
-            player_video_id="",
-            prev_entry=None,
-            next_entry=None,
-            related_entries=[],
-            related_total_pages=0,
-            related_page=1,
-            pagination_numbers=[],
-            related_order="normal",
-            related_seed="",
-            delete_endpoint=False,
-            ai_default_mode="cinematic",
-            ai_page_context="general",
-        ), 404
-    try:
-        page = max(int(request.args.get("page", 1)), 1)
-    except (TypeError, ValueError):
-        page = 1
-    related_order = (request.args.get("related_order") or "normal").strip().lower()
-    if related_order not in ("normal", "shuffle"):
-        related_order = "normal"
-    related_seed = (request.args.get("related_seed") or "").strip()
-    seed_value = related_seed or context["entry"].get("entry_id", entry_id)
-    related_entries_full = list(context["related_entries"])
-
-    if context.get("entry_type") == "youtube":
-        playlist_entries_full = list(context.get("playlist_entries", []))
-        if related_order == "shuffle":
-            playlist_entries_full = build_shuffled_related_entries(playlist_entries_full, seed_value)
-        current_playlist_index = next((
-            index for index, video in enumerate(playlist_entries_full)
-            if video.get("entry_id") == context["entry"].get("entry_id")
-        ), 0)
-        context["prev_entry"] = playlist_entries_full[current_playlist_index - 1] if current_playlist_index > 0 else None
-        context["next_entry"] = (
-            playlist_entries_full[current_playlist_index + 1]
-            if current_playlist_index < len(playlist_entries_full) - 1 else None
-        )
-        related_entries_full = [
-            video for video in playlist_entries_full
-            if video.get("entry_id") != context["entry"].get("entry_id")
-        ]
-    elif related_order == "shuffle":
-        related_entries_full = build_shuffled_related_entries(related_entries_full, seed_value)
-
-    related_page = paginate_items(related_entries_full, page, 10)
-    context["related_entries"] = []
-    for item in related_page["items"]:
-        item_copy = dict(item)
-        item_copy["detail_url"] = build_related_video_detail_url(
-            item_copy.get("entry_id", ""),
-            related_order=related_order,
-            related_seed=seed_value if related_order == "shuffle" else ""
-        )
-        context["related_entries"].append(item_copy)
-    context["related_entries_full"] = related_entries_full
-    context["related_page"] = related_page["page"]
-    context["related_total_pages"] = related_page["total_pages"]
-    context["pagination_numbers"] = related_page["pagination"]
-    context["related_order"] = related_order
-    context["related_seed"] = seed_value if related_order == "shuffle" else ""
-    context["related_random_entry"] = related_entries_full[0] if related_entries_full else None
-    context["related_random_url"] = (
-        build_related_video_detail_url(
-            context["related_random_entry"].get("entry_id", ""),
-            related_order=related_order,
-            related_seed=seed_value if related_order == "shuffle" else ""
-        )
-        if context["related_random_entry"] else ""
-    )
-    context["prev_entry_url"] = (
-        build_related_video_detail_url(
-            context["prev_entry"].get("entry_id", ""),
-            related_order=related_order,
-            related_seed=seed_value if related_order == "shuffle" else ""
-        )
-        if context.get("prev_entry") else None
-    )
-    context["next_entry_url"] = (
-        build_related_video_detail_url(
-            context["next_entry"].get("entry_id", ""),
-            related_order=related_order,
-            related_seed=seed_value if related_order == "shuffle" else ""
-        )
-        if context.get("next_entry") else None
-    )
-    context["delete_endpoint"] = (
-        url_for("delete_from_youtube", playlist_item_id=context["entry"].get("playlist_item_id") or "__lookup__")
-        if context.get("entry_type") == "youtube"
-        else None
-    )
-    context["section_route"] = get_section_route(context["entry"].get("section", ""))
-    ai_context = ai_context_for_video(context.get("entry_type"), context["entry"].get("section", ""))
-    return render_template("video_detail.html", missing=False, **context,
-                           score_display=SCORE_DISPLAY, score_color=SCORE_COLOR, yts_url=yts_url,
-                           build_query_url=build_query_url,
-                           ai_default_mode=ai_context["mode"], ai_page_context=ai_context["page_context"])
+    return YOUTUBE_VIDEO_SERVICE.render_video_detail(entry_id, request.args)
 
 
 @app.route("/director/<director_page_id>")
@@ -30889,98 +31416,21 @@ def chess_import_prepare():
 
 @app.route("/library_yt")
 def library_yt():
-    return render_section_page("Library", title="Library", quick_delete_enabled=False)
+    return YOUTUBE_PLAYLIST_SERVICE.render_library()
 
 @app.route("/watchlater")
 def watchlater():
-    return render_section_page("YouTube Watch Later", title="YouTube Watch Later", quick_delete_enabled=True)
+    return YOUTUBE_PLAYLIST_SERVICE.render_watchlater()
 
 
 @app.route("/section/<section_slug>")
 def section_page(section_slug):
-    section_slug_value = section_slug
-    section_slug_fn = globals().get("section_slug")
-    section = next((item for item in build_combined_sections() if item.get("slug") == section_slug_value), None)
-    if not section:
-        pockettube_section = _pockettube_section_membership_context(section_slug_value, admin_data=load_admin_data())
-        if pockettube_section.get("channel_count", 0):
-            section_name = pockettube_section.get("section_name", section_slug_value) or section_slug_value
-            section = normalize_youtube_section_record({
-                "name": section_name,
-                "slug": section_slug_fn(section_name) if callable(section_slug_fn) else normalize_section_name(section_name),
-                "playlists": [],
-                "section_kind": "curated",
-                "section_scope": "group",
-                "channel_group_key": pockettube_section.get("group_key", ""),
-                "channel_group_label": pockettube_section.get("group_name", ""),
-                "section_order": 500,
-            })
-    if not section:
-        return Response("Section not found.", status=404)
-    quick_delete_enabled = normalize_section_name(section.get("name", "")) == normalize_section_name("YouTube Watch Later")
-    return render_section_page(section.get("name", ""), title=section.get("name", ""), quick_delete_enabled=quick_delete_enabled)
+    return YOUTUBE_PLAYLIST_SERVICE.render_section_by_slug(section_slug)
 
 
 @app.route("/pockettube")
 def pockettube_groups():
-    latest, imported_sections = _pockettube_latest_import_snapshot()
-    search_query = str(request.args.get("q", "") or "").strip().lower()
-    sort_key = str(request.args.get("sort", "default") or "default").strip().lower()
-    cached_counts = {}
-    for section_key, feed_context in _iter_cached_pockettube_group_feeds():
-        if not isinstance(feed_context, dict):
-            continue
-        group_name = _pockettube_display_name(feed_context.get("group_name", "") or feed_context.get("name", "") or section_key)
-        video_count = int(feed_context.get("feed_count", feed_context.get("video_count", 0)) or 0)
-        cached_counts[normalize_pockettube_group_key(group_name)] = video_count
-        cached_counts[normalize_pockettube_group_key(section_key)] = video_count
-    pockettube_sections = []
-    for section in build_combined_sections():
-        if str(section.get("source", "") or "").strip().lower() != "pockettube":
-            continue
-        section_name = section.get("name", "")
-        section_key = normalize_pockettube_group_key(section_name)
-        group_label = section.get("channel_group_label", "") or section.get("channel_group_key", "")
-        video_count = int(section.get("pockettube_video_count", 0) or section.get("video_count", 0) or cached_counts.get(section_key, 0) or cached_counts.get(normalize_pockettube_group_key(group_label), 0) or 0)
-        item = {
-            "name": section_name,
-            "slug": section.get("slug", section_slug(section.get("name", ""))),
-            "channel_count": int(section.get("pockettube_channel_count", 0) or 0),
-            "video_count": video_count,
-            "section_kind": section.get("section_kind", ""),
-            "section_scope": section.get("section_scope", ""),
-            "group_label": group_label,
-        }
-        haystack = " ".join([
-            item["name"],
-            item["group_label"],
-            item["section_kind"],
-            item["section_scope"],
-        ]).lower()
-        if search_query and search_query not in haystack:
-            continue
-        pockettube_sections.append(item)
-    if sort_key == "channels":
-        pockettube_sections.sort(key=lambda item: (-int(item.get("channel_count", 0) or 0), -int(item.get("video_count", 0) or 0), item.get("name", "").lower()))
-    elif sort_key == "videos":
-        pockettube_sections.sort(key=lambda item: (-int(item.get("video_count", 0) or 0), -int(item.get("channel_count", 0) or 0), item.get("name", "").lower()))
-    elif sort_key in {"name", "az"}:
-        pockettube_sections.sort(key=lambda item: item.get("name", "").lower())
-    elif sort_key in {"name_desc", "za"}:
-        pockettube_sections.sort(key=lambda item: item.get("name", "").lower(), reverse=True)
-    else:
-        sort_key = "default"
-    return render_template(
-        "pockettube_groups.html",
-        title="PocketTube Groups",
-        pockettube_sections=pockettube_sections,
-        pockettube_import=latest,
-        pockettube_source_sections=imported_sections,
-        pockettube_search_query=search_query,
-        pockettube_sort_key=sort_key,
-        ai_default_mode="study",
-        ai_page_context="study",
-    )
+    return YOUTUBE_PLAYLIST_SERVICE.render_pockettube_groups(request.args)
 
 @app.route("/proxy_notebook")
 def proxy_notebook():
