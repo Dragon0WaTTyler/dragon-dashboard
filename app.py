@@ -28,6 +28,15 @@ from html.parser import HTMLParser
 from pathlib import Path
 from flask import Response, flash, jsonify, redirect, render_template, request, session, send_file, url_for
 from markupsafe import Markup
+from domains.reading import (
+    BooksService,
+    QuotesService,
+    ReadingCacheAccess,
+    ReadingRssService,
+    ReadingService,
+    ReadingSnapshotAccess,
+    ReadingSyncService,
+)
 from domains.youtube.services import (
     YouTubePlaylistService,
     YouTubeRecommendationService,
@@ -122,6 +131,13 @@ FLASK_ENV_NAME = RUNTIME_CONFIG.flask_env_name
 IS_PRODUCTION = RUNTIME_CONFIG.is_production
 FLASK_SECRET_KEY = RUNTIME_CONFIG.flask_secret_key
 _APP_INSTANCE = None
+_BOOKS_SERVICE = None
+_QUOTES_SERVICE = None
+_READING_CACHE_ACCESS = None
+_READING_RSS_SERVICE = None
+_READING_SYNC_SERVICE = None
+_READING_SERVICE = None
+_READING_SNAPSHOT_ACCESS = None
 
 
 def create_app():
@@ -10366,221 +10382,176 @@ def reading_entry_matches_filters(entry, source="All Sources", status="All Statu
     return True
 
 
+def _get_reading_cache_access():
+    global _READING_CACHE_ACCESS
+    if _READING_CACHE_ACCESS is None:
+        _READING_CACHE_ACCESS = ReadingCacheAccess(
+            default_reading_data=default_reading_data,
+            normalize_reading_source=normalize_reading_source,
+            normalize_reading_entry=normalize_reading_entry,
+            normalize_reading_url=normalize_reading_url,
+            strip_reading_demo_entries=strip_reading_demo_entries,
+            backup_reading_data_file=backup_reading_data_file,
+            apply_reading_retention_policy=apply_reading_retention_policy,
+            load_reading_backup_payload=load_reading_backup_payload,
+            load_json_file=load_json_file,
+            save_json_file=save_json_file,
+            reading_data_path=READING_DATA_PATH,
+            reading_runtime=READING_RUNTIME,
+            reading_retention_cap=READING_RETENTION_CAP,
+            reading_map_news_english_feed_url=READING_MAP_NEWS_ENGLISH_FEED_URL,
+            reading_morocco_world_news_name=READING_MOROCCO_WORLD_NEWS_NAME,
+            reading_data_cache_fingerprint=_reading_data_cache_fingerprint,
+        )
+    return _READING_CACHE_ACCESS
+
+
+def _get_reading_rss_service():
+    global _READING_RSS_SERVICE
+    if _READING_RSS_SERVICE is None:
+        _READING_RSS_SERVICE = ReadingRssService(
+            normalize_reading_source=normalize_reading_source,
+            reading_source_feed_candidate_urls=reading_source_feed_candidate_urls,
+            reading_http_get=reading_http_get,
+            reading_feedparser_diagnostics=reading_feedparser_diagnostics,
+            build_reading_import_item_from_feedparser_entry=lambda source, feed_url, entry, source_topic="": _get_reading_rss_service().build_reading_import_item_from_feedparser(
+                source,
+                feed_url,
+                entry,
+                source_topic=source_topic,
+            ),
+            build_reading_import_item_from_xml_node=lambda source, feed_url, node, source_topic="": _get_reading_rss_service().build_reading_import_item(
+                source,
+                feed_url,
+                node,
+                source_topic=source_topic,
+            ),
+            reading_source_primary_url=reading_source_primary_url,
+            normalize_reading_url=normalize_reading_url,
+            extract_reading_lead_image_from_html=extract_reading_lead_image_from_html,
+            extract_reading_image_from_html=extract_reading_image_from_html,
+            extract_reading_author_info_from_html=extract_reading_author_info_from_html,
+            reading_pick_best_image_candidate=reading_pick_best_image_candidate,
+            normalize_timestamp_value=normalize_timestamp_value,
+            current_timestamp=current_timestamp,
+            strip_reading_html=strip_reading_html,
+            reading_entry_content_score=reading_entry_content_score,
+            normalize_reading_category=normalize_reading_category,
+            reading_visible_topic_label=reading_visible_topic_label,
+            normalize_reading_space=normalize_reading_space,
+            xml_etree=ET,
+            feedparser_module=feedparser,
+        )
+    return _READING_RSS_SERVICE
+
+
+def _get_reading_sync_service():
+    global _READING_SYNC_SERVICE
+    if _READING_SYNC_SERVICE is None:
+        _READING_SYNC_SERVICE = ReadingSyncService(
+            load_reading_data=load_reading_data,
+            save_reading_data=save_reading_data,
+            default_reading_data=default_reading_data,
+            fetch_reading_feed=lambda source: _get_reading_rss_service().fetch_reading_feed(source),
+            normalize_reading_entry=normalize_reading_entry,
+            normalize_reading_category=normalize_reading_category,
+            normalize_reading_status=normalize_reading_status,
+            reading_entry_dedupe_keys=reading_entry_dedupe_keys,
+            reading_entry_content_score=reading_entry_content_score,
+            reading_source_sync_reason=reading_source_sync_reason,
+            reading_sync_should_preserve_snapshot=reading_sync_should_preserve_snapshot,
+            reading_sync_bbc_backfill_candidate=reading_sync_bbc_backfill_candidate,
+            reading_sync_entry_age_timestamp=reading_sync_entry_age_timestamp,
+            reading_sync_extraction_priority=reading_sync_extraction_priority,
+            reading_is_bbc_host=reading_is_bbc_host,
+            normalize_reading_url=normalize_reading_url,
+            reading_sync_entry_content_text_length=reading_sync_entry_content_text_length,
+            reading_sync_entry_has_weak_content_html=reading_sync_entry_has_weak_content_html,
+            reading_entry_needs_content_upgrade=reading_entry_needs_content_upgrade,
+            reading_sync_extract_retry_allowed=reading_sync_extract_retry_allowed,
+            extract_reading_article_page=extract_reading_article_page,
+            reading_merge_extraction_snapshot=reading_merge_extraction_snapshot,
+            reading_entry_sort_key=reading_entry_sort_key,
+            reading_hash_key=reading_hash_key,
+            format_timestamp_label=format_timestamp_label,
+            current_timestamp=current_timestamp,
+            reading_log_text=reading_log_text,
+            monotonic=time.monotonic,
+            datetime_module=datetime,
+            traceback_module=traceback,
+            urllib_parse=urllib.parse,
+            dragon_reading_sync_extract_full_content=DRAGON_READING_SYNC_EXTRACT_FULL_CONTENT,
+            dragon_reading_sync_extract_max_articles=DRAGON_READING_SYNC_EXTRACT_MAX_ARTICLES,
+            dragon_reading_sync_extract_timeout_seconds=DRAGON_READING_SYNC_EXTRACT_TIMEOUT_SECONDS,
+            dragon_reading_sync_extract_failure_retry_hours=DRAGON_READING_SYNC_EXTRACT_FAILURE_RETRY_HOURS,
+            dragon_reading_sync_extract_slow_log_limit=DRAGON_READING_SYNC_EXTRACT_SLOW_LOG_LIMIT,
+            dragon_reading_sync_backfill_bbc=DRAGON_READING_SYNC_BACKFILL_BBC,
+            dragon_reading_sync_bbc_backfill_max=DRAGON_READING_SYNC_BBC_BACKFILL_MAX,
+            reading_github_sync_online_message=READING_GITHUB_SYNC_ONLINE_MESSAGE,
+        )
+    return _READING_SYNC_SERVICE
+
+
 def normalize_reading_data(payload):
-    data = payload if isinstance(payload, dict) else default_reading_data()
-    data.setdefault("version", 1)
-    data.setdefault("sources", [])
-    data.setdefault("entries", [])
-    changed = not isinstance(payload, dict)
-    normalized_sources = []
-    source_lookup = {}
-    source_category_lookup = {}
-    source_name_lookup = {}
-    for index, source in enumerate(data.get("sources", []) or []):
-        normalized_source = normalize_reading_source(source, index)
-        if not isinstance(source, dict) or source != normalized_source:
-            changed = True
-        normalized_sources.append(normalized_source)
-        source_lookup[normalized_source["name"].lower()] = normalized_source["id"]
-        source_lookup[normalized_source["id"]] = normalized_source["id"]
-        if normalized_source.get("url"):
-            source_lookup[normalize_reading_url(normalized_source["url"]).lower()] = normalized_source["id"]
-            if normalize_reading_url(normalized_source["url"]) == READING_MAP_NEWS_ENGLISH_FEED_URL:
-                source_lookup[READING_MOROCCO_WORLD_NEWS_NAME.lower()] = normalized_source["id"]
-        source_category_lookup[normalized_source["id"]] = normalized_source.get("category", "news")
-        source_category_lookup[normalized_source["name"].lower()] = normalized_source.get("category", "news")
-        source_name_lookup[normalized_source["id"]] = normalized_source["name"]
-    source_lookup["__source_name_lookup__"] = source_name_lookup
-    normalized_entries = []
-    for index, entry in enumerate(data.get("entries", []) or []):
-        normalized_entry = normalize_reading_entry(entry, index, source_lookup=source_lookup, source_category_lookup=source_category_lookup)
-        if not isinstance(entry, dict) or entry != normalized_entry:
-            changed = True
-        normalized_entries.append(normalized_entry)
-    data["sources"] = normalized_sources
-    data["entries"] = normalized_entries
-    if strip_reading_demo_entries(data):
-        changed = True
-    return data, changed
+    return _get_reading_cache_access().normalize_reading_data(payload)
 
 
 def _load_reading_data_uncached():
-    data = load_json_file(READING_DATA_PATH, None)
-    read_failed = READING_DATA_PATH.exists() and data is None
-    if read_failed:
-        backup_payload = load_reading_backup_payload()
-        if backup_payload is not None:
-            data = backup_payload
-    normalized, changed = normalize_reading_data(data)
-    if changed and not read_failed:
-        backup_reading_data_file("normalize")
-        save_json_file(READING_DATA_PATH, normalized)
-    return normalized
+    return _get_reading_cache_access()._load_reading_data_uncached()
 
 
 def load_reading_data():
-    return _load_reading_data_uncached()
+    return _get_reading_cache_access().load_reading_data()
 
 
 def load_reading_data_cached():
-    fingerprint = _reading_data_cache_fingerprint()
-    with READING_RUNTIME.data_cache_lock:
-        cached_fingerprint = READING_RUNTIME.data_cache.get("fingerprint")
-        cached_data = READING_RUNTIME.data_cache.get("data")
-        if fingerprint and cached_fingerprint == fingerprint and cached_data is not None:
-            return cached_data
-    data = _load_reading_data_uncached()
-    with READING_RUNTIME.data_cache_lock:
-        READING_RUNTIME.data_cache["fingerprint"] = _reading_data_cache_fingerprint()
-        READING_RUNTIME.data_cache["data"] = data
-    return data
+    return _get_reading_cache_access().load_reading_data_cached()
 
 
 def clear_reading_data_cache():
-    with READING_RUNTIME.data_cache_lock:
-        READING_RUNTIME.data_cache["fingerprint"] = None
-        READING_RUNTIME.data_cache["data"] = None
+    return _get_reading_cache_access().clear_reading_data_cache()
 
 
 def save_reading_data(data, apply_retention=False, retention_reason="save"):
-    normalized, _ = normalize_reading_data(data)
-    retention_summary = {
-        "changed": False,
-        "archived_total": 0,
-        "cap": READING_RETENTION_CAP,
-        "category_summary": {},
-    }
-    if apply_retention:
-        normalized, retention_summary = apply_reading_retention_policy(normalized)
-        normalized["retention_last_run_reason"] = str(retention_reason or "save").strip() or "save"
-        normalized["retention_summary"] = retention_summary
-    backup_reading_data_file(retention_reason if apply_retention else "save")
-    save_json_file(READING_DATA_PATH, normalized)
-    return normalized
+    return _get_reading_cache_access().save_reading_data(
+        data,
+        apply_retention=apply_retention,
+        retention_reason=retention_reason,
+    )
 
 
 def reading_extract_text(node, names, default=""):
-    for name in names:
-        found = node.find(f".//{{*}}{name}")
-        if found is None:
-            continue
-        text = unescape("".join(found.itertext()).strip())
-        if text:
-            return text
-    return default
+    return _get_reading_rss_service().reading_extract_text(node, names, default=default)
 
 
 def reading_extract_link(node):
-    links = list(node.findall(".//{*}link"))
-    preferred_links = []
-    fallback_links = []
-    for link in links:
-        href = str(link.attrib.get("href", "") or "").strip()
-        text = unescape("".join(link.itertext()).strip())
-        rel = str(link.attrib.get("rel", "") or "").strip().lower()
-        if href and rel in {"alternate", "related", ""}:
-            preferred_links.append(href)
-            continue
-        if href:
-            fallback_links.append(href)
-            continue
-        if text:
-            fallback_links.append(text)
-    if preferred_links:
-        return preferred_links[0]
-    if fallback_links:
-        return fallback_links[0]
-    guid = node.find(".//{*}guid")
-    if guid is not None:
-        guid_text = unescape("".join(guid.itertext()).strip())
-        if guid_text:
-            return guid_text
-    return ""
+    return _get_reading_rss_service().reading_extract_link(node)
 
 
 def reading_extract_categories(node):
-    categories = []
-    for category in node.findall(".//{*}category"):
-        value = str(category.attrib.get("term", "") or category.attrib.get("label", "") or "").strip()
-        if not value:
-            value = unescape("".join(category.itertext()).strip())
-        if value:
-            categories.append(value)
-    return categories
+    return _get_reading_rss_service().reading_extract_categories(node)
 
 
 def reading_extract_entry_identifier(node):
-    for name in ("guid", "id"):
-        found = node.find(f".//{{*}}{name}")
-        if found is None:
-            continue
-        text = unescape("".join(found.itertext()).strip())
-        if text:
-            return text
-    return ""
+    return _get_reading_rss_service().reading_extract_entry_identifier(node)
 
 
 def reading_node_local_name(node):
-    return str(getattr(node, "tag", "") or "").split("}", 1)[-1].lower()
+    return _get_reading_rss_service().reading_node_local_name(node)
 
 
 def reading_extract_feed_content(node):
-    for child in list(node):
-        local_name = reading_node_local_name(child)
-        if local_name in {"encoded", "content"}:
-            text = unescape("".join(child.itertext()).strip())
-            if text:
-                return text
-    return reading_extract_text(node, ["description", "summary", "subtitle"], default="")
+    return _get_reading_rss_service().reading_extract_feed_content(node)
 
 
 def reading_extract_feed_image_details(node, content_html="", article_url="", source_name="", source_url=""):
-    candidates = []
-    for child in node.iter():
-        local_name = reading_node_local_name(child)
-        attrs = getattr(child, "attrib", {}) or {}
-        if local_name in {"thumbnail", "content", "image"}:
-            candidate = attrs.get("url") or attrs.get("href") or attrs.get("src")
-            media_type = str(attrs.get("type", "") or "").lower()
-            medium = str(attrs.get("medium", "") or "").lower()
-            if candidate and (local_name != "content" or "image" in media_type or medium == "image"):
-                candidates.append({
-                    "url": candidate,
-                    "kind": "feed_cover",
-                    "attrs": {
-                        "type": media_type,
-                        "medium": medium,
-                        "width": attrs.get("width", ""),
-                        "height": attrs.get("height", ""),
-                        "title": attrs.get("title", ""),
-                        "label": attrs.get("label", ""),
-                    },
-                })
-        if local_name == "enclosure":
-            candidate = attrs.get("url", "")
-            media_type = str(attrs.get("type", "") or "").lower()
-            if candidate and media_type.startswith("image/"):
-                candidates.append({
-                    "url": candidate,
-                    "kind": "feed_cover",
-                    "attrs": {
-                        "type": media_type,
-                        "width": attrs.get("width", ""),
-                        "height": attrs.get("height", ""),
-                    },
-                })
-    lead_image_url = extract_reading_lead_image_from_html(content_html, article_url)
-    if lead_image_url:
-        candidates.append({"url": lead_image_url, "kind": "explicit", "attrs": {}})
-    body_image_url = extract_reading_image_from_html(content_html, article_url, source_url=source_url, source_name=source_name)
-    if body_image_url:
-        candidates.append({"url": body_image_url, "kind": "body", "attrs": {}})
-    best = reading_pick_best_image_candidate(candidates, article_url=article_url, source_url=source_url, source_name=source_name)
-    if not best.get("url"):
-        return "", "", ""
-    if best.get("kind") == "body":
-        return best.get("url", ""), "", "body"
-    return best.get("url", ""), best.get("url", ""), best.get("kind", "feed_cover") or "feed_cover"
+    return _get_reading_rss_service().reading_extract_feed_image_details(
+        node,
+        content_html=content_html,
+        article_url=article_url,
+        source_name=source_name,
+        source_url=source_url,
+    )
 
 
 def reading_extract_feed_image(node, content_html="", article_url="", source_name="", source_url=""):
@@ -10589,910 +10560,29 @@ def reading_extract_feed_image(node, content_html="", article_url="", source_nam
 
 
 def build_reading_import_item(source, feed_url, node, source_topic=""):
-    title = reading_extract_text(node, ["title"], default="Untitled article")
-    url = normalize_reading_url(reading_extract_link(node))
-    external_id = reading_extract_entry_identifier(node)
-    published_at = normalize_timestamp_value(reading_extract_text(node, ["pubDate", "published", "updated", "date"], default=""))
-    imported_at = current_timestamp()
-    topic = reading_extract_categories(node)
-    content_html = reading_extract_feed_content(node)
-    content_text = strip_reading_html(content_html)
-    excerpt = content_text[:420].strip()
-    image_url, lead_image_url, lead_image_kind = reading_extract_feed_image_details(
+    return _get_reading_rss_service().build_reading_import_item(
+        source,
+        feed_url,
         node,
-        content_html=content_html,
-        article_url=url,
-        source_name=source.get("name", ""),
-        source_url=feed_url,
+        source_topic=source_topic,
     )
-    author_info = extract_reading_author_info_from_html(content_html, url)
-    author_name = reading_extract_text(node, ["author", "creator", "dc:creator"], default="") or author_info.get("author", "")
-    content_score = reading_entry_content_score({
-        "content_html": content_html,
-        "content_text": content_text,
-        "excerpt": excerpt,
-        "image_url": image_url,
-        "lead_image_url": lead_image_url,
-        "author_image_url": author_info.get("author_image_url", ""),
-        "author": author_name,
-    })
-    return {
-        "source": source.get("name", "Unknown Source"),
-        "source_id": source.get("id", ""),
-        "title": title,
-        "url": url,
-        "original_url": url,
-        "external_id": external_id,
-        "published_at": published_at,
-        "added_at": imported_at,
-        "imported_at": imported_at,
-        "status": "unread",
-        "starred": False,
-        "author": author_name,
-        "author_image_url": author_info.get("author_image_url", ""),
-        "topic": topic[0] if topic else source_topic,
-        "category": normalize_reading_category(source.get("category", "")),
-        "topic_display": reading_visible_topic_label(topic[0] if topic else source_topic, source.get("category", "")),
-        "image_url": image_url,
-        "lead_image_url": lead_image_url,
-        "lead_image_kind": lead_image_kind,
-        "excerpt": excerpt,
-        "content_text": content_text,
-        "content_html": content_html,
-        "content_score": content_score,
-        "extraction_status": "feed" if content_text else "",
-        "extraction_error": "",
-        "content_cached_at": imported_at if content_text or image_url else "",
-        "origin": "rss",
-        "feed_url": feed_url,
-    }
 
 
 def build_reading_import_item_from_feedparser(source, feed_url, entry, source_topic=""):
-    source = source if isinstance(source, dict) else {}
-    entry = entry if isinstance(entry, dict) else {}
-    title = normalize_reading_space(entry.get("title", "")) or "Untitled article"
-    url = normalize_reading_url(entry.get("link", "") or entry.get("id", ""))
-    external_id = normalize_reading_space(entry.get("id", "") or entry.get("guid", ""))
-    published_at = normalize_timestamp_value(
-        entry.get("published", "")
-        or entry.get("updated", "")
-        or entry.get("created", "")
-        or entry.get("pubDate", "")
+    return _get_reading_rss_service().build_reading_import_item_from_feedparser(
+        source,
+        feed_url,
+        entry,
+        source_topic=source_topic,
     )
-    imported_at = current_timestamp()
-    topic = []
-    for tag in entry.get("tags", []) or []:
-        term = ""
-        if isinstance(tag, dict):
-            term = str(tag.get("term", "") or tag.get("label", "") or "").strip()
-        else:
-            term = str(tag or "").strip()
-        if term:
-            topic.append(term)
-    content_html = ""
-    for content_item in entry.get("content", []) or []:
-        if isinstance(content_item, dict):
-            candidate = str(content_item.get("value", "") or "").strip()
-            if candidate:
-                content_html = candidate
-                break
-    if not content_html:
-        content_html = str(entry.get("summary", "") or entry.get("description", "") or entry.get("subtitle", "") or "").strip()
-    content_text = strip_reading_html(content_html)
-    excerpt = content_text[:420].strip()
-    lead_image_url = extract_reading_lead_image_from_html(content_html, url)
-    image_url = extract_reading_image_from_html(content_html, url, source_url=feed_url, source_name=source.get("name", ""))
-    lead_image_kind = "explicit" if lead_image_url else ""
-    author_name = normalize_reading_space(entry.get("author", "") or "")
-    author_image_url = ""
-    content_score = reading_entry_content_score({
-        "content_html": content_html,
-        "content_text": content_text,
-        "excerpt": excerpt,
-        "image_url": image_url,
-        "lead_image_url": lead_image_url,
-        "author_image_url": author_image_url,
-        "author": author_name,
-    })
-    return {
-        "source": source.get("name", "Unknown Source"),
-        "source_id": source.get("id", ""),
-        "title": title,
-        "url": url,
-        "original_url": url,
-        "external_id": external_id or url,
-        "published_at": published_at,
-        "added_at": imported_at,
-        "imported_at": imported_at,
-        "status": "unread",
-        "starred": False,
-        "author": author_name,
-        "author_image_url": author_image_url,
-        "topic": topic[0] if topic else source_topic,
-        "category": normalize_reading_category(source.get("category", "")),
-        "topic_display": reading_visible_topic_label(topic[0] if topic else source_topic, source.get("category", "")),
-        "image_url": image_url,
-        "lead_image_url": lead_image_url,
-        "lead_image_kind": lead_image_kind,
-        "excerpt": excerpt,
-        "content_text": content_text,
-        "content_html": content_html,
-        "content_score": content_score,
-        "extraction_status": "feed" if content_text else "",
-        "extraction_error": "",
-        "content_cached_at": imported_at if content_text or image_url else "",
-        "origin": "rss",
-        "feed_url": feed_url,
-    }
 
 
 def fetch_reading_feed(source):
-    source = normalize_reading_source(source)
-    feed_url = str(source.get("url", "") or "").strip()
-    if not feed_url:
-        return {
-            "ok": False,
-            "feed_kind": "empty",
-            "source_url": feed_url,
-            "primary_url": str(source.get("primary_url", "") or "").strip(),
-            "feed_url": "",
-            "resolved_url": "",
-            "final_url": "",
-            "successful_url": "",
-            "status_code": 0,
-            "content_type": "",
-            "raw_count": 0,
-            "normalized_count": 0,
-            "items": [],
-            "retry_count": 0,
-            "timeout_reason": "",
-            "feedparser_bozo": "",
-            "feedparser_bozo_exception": "",
-            "feedparser_entry_count": 0,
-            "source_fallback_used": False,
-            "tried_urls": [],
-            "attempts": [],
-            "error": "Missing feed URL.",
-        }
-    candidate_urls = reading_source_feed_candidate_urls(source)
-    attempts = []
-    source_topic = str(source.get("topic", "") or "").strip()
-    for candidate_index, candidate_url in enumerate(candidate_urls):
-        response, request_diag = reading_http_get(candidate_url, timeout_seconds=20, purpose="feed", retries=1, source=source)
-        request_diag = dict(request_diag or {})
-        request_diag["feed_url"] = candidate_url
-        request_diag["source_url"] = feed_url
-        request_diag["fallback_index"] = candidate_index
-        attempts.append(request_diag)
-        if response is None:
-            continue
-        status_code = int(getattr(response, "status_code", 0) or 0)
-        content_type = str(getattr(response, "headers", {}).get("Content-Type", "") or "").strip()
-        if status_code >= 400:
-            request_diag["error"] = f"HTTP {status_code}"
-            continue
-        feedparser_diag = reading_feedparser_diagnostics(getattr(response, "content", b""))
-        try:
-            root = ET.fromstring(response.content)
-        except Exception as exc:
-            request_diag["error"] = str(exc) or exc.__class__.__name__
-            request_diag["parse_error"] = str(exc) or exc.__class__.__name__
-            if feedparser_diag.get("entry_count", 0) and feedparser is not None:
-                parsed = feedparser.parse(response.content or b"")
-                items = []
-                for entry in getattr(parsed, "entries", []) or []:
-                    items.append(build_reading_import_item_from_feedparser(source, candidate_url, entry, source_topic=source_topic))
-                return {
-                    "ok": True,
-                    "feed_kind": "feedparser",
-                    "source_url": feed_url,
-                    "primary_url": reading_source_primary_url(source),
-                    "feed_url": candidate_url,
-                    "resolved_url": request_diag.get("final_url", candidate_url) or candidate_url,
-                    "final_url": request_diag.get("final_url", candidate_url) or candidate_url,
-                    "successful_url": candidate_url,
-                    "status_code": status_code,
-                    "content_type": content_type,
-                    "raw_count": len(getattr(parsed, "entries", []) or []),
-                    "normalized_count": len(items),
-                    "items": items,
-                    "retry_count": int(request_diag.get("retry_count", 0) or 0),
-                    "timeout_reason": str(request_diag.get("timeout_reason", "") or "").strip(),
-                    "feedparser_bozo": feedparser_diag.get("bozo", ""),
-                    "feedparser_bozo_exception": feedparser_diag.get("bozo_exception", ""),
-                    "feedparser_entry_count": int(feedparser_diag.get("entry_count", 0) or 0),
-                    "source_fallback_used": candidate_url != feed_url,
-                    "tried_urls": [str(attempt.get("feed_url", "") or "") for attempt in attempts if str(attempt.get("feed_url", "") or "").strip()],
-                    "attempts": attempts,
-                    "error": "",
-                }
-            continue
-
-        items = []
-        rss_items = []
-        atom_items = []
-        feed_kind = "unknown"
-        if root.tag.endswith("rss"):
-            feed_kind = "rss"
-            channel = root.find(".//{*}channel")
-            if channel is not None:
-                rss_items = channel.findall("./item")
-            if not rss_items:
-                rss_items = root.findall(".//{*}item")
-        elif root.tag.endswith("RDF") or root.tag.endswith("rdf"):
-            feed_kind = "rdf"
-            rss_items = root.findall(".//{*}item")
-        elif root.tag.endswith("feed"):
-            feed_kind = "atom"
-            atom_items = root.findall(".//{*}entry")
-
-        for node in rss_items:
-            items.append(build_reading_import_item(source, candidate_url, node, source_topic=source_topic))
-
-        for node in atom_items:
-            items.append(build_reading_import_item(source, candidate_url, node, source_topic=source_topic))
-
-        return {
-            "ok": True,
-            "feed_kind": feed_kind,
-            "source_url": feed_url,
-            "primary_url": reading_source_primary_url(source),
-            "feed_url": candidate_url,
-            "resolved_url": request_diag.get("final_url", candidate_url) or candidate_url,
-            "final_url": request_diag.get("final_url", candidate_url) or candidate_url,
-            "successful_url": candidate_url,
-            "status_code": status_code,
-            "content_type": content_type,
-            "raw_count": len(rss_items) + len(atom_items),
-            "normalized_count": len(items),
-            "items": items,
-            "retry_count": int(request_diag.get("retry_count", 0) or 0),
-            "timeout_reason": str(request_diag.get("timeout_reason", "") or "").strip(),
-            "feedparser_bozo": feedparser_diag.get("bozo", ""),
-            "feedparser_bozo_exception": feedparser_diag.get("bozo_exception", ""),
-            "feedparser_entry_count": int(feedparser_diag.get("entry_count", 0) or 0),
-            "source_fallback_used": candidate_url != feed_url,
-            "tried_urls": [str(attempt.get("feed_url", "") or "") for attempt in attempts if str(attempt.get("feed_url", "") or "").strip()],
-            "attempts": attempts,
-            "error": "",
-        }
-
-    last_attempt = attempts[-1] if attempts else {}
-    return {
-        "ok": False,
-        "feed_kind": "error",
-        "source_url": feed_url,
-        "primary_url": reading_source_primary_url(source),
-        "feed_url": str(last_attempt.get("feed_url", feed_url) or feed_url),
-        "resolved_url": str(last_attempt.get("final_url", "") or ""),
-        "final_url": str(last_attempt.get("final_url", "") or ""),
-        "successful_url": "",
-        "status_code": int(last_attempt.get("status_code", 0) or 0),
-        "content_type": str(last_attempt.get("content_type", "") or ""),
-        "raw_count": 0,
-        "normalized_count": 0,
-        "items": [],
-        "retry_count": int(last_attempt.get("retry_count", 0) or 0),
-        "timeout_reason": str(last_attempt.get("timeout_reason", "") or "").strip(),
-        "feedparser_bozo": "",
-        "feedparser_bozo_exception": "",
-        "feedparser_entry_count": 0,
-        "source_fallback_used": bool(last_attempt and str(last_attempt.get("feed_url", "") or "") != feed_url),
-        "tried_urls": [str(attempt.get("feed_url", "") or "") for attempt in attempts if str(attempt.get("feed_url", "") or "").strip()],
-        "attempts": attempts,
-        "error": str(last_attempt.get("error", "") or "") or "Unable to fetch feed.",
-    }
+    return _get_reading_rss_service().fetch_reading_feed(source)
 
 
 def sync_reading_sources(source_id=""):
-    sync_started_at = time.monotonic()
-    data = copy.deepcopy(load_reading_data())
-    source_id = str(source_id or "").strip()
-    extract_full_content = bool(DRAGON_READING_SYNC_EXTRACT_FULL_CONTENT)
-    extract_max_articles = int(DRAGON_READING_SYNC_EXTRACT_MAX_ARTICLES or 0)
-    extract_timeout_seconds = int(DRAGON_READING_SYNC_EXTRACT_TIMEOUT_SECONDS or 12)
-    extract_failure_retry_hours = int(DRAGON_READING_SYNC_EXTRACT_FAILURE_RETRY_HOURS or 24)
-    extract_slow_log_limit = int(DRAGON_READING_SYNC_EXTRACT_SLOW_LOG_LIMIT or 5)
-    target_sources = []
-    for source in data.get("sources", []):
-        if not isinstance(source, dict):
-            continue
-        if source_id and source.get("id") != source_id:
-            continue
-        if not source.get("active", True):
-            continue
-        if not str(source.get("url", "") or "").strip():
-            continue
-        target_sources.append(source)
-    total_sources = len(data.get("sources", []) or [])
-    print(
-        "[reading-sync] start | "
-        f"source_id={source_id or 'all'} | "
-        f"tracked_sources={total_sources} | "
-        f"active_sources={len(target_sources)} | "
-        f"extract_full_content={int(extract_full_content)} | "
-        f"extract_max_articles={extract_max_articles} | "
-        f"extract_timeout={extract_timeout_seconds}s"
-    )
-    if not target_sources:
-        print("[reading-sync] no active sources matched this sync run")
-
-    entries = list(data.get("entries", []))
-    existing_by_key = {}
-    for index, entry in enumerate(entries):
-        for dedupe_key in reading_entry_dedupe_keys(entry):
-            existing_by_key[dedupe_key] = index
-
-    imported_total = 0
-    source_results = []
-    zero_import_reasons = {}
-    extraction_candidate_indexes = []
-    extraction_summary = {
-        "enabled": extract_full_content,
-        "max_articles": extract_max_articles,
-        "timeout_seconds": extract_timeout_seconds,
-        "failure_retry_hours": extract_failure_retry_hours,
-        "attempted": 0,
-        "skipped_cached": 0,
-        "skipped_recent_failure": 0,
-        "enriched": 0,
-        "failed": 0,
-        "slowest": [],
-        "bbc_backfill_enabled": DRAGON_READING_SYNC_BACKFILL_BBC,
-        "bbc_backfill_max": DRAGON_READING_SYNC_BBC_BACKFILL_MAX,
-        "bbc_backfill_candidates": 0,
-        "bbc_backfill_attempted": 0,
-        "bbc_backfill_enriched": 0,
-        "bbc_backfill_failed": 0,
-        "bbc_backfill_skipped_recent_failure": 0,
-    }
-    now = current_timestamp()
-    for position, source in enumerate(target_sources, start=1):
-        source_name = str(source.get("name", "Unknown Source") or "Unknown Source").strip() or "Unknown Source"
-        safe_source_name = reading_log_text(source_name)
-        source_started_at = time.monotonic()
-        print(
-            "[reading-sync] source start | "
-            f"{position}/{len(target_sources)} | "
-            f"name={safe_source_name}"
-        )
-        try:
-            fetch_result = fetch_reading_feed(source)
-            imported_items = list(fetch_result.get("items", []) or [])
-            raw_count = int(fetch_result.get("raw_count", 0) or 0)
-            normalized_count = int(fetch_result.get("normalized_count", len(imported_items)) or len(imported_items))
-            fetch_ok = bool(fetch_result.get("ok", False))
-            fetch_error = str(fetch_result.get("error", "") or "").strip()
-            fetch_kind = str(fetch_result.get("feed_kind", "") or "").strip()
-            fetch_status_code = int(fetch_result.get("status_code", 0) or 0)
-            fetch_content_type = str(fetch_result.get("content_type", "") or "").strip()
-            fetch_resolved_url = str(fetch_result.get("resolved_url", "") or "").strip()
-            fetch_final_url = str(fetch_result.get("final_url", "") or fetch_resolved_url or "").strip()
-            fetch_successful_url = str(fetch_result.get("successful_url", "") or "").strip()
-            fetch_primary_url = str(fetch_result.get("primary_url", "") or "").strip()
-            fetch_retry_count = int(fetch_result.get("retry_count", 0) or 0)
-            fetch_timeout_reason = str(fetch_result.get("timeout_reason", "") or "").strip()
-            fetch_bozo = str(fetch_result.get("feedparser_bozo", "") or "").strip()
-            fetch_bozo_exception = str(fetch_result.get("feedparser_bozo_exception", "") or "").strip()
-            fetch_feedparser_entry_count = int(fetch_result.get("feedparser_entry_count", 0) or 0)
-            fetch_source_fallback_used = bool(fetch_result.get("source_fallback_used", False))
-            fetch_source_url = str(fetch_result.get("feed_url", source.get("url", "")) or source.get("url", "")).strip()
-            fetch_tried_urls = [str(url or "").strip() for url in list(fetch_result.get("tried_urls", []) or []) if str(url or "").strip()]
-            fetch_attempts = []
-            for attempt in list(fetch_result.get("attempts", []) or []):
-                if not isinstance(attempt, dict):
-                    continue
-                normalized_attempt = {
-                    "attempt": int(attempt.get("attempt", 0) or 0),
-                    "feed_url": str(attempt.get("feed_url", "") or "").strip(),
-                    "final_url": str(attempt.get("final_url", "") or "").strip(),
-                    "status_code": int(attempt.get("status_code", 0) or 0),
-                    "content_type": str(attempt.get("content_type", "") or "").strip(),
-                    "elapsed_ms": int(attempt.get("elapsed_ms", 0) or 0),
-                    "error": str(attempt.get("error", "") or "").strip(),
-                }
-                if any(normalized_attempt.values()):
-                    fetch_attempts.append(normalized_attempt)
-            source_imported = 0
-            source_skipped_existing = 0
-            source_skipped_missing_key = 0
-            for imported in imported_items:
-                dedupe_keys = reading_entry_dedupe_keys({
-                    **imported,
-                    "source_id": source.get("id", ""),
-                })
-                if not dedupe_keys:
-                    source_skipped_missing_key += 1
-                    continue
-                existing_index = next((existing_by_key[key] for key in dedupe_keys if key in existing_by_key), None)
-                import_seen_before = existing_index is not None
-                import_added_at = current_timestamp()
-                normalized_import = normalize_reading_entry({
-                    **imported,
-                    "source": source.get("name", "Unknown Source"),
-                    "source_id": source.get("id", ""),
-                    "added_at": import_added_at,
-                    "imported_at": import_added_at,
-                    "status": "unread",
-                    "starred": False,
-                    "origin": "rss",
-                    "category": normalize_reading_category(imported.get("category", "") or source.get("category", "")),
-                }, len(entries))
-                if import_seen_before:
-                    existing = dict(entries[existing_index])
-                    existing_content_snapshot = {
-                        key: existing.get(key, "")
-                        for key in ("image_url", "lead_image_url", "lead_image_kind", "author", "author_image_url", "excerpt", "content_html", "content_text", "content_score", "extraction_status", "extraction_error", "content_cached_at")
-                        if existing.get(key)
-                    }
-                    existing_score = reading_entry_content_score(existing)
-                    import_score = reading_entry_content_score(normalized_import)
-                    preserve_existing_content = bool(existing_content_snapshot) and existing_score >= import_score
-                    preserved = {
-                        "id": existing.get("id") or normalized_import["id"],
-                        "added_at": existing.get("added_at") or normalized_import["added_at"],
-                        "imported_at": existing.get("imported_at") or existing.get("added_at") or normalized_import["imported_at"],
-                        "status": normalize_reading_status(existing.get("status")),
-                        "starred": bool(existing.get("starred", False)),
-                    }
-                    existing.update(normalized_import)
-                    existing.update(preserved)
-                    if preserve_existing_content:
-                        existing.update(existing_content_snapshot)
-                    else:
-                        cached_content = {
-                            key: existing.get(key, "")
-                            for key in ("image_url", "lead_image_url", "lead_image_kind", "author", "author_image_url", "excerpt", "content_html", "content_text", "content_score", "extraction_status", "extraction_error", "content_cached_at")
-                            if existing.get(key) and not normalized_import.get(key)
-                        }
-                        existing.update(cached_content)
-                    if not existing.get("topic"):
-                        existing["topic"] = normalized_import.get("topic", "")
-                    if not existing.get("category"):
-                        existing["category"] = normalized_import.get("category", "")
-                    if not existing.get("published_at"):
-                        existing["published_at"] = normalized_import.get("published_at", "")
-                    existing["published_display"] = format_timestamp_label(existing.get("published_at", ""), default="")
-                    entries[existing_index] = existing
-                    for dedupe_key in reading_entry_dedupe_keys(existing):
-                        existing_by_key[dedupe_key] = existing_index
-                    source_skipped_existing += 1
-                    extraction_candidate_indexes.append(existing_index)
-                else:
-                    primary_key = sorted(dedupe_keys)[0]
-                    normalized_import["id"] = normalized_import.get("id") or f"reading-{reading_hash_key(primary_key)}"
-                    entries.append(normalized_import)
-                    new_index = len(entries) - 1
-                    for dedupe_key in reading_entry_dedupe_keys(normalized_import):
-                        existing_by_key[dedupe_key] = new_index
-                    imported_total += 1
-                    source_imported += 1
-                    extraction_candidate_indexes.append(new_index)
-            source["last_synced_at"] = now
-            source["last_sync_count"] = raw_count
-            source["last_sync_raw_count"] = raw_count
-            source["last_sync_normalized_count"] = normalized_count
-            source["last_sync_imported_count"] = source_imported
-            source["last_sync_already_had_count"] = source_skipped_existing
-            source["last_sync_missing_key_count"] = source_skipped_missing_key
-            source["last_sync_zero_import_streak"] = int(source.get("last_sync_zero_import_streak", 0) or 0)
-            source["last_sync_status_code"] = fetch_status_code
-            source["last_sync_content_type"] = fetch_content_type
-            source["last_sync_feed_kind"] = fetch_kind
-            source["last_sync_resolved_url"] = fetch_resolved_url
-            source["last_sync_final_url"] = fetch_final_url
-            source["last_sync_successful_url"] = fetch_successful_url
-            source["last_successful_url"] = fetch_successful_url or str(source.get("last_successful_url", "") or "").strip()
-            source["successful_url"] = fetch_successful_url or str(source.get("successful_url", "") or "").strip()
-            source["last_sync_tried_urls"] = fetch_tried_urls
-            source["last_sync_attempts"] = fetch_attempts
-            source["last_sync_retry_count"] = fetch_retry_count
-            source["last_sync_timeout_reason"] = fetch_timeout_reason
-            source["last_sync_feedparser_bozo"] = fetch_bozo
-            source["last_sync_feedparser_bozo_exception"] = fetch_bozo_exception
-            source["last_sync_feedparser_entry_count"] = fetch_feedparser_entry_count
-            source["last_sync_source_fallback_used"] = fetch_source_fallback_used
-            source["last_sync_status"] = "ok" if fetch_ok else ("blocked_source" if fetch_status_code == 403 else "error")
-            source["last_sync_error"] = fetch_error if not fetch_ok else ""
-            source["last_sync_reason"] = reading_source_sync_reason(source)
-            if fetch_ok:
-                source["last_sync_message"] = f"Fetched {raw_count} item(s), normalized {normalized_count}, imported {source_imported}, already had {source_skipped_existing}."
-            else:
-                blocked_note = ""
-                if fetch_status_code == 403:
-                    blocked_note = "This source is blocking automated fetches from the sync environment."
-                failure_prefix = blocked_note or f"Fetch failed ({fetch_kind or 'feed'}{f' {fetch_status_code}' if fetch_status_code else ''})"
-                source["last_sync_message"] = f"{failure_prefix}: {fetch_error}" if fetch_error else failure_prefix
-            if fetch_ok and source_skipped_missing_key:
-                source["last_sync_message"] += f" Skipped {source_skipped_missing_key} item(s) with no stable URL or id."
-            if fetch_ok and raw_count == 0:
-                source["last_sync_message"] = "Fetched 0 items from feed."
-            if fetch_ok and fetch_source_fallback_used and fetch_source_url:
-                source["last_sync_message"] += f" Fallback URL used: {fetch_source_url}."
-            if fetch_timeout_reason:
-                source["last_sync_message"] += f" Timeout note: {fetch_timeout_reason}."
-            if fetch_ok and raw_count > 0 and source_imported == 0:
-                source["last_sync_zero_import_streak"] = int(source.get("last_sync_zero_import_streak", 0) or 0) + 1
-            elif fetch_ok and raw_count == 0:
-                source["last_sync_zero_import_streak"] = 0
-            elif source_imported > 0:
-                source["last_sync_zero_import_streak"] = 0
-            source["last_sync_reason"] = reading_source_sync_reason(source)
-            if fetch_ok and source_imported == 0:
-                reason = str(source.get("last_sync_reason", "") or "").strip() or "No new items"
-                zero_import_reasons[reason] = zero_import_reasons.get(reason, 0) + 1
-            source["updated_at"] = now
-            source_results.append({
-                "name": source.get("name", "Unknown Source"),
-                "count": raw_count,
-                "normalized": normalized_count,
-                "imported": source_imported,
-                "already_existing": source_skipped_existing,
-                "missing_key": source_skipped_missing_key,
-                "status": "ok" if fetch_ok else ("blocked_source" if fetch_status_code == 403 else "error"),
-                "reason": source.get("last_sync_reason", ""),
-                "feed_kind": fetch_kind,
-                "status_code": fetch_status_code,
-                "content_type": fetch_content_type,
-                "resolved_url": fetch_resolved_url,
-                "final_url": fetch_final_url,
-                "successful_url": fetch_successful_url,
-                "retry_count": fetch_retry_count,
-                "timeout_reason": fetch_timeout_reason,
-                "feedparser_bozo": fetch_bozo,
-                "feedparser_bozo_exception": fetch_bozo_exception,
-                "feedparser_entry_count": fetch_feedparser_entry_count,
-                "source_fallback_used": fetch_source_fallback_used,
-                "tried_urls": fetch_tried_urls,
-                "attempts": fetch_attempts,
-                "error": fetch_error,
-            })
-            source_elapsed = time.monotonic() - source_started_at
-            print(
-                "[reading-sync] source done | "
-                f"{position}/{len(target_sources)} | "
-                f"name={safe_source_name} | "
-                f"elapsed={source_elapsed:.1f}s | "
-                f"fetched={raw_count} | "
-                f"normalized={normalized_count} | "
-                f"imported={source_imported} | "
-                f"duplicates={source_skipped_existing} | "
-                f"missing_key={source_skipped_missing_key} | "
-                f"status={'ok' if fetch_ok else 'error'} | "
-                f"status_code={fetch_status_code or 0} | "
-                f"resolved_url={fetch_resolved_url or fetch_source_url or feed_url} | "
-                f"content_type={fetch_content_type or 'unknown'} | "
-                f"retry_count={fetch_retry_count} | "
-                f"timeout_reason={fetch_timeout_reason or 'none'} | "
-                f"bozo={fetch_bozo or '0'}"
-            )
-        except Exception as exc:
-            source_elapsed = time.monotonic() - source_started_at
-            source["last_synced_at"] = now
-            source["last_sync_count"] = 0
-            source["last_sync_raw_count"] = 0
-            source["last_sync_normalized_count"] = 0
-            source["last_sync_imported_count"] = 0
-            source["last_sync_already_had_count"] = 0
-            source["last_sync_missing_key_count"] = 0
-            source["last_sync_zero_import_streak"] = int(source.get("last_sync_zero_import_streak", 0) or 0) + 1
-            source["last_sync_status_code"] = 0
-            source["last_sync_content_type"] = ""
-            source["last_sync_feed_kind"] = "error"
-            source["last_sync_resolved_url"] = ""
-            source["last_sync_final_url"] = ""
-            source["last_sync_successful_url"] = ""
-            source["last_sync_retry_count"] = 0
-            source["last_sync_timeout_reason"] = ""
-            source["last_sync_feedparser_bozo"] = ""
-            source["last_sync_feedparser_bozo_exception"] = ""
-            source["last_sync_feedparser_entry_count"] = 0
-            source["last_sync_source_fallback_used"] = False
-            source["last_sync_tried_urls"] = []
-            source["last_sync_attempts"] = []
-            source["last_sync_status"] = "error"
-            source["last_sync_error"] = str(exc)
-            source["last_sync_message"] = f"Fetch failed: {exc}"
-            source["last_sync_reason"] = reading_source_sync_reason(source)
-            source["updated_at"] = now
-            source_results.append({
-                "name": source.get("name", "Unknown Source"),
-                "count": 0,
-                "normalized": 0,
-                "imported": 0,
-                "status": "error",
-                "reason": source.get("last_sync_reason", ""),
-                "status_code": 0,
-                "content_type": "",
-                "resolved_url": "",
-                "final_url": "",
-                "successful_url": "",
-                "retry_count": 0,
-                "timeout_reason": "",
-                "feedparser_bozo": "",
-                "feedparser_bozo_exception": "",
-                "feedparser_entry_count": 0,
-                "source_fallback_used": False,
-                "tried_urls": [],
-                "attempts": [],
-                "error": str(exc),
-                "status": "error",
-            })
-            print(
-                "[reading-sync] source failed | "
-                f"{position}/{len(target_sources)} | "
-                f"name={safe_source_name} | "
-                f"elapsed={source_elapsed:.1f}s | "
-                f"error={reading_log_text(exc)}"
-            )
-            traceback.print_exc()
-
-    bbc_backfill_candidate_indexes = []
-    if extract_full_content and DRAGON_READING_SYNC_BACKFILL_BBC and DRAGON_READING_SYNC_BBC_BACKFILL_MAX > 0:
-        for candidate_index, candidate_entry in enumerate(entries):
-            if not reading_sync_bbc_backfill_candidate(candidate_entry):
-                continue
-            bbc_backfill_candidate_indexes.append(candidate_index)
-        bbc_backfill_candidate_indexes.sort(
-            key=lambda candidate_index: (
-                reading_sync_entry_age_timestamp(entries[candidate_index]).timestamp()
-                if reading_sync_entry_age_timestamp(entries[candidate_index]) else float("inf"),
-                candidate_index,
-            )
-        )
-        extraction_summary["bbc_backfill_candidates"] = len(bbc_backfill_candidate_indexes)
-        print(
-            "[reading-sync] BBC backfill candidates | "
-            f"enabled=1 | "
-            f"bbc_backfill_candidates={len(bbc_backfill_candidate_indexes)} | "
-            f"max={DRAGON_READING_SYNC_BBC_BACKFILL_MAX}"
-        )
-    elif extract_full_content:
-        print(
-            "[reading-sync] BBC backfill candidates | "
-            f"enabled={int(DRAGON_READING_SYNC_BACKFILL_BBC)} | "
-            f"bbc_backfill_candidates=0 | "
-            f"max={DRAGON_READING_SYNC_BBC_BACKFILL_MAX}"
-        )
-
-    if extract_full_content and extract_max_articles > 0 and (extraction_candidate_indexes or bbc_backfill_candidate_indexes):
-        now_dt = datetime.now().astimezone()
-        candidate_records = []
-        for candidate_index in extraction_candidate_indexes:
-            entry = entries[candidate_index] if 0 <= candidate_index < len(entries) else {}
-            if DRAGON_READING_SYNC_BACKFILL_BBC and reading_sync_bbc_backfill_candidate(entry):
-                continue
-            candidate_records.append({
-                "index": candidate_index,
-                "entry": entry,
-                "kind": "primary",
-                "priority": reading_sync_extraction_priority(candidate_index, entry),
-                "sort_key": (1,) + tuple(-part for part in reading_sync_extraction_priority(candidate_index, entry)),
-                "age_timestamp": reading_sync_entry_age_timestamp(entry),
-            })
-        for candidate_index in bbc_backfill_candidate_indexes:
-            entry = entries[candidate_index] if 0 <= candidate_index < len(entries) else {}
-            text_length, _ = reading_sync_entry_content_text_length(entry)
-            age_timestamp = reading_sync_entry_age_timestamp(entry)
-            age_sort_value = age_timestamp.timestamp() if age_timestamp else float("inf")
-            status_rank = 0 if str(entry.get("extraction_status", "") or "").strip().lower() == "feed" else 1
-            candidate_records.append({
-                "index": candidate_index,
-                "entry": entry,
-                "kind": "bbc_backfill",
-                "priority": (
-                    10000
-                    + (3200 if str(entry.get("extraction_status", "") or "").strip().lower() == "feed" else 2600)
-                    + (1800 if reading_is_bbc_host(urllib.parse.urlsplit(str(normalize_reading_url(entry.get("original_url") or entry.get("url"))) or "").netloc.lower()) else 0)
-                    + max(0, 1200 - text_length)
-                    + (1500 if reading_sync_entry_has_weak_content_html(entry) else 0)
-                ),
-                "age_timestamp": age_timestamp,
-                "sort_key": (
-                    0,
-                    status_rank,
-                    age_sort_value,
-                    text_length,
-                    candidate_index,
-                ),
-            })
-        candidate_records.sort(
-            key=lambda item: item.get("sort_key", (2, float("inf"), 0, 0, 0))
-        )
-        seen_candidate_indexes = set()
-        for candidate in candidate_records:
-            candidate_index = int(candidate.get("index", -1) or -1)
-            candidate_kind = str(candidate.get("kind", "primary") or "primary")
-            if candidate_index in seen_candidate_indexes:
-                continue
-            seen_candidate_indexes.add(candidate_index)
-            if candidate_index < 0 or candidate_index >= len(entries):
-                continue
-            entry = normalize_reading_entry(entries[candidate_index], candidate_index)
-            article_url = normalize_reading_url(entry.get("original_url") or entry.get("url"))
-            if not article_url:
-                continue
-            if candidate_kind == "primary" and extraction_summary["attempted"] >= extract_max_articles:
-                continue
-            if candidate_kind == "bbc_backfill" and extraction_summary["bbc_backfill_attempted"] >= DRAGON_READING_SYNC_BBC_BACKFILL_MAX:
-                continue
-            if not reading_entry_needs_content_upgrade(entry):
-                if candidate_kind == "bbc_backfill":
-                    continue
-                extraction_summary["skipped_cached"] += 1
-                continue
-            if not reading_sync_extract_retry_allowed(entry, retry_after_hours=extract_failure_retry_hours, now_dt=now_dt):
-                if candidate_kind == "bbc_backfill":
-                    extraction_summary["bbc_backfill_skipped_recent_failure"] += 1
-                else:
-                    extraction_summary["skipped_recent_failure"] += 1
-                continue
-            extraction_started_at = time.monotonic()
-            if candidate_kind == "bbc_backfill":
-                extraction_summary["bbc_backfill_attempted"] += 1
-            else:
-                extraction_summary["attempted"] += 1
-            extraction = extract_reading_article_page(article_url, timeout_seconds=extract_timeout_seconds)
-            extraction_elapsed = time.monotonic() - extraction_started_at
-            merged_entry = normalize_reading_entry(
-                reading_merge_extraction_snapshot(entry, extraction),
-                candidate_index,
-            )
-            entries[candidate_index] = merged_entry
-            extraction_status = str(extraction.get("status", "") or "").strip().lower()
-            if extraction_status in {"ok", "partial", "weak_partial"} and (
-                reading_entry_content_score(merged_entry) >= reading_entry_content_score(entry)
-                or merged_entry.get("content_html")
-                or merged_entry.get("content_text")
-                or merged_entry.get("image_url")
-            ):
-                if candidate_kind == "bbc_backfill":
-                    extraction_summary["bbc_backfill_enriched"] += 1
-                else:
-                    extraction_summary["enriched"] += 1
-            elif extraction_status == "failed":
-                if candidate_kind == "bbc_backfill":
-                    extraction_summary["bbc_backfill_failed"] += 1
-                else:
-                    extraction_summary["failed"] += 1
-            else:
-                if candidate_kind == "bbc_backfill":
-                    extraction_summary["bbc_backfill_enriched"] += 1
-                else:
-                    extraction_summary["enriched"] += 1
-            extraction_summary["slowest"].append({
-                "elapsed": extraction_elapsed,
-                "source": entry.get("source", ""),
-                "url": article_url,
-                "status": extraction_status or "unknown",
-                "error": str(extraction.get("error", "") or "").strip(),
-                "content_text_length": len(str(extraction.get("content_text", "") or "")),
-                "selector": str(extraction.get("extraction_selector", "") or "").strip(),
-                "paragraph_count": int(extraction.get("extraction_paragraph_count", 0) or 0),
-                "extracted_text_length": int(extraction.get("extraction_text_length", 0) or 0),
-                "kind": candidate_kind,
-            })
-            print(
-                "[reading-sync] enrich | "
-                f"kind={candidate_kind} | "
-                f"source={reading_log_text(entry.get('source', 'Unknown Source'))} | "
-                f"status={extraction_status or 'unknown'} | "
-                f"elapsed={extraction_elapsed:.1f}s | "
-                f"content_text_length={len(str(extraction.get('content_text', '') or ''))} | "
-                f"selector={str(extraction.get('extraction_selector', '') or '').strip() or 'unknown'} | "
-                f"paragraph_count={int(extraction.get('extraction_paragraph_count', 0) or 0)} | "
-                f"error={str(extraction.get('error', '') or '').strip() or 'none'} | "
-                f"url={article_url}"
-            )
-        extraction_summary["slowest"] = sorted(
-            extraction_summary["slowest"],
-            key=lambda item: float(item.get("elapsed", 0.0) or 0.0),
-            reverse=True,
-        )[:extract_slow_log_limit]
-    elif extract_full_content and extract_max_articles > 0:
-        print("[reading-sync] enrich | no candidate entries needed content extraction")
-
-    entries.sort(key=reading_entry_sort_key, reverse=True)
-    data["entries"] = entries
-    data["last_sync_at"] = now if target_sources else data.get("last_sync_at", "")
-    data["last_sync_count"] = imported_total
-    data["last_sync_sources"] = len(target_sources)
-    if not target_sources:
-        data["last_sync_message"] = "No active sources were available for sync"
-    elif imported_total:
-        data["last_sync_message"] = f"Imported {imported_total} new items from {len(target_sources)} active source(s)"
-    else:
-        reason_text = ", ".join(
-            f"{count} {reason.lower()}"
-            for reason, count in sorted(zero_import_reasons.items(), key=lambda item: (-item[1], item[0].lower()))
-        )
-        data["last_sync_message"] = f"0 new items from {len(target_sources)} active source(s)"
-        if reason_text:
-            data["last_sync_message"] += f": {reason_text}"
-    if extract_full_content and extract_max_articles > 0:
-        data["last_sync_message"] += (
-            f" | extraction attempted {extraction_summary['attempted']}, "
-            f"enriched {extraction_summary['enriched']}, "
-            f"failed {extraction_summary['failed']}, "
-            f"skipped cached {extraction_summary['skipped_cached']}, "
-            f"skipped recent failures {extraction_summary['skipped_recent_failure']}"
-        )
-        if DRAGON_READING_SYNC_BACKFILL_BBC:
-            data["last_sync_message"] += (
-                f" | BBC backfill candidates {extraction_summary['bbc_backfill_candidates']}, "
-                f"attempted {extraction_summary['bbc_backfill_attempted']}, "
-                f"enriched {extraction_summary['bbc_backfill_enriched']}, "
-                f"failed {extraction_summary['bbc_backfill_failed']}, "
-                f"skipped recent failures {extraction_summary['bbc_backfill_skipped_recent_failure']}"
-            )
-    preserve_snapshot = reading_sync_should_preserve_snapshot(source_results, len(target_sources), imported_total=imported_total)
-    if preserve_snapshot:
-        print(
-            "[reading-sync] preserve snapshot | "
-            f"active_sources={len(target_sources)} | "
-            f"imported_total={imported_total} | "
-            "reason=proxy_or_403_failures"
-        )
-        saved_data = load_reading_data()
-        saved_data = copy.deepcopy(saved_data) if isinstance(saved_data, dict) else default_reading_data()
-        saved_data["last_sync_message"] = (
-            f"Proxy/403 failures from all active sources; keeping the existing snapshot unchanged. "
-            f"{READING_GITHUB_SYNC_ONLINE_MESSAGE}"
-        )
-    else:
-        saved_data = save_reading_data(data, apply_retention=True, retention_reason="sync")
-    total_elapsed = time.monotonic() - sync_started_at
-    failed_source_count = sum(1 for item in source_results if str(item.get("status", "")).strip().lower() in {"error", "blocked_source"})
-    print(
-        "[reading-sync] finish | "
-        f"active_sources={len(target_sources)} | "
-        f"imported_total={imported_total} | "
-        f"failed_sources={failed_source_count} | "
-        f"elapsed={total_elapsed:.1f}s"
-    )
-    if extract_full_content and extract_max_articles > 0:
-        print(
-            "[reading-sync] extraction summary | "
-            f"attempted={extraction_summary['attempted']} | "
-            f"skipped_cached={extraction_summary['skipped_cached']} | "
-            f"skipped_recent_failure={extraction_summary['skipped_recent_failure']} | "
-            f"enriched={extraction_summary['enriched']} | "
-            f"failed={extraction_summary['failed']}"
-        )
-        if DRAGON_READING_SYNC_BACKFILL_BBC:
-            print(
-                "[reading-sync] BBC backfill summary | "
-                f"bbc_backfill_enabled={int(DRAGON_READING_SYNC_BACKFILL_BBC)} | "
-                f"bbc_backfill_candidates={extraction_summary['bbc_backfill_candidates']} | "
-                f"bbc_backfill_attempted={extraction_summary['bbc_backfill_attempted']} | "
-                f"bbc_backfill_enriched={extraction_summary['bbc_backfill_enriched']} | "
-                f"bbc_backfill_failed={extraction_summary['bbc_backfill_failed']} | "
-                f"bbc_backfill_skipped_recent_failure={extraction_summary['bbc_backfill_skipped_recent_failure']}"
-            )
-        for item in extraction_summary.get("slowest", []) or []:
-            print(
-                "[reading-sync] slow extraction | "
-                f"elapsed={float(item.get('elapsed', 0.0) or 0.0):.1f}s | "
-                f"source={reading_log_text(item.get('source', 'Unknown Source'))} | "
-                f"status={item.get('status', 'unknown')} | "
-                f"content_text_length={int(item.get('content_text_length', 0) or 0)} | "
-                f"selector={item.get('selector', 'unknown')} | "
-                f"paragraph_count={int(item.get('paragraph_count', 0) or 0)} | "
-                f"kind={item.get('kind', 'primary')} | "
-                f"url={item.get('url', '')}"
-            )
-    return {
-        "imported_total": imported_total,
-        "source_results": source_results,
-        "zero_import_reasons": zero_import_reasons,
-        "source_count": len(data.get("sources", [])),
-        "active_source_count": len(target_sources),
-        "last_sync_at": saved_data.get("last_sync_at", ""),
-        "last_sync_message": saved_data.get("last_sync_message", ""),
-        "retention_summary": saved_data.get("retention_summary", {}),
-        "extraction_summary": extraction_summary,
-    }
+    return _get_reading_sync_service().sync_reading_sources(source_id=source_id)
 
 
 def update_reading_source(source_id, updates):
@@ -12436,154 +11526,35 @@ def reading_tts_timings_url(entry_id, version=""):
     return url_for("reading_article_audio_timings", **params)
 
 
+def _get_reading_service():
+    global _READING_SERVICE
+    if _READING_SERVICE is None:
+        _READING_SERVICE = ReadingService(
+            load_reading_data_cached=load_reading_data_cached,
+            default_reading_data=default_reading_data,
+            apply_reading_retention_policy=apply_reading_retention_policy,
+            normalize_reading_source=normalize_reading_source,
+            normalize_reading_url=normalize_reading_url,
+            normalize_reading_list_entry=normalize_reading_list_entry,
+            parse_timestamp=parse_timestamp,
+            normalize_reading_category=normalize_reading_category,
+            normalize_reading_status=normalize_reading_status,
+            reading_visible_topic_label=reading_visible_topic_label,
+            reading_entry_matches_filters=reading_entry_matches_filters,
+            reading_entry_sort_key=reading_entry_sort_key,
+            reading_category_label=reading_category_label,
+            format_timestamp_label=format_timestamp_label,
+            reading_statuses=READING_STATUSES,
+            reading_categories=READING_CATEGORIES,
+            reading_list_default_limit=READING_LIST_DEFAULT_LIMIT,
+            reading_list_limit_max=READING_LIST_LIMIT_MAX,
+            reading_list_limit_step=READING_LIST_LIMIT_STEP,
+        )
+    return _READING_SERVICE
+
+
 def build_reading_view():
-    data = load_reading_data_cached()
-    if not isinstance(data, dict):
-        data = default_reading_data()
-    retained_data, _ = apply_reading_retention_policy(copy.deepcopy(data))
-    if isinstance(retained_data, dict):
-        data = retained_data
-    sources = [normalize_reading_source(source, index) for index, source in enumerate(data.get("sources", []))]
-    source_lookup = {source["name"].lower(): source["id"] for source in sources if source.get("name")}
-    source_lookup.update({
-        normalize_reading_url(source.get("url", "")).lower(): source["id"]
-        for source in sources
-        if source.get("url")
-    })
-    source_lookup.update({source["id"]: source["id"] for source in sources})
-    source_category_lookup = {source["id"]: source.get("category", "news") for source in sources}
-    source_category_lookup.update({source["name"].lower(): source.get("category", "news") for source in sources if source.get("name")})
-    raw_entries = list(data.get("entries", []) or [])
-    entries = [
-        normalize_reading_list_entry(entry, index, source_lookup=source_lookup, source_category_lookup=source_category_lookup)
-        for index, entry in enumerate(raw_entries)
-    ]
-    last_sync_timestamp = parse_timestamp(str(data.get("last_sync_at", "") or "").strip())
-    for entry in entries:
-        entry_import_timestamp = parse_timestamp(entry.get("imported_at", "")) or parse_timestamp(entry.get("added_at", "")) or parse_timestamp(entry.get("published_at", ""))
-        entry["is_fresh_import"] = bool(
-            last_sync_timestamp
-            and entry_import_timestamp
-            and entry_import_timestamp.timestamp() >= last_sync_timestamp.timestamp()
-        )
-    active_entries = [entry for entry in entries if entry.get("status") != "archived"]
-    source_entry_count = {}
-    for entry in active_entries:
-        key = entry.get("source_id") or entry.get("source", "")
-        source_entry_count[key] = source_entry_count.get(key, 0) + 1
-    extra_sources = []
-    seen_filter_ids = {source["id"] for source in sources}
-    for entry in entries:
-        source_id = entry.get("source_id") or ""
-        source_name = entry.get("source", "") or "Unknown Source"
-        if source_id and source_id not in seen_filter_ids:
-            extra_sources.append({
-                "id": source_id,
-                "name": source_name,
-                "url": "",
-                "topic": entry.get("topic", ""),
-                "topic_display": reading_visible_topic_label(entry.get("topic", ""), entry.get("category", "news")),
-                "category": entry.get("category", "news"),
-                "active": False,
-                "added_at": "",
-                "updated_at": "",
-                "last_synced_at": "",
-                "last_sync_count": 0,
-                "last_sync_status": "",
-            })
-            seen_filter_ids.add(source_id)
-    source_filters = [{"id": "All Sources", "name": "All Sources"}] + sources + extra_sources
-    selected_source = str(request.args.get("source", "All Sources") or "All Sources").strip()
-    raw_category = str(request.args.get("category", "All Categories") or "All Categories").strip()
-    selected_category = "All Categories" if raw_category.lower() == "all categories" else normalize_reading_category(raw_category)
-    raw_status = str(request.args.get("status", "All Status") or "All Status").strip().lower()
-    selected_status = "All Status" if raw_status == "all status" else normalize_reading_status(raw_status)
-    raw_search = str(request.args.get("search", "") or "").strip()
-    search = raw_search.lower()
-    fresh_only = str(request.args.get("fresh", "") or "").strip().lower() in {"1", "true", "yes", "on"}
-    try:
-        requested_limit = int(request.args.get("limit", READING_LIST_DEFAULT_LIMIT) or READING_LIST_DEFAULT_LIMIT)
-    except (TypeError, ValueError):
-        requested_limit = READING_LIST_DEFAULT_LIMIT
-    requested_limit = max(1, min(requested_limit, READING_LIST_LIMIT_MAX))
-    summary = {
-        "total": len(active_entries),
-        "unread": len([entry for entry in active_entries if entry.get("status") == "unread"]),
-        "reading": len([entry for entry in active_entries if entry.get("status") == "reading"]),
-        "starred": len([entry for entry in active_entries if entry.get("starred")]),
-    }
-    last_sync_at = str(data.get("last_sync_at", "") or "").strip()
-    filtered = [
-        entry for entry in entries
-        if reading_entry_matches_filters(
-            entry,
-            source=selected_source,
-            status=selected_status,
-            category=selected_category,
-            search=search,
-        )
-    ]
-    fresh_entries = [entry for entry in filtered if entry.get("is_fresh_import")]
-    fresh_entries.sort(key=reading_entry_sort_key, reverse=True)
-    if fresh_only and last_sync_timestamp:
-        filtered = fresh_entries[:]
-    filtered.sort(key=reading_entry_sort_key, reverse=True)
-    fresh_count = len(fresh_entries)
-    total_matching = len(filtered)
-    displayed_entries = filtered[:requested_limit]
-    has_more = total_matching > len(displayed_entries)
-    next_limit = min(requested_limit + READING_LIST_LIMIT_STEP, READING_LIST_LIMIT_MAX)
-    showing_archived = selected_status == "archived"
-    return {
-        "entries": displayed_entries,
-        "sources": source_filters,
-        "source_options": source_filters,
-        "reading_sources": sources,
-        "status_options": [("All Status", "All Status")] + [(status, status.title()) for status in READING_STATUSES],
-        "category_options": [("All Categories", "All Categories")] + [(category, reading_category_label(category)) for category in READING_CATEGORIES],
-        "current_filters": {
-            "source": selected_source,
-            "status": selected_status,
-            "category": selected_category,
-            "search": raw_search,
-        },
-        "filter_query": reading_filter_query_params({
-            "source": selected_source,
-            "status": selected_status,
-            "category": selected_category,
-            "search": raw_search,
-            "limit": requested_limit,
-            "fresh": fresh_only,
-        }),
-        "show_more_query": reading_filter_query_params({
-            "source": selected_source,
-            "status": selected_status,
-            "category": selected_category,
-            "search": raw_search,
-            "limit": next_limit,
-            "fresh": fresh_only,
-        }),
-        "summary": summary,
-        "source_count": len(sources),
-        "active_source_count": len([source for source in sources if source.get("active", True) and source.get("url")]),
-        "source_entry_count": source_entry_count,
-        "total_filtered": len(displayed_entries),
-        "total_matching": total_matching,
-        "render_limit": requested_limit,
-        "render_limit_default": READING_LIST_DEFAULT_LIMIT,
-        "render_limit_max": READING_LIST_LIMIT_MAX,
-        "has_more_entries": has_more,
-        "next_limit": next_limit,
-        "showing_archived": showing_archived,
-        "fresh_only": fresh_only,
-        "fresh_count": fresh_count,
-        "fresh_label": "New since last sync" if fresh_count else "Up to date",
-        "last_sync_at": last_sync_at,
-        "last_sync_at_display": format_timestamp_label(last_sync_at, default="Never"),
-        "last_sync_count": int(data.get("last_sync_count", 0) or 0),
-        "last_sync_sources": int(data.get("last_sync_sources", 0) or 0),
-        "last_sync_message": str(data.get("last_sync_message", "") or "").strip(),
-    }
+    return _get_reading_service().build_reading_view(request.args)
 
 
 def build_reading_admin_context():
@@ -17320,238 +16291,76 @@ def invalidate_book_quotes_entries_cache():
     _delete_snapshot_file(BOOK_QUOTES_SNAPSHOT_PATH)
 
 
+def _get_quotes_service():
+    global _QUOTES_SERVICE
+    if _QUOTES_SERVICE is None:
+        _QUOTES_SERVICE = QuotesService(
+            books_runtime=BOOKS_RUNTIME,
+            time_module=time,
+            books_runtime_ttl_seconds=BOOKS_RUNTIME_TTL_SECONDS,
+            books_snapshot_ttl_seconds=BOOKS_SNAPSHOT_TTL_SECONDS,
+            book_quotes_snapshot_path=BOOK_QUOTES_SNAPSHOT_PATH,
+            notion_book_quotes_database_id=NOTION_BOOK_QUOTES_DATABASE_ID,
+            compact_notion_id=compact_notion_id,
+            resolve_book_quotes_database=resolve_book_quotes_database,
+            build_book_quotes_database_schema=build_book_quotes_database_schema,
+            validate_book_quotes_database_schema=validate_book_quotes_database_schema,
+            fetch_all_notion_database_pages=fetch_all_notion_database_pages,
+            notion_book_quote_page_to_entry=notion_book_quote_page_to_entry,
+            load_books_snapshot=_load_books_snapshot,
+            save_books_snapshot=_save_books_snapshot,
+            snapshot_age_seconds=_snapshot_age_seconds,
+            update_entries_runtime_cache=_update_entries_runtime_cache,
+            log_entries_cache_event=_log_entries_cache_event,
+            schedule_entries_cache_refresh=_schedule_entries_cache_refresh,
+            entries_cache_result=_entries_cache_result,
+        )
+    return _QUOTES_SERVICE
+
+
+def _get_books_service():
+    global _BOOKS_SERVICE
+    if _BOOKS_SERVICE is None:
+        _BOOKS_SERVICE = BooksService(
+            books_runtime=BOOKS_RUNTIME,
+            time_module=time,
+            books_runtime_ttl_seconds=BOOKS_RUNTIME_TTL_SECONDS,
+            books_snapshot_ttl_seconds=BOOKS_SNAPSHOT_TTL_SECONDS,
+            books_snapshot_path=BOOKS_SNAPSHOT_PATH,
+            notion_books_database_id=NOTION_BOOKS_DATABASE_ID,
+            fetch_all_notion_database_pages=fetch_all_notion_database_pages,
+            notion_book_page_to_entry=notion_book_page_to_entry,
+            normalize_book_status=normalize_book_status,
+            books_status_label=books_status_label,
+            load_books_snapshot=_load_books_snapshot,
+            save_books_snapshot=_save_books_snapshot,
+            snapshot_age_seconds=_snapshot_age_seconds,
+            update_entries_runtime_cache=_update_entries_runtime_cache,
+            log_entries_cache_event=_log_entries_cache_event,
+            schedule_entries_cache_refresh=_schedule_entries_cache_refresh,
+            entries_cache_result=_entries_cache_result,
+        )
+    return _BOOKS_SERVICE
+
+
 def fetch_book_quotes_entries(force_refresh=False):
-    cached_entries = BOOKS_RUNTIME.quotes_entries.entries
-    cached_updated_at = float(BOOKS_RUNTIME.quotes_entries.updated_at or 0)
-    runtime_age_seconds = (time.time() - cached_updated_at) if cached_entries is not None and cached_updated_at else None
-    if not force_refresh and cached_entries is not None and runtime_age_seconds is not None and runtime_age_seconds < BOOKS_RUNTIME_TTL_SECONDS:
-        _log_entries_cache_event("quotes", cache_hit="runtime", snapshot_age=int(runtime_age_seconds), refresh_reason="fresh_runtime")
-        return _entries_cache_result(BOOKS_RUNTIME.quotes_entries)
-
-    snapshot = _load_books_snapshot(BOOK_QUOTES_SNAPSHOT_PATH)
-    snapshot_entries = snapshot.get("entries", [])
-    snapshot_error = snapshot.get("error", "")
-    snapshot_available = bool(snapshot.get("updated_at")) or BOOK_QUOTES_SNAPSHOT_PATH.exists()
-    snapshot_age_seconds = _snapshot_age_seconds(snapshot.get("updated_at", ""))
-    snapshot_stale = snapshot_age_seconds is None or snapshot_age_seconds >= BOOKS_SNAPSHOT_TTL_SECONDS
-
-    if not force_refresh and snapshot_available:
-        result = _update_entries_runtime_cache(
-            BOOKS_RUNTIME.quotes_entries,
-            snapshot_entries,
-            error=snapshot_error,
-            snapshot_loaded=True,
-        )
-        _log_entries_cache_event(
-            "quotes",
-            cache_hit="snapshot",
-            snapshot_age=int(snapshot_age_seconds or 0),
-            refresh_reason="stale_snapshot" if snapshot_stale else "fresh_snapshot",
-        )
-        if snapshot_stale:
-            _schedule_entries_cache_refresh(
-                "quotes",
-                BOOKS_RUNTIME.quotes_entries,
-                fetch_book_quotes_entries,
-                reason="snapshot_stale",
-            )
-        return result
-
-    if not force_refresh and cached_entries is not None:
-        _log_entries_cache_event("quotes", cache_hit="runtime_stale", refresh_reason="snapshot_missing")
-        _schedule_entries_cache_refresh(
-            "quotes",
-            BOOKS_RUNTIME.quotes_entries,
-            fetch_book_quotes_entries,
-            reason="runtime_stale",
-        )
-        return _entries_cache_result(BOOKS_RUNTIME.quotes_entries)
-
-    database_id = str(NOTION_BOOK_QUOTES_DATABASE_ID or "").strip()
-    if not database_id:
-        result = {"entries": [], "error": "Set NOTION_BOOK_QUOTES_DATABASE_ID to enable Book Quotes."}
-        _save_books_snapshot(BOOK_QUOTES_SNAPSHOT_PATH, [], error=result["error"])
-        return _update_entries_runtime_cache(BOOKS_RUNTIME.quotes_entries, [], error=result["error"])
-
-    try:
-        database_payload = resolve_book_quotes_database(database_id=database_id)
-        schema = build_book_quotes_database_schema(database_payload)
-        blockers = validate_book_quotes_database_schema(schema)
-        if blockers:
-            result = {"entries": [], "error": "; ".join(blockers)}
-            _save_books_snapshot(BOOK_QUOTES_SNAPSHOT_PATH, [], error=result["error"])
-            return _update_entries_runtime_cache(BOOKS_RUNTIME.quotes_entries, [], error=result["error"])
-        pages = fetch_all_notion_database_pages(database_id=schema.get("database_id", database_id))
-    except Exception as exc:
-        error_message = f"Could not load Book Quotes from Notion: {exc}"
-        fallback_entries = snapshot_entries if snapshot_available else (cached_entries or [])
-        if fallback_entries or snapshot_available:
-            _log_entries_cache_event("quotes", cache_hit="fallback", refresh_reason="notion_error")
-            return _update_entries_runtime_cache(BOOKS_RUNTIME.quotes_entries, fallback_entries, error=error_message)
-        return _update_entries_runtime_cache(BOOKS_RUNTIME.quotes_entries, [], error=error_message)
-
-    entries = []
-    for page in pages:
-        entry = notion_book_quote_page_to_entry(page, schema)
-        if entry:
-            entries.append(entry)
-
-    entries.sort(
-        key=lambda item: (
-            0 if item.get("favorite") else 1,
-            item.get("page_sort_value", 10**9),
-            item.get("created_time") or "",
-            item.get("quote", "").lower(),
-        )
-    )
-    _save_books_snapshot(BOOK_QUOTES_SNAPSHOT_PATH, entries, error="")
-    _log_entries_cache_event("quotes", cache_miss="live", refresh_reason="notion_fetch")
-    return _update_entries_runtime_cache(BOOKS_RUNTIME.quotes_entries, entries, error="")
+    return _get_quotes_service().fetch_book_quotes_entries(force_refresh=force_refresh)
 
 
 def fetch_book_quotes_for_entry(book_page_id, force_refresh=False):
-    book_id = compact_notion_id(book_page_id)
-    if not book_id:
-        return {"entries": [], "error": ""}
-    fetched = fetch_book_quotes_entries(force_refresh=force_refresh)
-    entries = [
-        entry for entry in list(fetched.get("entries", []) or [])
-        if book_id in list(entry.get("book_relation_ids", []) or [])
-    ]
-    return {
-        "entries": entries,
-        "error": str(fetched.get("error") or ""),
-    }
+    return _get_quotes_service().fetch_book_quotes_for_entry(book_page_id, force_refresh=force_refresh)
 
 
 def fetch_books_entries(force_refresh=False):
-    cached_entries = BOOKS_RUNTIME.books_entries.entries
-    cached_updated_at = float(BOOKS_RUNTIME.books_entries.updated_at or 0)
-    runtime_age_seconds = (time.time() - cached_updated_at) if cached_entries is not None and cached_updated_at else None
-    if not force_refresh and cached_entries is not None and runtime_age_seconds is not None and runtime_age_seconds < BOOKS_RUNTIME_TTL_SECONDS:
-        _log_entries_cache_event("books", cache_hit="runtime", snapshot_age=int(runtime_age_seconds), refresh_reason="fresh_runtime")
-        return _entries_cache_result(BOOKS_RUNTIME.books_entries)
-
-    snapshot = _load_books_snapshot(BOOKS_SNAPSHOT_PATH)
-    snapshot_entries = snapshot.get("entries", [])
-    snapshot_error = snapshot.get("error", "")
-    snapshot_available = bool(snapshot.get("updated_at")) or BOOKS_SNAPSHOT_PATH.exists()
-    snapshot_age_seconds = _snapshot_age_seconds(snapshot.get("updated_at", ""))
-    snapshot_stale = snapshot_age_seconds is None or snapshot_age_seconds >= BOOKS_SNAPSHOT_TTL_SECONDS
-
-    if not force_refresh and snapshot_available:
-        result = _update_entries_runtime_cache(
-            BOOKS_RUNTIME.books_entries,
-            snapshot_entries,
-            error=snapshot_error,
-            snapshot_loaded=True,
-        )
-        _log_entries_cache_event(
-            "books",
-            cache_hit="snapshot",
-            snapshot_age=int(snapshot_age_seconds or 0),
-            refresh_reason="stale_snapshot" if snapshot_stale else "fresh_snapshot",
-        )
-        if snapshot_stale:
-            _schedule_entries_cache_refresh(
-                "books",
-                BOOKS_RUNTIME.books_entries,
-                fetch_books_entries,
-                reason="snapshot_stale",
-            )
-        return result
-
-    if not force_refresh and cached_entries is not None:
-        _log_entries_cache_event("books", cache_hit="runtime_stale", refresh_reason="snapshot_missing")
-        _schedule_entries_cache_refresh(
-            "books",
-            BOOKS_RUNTIME.books_entries,
-            fetch_books_entries,
-            reason="runtime_stale",
-        )
-        return _entries_cache_result(BOOKS_RUNTIME.books_entries)
-
-    database_id = str(NOTION_BOOKS_DATABASE_ID or "").strip()
-    if not database_id:
-        result = {"entries": [], "error": "Set NOTION_BOOKS_DATABASE_ID to enable Books."}
-        _save_books_snapshot(BOOKS_SNAPSHOT_PATH, [], error=result["error"])
-        return _update_entries_runtime_cache(BOOKS_RUNTIME.books_entries, [], error=result["error"])
-    try:
-        pages = fetch_all_notion_database_pages(database_id=database_id)
-    except Exception as exc:
-        error_message = f"Could not load Books from Notion: {exc}"
-        fallback_entries = snapshot_entries if snapshot_available else (cached_entries or [])
-        if fallback_entries or snapshot_available:
-            _log_entries_cache_event("books", cache_hit="fallback", refresh_reason="notion_error")
-            return _update_entries_runtime_cache(BOOKS_RUNTIME.books_entries, fallback_entries, error=error_message)
-        return _update_entries_runtime_cache(BOOKS_RUNTIME.books_entries, [], error=error_message)
-
-    entries = []
-    for page in pages:
-        entry = notion_book_page_to_entry(page)
-        if entry:
-            entries.append(entry)
-
-    entries.sort(
-        key=lambda item: (
-            1 if item.get("pinned") else 0,
-            item.get("date_finished") or item.get("created_time") or "",
-            item.get("last_edited_time") or "",
-            item.get("title", "").lower(),
-        ),
-        reverse=True,
-    )
-    _save_books_snapshot(BOOKS_SNAPSHOT_PATH, entries, error="")
-    _log_entries_cache_event("books", cache_miss="live", refresh_reason="notion_fetch")
-    return _update_entries_runtime_cache(BOOKS_RUNTIME.books_entries, entries, error="")
+    return _get_books_service().fetch_books_entries(force_refresh=force_refresh)
 
 
 def filter_books_entries(entries, search_text="", status_filter="all"):
-    normalized_search = str(search_text or "").strip().lower()
-    status_text = str(status_filter or "").strip().lower()
-    normalized_status = normalize_book_status(status_text) if status_text and status_text != "all" else ""
-    filtered = list(entries or [])
-    if normalized_status:
-        filtered = [entry for entry in filtered if entry.get("status") == normalized_status]
-    if normalized_search:
-        filtered = [
-            entry for entry in filtered
-            if normalized_search in str(entry.get("title") or "").lower()
-            or normalized_search in str(entry.get("authors_display") or "").lower()
-            or normalized_search in str(entry.get("decision") or "").lower()
-            or normalized_search in str(entry.get("history") or "").lower()
-            or normalized_search in str(entry.get("content") or "").lower()
-            or any(normalized_search in str(tag or "").lower() for tag in entry.get("tags", []) or [])
-        ]
-    return filtered
+    return _get_books_service().filter_books_entries(entries, search_text=search_text, status_filter=status_filter)
 
 
 def build_books_view():
-    fetched = fetch_books_entries()
-    entries = list(fetched.get("entries", []) or [])
-    raw_search = str(request.args.get("search", "") or "").strip()
-    raw_status = str(request.args.get("status", "all") or "all").strip().lower() or "all"
-    filtered = filter_books_entries(entries, search_text=raw_search, status_filter=raw_status)
-    statuses = ["all"]
-    for entry in entries:
-        status_value = str(entry.get("status") or "").strip().lower()
-        if status_value and status_value not in statuses:
-            statuses.append(status_value)
-    if len(statuses) == 1:
-        statuses.extend(["reading", "finished", "want to read"])
-    status_labels = {status: books_status_label(status) for status in statuses if status != "all"}
-    return {
-        "entries": filtered,
-        "total": len(filtered),
-        "all_entries_count": len(entries),
-        "error_message": str(fetched.get("error") or "").strip(),
-        "current_filters": {
-            "search": raw_search,
-            "status": raw_status,
-        },
-        "status_options": statuses,
-        "status_option_labels": status_labels,
-    }
+    return _get_books_service().build_books_view(request.args)
 
 
 def notion_page_title_text(page):
@@ -27891,103 +26700,36 @@ def trigger_reading_github_actions_sync():
 
     return {"status": "started"}, 200
 
+
+def _get_reading_snapshot_access():
+    global _READING_SNAPSHOT_ACCESS
+    if _READING_SNAPSHOT_ACCESS is None:
+        _READING_SNAPSHOT_ACCESS = ReadingSnapshotAccess(
+            app_logger=app.logger,
+            reading_runtime=READING_RUNTIME,
+            reading_data_path=READING_DATA_PATH,
+            base_dir=BASE_DIR,
+            temp_file_factory=tempfile.NamedTemporaryFile,
+            path_class=Path,
+            requests_module=requests,
+            reading_http_session=READING_HTTP_SESSION,
+            reading_snapshot_url=READING_SYNC_GITHUB_RAW_SNAPSHOT_URL,
+            validate_snapshot_payload=_reading_snapshot_payload_is_valid,
+            normalize_reading_data=_get_reading_cache_access().normalize_reading_data,
+            rotate_webhook_backup=_rotate_reading_webhook_backup,
+            clear_reading_data_cache=_get_reading_cache_access().clear_reading_data_cache,
+            reading_data_cache_fingerprint=_reading_data_cache_fingerprint,
+            reading_format_mtime=_reading_format_mtime,
+        )
+    return _READING_SNAPSHOT_ACCESS
+
+
 def refresh_deployed_reading_snapshot_from_github():
-    with READING_RUNTIME.github_refresh_lock:
-        old_mtime = _reading_format_mtime(READING_DATA_PATH)
-        app.logger.info("reading_snapshot_download started url=%s", READING_SYNC_GITHUB_RAW_SNAPSHOT_URL)
-
-        try:
-            with READING_HTTP_SESSION.get(
-                READING_SYNC_GITHUB_RAW_SNAPSHOT_URL,
-                timeout=30,
-                stream=True,
-            ) as response:
-                response.raise_for_status()
-                downloaded_bytes = 0
-                temp_path = None
-                try:
-                    with tempfile.NamedTemporaryFile(mode="wb", delete=False, dir=str(BASE_DIR), prefix="reading_data.", suffix=".download.tmp") as temp_file:
-                        temp_path = Path(temp_file.name)
-                        for chunk in response.iter_content(chunk_size=1024 * 1024):
-                            if not chunk:
-                                continue
-                            temp_file.write(chunk)
-                            downloaded_bytes += len(chunk)
-                    app.logger.info("reading_snapshot_download downloaded bytes=%s", downloaded_bytes)
-
-                    try:
-                        raw_payload = json.loads(temp_path.read_text(encoding="utf-8"))
-                    except Exception as exc:
-                        app.logger.warning("reading_snapshot_validation failed reason=invalid_json error=%s", exc)
-                        raise RuntimeError(f"Downloaded Reading snapshot is not valid JSON: {exc}") from exc
-
-                    is_valid, validation_error = _reading_snapshot_payload_is_valid(raw_payload, downloaded_bytes)
-                    if not is_valid:
-                        app.logger.warning("reading_snapshot_validation failed reason=%s", validation_error)
-                        raise RuntimeError(validation_error)
-
-                    normalized_payload, _ = normalize_reading_data(raw_payload)
-                    temp_path.write_text(json.dumps(normalized_payload, indent=2, ensure_ascii=False), encoding="utf-8")
-                    app.logger.info(
-                        "reading_snapshot_validation ok entries=%s sources=%s",
-                        len(normalized_payload.get("entries", []) or []),
-                        len(normalized_payload.get("sources", []) or []),
-                    )
-
-                    backup_path = ""
-                    try:
-                        backup_path = _rotate_reading_webhook_backup()
-                    except OSError as exc:
-                        app.logger.warning("reading_snapshot_backup failed error=%s", exc)
-
-                    temp_path.replace(READING_DATA_PATH)
-                    app.logger.info(
-                        "reading_snapshot_atomic_replace done path=%s backup=%s",
-                        READING_DATA_PATH,
-                        backup_path or "none",
-                    )
-
-                    clear_reading_data_cache()
-                    with READING_RUNTIME.data_cache_lock:
-                        READING_RUNTIME.data_cache["fingerprint"] = _reading_data_cache_fingerprint()
-                        READING_RUNTIME.data_cache["data"] = normalized_payload
-                    app.logger.info("reading_snapshot_cache cleared")
-
-                    new_mtime = _reading_format_mtime(READING_DATA_PATH)
-                    entries_count = len(normalized_payload.get("entries", []) or [])
-                    sources_count = len(normalized_payload.get("sources", []) or [])
-                finally:
-                    if temp_path is not None and temp_path.exists():
-                        try:
-                            temp_path.unlink()
-                        except Exception:
-                            pass
-        except requests.RequestException as exc:
-            app.logger.warning("reading_snapshot_download failed error=%s", exc)
-            raise RuntimeError(f"Download failed: {exc}") from exc
-
-    return {
-        "ok": True,
-        "status": "updated",
-        "old_mtime": old_mtime,
-        "new_mtime": new_mtime,
-        "downloaded_bytes": downloaded_bytes,
-        "entries_count": entries_count,
-        "sources_count": sources_count,
-    }
+    return _get_reading_snapshot_access().refresh_deployed_reading_snapshot_from_github()
 
 
 def _reading_refresh_snapshot_worker(trigger_label="github"):
-    try:
-        result = refresh_deployed_reading_snapshot_from_github()
-        app.logger.info(
-            "reading_snapshot_refresh success trigger=%s entries=%s sources=%s",
-            trigger_label,
-            result.get("entries_count", 0),
-            result.get("sources_count", 0),
-        )
-    except Exception as exc:
-        app.logger.warning("reading_snapshot_refresh failed trigger=%s error=%s", trigger_label, exc)
+    return _get_reading_snapshot_access().reading_refresh_snapshot_worker(trigger_label=trigger_label)
 
 
 @app.route("/reading/sync-status", methods=["GET"])
