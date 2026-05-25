@@ -1,5 +1,17 @@
 import hashlib
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
+
+from ..puzzles.review import (
+    build_puzzle_review_schedule,
+    latest_puzzle_attempt_needs_repeat,
+    normalize_puzzle_review_state,
+    puzzle_attempt_due_now,
+)
+from ..puzzles.progress import (
+    build_puzzle_attempt_history_map,
+    get_candidate_repeat_state,
+    get_latest_puzzle_attempt_map,
+)
 
 
 class PuzzleAttemptService:
@@ -38,10 +50,7 @@ class PuzzleAttemptService:
         return "started"
 
     def normalize_puzzle_review_state(self, value):
-        normalized = str(value or "").strip().lower()
-        if normalized in {"new", "repeat_due", "scheduled", "review_due", "mastered"}:
-            return normalized
-        return "new"
+        return normalize_puzzle_review_state(value)
 
     def safe_puzzle_attempt_int(self, value, default=0):
         try:
@@ -78,29 +87,11 @@ class PuzzleAttemptService:
         }
 
     def build_puzzle_review_schedule(self, clean_streak=0, needs_repeat=False, skipped=False):
-        streak_value = max(0, int(clean_streak or 0))
-        now = datetime.now(timezone.utc)
-        if needs_repeat or skipped:
-            next_due = now
-            review_state = "repeat_due"
-            mastered = False
-        elif streak_value >= 3:
-            next_due = now + timedelta(days=14)
-            review_state = "mastered"
-            mastered = True
-        elif streak_value >= 2:
-            next_due = now + timedelta(days=3)
-            review_state = "scheduled"
-            mastered = False
-        else:
-            next_due = now + timedelta(days=1)
-            review_state = "scheduled"
-            mastered = False
-        return {
-            "review_state": review_state,
-            "next_due_at": next_due.isoformat(),
-            "mastered": mastered,
-        }
+        return build_puzzle_review_schedule(
+            clean_streak=clean_streak,
+            needs_repeat=needs_repeat,
+            skipped=skipped,
+        )
 
     def find_previous_resolved_puzzle_attempt(self, data, candidate_id="", exclude_attempt_id=""):
         payload = data if isinstance(data, dict) else self.default_chess_data()
@@ -123,35 +114,10 @@ class PuzzleAttemptService:
         return matches[0]
 
     def latest_puzzle_attempt_needs_repeat(self, attempt):
-        payload = dict(attempt or {}) if isinstance(attempt, dict) else {}
-        if not payload:
-            return False
-        status_value = self.normalize_puzzle_attempt_status(payload.get("status"))
-        if status_value == "skipped":
-            return True
-        if bool(payload.get("needs_repeat", False)):
-            return True
-        if max(0, int(payload.get("wrong_count", 0) or 0)) > 0:
-            return True
-        if bool(payload.get("reveal_used", False)):
-            return True
-        return False
+        return latest_puzzle_attempt_needs_repeat(attempt)
 
     def puzzle_attempt_due_now(self, attempt, now=None):
-        payload = dict(attempt or {}) if isinstance(attempt, dict) else {}
-        if not payload:
-            return False
-        status_value = self.normalize_puzzle_attempt_status(payload.get("status"))
-        if status_value in {"started", "archived"}:
-            return False
-        if self.latest_puzzle_attempt_needs_repeat(payload):
-            return True
-        mastered = bool(payload.get("mastered", False))
-        due_value = self._safe_attempt_timestamp_value(payload.get("next_due_at"))
-        if due_value is None:
-            return not mastered
-        compare_now = now if isinstance(now, datetime) else datetime.now(timezone.utc)
-        return due_value <= compare_now
+        return puzzle_attempt_due_now(attempt, self.parse_timestamp, now=now)
 
     def find_puzzle_attempt(self, data, attempt_id="", candidate_id="", status=None):
         payload = data if isinstance(data, dict) else self.default_chess_data()
@@ -283,135 +249,31 @@ class PuzzleAttemptService:
         }
 
     def get_latest_puzzle_attempt_map(self, data):
-        payload = data if isinstance(data, dict) else self.default_chess_data()
-        latest_map = {}
-        for raw_attempt in payload.get("puzzle_attempts", []) or []:
-            if not isinstance(raw_attempt, dict):
-                continue
-            candidate_id = str(raw_attempt.get("candidate_id", "") or "").strip()
-            if not candidate_id:
-                continue
-            existing = latest_map.get(candidate_id)
-            if existing is None or self._puzzle_attempt_sort_value(raw_attempt) >= self._puzzle_attempt_sort_value(existing):
-                latest_map[candidate_id] = raw_attempt
-        return latest_map
+        return get_latest_puzzle_attempt_map(data, self.default_chess_data, self._puzzle_attempt_sort_value)
 
     def build_puzzle_attempt_history_map(self, data):
-        payload = data if isinstance(data, dict) else self.default_chess_data()
-        history_map = {}
-        for raw_attempt in payload.get("puzzle_attempts", []) or []:
-            if not isinstance(raw_attempt, dict):
-                continue
-            candidate_id = str(raw_attempt.get("candidate_id", "") or "").strip()
-            if not candidate_id:
-                continue
-            entry = history_map.setdefault(candidate_id, {
-                "training_key": candidate_id,
-                "attempt_count": 0,
-                "completed_count": 0,
-                "clean_completed_count": 0,
-                "skipped_count": 0,
-                "difficult_attempt_count": 0,
-                "last_attempt_at": "",
-                "last_completed_at": "",
-                "last_result": "",
-                "last_wrong_count": 0,
-                "last_reveal_used": False,
-            })
-            entry["attempt_count"] += 1
-            status_value = self.normalize_puzzle_attempt_status(raw_attempt.get("status"))
-            completed_at = str(raw_attempt.get("completed_at", "") or "").strip()
-            updated_at = str(raw_attempt.get("updated_at", "") or "").strip()
-            created_at = str(raw_attempt.get("created_at", "") or "").strip()
-            last_attempt_at = completed_at or updated_at or created_at
-            previous_attempt_at = self._safe_attempt_timestamp_value(entry.get("last_attempt_at"))
-            current_attempt_at = self._safe_attempt_timestamp_value(last_attempt_at)
-            if current_attempt_at and (previous_attempt_at is None or current_attempt_at >= previous_attempt_at):
-                entry["last_attempt_at"] = last_attempt_at
-                entry["last_result"] = status_value
-                entry["last_wrong_count"] = self.safe_non_negative_int(raw_attempt.get("wrong_count", 0), 0)
-                entry["last_reveal_used"] = bool(raw_attempt.get("reveal_used", False))
-            if status_value == "completed":
-                entry["completed_count"] += 1
-                if bool(raw_attempt.get("completed_clean", False)):
-                    entry["clean_completed_count"] += 1
-            elif status_value == "skipped":
-                entry["skipped_count"] += 1
-            if status_value in {"completed", "skipped"} and self.latest_puzzle_attempt_needs_repeat(raw_attempt):
-                entry["difficult_attempt_count"] += 1
-            if status_value == "completed" and completed_at:
-                previous_completed_at = self._safe_attempt_timestamp_value(entry.get("last_completed_at"))
-                current_completed_at = self._safe_attempt_timestamp_value(completed_at)
-                if current_completed_at and (previous_completed_at is None or current_completed_at >= previous_completed_at):
-                    entry["last_completed_at"] = completed_at
-        return history_map
+        return build_puzzle_attempt_history_map(
+            data,
+            self.default_chess_data,
+            self.normalize_puzzle_attempt_status,
+            self._safe_attempt_timestamp_value,
+            self.safe_non_negative_int,
+            self.latest_puzzle_attempt_needs_repeat,
+        )
 
     def get_candidate_repeat_state(self, candidate, latest_attempt):
-        candidate_payload = dict(candidate or {}) if isinstance(candidate, dict) else {}
-        attempt_payload = dict(latest_attempt or {}) if isinstance(latest_attempt, dict) else {}
-        normalize_candidate_status = self.normalize_candidate_status if callable(self.normalize_candidate_status) else None
-        base_status = normalize_candidate_status(candidate_payload.get("status", "candidate")) if normalize_candidate_status else str(candidate_payload.get("status", "candidate") or "").strip().lower()
-        if base_status == "archived":
-            repeat_note = self.build_puzzle_repeat_note(candidate_payload, attempt_payload)
-            return {
-                "repeat_needed": False,
-                "effective_status": "archived",
-                "latest_attempt": attempt_payload,
-                "latest_attempt_status": self.normalize_puzzle_attempt_status(attempt_payload.get("status")) if attempt_payload else "",
-                "summary": self.build_puzzle_attempt_summary(attempt_payload),
-                "reason": "",
-                "coach_note": "",
-                "repeat_note": repeat_note,
-            }
-
-        latest_status = self.normalize_puzzle_attempt_status(attempt_payload.get("status")) if attempt_payload else ""
-        repeat_needed = self.latest_puzzle_attempt_needs_repeat(attempt_payload)
-        due_now = self.puzzle_attempt_due_now(attempt_payload)
-        mastered = bool(attempt_payload.get("mastered", False))
-        review_state = self.normalize_puzzle_review_state(attempt_payload.get("review_state"))
-        candidate_status_timestamp = (
-            self.parse_timestamp(candidate_payload.get("updated_at", ""))
-            or self.parse_timestamp(candidate_payload.get("created_at", ""))
-            or datetime.min
+        return get_candidate_repeat_state(
+            candidate,
+            latest_attempt,
+            normalize_candidate_status=self.normalize_candidate_status,
+            normalize_puzzle_attempt_status=self.normalize_puzzle_attempt_status,
+            latest_puzzle_attempt_needs_repeat=self.latest_puzzle_attempt_needs_repeat,
+            puzzle_attempt_due_now=self.puzzle_attempt_due_now,
+            parse_timestamp=self.parse_timestamp,
+            puzzle_attempt_sort_value=self._puzzle_attempt_sort_value,
+            build_puzzle_repeat_note=self.build_puzzle_repeat_note,
+            build_puzzle_attempt_summary=self.build_puzzle_attempt_summary,
         )
-        attempt_timestamp = self._puzzle_attempt_sort_value(attempt_payload) if attempt_payload else datetime.min
-        effective_status = base_status
-        repeat_note = self.build_puzzle_repeat_note(candidate_payload, attempt_payload)
-        reason = str(repeat_note.get("reason", "") or "").strip()
-        coach_note = str(repeat_note.get("note", "") or "").strip()
-        if repeat_needed:
-            if not coach_note:
-                coach_note = "This puzzle came back because you missed it before. Try to solve it cleanly this time."
-        elif latest_status == "completed" and due_now and not mastered:
-            coach_note = "This one is back for review. See if you can solve it cleanly again."
-            reason = "Due for review"
-
-        if latest_status == "completed":
-            if base_status in {"queued", "training"} and candidate_status_timestamp > attempt_timestamp:
-                effective_status = base_status
-            else:
-                effective_status = "candidate" if (repeat_needed or (due_now and not mastered)) else "done"
-        elif latest_status == "skipped":
-            if base_status in {"queued", "training"} and candidate_status_timestamp > attempt_timestamp:
-                effective_status = base_status
-            else:
-                effective_status = "candidate"
-        elif latest_status == "started" and base_status == "candidate":
-            effective_status = "training"
-
-        return {
-            "repeat_needed": repeat_needed,
-            "due_now": due_now,
-            "review_state": review_state,
-            "mastered": mastered,
-            "effective_status": effective_status,
-            "latest_attempt": attempt_payload,
-            "latest_attempt_status": latest_status,
-            "summary": self.build_puzzle_attempt_summary(attempt_payload),
-            "reason": reason,
-            "coach_note": coach_note,
-            "repeat_note": repeat_note,
-        }
 
     def get_or_create_active_puzzle_attempt(self, data, candidate, total_steps=0):
         payload = data if isinstance(data, dict) else self.default_chess_data()

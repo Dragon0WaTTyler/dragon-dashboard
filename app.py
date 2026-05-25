@@ -29,6 +29,10 @@ from pathlib import Path
 from flask import Response, flash, g, has_request_context, jsonify, redirect, render_template, request, session, send_file, url_for
 from markupsafe import Markup
 from domains.chess import LichessProgressService, PuzzleAttemptService
+from domains.chess.puzzles.progress import (
+    normalize_auto_puzzle_progress as normalize_auto_puzzle_progress_payload,
+    record_auto_puzzle_candidate_progress as record_auto_puzzle_candidate_progress_payload,
+)
 from domains.reading import (
     BooksService,
     QuotesService,
@@ -1207,64 +1211,12 @@ def build_puzzle_attempt_history_map(data):
 
 
 def normalize_auto_puzzle_progress(raw_state=None, history_entry=None):
-    state = dict(raw_state or {}) if isinstance(raw_state, dict) else {}
-    history = dict(history_entry or {}) if isinstance(history_entry, dict) else {}
-
-    def latest_timestamp_text(*values):
-        best_text = ""
-        best_value = None
-        for value in values:
-            value_text = str(value or "").strip()
-            parsed = _safe_attempt_timestamp_value(value_text)
-            if parsed is None:
-                continue
-            if best_value is None or parsed >= best_value:
-                best_value = parsed
-                best_text = value_text
-        return best_text
-
-    completed_count = max(
-        safe_non_negative_int(state.get("completed_count", 0), 0),
-        safe_non_negative_int(history.get("completed_count", 0), 0),
+    return normalize_auto_puzzle_progress_payload(
+        raw_state,
+        history_entry=history_entry,
+        safe_non_negative_int=safe_non_negative_int,
+        safe_attempt_timestamp_value=_safe_attempt_timestamp_value,
     )
-    clean_completed_count = max(
-        safe_non_negative_int(state.get("clean_completed_count", 0), 0),
-        safe_non_negative_int(history.get("clean_completed_count", 0), 0),
-    )
-    skipped_count = max(
-        safe_non_negative_int(state.get("skipped_count", 0), 0),
-        safe_non_negative_int(history.get("skipped_count", 0), 0),
-    )
-    difficult_attempt_count = max(
-        safe_non_negative_int(state.get("difficult_attempt_count", 0), 0),
-        safe_non_negative_int(history.get("difficult_attempt_count", 0), 0),
-    )
-    attempt_count = max(
-        safe_non_negative_int(state.get("attempt_count", 0), 0),
-        safe_non_negative_int(history.get("attempt_count", 0), 0),
-        completed_count + skipped_count,
-    )
-    last_attempt_at = latest_timestamp_text(state.get("last_attempt_at", ""), history.get("last_attempt_at", ""))
-    last_completed_at = latest_timestamp_text(state.get("last_completed_at", ""), history.get("last_completed_at", ""))
-    last_result = str(state.get("last_result", "") or history.get("last_result", "") or "").strip().lower()
-    if last_result not in {"completed", "skipped", "started"}:
-        last_result = ""
-    return {
-        "training_key": str(state.get("training_key", "") or history.get("training_key", "") or state.get("id", "") or "").strip(),
-        "attempt_count": attempt_count,
-        "completed_count": completed_count,
-        "clean_completed_count": clean_completed_count,
-        "skipped_count": skipped_count,
-        "difficult_attempt_count": difficult_attempt_count,
-        "last_attempt_at": last_attempt_at,
-        "last_completed_at": last_completed_at,
-        "last_result": last_result,
-        "last_wrong_count": max(
-            safe_non_negative_int(state.get("last_wrong_count", 0), 0),
-            safe_non_negative_int(history.get("last_wrong_count", 0), 0),
-        ),
-        "last_reveal_used": bool(state.get("last_reveal_used", history.get("last_reveal_used", False))),
-    }
 
 
 def compute_auto_puzzle_rotation_penalty(progress, repeat_needed=False, due_now=False, mastered=False):
@@ -1307,47 +1259,19 @@ def compute_auto_puzzle_rotation_penalty(progress, repeat_needed=False, due_now=
 
 
 def record_auto_puzzle_candidate_progress(data, candidate_id, result="", attempt=None, status_after=None):
-    payload = data if isinstance(data, dict) else default_chess_data()
-    target_id = str(candidate_id or "").strip()
-    if not target_id:
-        return {"changed": False, "item": None, "error": "Missing auto candidate id."}
-    attempt_payload = dict(attempt or {}) if isinstance(attempt, dict) else {}
-    status_value = normalize_chess_auto_candidate_status(status_after or ("done" if str(result or "").strip().lower() == "completed" else "candidate"))
-    attempt_history = build_puzzle_attempt_history_map(payload).get(target_id, {})
-    progress_fields = normalize_auto_puzzle_progress({
-        "training_key": target_id,
-        "last_result": str(result or "").strip().lower(),
-        "last_completed_at": str(attempt_payload.get("completed_at", "") or "").strip(),
-        "last_attempt_at": str(attempt_payload.get("completed_at", "") or attempt_payload.get("updated_at", "") or attempt_payload.get("created_at", "") or "").strip(),
-        "last_wrong_count": safe_non_negative_int(attempt_payload.get("wrong_count", 0), 0),
-        "last_reveal_used": bool(attempt_payload.get("reveal_used", False)),
-    }, history_entry=attempt_history)
-    for item in payload.get("auto_puzzle_candidates", []) or []:
-        if not isinstance(item, dict):
-            continue
-        if str(item.get("id", "") or "").strip() != target_id:
-            continue
-        changed = False
-        if normalize_chess_auto_candidate_status(item.get("status", "candidate")) != status_value:
-            item["status"] = status_value
-            changed = True
-        for key, value in progress_fields.items():
-            if item.get(key) != value:
-                item[key] = value
-                changed = True
-        if changed:
-            item["updated_at"] = current_timestamp()
-        return {"changed": changed, "item": dict(item), "error": ""}
-    new_item = {
-        "id": target_id,
-        "status": status_value,
-        "saved_seed_id": "",
-        "created_at": current_timestamp(),
-        "updated_at": current_timestamp(),
-    }
-    new_item.update(progress_fields)
-    payload.setdefault("auto_puzzle_candidates", []).append(new_item)
-    return {"changed": True, "item": dict(new_item), "error": ""}
+    return record_auto_puzzle_candidate_progress_payload(
+        data,
+        candidate_id,
+        result=result,
+        attempt=attempt,
+        status_after=status_after,
+        default_chess_data=default_chess_data,
+        current_timestamp=current_timestamp,
+        normalize_candidate_status=normalize_chess_auto_candidate_status,
+        build_puzzle_attempt_history_map=build_puzzle_attempt_history_map,
+        normalize_auto_puzzle_progress=normalize_auto_puzzle_progress,
+        safe_non_negative_int=safe_non_negative_int,
+    )
 
 
 def latest_puzzle_attempt_needs_repeat(attempt):
@@ -6679,7 +6603,21 @@ LICHESS_PROGRESS_SERVICE = LichessProgressService(
     current_timestamp=current_timestamp,
     default_chess_data=default_chess_data,
 )
-PUZZLE_ATTEMPT_SERVICE.set_candidate_progress_updater(record_auto_puzzle_candidate_progress)
+PUZZLE_ATTEMPT_SERVICE.set_candidate_progress_updater(
+    lambda data, candidate_id, result="", attempt=None, status_after=None: record_auto_puzzle_candidate_progress_payload(
+        data,
+        candidate_id,
+        result=result,
+        attempt=attempt,
+        status_after=status_after,
+        default_chess_data=default_chess_data,
+        current_timestamp=current_timestamp,
+        normalize_candidate_status=normalize_chess_auto_candidate_status,
+        build_puzzle_attempt_history_map=build_puzzle_attempt_history_map,
+        normalize_auto_puzzle_progress=normalize_auto_puzzle_progress,
+        safe_non_negative_int=safe_non_negative_int,
+    )
+)
 
 
 def normalize_timestamp_value(value):
