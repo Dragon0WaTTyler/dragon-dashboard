@@ -4,9 +4,98 @@
 <div class="empty-state">This video detail page could not find the requested entry.</div>
 {% else %}
 <style>
+    .youtube-detail-focus-page .workspace-pane {
+        align-items: start;
+    }
+    .youtube-detail-focus-page .workspace-main {
+        min-height: 100vh;
+        align-content: start;
+    }
+    .youtube-detail-focus-page .workspace-sidebar {
+        position: sticky;
+        top: 0;
+        align-self: start;
+        height: 100vh;
+        max-height: 100vh;
+    }
     .video-detail-page .youtube-player-shell {
         position: relative !important;
         overflow: visible !important;
+    }
+    .video-detail-page .selected-video-layout {
+        grid-template-columns: minmax(0, 1fr) !important;
+        gap: 14px !important;
+    }
+    .video-detail-page .selected-video-player {
+        display: grid;
+        gap: 12px;
+    }
+    .video-detail-page .selected-video-controls,
+    .video-detail-page .selected-video-actions-card {
+        margin: 0;
+        padding: 12px 14px;
+        border-radius: 22px;
+        border: 1px solid rgba(255,255,255,.08);
+        background:
+            linear-gradient(180deg, rgba(255,255,255,.028), rgba(255,255,255,.008)),
+            rgba(5,5,5,.84);
+        box-shadow: 0 18px 44px rgba(0,0,0,.28);
+    }
+    .video-detail-page .selected-video-controls {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px 14px;
+        flex-wrap: wrap;
+    }
+    .video-detail-page .selected-video-controls .mode-toolbar-copy {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        min-width: 0;
+    }
+    .video-detail-page .selected-video-controls .hero-meta {
+        gap: 8px;
+        font-size: .72rem;
+        letter-spacing: .12em;
+    }
+    .video-detail-page .selected-video-controls .mode-toolbar-actions {
+        gap: 8px;
+        justify-content: flex-end;
+    }
+    .video-detail-page .selected-video-actions-card {
+        display: grid;
+        gap: 10px;
+    }
+    .video-detail-page .selected-video-actions-card .detail-controls {
+        margin-top: 0;
+        gap: 8px;
+        align-items: center;
+    }
+    .video-detail-page .selected-video-actions-card .btn,
+    .video-detail-page .selected-video-controls .btn {
+        min-height: 40px;
+        padding: 0 14px;
+    }
+    .video-detail-page .selected-video-supporting-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px 12px;
+        flex-wrap: wrap;
+        color: var(--text-2);
+        font-size: .76rem;
+        line-height: 1.45;
+    }
+    .video-detail-page .selected-video-supporting-row .muted {
+        font-size: inherit;
+        line-height: inherit;
+    }
+    .video-detail-page .youtube-open-note {
+        margin: 0;
+        color: var(--text-2);
+        font-size: .74rem;
+        line-height: 1.5;
     }
     .youtube-player-shell {
         display: block !important;
@@ -461,6 +550,30 @@
         color: rgba(255,255,255,.78);
     }
     @media (max-width: 640px) {
+        .youtube-detail-focus-page .workspace-main {
+            min-height: 0;
+        }
+        .youtube-detail-focus-page .workspace-sidebar {
+            position: relative;
+            top: auto;
+            height: auto;
+            max-height: none;
+        }
+        .video-detail-page .selected-video-controls,
+        .video-detail-page .selected-video-actions-card {
+            padding: 10px 12px;
+            border-radius: 18px;
+        }
+        .video-detail-page .selected-video-controls .mode-toolbar-actions,
+        .video-detail-page .selected-video-actions-card .detail-controls {
+            width: 100%;
+        }
+        .video-detail-page .selected-video-controls .mode-toolbar-actions .btn,
+        .video-detail-page .selected-video-actions-card .detail-controls .btn {
+            flex: 1 1 100%;
+            width: 100%;
+            justify-content: center;
+        }
         .movie-watch-card {
             max-width: none;
         }
@@ -479,6 +592,9 @@
     }
 </style>
 {% if entry_type == 'youtube' %}
+<script>
+    document.body.classList.add('youtube-detail-focus-page');
+</script>
 <section class="detail-grid video-detail-page">
     <section class="page-hero">
         <div class="hero-meta">
@@ -491,6 +607,20 @@
 
     <section class="selected-video-layout">
         <div class="selected-video-player">
+            <section class="mode-toolbar selected-video-controls">
+                <div class="mode-toolbar-copy">
+                    <div class="hero-meta">
+                        <span class="hero-badge matte-tag">Viewing Modes</span>
+                        <span>{{ 'Player Controls' if player_video_id else 'Detail View' }}</span>
+                    </div>
+                </div>
+                <div class="mode-toolbar-actions">
+                    <button class="btn mode-toggle" id="cinemaModeToggle" type="button" aria-pressed="false"><i data-lucide="panel-top-open"></i><span>Cinema</span></button>
+                    <button class="btn mode-toggle" id="ultraCinemaToggle" type="button" aria-pressed="false"><i data-lucide="monitor-play"></i><span>Ultra</span></button>
+                    <button class="btn mode-toggle" id="theaterModeToggle" type="button" aria-pressed="false"><i data-lucide="panel-top"></i><span>Theater</span></button>
+                </div>
+            </section>
+
             <div class="player-shell youtube-player-shell">
                 <div class="youtube-player-ratio">
                     {% if player_video_id %}
@@ -504,48 +634,12 @@
                 </a>
                 {% endif %}
             </div>
-        </div>
-
-        <aside class="selected-video-side">
-            <section class="mode-toolbar selected-video-controls">
-                <div class="mode-toolbar-copy">
-                    <div class="hero-meta">
-                        <span class="hero-badge matte-tag">Viewing Modes</span>
-                        <span>{{ 'Player Controls' if player_video_id else 'Detail View' }}</span>
-                    </div>
-                </div>
-                <div class="mode-toolbar-actions">
-                    <button class="btn mode-toggle" id="cinemaModeToggle" type="button" aria-pressed="false"><i data-lucide="panel-top-open"></i><span>Cinema Mode</span></button>
-                    <button class="btn mode-toggle" id="ultraCinemaToggle" type="button" aria-pressed="false"><i data-lucide="monitor-play"></i><span>Ultra Cinema</span></button>
-                    <button class="btn mode-toggle" id="theaterModeToggle" type="button" aria-pressed="false"><i data-lucide="panel-top"></i><span>Theater Mode</span></button>
-                </div>
-            </section>
-
-            <section class="surface-card section-card selected-video-meta-card">
-                <div class="info-stack">
-                    <div class="info-row"><span>Type</span><strong>YouTube Video</strong></div>
-                    {% if entry.feed_source == 'pockettube_group' %}
-                    <div class="info-row"><span>Group</span><strong>{{ entry.group_name or entry.playlist_name }}</strong></div>
-                    <div class="info-row"><span>Source</span><strong>{{ entry.source_name or 'PocketTube' }}</strong></div>
-                    {% else %}
-                    <div class="info-row"><span>Playlist</span><strong>{{ entry.playlist_name }}</strong></div>
-                    {% endif %}
-                    <div class="info-row"><span>Video ID</span><strong>{{ entry.video_id }}</strong></div>
-                    <div class="info-row"><span>Duration</span><strong>{{ entry.duration or '0:00' }}</strong></div>
-                    {% if entry.feed_source == 'pockettube_group' and entry.published_display %}
-                    <div class="info-row"><span>Published</span><strong>{{ entry.published_display }}</strong></div>
-                    {% endif %}
-                </div>
-            </section>
 
             <section class="surface-card section-card selected-video-actions-card">
-                {% if entry.feed_source == 'pockettube_group' and entry.group_back_url %}
-                <a class="btn" href="{{ entry.group_back_url }}" data-scroll-top="true" style="margin-bottom:10px;"><i data-lucide="corner-up-left"></i>Back to group</a>
-                <div class="muted" style="margin-bottom:10px; line-height:1.5;">
-                    {{ entry.group_back_context or entry.group_name or entry.playlist_name }}
-                </div>
-                {% endif %}
                 <div class="detail-controls">
+                    {% if entry.feed_source == 'pockettube_group' and entry.group_back_url %}
+                    <a class="btn" href="{{ entry.group_back_url }}" data-scroll-top="true"><i data-lucide="corner-up-left"></i>Back to group</a>
+                    {% endif %}
                     <button class="btn study-with-ai-btn" type="button" data-ai-mode="{{ 'german' if entry.section and 'german' in entry.section|lower else 'study' }}" data-ai-title="{{ entry.title or entry.name }}" data-ai-playlist="{{ entry.playlist_name or related_title }}" data-ai-section="{{ entry.section or '' }}" data-ai-video-id="{{ entry.video_id or '' }}"><i data-lucide="sparkles"></i>Study with AI</button>
                     {% if entry.feed_source == 'pockettube_group' %}
                     <button class="btn mode-toggle pockettube-watched-toggle" id="pockettubeWatchedBtn" type="button" data-entry-id="{{ entry.entry_id }}" data-video-id="{{ entry.video_id or '' }}" data-playlist-item-id="{{ entry.playlist_item_id or '' }}" data-state-key="{{ entry.state_key or entry.watch_key or entry.video_id or entry.entry_id or (entry.playlist_item_id or '') }}" data-watch-key="{{ entry.watch_key or entry.video_id or entry.entry_id or (entry.playlist_item_id or '') }}" aria-pressed="false"><i data-lucide="eye"></i><span>Mark Watched</span></button>
@@ -553,15 +647,18 @@
                     <a class="btn youtube-open-btn" href="https://youtube.com/watch?v={{ entry.video_id }}" target="_blank" rel="noopener noreferrer"><i data-lucide="play-circle"></i>Open on YouTube</a>
                     <a class="btn" href="{{ entry.playlist_url }}" target="_blank"><i data-lucide="list-video"></i>Open Playlist</a>
                     {% if delete_endpoint %}
-                    <button class="btn" id="deleteFromYouTubeBtn" type="button"><i data-lucide="trash-2"></i>Remove from YouTube Playlist</button>
+                    <button class="btn" id="deleteFromYouTubeBtn" type="button"><i data-lucide="trash-2"></i>Remove Video</button>
+                    {% endif %}
+                </div>
+                <div class="selected-video-supporting-row">
+                    {% if entry.feed_source == 'pockettube_group' %}
+                    <div class="muted">{{ entry.group_back_context or entry.group_name or entry.playlist_name }}</div>
+                    {% endif %}
+                    {% if entry.feed_source == 'pockettube_group' %}
+                    <div class="muted">{{ entry.channel_name or entry.category }}{% if entry.duration %} | {{ entry.duration }}{% endif %}{% if entry.group_name %} | {{ entry.group_name }}{% endif %}</div>
                     {% endif %}
                 </div>
                 <div class="youtube-open-note">If the embed does not play well on an older iPad, <strong>Open on YouTube</strong> gives the cleanest playback.</div>
-                {% if entry.feed_source == 'pockettube_group' %}
-                <div class="muted" style="line-height:1.6;">
-                    {{ entry.channel_name or entry.category }}{% if entry.duration %} | {{ entry.duration }}{% endif %}{% if entry.group_name %} | {{ entry.group_name }}{% endif %}
-                </div>
-                {% endif %}
                 {% if delete_endpoint %}
                 <div id="deleteStatus" class="muted" style="display:none;"></div>
                 {% endif %}
@@ -581,7 +678,7 @@
                 </div>
                 {% endif %}
             </section>
-        </aside>
+        </div>
     </section>
 </section>
 
