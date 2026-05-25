@@ -33,6 +33,8 @@ from domains.chess.puzzles.progress import (
     normalize_auto_puzzle_progress as normalize_auto_puzzle_progress_payload,
     record_auto_puzzle_candidate_progress as record_auto_puzzle_candidate_progress_payload,
 )
+from domains.magnets.services import ExperimentalRuntimeService, MovieSourcesService, SessionAnalyticsService, SourceActionService, StreamSessionService
+from domains.magnets.preferences import MagnetPreferenceService
 from domains.reading import (
     BooksService,
     QuotesService,
@@ -24767,6 +24769,7 @@ def get_video_detail_context(entry_id, force_refresh=False):
             tmdb_data = None
         if tmdb_data and tmdb_review_confidence(tmdb_data, detail) != "low":
             top_billed_cast = tmdb_data.get("top_billed_cast", []) or []
+        movie_sources = MOVIE_SOURCES_SERVICE.get_movie_sources(detail, force_refresh=force_refresh)
         related = rank_movie_detail_related_entries(detail, films, limit=24)
         related_title_parts = []
         if detail.get("director_entries"):
@@ -24797,6 +24800,7 @@ def get_video_detail_context(entry_id, force_refresh=False):
             "player_fallback_urls": get_vidsrc_embed_urls(detail),
             "tmdb_data": tmdb_data,
             "top_billed_cast": top_billed_cast,
+            "movie_sources": movie_sources,
             "related_entries": related,
             "related_title": " / ".join(related_title_parts) or detail.get("category") or "Related Films"
         }
@@ -25754,6 +25758,13 @@ YOUTUBE_RECOMMENDATION_SERVICE = YouTubeRecommendationService(
     build_related_video_detail_url=build_related_video_detail_url,
 )
 
+MAGNET_PREFERENCE_SERVICE = MagnetPreferenceService()
+MOVIE_SOURCES_SERVICE = MovieSourcesService(preference_service=MAGNET_PREFERENCE_SERVICE)
+SOURCE_ACTION_SERVICE = SourceActionService(preference_service=MAGNET_PREFERENCE_SERVICE)
+SESSION_ANALYTICS_SERVICE = SessionAnalyticsService()
+STREAM_SESSION_SERVICE = StreamSessionService(analytics_service=SESSION_ANALYTICS_SERVICE)
+EXPERIMENTAL_RUNTIME_SERVICE = ExperimentalRuntimeService()
+
 YOUTUBE_PLAYLIST_SERVICE = YouTubePlaylistService(
     load_admin_data=load_admin_data,
     build_youtube_section_playlists=build_youtube_section_playlists,
@@ -25825,6 +25836,88 @@ def movie_curation_api():
             return jsonify({"ok": False, "error": "limit must be a positive integer or All"}), 400
     curated = build_movie_curation_candidates(use_case=use_case, category_filter=category, source_filter=source, limit=limit)
     return jsonify({"ok": True, **curated})
+
+
+@app.route("/api/movie-source-actions", methods=["POST"])
+def api_movie_source_actions():
+    payload = request.get_json(silent=True) or {}
+    action = str(payload.get("action") or "").strip()
+    if not action:
+        return jsonify({"ok": False, "error": "Action is required."}), 400
+
+    result = SOURCE_ACTION_SERVICE.handle_action(
+        action=action,
+        movie=payload.get("movie") if isinstance(payload.get("movie"), dict) else {},
+        source=payload.get("source") if isinstance(payload.get("source"), dict) else {},
+    )
+    return jsonify(result), (200 if result.get("ok") else 400)
+
+
+@app.route("/api/movie-stream-sessions", methods=["GET", "POST"])
+def api_movie_stream_sessions():
+    if request.method == "GET":
+        movie_id = str(request.args.get("movie_id") or "").strip()
+        result = STREAM_SESSION_SERVICE.list_sessions(movie_id=movie_id)
+        return jsonify(result)
+
+    payload = request.get_json(silent=True) or {}
+    action = str(payload.get("action") or "create").strip().lower()
+    session_id = str(payload.get("session_id") or "").strip()
+    movie = payload.get("movie") if isinstance(payload.get("movie"), dict) else {}
+    source = payload.get("source") if isinstance(payload.get("source"), dict) else {}
+
+    if action == "create":
+        result = STREAM_SESSION_SERVICE.create_session(
+            movie=movie,
+            source=source,
+            handoff_mode=str(payload.get("handoff_mode") or "").strip(),
+            preferred_runtime=str(payload.get("preferred_runtime") or "").strip(),
+        )
+    elif action == "prepare":
+        result = STREAM_SESSION_SERVICE.prepare_session(session_id)
+    elif action == "handoff":
+        result = STREAM_SESSION_SERVICE.handoff_session(
+            session_id,
+            runtime_intent=str(payload.get("runtime_intent") or "").strip(),
+        )
+    elif action == "fail":
+        result = STREAM_SESSION_SERVICE.fail_session(
+            session_id,
+            reason=str(payload.get("reason") or "").strip(),
+        )
+    elif action == "expire":
+        result = STREAM_SESSION_SERVICE.expire_session(session_id)
+    elif action == "get":
+        result = STREAM_SESSION_SERVICE.get_session(session_id)
+    else:
+        result = {"ok": False, "error": "Unsupported session action."}
+
+    return jsonify(result), (200 if result.get("ok") else 400)
+
+
+@app.route("/api/movie-session-intelligence")
+def api_movie_session_intelligence():
+    result = SESSION_ANALYTICS_SERVICE.get_summary()
+    return jsonify(result), (200 if result.get("ok") else 400)
+
+
+@app.route("/api/movie-runtime-sandbox", methods=["GET", "POST"])
+def api_movie_runtime_sandbox():
+    if request.method == "GET":
+        session_id = str(request.args.get("session_id") or "").strip()
+        if session_id:
+            result = EXPERIMENTAL_RUNTIME_SERVICE.get_session(session_id)
+        else:
+            result = EXPERIMENTAL_RUNTIME_SERVICE.get_summary()
+        return jsonify(result), (200 if result.get("ok") else 400)
+
+    payload = request.get_json(silent=True) or {}
+    result = EXPERIMENTAL_RUNTIME_SERVICE.run_probe(
+        movie=payload.get("movie") if isinstance(payload.get("movie"), dict) else {},
+        source=payload.get("source") if isinstance(payload.get("source"), dict) else {},
+        preferred_runtime=str(payload.get("preferred_runtime") or "").strip(),
+    )
+    return jsonify(result), (200 if result.get("ok") else 400)
 
 
 @app.route("/debug/movie-curation")

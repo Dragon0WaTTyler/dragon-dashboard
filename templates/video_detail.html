@@ -774,9 +774,9 @@
 </section>
 {% set detail_title = entry.title or entry.name %}
 {% set detail_category = entry.category or category %}
-{% set player_sources = player_sources if player_sources is defined else [] %}
-{% set player_fallback_urls = player_fallback_urls if player_fallback_urls is defined else [] %}
-{% set template_player_sources = player_sources %}
+{% set player_sources = player_sources|default([], true) %}
+{% set player_fallback_urls = player_fallback_urls|default([], true) %}
+{% set template_player_sources = player_sources|default([], true) %}
 {% if not template_player_sources and player_fallback_urls %}
 {% set template_player_sources = [{
     'key': 'vidsrc',
@@ -787,6 +787,14 @@
 {% endif %}
 {% set initial_player_url = template_player_sources[0].url if template_player_sources else (player_fallback_urls[0] if player_fallback_urls else '') %}
 {% set detail_watch_title = detail_title ~ (' (' ~ entry.year ~ ')' if entry.year else '') %}
+{% set movie_sources = movie_sources if movie_sources is defined else {
+    'sources': [],
+    'has_sources': false,
+    'total_count': 0,
+    'provider_summary': 'No indexed providers',
+    'cache_label': 'Unavailable',
+    'status_message': 'No cached sources available for this movie yet.'
+} %}
 <section class="surface-card section-card movie-detail-shell" style="padding:28px;">
     <div class="movie-detail-grid" style="display:grid; grid-template-columns:minmax(220px,280px) minmax(0,1fr); gap:26px; align-items:start;">
         <div class="movie-detail-poster-column" style="display:grid; gap:16px;">
@@ -1260,6 +1268,453 @@
                 }
             })();
             </script>
+            <script>
+            (function() {
+                function bootSourceUi() {
+                    const sourcesRoot = document.querySelector('[data-movie-source-root]');
+                    if (!sourcesRoot || sourcesRoot.dataset.sourceUiReady === 'true') {
+                        return false;
+                    }
+                    sourcesRoot.dataset.sourceUiReady = 'true';
+
+                    const actionEndpoint = sourcesRoot.getAttribute('data-action-endpoint') || '';
+                    const visibleCounter = sourcesRoot.querySelector('[data-source-visible-count]');
+                    const hiddenCounter = sourcesRoot.querySelector('[data-source-hidden-count]');
+                    const favoriteGroupsCounter = sourcesRoot.querySelector('[data-favorite-group-count]');
+                    const savedSourcesCounter = sourcesRoot.querySelector('[data-saved-source-count]');
+                    const feedbackTimers = new WeakMap();
+
+                    function logSourceUi(fields, level) {
+                        const parts = ['[source-ui]'];
+                        Object.keys(fields || {}).forEach(function(key) {
+                            const value = fields[key];
+                            if (value === undefined || value === null) {
+                                return;
+                            }
+                            const text = String(value).trim();
+                            if (!text) {
+                                return;
+                            }
+                            parts.push(key + '=' + text.replace(/\s+/g, '_'));
+                        });
+                        const logger = (console && typeof console[level] === 'function')
+                            ? console[level]
+                            : console.log;
+                        logger.call(console, parts.join(' '));
+                    }
+
+                    function parseJsonPayload(rawValue, context) {
+                        const rawText = typeof rawValue === 'string' ? rawValue.trim() : '';
+                        if (!rawText) {
+                            logSourceUi({
+                                action: context && context.action ? context.action : 'init',
+                                status: 'failed',
+                                reason: 'missing_payload',
+                                target: context && context.target ? context.target : 'unknown'
+                            }, 'warn');
+                            return {ok: false, value: {}, reason: 'missing_payload'};
+                        }
+                        try {
+                            const parsed = JSON.parse(rawText);
+                            if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+                                logSourceUi({
+                                    action: context && context.action ? context.action : 'init',
+                                    status: 'failed',
+                                    reason: 'invalid_payload_shape',
+                                    target: context && context.target ? context.target : 'unknown'
+                                }, 'warn');
+                                return {ok: false, value: {}, reason: 'invalid_payload_shape'};
+                            }
+                            return {ok: true, value: parsed, reason: ''};
+                        } catch (error) {
+                            logSourceUi({
+                                action: context && context.action ? context.action : 'init',
+                                status: 'failed',
+                                reason: 'invalid_json',
+                                target: context && context.target ? context.target : 'unknown'
+                            }, 'warn');
+                            return {ok: false, value: {}, reason: 'invalid_json'};
+                        }
+                    }
+
+                    function serializePayload(payload) {
+                        try {
+                            return JSON.parse(JSON.stringify(payload || {}));
+                        } catch (error) {
+                            return {};
+                        }
+                    }
+
+                    function feedbackHost(scope) {
+                        const host = scope && scope.matches && scope.matches('[data-source-card]') ? scope : sourcesRoot;
+                        let node = host.querySelector('[data-source-feedback]');
+                        if (node) {
+                            return node;
+                        }
+                        node = document.createElement('div');
+                        node.setAttribute('data-source-feedback', '');
+                        node.className = 'card-meta';
+                        node.hidden = true;
+                        node.style.lineHeight = '1.45';
+                        node.style.minHeight = '18px';
+                        node.style.marginTop = '2px';
+                        node.style.transition = 'opacity .18s ease';
+                        host.appendChild(node);
+                        return node;
+                    }
+
+                    function showFeedback(message, options) {
+                        const config = options || {};
+                        const host = config.scope || sourcesRoot;
+                        const node = feedbackHost(host);
+                        const tone = String(config.tone || 'info').trim().toLowerCase();
+                        const colorMap = {
+                            info: 'var(--text-2)',
+                            success: '#d6c08a',
+                            warning: '#d9a86d',
+                            error: '#d58f8f'
+                        };
+                        node.hidden = false;
+                        node.textContent = message;
+                        node.style.opacity = '1';
+                        node.style.color = colorMap[tone] || colorMap.info;
+                        if (feedbackTimers.has(node)) {
+                            window.clearTimeout(feedbackTimers.get(node));
+                        }
+                        const timeoutId = window.setTimeout(function() {
+                            node.style.opacity = '0';
+                            window.setTimeout(function() {
+                                node.hidden = true;
+                                node.textContent = '';
+                                node.style.opacity = '1';
+                            }, 180);
+                        }, Number(config.duration || 2200));
+                        feedbackTimers.set(node, timeoutId);
+                    }
+
+                    function setCardPayloadState(card, isValid) {
+                        card.dataset.payloadValid = isValid ? 'true' : 'false';
+                        if (!isValid) {
+                            card.querySelectorAll('[data-source-action]').forEach(function(button) {
+                                button.disabled = true;
+                            });
+                        }
+                    }
+
+                    const moviePayloadResult = parseJsonPayload(
+                        sourcesRoot.getAttribute('data-movie-payload') || '',
+                        {action: 'init', target: 'movie_payload'}
+                    );
+                    const moviePayload = serializePayload(moviePayloadResult.value);
+
+                function updateCounters() {
+                    if (visibleCounter) {
+                        visibleCounter.textContent = String(sourcesRoot.querySelectorAll('[data-source-card]:not([hidden])').length);
+                    }
+                }
+
+                function updatePreferenceMeta(preferences) {
+                    if (!preferences) {
+                        return;
+                    }
+                    if (favoriteGroupsCounter && Array.isArray(preferences.favorite_release_groups)) {
+                        favoriteGroupsCounter.textContent = String(preferences.favorite_release_groups.length);
+                    }
+                    if (savedSourcesCounter && typeof preferences.saved_source_count === 'number') {
+                        savedSourcesCounter.textContent = String(preferences.saved_source_count);
+                    }
+                }
+
+                async function postAction(action, source) {
+                    if (!actionEndpoint) {
+                        logSourceUi({action: action, status: 'failed', reason: 'missing_route'}, 'warn');
+                        throw new Error('Source actions are unavailable right now.');
+                    }
+                    let response;
+                    try {
+                        response = await window.fetch(actionEndpoint, {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({
+                                action: action,
+                                movie: serializePayload(moviePayload),
+                                source: serializePayload(source)
+                            })
+                        });
+                    } catch (error) {
+                        logSourceUi({action: action, status: 'failed', reason: 'network_error'}, 'warn');
+                        throw new Error('Could not reach the source action endpoint.');
+                    }
+                    const payload = await response.json().catch(function() {
+                        logSourceUi({action: action, status: 'failed', reason: 'invalid_response_json'}, 'warn');
+                        return {ok: false, error: 'Invalid response.'};
+                    });
+                    if (!response.ok || !payload.ok) {
+                        logSourceUi({
+                            action: action,
+                            status: 'failed',
+                            reason: payload.error || 'request_rejected'
+                        }, 'warn');
+                        throw new Error(payload.error || 'Source action failed.');
+                    }
+                    return payload;
+                }
+
+                async function writeMagnetToClipboard(magnet) {
+                    if (!magnet || !navigator.clipboard || typeof navigator.clipboard.writeText !== 'function') {
+                        logSourceUi({action: 'copy_magnet', status: 'failed', reason: 'clipboard_unavailable'}, 'warn');
+                        return false;
+                    }
+                    try {
+                        await navigator.clipboard.writeText(magnet);
+                        return true;
+                    } catch (error) {
+                        logSourceUi({action: 'copy_magnet', status: 'failed', reason: 'clipboard_write_failed'}, 'warn');
+                        return false;
+                    }
+                }
+
+                function flashActionLabel(button, idleLabel, activeLabel) {
+                    button.textContent = activeLabel;
+                    window.setTimeout(function() {
+                        button.textContent = idleLabel;
+                    }, 1400);
+                }
+
+                function isMagnetTarget(target) {
+                    return /^magnet:\?xt=urn:btih:/i.test(String(target || '').trim());
+                }
+
+                async function handleCopy(button, source, scope) {
+                    const payload = await postAction('copy_magnet', source);
+                    const handoff = payload.handoff || {};
+                    const selectedAction = handoff.selected_action || {};
+                    const magnet = String(selectedAction.target || source.magnet || '').trim();
+                    if (!await writeMagnetToClipboard(magnet)) {
+                        showFeedback('Clipboard access is unavailable for this source.', {
+                            scope: scope,
+                            tone: 'error'
+                        });
+                        return;
+                    }
+                    flashActionLabel(button, 'Copy Magnet', 'Copied');
+                    showFeedback('Magnet copied.', {
+                        scope: scope,
+                        tone: 'success'
+                    });
+                }
+
+                function attemptMagnetOpen(target, openInNewWindow) {
+                    return new Promise(function(resolve) {
+                        if (!target) {
+                            resolve({opened: false, reason: 'missing_target'});
+                            return;
+                        }
+                        const beforeVisibility = document.visibilityState;
+                        let settled = false;
+                        function finish(result) {
+                            if (settled) {
+                                return;
+                            }
+                            settled = true;
+                            document.removeEventListener('visibilitychange', handleVisibilityChange, true);
+                            resolve(result);
+                        }
+                        function handleVisibilityChange() {
+                            if (document.visibilityState === 'hidden') {
+                                finish({opened: true, reason: 'visibility_hidden'});
+                            }
+                        }
+                        document.addEventListener('visibilitychange', handleVisibilityChange, true);
+                        try {
+                            const anchor = document.createElement('a');
+                            anchor.href = target;
+                            if (openInNewWindow) {
+                                anchor.target = '_blank';
+                                anchor.rel = 'noopener noreferrer';
+                            }
+                            anchor.style.display = 'none';
+                            document.body.appendChild(anchor);
+                            anchor.click();
+                            anchor.remove();
+                        } catch (error) {
+                            finish({opened: false, reason: 'launch_exception'});
+                            return;
+                        }
+                        window.setTimeout(function() {
+                            if (document.visibilityState === 'hidden' || beforeVisibility !== document.visibilityState) {
+                                finish({opened: true, reason: 'visibility_changed'});
+                                return;
+                            }
+                            finish({opened: false, reason: 'protocol_blocked'});
+                        }, 900);
+                    });
+                }
+
+                async function handleOpen(button, source, action, scope) {
+                    const payload = await postAction(action, source);
+                    const handoff = payload.handoff || {};
+                    const selectedAction = handoff.selected_action || {};
+                    const target = String(selectedAction.target || source.magnet || '').trim();
+                    if (!target) {
+                        logSourceUi({action: action, status: 'failed', reason: 'missing_target'}, 'warn');
+                        showFeedback('This handoff is unavailable for this source.', {
+                            scope: scope,
+                            tone: 'error'
+                        });
+                        return;
+                    }
+                    if (!isMagnetTarget(target)) {
+                        logSourceUi({action: action, status: 'failed', reason: 'invalid_magnet'}, 'warn');
+                        showFeedback('This source does not have a valid magnet payload.', {
+                            scope: scope,
+                            tone: 'error'
+                        });
+                        return;
+                    }
+                    const idleLabel = action === 'open_external' ? 'Open Externally' : 'Open Magnet';
+                    flashActionLabel(button, idleLabel, 'Opening...');
+                    const openResult = await attemptMagnetOpen(target, action === 'open_external');
+                    if (openResult.opened) {
+                        logSourceUi({action: action, status: 'ok', reason: openResult.reason}, 'log');
+                        showFeedback('Handoff started.', {
+                            scope: scope,
+                            tone: 'success',
+                            duration: 1800
+                        });
+                        return;
+                    }
+
+                    const canFallbackToClipboard = String(handoff.fallback_strategy || '') === 'clipboard_copy';
+                    if (canFallbackToClipboard && await writeMagnetToClipboard(target)) {
+                        logSourceUi({action: action, status: 'degraded', reason: openResult.reason || 'protocol_blocked'}, 'warn');
+                        flashActionLabel(button, idleLabel, 'Copied');
+                        showFeedback('Browser blocked the magnet link. Copied instead.', {
+                            scope: scope,
+                            tone: 'warning',
+                            duration: 2800
+                        });
+                        return;
+                    }
+
+                    logSourceUi({action: action, status: 'failed', reason: openResult.reason || 'open_failed'}, 'warn');
+                    showFeedback('Failed to open the external app.', {
+                        scope: scope,
+                        tone: 'error'
+                    });
+                }
+
+                sourcesRoot.addEventListener('click', async function(event) {
+                    const button = event.target.closest('[data-source-action]');
+                    if (!button) {
+                        return;
+                    }
+                    event.preventDefault();
+
+                    const card = button.closest('[data-source-card]');
+                    if (!card) {
+                        return;
+                    }
+                    const action = button.getAttribute('data-source-action') || '';
+                    const originalLabel = button.textContent;
+                    const sourcePayloadResult = parseJsonPayload(
+                        card.getAttribute('data-source-payload') || '',
+                        {action: action, target: 'source_payload'}
+                    );
+                    if (!sourcePayloadResult.ok) {
+                        setCardPayloadState(card, false);
+                        showFeedback('This source payload is unavailable.', {
+                            scope: card,
+                            tone: 'error'
+                        });
+                        return;
+                    }
+                    const source = serializePayload(sourcePayloadResult.value);
+
+                    button.disabled = true;
+                    try {
+                        if (action === 'copy_magnet') {
+                            await handleCopy(button, source, card);
+                            return;
+                        }
+                        if (action === 'open_magnet' || action === 'open_external') {
+                            await handleOpen(button, source, action, card);
+                            return;
+                        }
+
+                        const payload = await postAction(action, source);
+                        updatePreferenceMeta(payload.preferences);
+
+                        if (action === 'save_source') {
+                            button.textContent = 'Saved';
+                            button.dataset.locked = 'true';
+                            const chip = card.querySelector('[data-source-saved-chip]');
+                            if (chip) {
+                                chip.hidden = false;
+                            }
+                            showFeedback('Source saved.', {
+                                scope: card,
+                                tone: 'success'
+                            });
+                        } else if (action === 'favorite_release') {
+                            button.textContent = 'Favorited';
+                            button.dataset.locked = 'true';
+                            const chip = card.querySelector('[data-source-favorite-chip]');
+                            if (chip) {
+                                chip.hidden = false;
+                            }
+                            showFeedback('Release group favorited.', {
+                                scope: card,
+                                tone: 'success'
+                            });
+                        } else if (action === 'hide_release') {
+                            card.hidden = true;
+                            if (hiddenCounter) {
+                                hiddenCounter.textContent = String(Number(hiddenCounter.textContent || '0') + 1);
+                            }
+                            updateCounters();
+                            showFeedback('Release hidden.', {
+                                scope: sourcesRoot,
+                                tone: 'success'
+                            });
+                        }
+                    } catch (error) {
+                        showFeedback(error && error.message ? error.message : 'Source action failed.', {
+                            scope: card,
+                            tone: 'error'
+                        });
+                        button.textContent = originalLabel;
+                    } finally {
+                        if (button.dataset.locked !== 'true') {
+                            button.disabled = false;
+                        }
+                    }
+                });
+
+                    sourcesRoot.querySelectorAll('[data-source-card]').forEach(function(card) {
+                        const sourcePayloadResult = parseJsonPayload(
+                            card.getAttribute('data-source-payload') || '',
+                            {action: 'init', target: 'source_payload'}
+                        );
+                        setCardPayloadState(card, sourcePayloadResult.ok);
+                    });
+                    if (!moviePayloadResult.ok) {
+                        showFeedback('Source controls loaded with limited movie context.', {
+                            scope: sourcesRoot,
+                            tone: 'warning',
+                            duration: 3200
+                        });
+                    }
+                    updateCounters();
+                    return true;
+                }
+
+                if (!bootSourceUi()) {
+                    document.addEventListener('DOMContentLoaded', bootSourceUi, {once: true});
+                    window.setTimeout(bootSourceUi, 0);
+                }
+            })();
+            </script>
             <section class="surface-card movie-detail-card movie-detail-sidebar-card" style="padding:18px; border-radius:22px;">
                 <div class="info-stack">
                     <div class="info-row"><span>Type</span><strong>Film Entry</strong></div>
@@ -1335,6 +1790,100 @@
                     <div class="info-row"><span>Runtime</span><strong>{{ entry.runtime }} min</strong></div>
                     {% endif %}
                 </div>
+            </section>
+
+            <section
+                class="surface-card movie-detail-card movie-sources-card"
+                style="padding:22px; border-radius:24px;"
+                data-movie-source-root
+                data-action-endpoint="{{ url_for('api_movie_source_actions') }}"
+                data-movie-payload="{{ {
+                    'entry_id': entry.entry_id|default('', true),
+                    'title': entry.title|default(entry.name|default('', true), true),
+                    'year': entry.year|default('', true),
+                    'imdb_id': entry.imdb_id|default('', true)
+                }|tojson|forceescape }}">
+                <div class="hero-meta" style="justify-content:space-between; gap:12px; flex-wrap:wrap;">
+                    <span class="hero-badge matte-tag">Available Sources</span>
+                    <span><span data-source-visible-count>{{ movie_sources.visible_count }}</span> visible • {{ movie_sources.indexed_count }} indexed • {{ movie_sources.cache_label }}</span>
+                </div>
+                <p class="subhead" style="margin-top:10px;">{{ movie_sources.provider_summary }}</p>
+                <div class="hero-meta" style="margin-top:10px; gap:8px 10px; flex-wrap:wrap;">
+                    <span class="score-pill" style="color:var(--text);">Hidden <span data-source-hidden-count>{{ movie_sources.hidden_count }}</span></span>
+                    <span class="score-pill" style="color:var(--text);">Favorite groups <span data-favorite-group-count>{{ movie_sources.preference_summary.favorite_group_count }}</span></span>
+                    <span class="score-pill" style="color:var(--text);">Saved sources <span data-saved-source-count>{{ movie_sources.preference_summary.saved_source_count }}</span></span>
+                </div>
+                {% if movie_sources.has_sources %}
+                <div class="movie-source-grid" style="display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:12px; margin-top:16px;">
+                    {% for source in movie_sources.sources %}
+                    <article
+                        data-source-card
+                        data-source-payload="{{ source|tojson|forceescape }}"
+                        style="display:grid; gap:12px; padding:14px; border-radius:20px; border:1px solid var(--border); background:linear-gradient(180deg,rgba(255,255,255,.03),rgba(255,255,255,.01)), var(--card); box-shadow:0 18px 40px rgba(0,0,0,.18);">
+                        <div style="display:flex; justify-content:space-between; gap:10px; align-items:flex-start;">
+                            <div style="display:grid; gap:4px;">
+                                <strong style="color:var(--heading); line-height:1.2;">{{ source.quality_label }}</strong>
+                                <span class="card-meta">{{ source.provider_label }}{% if source.release_group %} • {{ source.release_group }}{% endif %}</span>
+                            </div>
+                            <span class="score-pill" style="color:var(--text);">{{ source.codec_label }}</span>
+                        </div>
+                        <div style="display:grid; gap:6px;">
+                            <div class="info-row"><span>Size</span><strong>{{ source.size_label }}</strong></div>
+                            <div class="info-row"><span>Seeders</span><strong>{{ source.seeders_label }}</strong></div>
+                            <div class="info-row"><span>Source</span><strong>{{ source.source_type_label }}</strong></div>
+                            <div class="info-row"><span>Handoff</span><strong>{{ source.open_strategy|replace('_', ' ')|title }}</strong></div>
+                            <div class="info-row"><span>Score</span><strong>{{ source.estimated_quality_score }}{% if source.preference_boost %} <span style="color:#d6b36a;">(+{{ source.preference_boost }})</span>{% endif %}</strong></div>
+                            {% if source.title %}
+                            <div class="card-meta" style="line-height:1.5;">{{ source.title }}</div>
+                            {% endif %}
+                        </div>
+                        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                            <span class="score-pill" data-source-favorite-chip {% if not source.is_favorite_group %}hidden{% endif %} style="color:var(--text);">Favorite group</span>
+                            <span class="score-pill" data-source-saved-chip {% if not source.is_saved_source %}hidden{% endif %} style="color:var(--text);">Saved</span>
+                            {% if source.hdr %}
+                            <span class="score-pill" style="color:var(--text);">HDR</span>
+                            {% endif %}
+                            {% if source.dolby_vision %}
+                            <span class="score-pill" style="color:var(--text);">Dolby Vision</span>
+                            {% endif %}
+                            {% if source.browser_friendly %}
+                            <span class="score-pill" style="color:var(--text);">Browser Friendly</span>
+                            {% endif %}
+                            {% if source.external_player_ready %}
+                            <span class="score-pill" style="color:var(--text);">External Player Ready</span>
+                            {% endif %}
+                            {% if source.mobile_friendly %}
+                            <span class="score-pill" style="color:var(--text);">Mobile Friendly</span>
+                            {% endif %}
+                            {% if source.high_bandwidth_required %}
+                            <span class="score-pill" style="color:var(--text);">High Bandwidth</span>
+                            {% endif %}
+                        </div>
+                        <div style="display:grid; gap:8px;">
+                            <div class="card-meta" style="letter-spacing:.08em; text-transform:uppercase; color:rgba(255,255,255,.66);">Open In...</div>
+                            <div style="display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px;">
+                            {% for handoff_action in source.handoff_actions %}
+                                <button type="button" class="btn" data-source-action="{{ handoff_action.id }}" {% if not handoff_action.enabled %}disabled{% endif %} style="justify-content:center; min-height:40px;">{{ handoff_action.label }}</button>
+                            {% endfor %}
+                            </div>
+                        </div>
+                        <div class="card-meta" style="line-height:1.5; min-height:40px;">
+                            {{ source.likely_compatibility|replace('_', ' ')|title }}
+                            {% if source.external_player_hints %}
+                            • {{ source.external_player_hints[0] }}
+                            {% endif %}
+                        </div>
+                        <div style="display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px;">
+                            <button type="button" class="btn" data-source-action="save_source" {% if source.is_saved_source %}disabled data-locked="true"{% endif %} style="justify-content:center; min-height:40px;">{% if source.is_saved_source %}Saved{% else %}Save{% endif %}</button>
+                            <button type="button" class="btn" data-source-action="favorite_release" {% if not source.release_group or source.is_favorite_group %}disabled{% endif %}{% if source.is_favorite_group %} data-locked="true"{% endif %} style="justify-content:center; min-height:40px;">{% if source.is_favorite_group %}Favorited{% else %}Favorite{% endif %}</button>
+                        </div>
+                        <button type="button" class="btn" data-source-action="hide_release" style="justify-content:center; min-height:40px; background:linear-gradient(180deg,rgba(162,116,88,.18),rgba(70,36,24,.22)); border-color:rgba(198,156,132,.28);">Hide noisy release</button>
+                    </article>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="empty-state" style="margin-top:16px;">{{ movie_sources.status_message }}</div>
+                {% endif %}
             </section>
 
             {% if top_billed_cast %}

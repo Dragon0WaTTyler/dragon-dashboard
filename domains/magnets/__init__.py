@@ -1,9 +1,9 @@
-"""Domain service packages for Dragon."""
+"""Movie magnet search domain for Dragon."""
 
-from .magnets import (
+from .models import MagnetCandidate
+from .services import (
     ExperimentalRuntimeService,
     ExperimentalSessionStore,
-    MagnetCandidate,
     MagnetSearchService,
     MovieSourcesService,
     SessionAnalyticsService,
@@ -11,8 +11,15 @@ from .magnets import (
     SourceHandoffService,
     StreamSessionService,
     StreamSessionStore,
-    search_movie_magnets,
 )
+
+_default_service = MagnetSearchService()
+
+
+def search_movie_magnets(movie, *, force_refresh: bool = False):
+    """Search normalized movie magnet candidates across configured providers."""
+    return _default_service.search_movie_magnets(movie, force_refresh=force_refresh)
+
 
 __all__ = [
     "ExperimentalRuntimeService",
