@@ -43,6 +43,7 @@ from domains.youtube.services import (
     YouTubePlaylistService,
     YouTubeRecommendationService,
     YouTubeVideoService,
+    WatchLaterSyncService,
 )
 from dragon.cache import DragonCache, build_cache_store, build_runtime_cache, clone_json_compatible, load_json_file, save_json_file
 from dragon.config import build_runtime_config, config_flag, config_int, config_value, emit_environment_diagnostics
@@ -20835,9 +20836,60 @@ def fetch_playlist_videos_from_youtube(playlist_id, max_total=5000):
     return []
 
 
-def get_all_playlist_videos(playlist_id, max_total=5000, force_refresh=False, cache_data=None):
+def _watchlater_playlist_ids():
+    playlist_ids = []
+    for playlist in get_section_playlists("YouTube Watch Later"):
+        playlist_id = str((playlist or {}).get("id", "") or "").strip()
+        if playlist_id and playlist_id not in playlist_ids:
+            playlist_ids.append(playlist_id)
+    return playlist_ids
+
+
+def _is_watchlater_playlist(playlist_id):
+    return str(playlist_id or "").strip() in set(_watchlater_playlist_ids())
+
+
+def _fetch_watchlater_remote_marker(playlist_id):
+    marker_videos = fetch_playlist_videos_from_youtube(playlist_id, max_total=1)
+    first = marker_videos[0] if marker_videos else {}
+    if not isinstance(first, dict):
+        first = {}
+    playlist_item_id = str(first.get("playlist_item_id", "") or "").strip()
+    video_id = str(first.get("video_id", "") or "").strip()
+    published_at = str(first.get("published_at", "") or "").strip()
+    return {
+        "playlist_item_id": playlist_item_id,
+        "video_id": video_id,
+        "published_at": published_at,
+        "title": str(first.get("title", "") or "").strip(),
+        "marker": "|".join([playlist_item_id, video_id, published_at]).strip("|"),
+        "fetched_at": current_timestamp(),
+    }
+
+
+WATCHLATER_SYNC_SERVICE = WatchLaterSyncService(
+    runtime_cache=RUNTIME_CACHE,
+    runtime_cache_lock=RUNTIME_CACHE_LOCK,
+    current_timestamp=current_timestamp,
+    is_watchlater_playlist=_is_watchlater_playlist,
+    is_stale_snapshot=lambda entry: is_cache_entry_stale(entry) if isinstance(entry, dict) else True,
+    fetch_remote_marker=_fetch_watchlater_remote_marker,
+    refresh_cooldown_seconds=YOUTUBE_REFRESH_COOLDOWN_SECONDS,
+)
+
+
+def get_all_playlist_videos(
+    playlist_id,
+    max_total=5000,
+    force_refresh=False,
+    cache_data=None,
+    allow_global_invalidation=True,
+    refresh_reason="",
+):
     if not playlist_id or playlist_id == "PASTE_PLAYLIST_ID_HERE":
         return []
+    watchlater_owned = WATCHLATER_SYNC_SERVICE.owns_playlist(playlist_id)
+    playlist_allows_global_invalidation = bool(allow_global_invalidation and not watchlater_owned)
     request_cache_key = f"playlist_videos:{playlist_id}:{int(max_total)}:{int(force_refresh)}"
     if not force_refresh:
         memoized = _request_runtime_memo_get(request_cache_key)
@@ -20881,7 +20933,21 @@ def get_all_playlist_videos(playlist_id, max_total=5000, force_refresh=False, ca
                 snapshot_age_seconds=int(snapshot_age_seconds or 0),
                 cache_stale=cache_stale,
             )
-            if cache_stale:
+            if watchlater_owned:
+                WATCHLATER_SYNC_SERVICE.schedule_refresh_from_snapshot(
+                    playlist_id,
+                    playlist_entry,
+                    videos,
+                    lambda: get_all_playlist_videos(
+                        playlist_id,
+                        max_total=max_total,
+                        force_refresh=True,
+                        allow_global_invalidation=False,
+                        refresh_reason="watchlater_incremental_runtime",
+                    ),
+                    trigger="runtime_snapshot_read",
+                )
+            elif cache_stale:
                 print(
                     f"[youtube-playlist-cache] key={playlist_id} "
                     f"cache_hit=runtime snapshot_age={int(snapshot_age_seconds or 0)} "
@@ -20909,7 +20975,21 @@ def get_all_playlist_videos(playlist_id, max_total=5000, force_refresh=False, ca
             snapshot_age_seconds=int(snapshot_age_seconds or 0),
             cache_stale=cache_stale,
         )
-        if cache_stale:
+        if watchlater_owned:
+            WATCHLATER_SYNC_SERVICE.schedule_refresh_from_snapshot(
+                playlist_id,
+                playlist_entry,
+                videos,
+                lambda: get_all_playlist_videos(
+                    playlist_id,
+                    max_total=max_total,
+                    force_refresh=True,
+                    allow_global_invalidation=False,
+                    refresh_reason="watchlater_incremental_snapshot",
+                ),
+                trigger="persisted_snapshot_read",
+            )
+        elif cache_stale:
             print(
                 f"[youtube-playlist-cache] key={playlist_id} "
                 f"cache_hit=snapshot snapshot_age={int(snapshot_age_seconds or 0)} "
@@ -20940,6 +21020,7 @@ def get_all_playlist_videos(playlist_id, max_total=5000, force_refresh=False, ca
             "source_playlist_refresh",
             playlist_id=playlist_id,
             force_refresh=force_refresh,
+            refresh_reason=refresh_reason,
             source_changed=source_changed,
             runtime_list_id_before=id(old_runtime_videos) if old_runtime_videos is not None else "none",
             runtime_list_id_after=id(YOUTUBE_RUNTIME.playlist_index.get(playlist_id)),
@@ -20947,6 +21028,8 @@ def get_all_playlist_videos(playlist_id, max_total=5000, force_refresh=False, ca
             snapshot_size_after=len(videos),
             **_youtube_trace_video_stats(videos),
         )
+        if watchlater_owned:
+            WATCHLATER_SYNC_SERVICE.record_snapshot_update(playlist_id, videos)
         _youtube_perf_log(
             "playlist_cache_miss_refresh",
             playlist_id=playlist_id,
@@ -20955,8 +21038,10 @@ def get_all_playlist_videos(playlist_id, max_total=5000, force_refresh=False, ca
             fetch_ms=source_fetch_elapsed_ms,
             video_count=len(videos),
             source_changed=source_changed,
+            refresh_reason=refresh_reason,
+            allow_global_invalidation=playlist_allows_global_invalidation,
         )
-        if source_changed:
+        if source_changed and playlist_allows_global_invalidation:
             invalidate_youtube_derived_caches(reason=f"playlist_refresh:{playlist_id}")
         result = apply_cached_durations([dict(video) for video in videos])
         if not force_refresh:
@@ -20983,6 +21068,8 @@ def get_all_playlist_videos(playlist_id, max_total=5000, force_refresh=False, ca
     save_cache_data(cache_data)
     with RUNTIME_CACHE_LOCK:
         YOUTUBE_RUNTIME.playlist_index[playlist_id] = []
+    if watchlater_owned:
+        WATCHLATER_SYNC_SERVICE.record_snapshot_update(playlist_id, [])
     _youtube_perf_log(
         "playlist_cache_empty",
         playlist_id=playlist_id,
