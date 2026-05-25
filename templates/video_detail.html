@@ -4,19 +4,31 @@
 <div class="empty-state">This video detail page could not find the requested entry.</div>
 {% else %}
 <style>
-    .youtube-detail-focus-page .workspace-pane {
-        align-items: start;
-    }
-    .youtube-detail-focus-page .workspace-main {
-        min-height: 100vh;
-        align-content: start;
-    }
-    .youtube-detail-focus-page .workspace-sidebar {
-        position: sticky;
-        top: 0;
-        align-self: start;
-        height: 100vh;
-        max-height: 100vh;
+    @media (min-width: 1181px) {
+        .youtube-detail-focus-page .app-shell,
+        .youtube-detail-focus-page .workspace-pane,
+        .youtube-detail-focus-page .workspace-main {
+            overflow: visible;
+        }
+        .youtube-detail-focus-page .workspace-pane {
+            align-items: start;
+        }
+        .youtube-detail-focus-page .workspace-main {
+            min-height: 100vh;
+            align-content: start;
+        }
+        .youtube-detail-focus-page .workspace-sidebar {
+            position: sticky;
+            top: 0;
+            align-self: start;
+            height: 100vh;
+            max-height: 100vh;
+        }
+        .youtube-detail-focus-page .workspace-sidebar .sidebar-main {
+            min-height: 0;
+            overflow-y: auto;
+            overflow-x: hidden;
+        }
     }
     .video-detail-page .youtube-player-shell {
         position: relative !important;
@@ -550,15 +562,6 @@
         color: rgba(255,255,255,.78);
     }
     @media (max-width: 640px) {
-        .youtube-detail-focus-page .workspace-main {
-            min-height: 0;
-        }
-        .youtube-detail-focus-page .workspace-sidebar {
-            position: relative;
-            top: auto;
-            height: auto;
-            max-height: none;
-        }
         .video-detail-page .selected-video-controls,
         .video-detail-page .selected-video-actions-card {
             padding: 10px 12px;
@@ -760,7 +763,7 @@
     <div class="empty-state" style="margin-top:18px;">No related entries available yet.</div>
     {% endif %}
 </section>
-{% else %}
+{% elif entry_type == 'film' %}
 <section class="page-hero">
     <div class="hero-meta">
         <span class="hero-badge">{{ 'Movie Detail' }}</span>
@@ -1257,7 +1260,6 @@
                 }
             })();
             </script>
-            {% endif %}
             <section class="surface-card movie-detail-card movie-detail-sidebar-card" style="padding:18px; border-radius:22px;">
                 <div class="info-stack">
                     <div class="info-row"><span>Type</span><strong>Film Entry</strong></div>
@@ -1371,6 +1373,7 @@
         </div>
     </div>
 </section>
+{% endif %}
 {% endif %}
 
 {% endblock %}
