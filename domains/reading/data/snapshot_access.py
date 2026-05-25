@@ -20,6 +20,7 @@ class ReadingSnapshotAccess:
         clear_reading_data_cache,
         reading_data_cache_fingerprint,
         reading_format_mtime,
+        monotonic,
     ):
         self.app_logger = app_logger
         self.reading_runtime = reading_runtime
@@ -36,8 +37,10 @@ class ReadingSnapshotAccess:
         self.clear_reading_data_cache = clear_reading_data_cache
         self.reading_data_cache_fingerprint = reading_data_cache_fingerprint
         self.reading_format_mtime = reading_format_mtime
+        self.monotonic = monotonic
 
     def refresh_deployed_reading_snapshot_from_github(self):
+        refresh_started_at = self.monotonic()
         with self.reading_runtime.github_refresh_lock:
             old_mtime = self.reading_format_mtime(self.reading_data_path)
             self.app_logger.info("reading_snapshot_download started url=%s", self.reading_snapshot_url)
@@ -103,7 +106,11 @@ class ReadingSnapshotAccess:
                         with self.reading_runtime.data_cache_lock:
                             self.reading_runtime.data_cache["fingerprint"] = self.reading_data_cache_fingerprint()
                             self.reading_runtime.data_cache["data"] = normalized_payload
-                        self.app_logger.info("reading_snapshot_cache cleared")
+                        self.app_logger.info(
+                            "reading_snapshot_cache hydrated entries=%s sources=%s",
+                            len(normalized_payload.get("entries", []) or []),
+                            len(normalized_payload.get("sources", []) or []),
+                        )
 
                         new_mtime = self.reading_format_mtime(self.reading_data_path)
                         entries_count = len(normalized_payload.get("entries", []) or [])
@@ -117,6 +124,15 @@ class ReadingSnapshotAccess:
             except self.requests_module.RequestException as exc:
                 self.app_logger.warning("reading_snapshot_download failed error=%s", exc)
                 raise RuntimeError(f"Download failed: {exc}") from exc
+        self.app_logger.info(
+            "reading_snapshot_download finished elapsed_ms=%.1f old_mtime=%s new_mtime=%s bytes=%s entries=%s sources=%s",
+            (self.monotonic() - refresh_started_at) * 1000,
+            old_mtime,
+            new_mtime,
+            downloaded_bytes,
+            entries_count,
+            sources_count,
+        )
 
         return {
             "ok": True,

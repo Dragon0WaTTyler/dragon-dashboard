@@ -26,6 +26,8 @@ class ReadingRssService:
         normalize_reading_space,
         xml_etree,
         feedparser_module,
+        app_logger,
+        monotonic,
     ):
         self.normalize_reading_source = normalize_reading_source
         self.reading_source_feed_candidate_urls = reading_source_feed_candidate_urls
@@ -48,6 +50,8 @@ class ReadingRssService:
         self.normalize_reading_space = normalize_reading_space
         self.xml_etree = xml_etree
         self.feedparser = feedparser_module
+        self.app_logger = app_logger
+        self.monotonic = monotonic
 
     def reading_extract_text(self, node, names, default=""):
         for name in names:
@@ -321,10 +325,28 @@ class ReadingRssService:
         }
 
     def fetch_reading_feed(self, source):
+        started_at = self.monotonic()
         source = self.normalize_reading_source(source)
+        attempts = []
+
+        def _log_result(result):
+            self.app_logger.info(
+                "reading_rss fetch elapsed_ms=%.1f source=%s ok=%s feed_kind=%s attempts=%s raw_count=%s normalized_count=%s status_code=%s source_fallback_used=%s",
+                (self.monotonic() - started_at) * 1000,
+                str(source.get("name", "Unknown Source") or "Unknown Source").strip(),
+                bool(result.get("ok")),
+                str(result.get("feed_kind", "") or "").strip(),
+                len(attempts),
+                int(result.get("raw_count", 0) or 0),
+                int(result.get("normalized_count", 0) or 0),
+                int(result.get("status_code", 0) or 0),
+                bool(result.get("source_fallback_used", False)),
+            )
+            return result
+
         feed_url = str(source.get("url", "") or "").strip()
         if not feed_url:
-            return {
+            return _log_result({
                 "ok": False,
                 "feed_kind": "empty",
                 "source_url": feed_url,
@@ -347,9 +369,8 @@ class ReadingRssService:
                 "tried_urls": [],
                 "attempts": [],
                 "error": "Missing feed URL.",
-            }
+            })
         candidate_urls = self.reading_source_feed_candidate_urls(source)
-        attempts = []
         source_topic = str(source.get("topic", "") or "").strip()
         for candidate_index, candidate_url in enumerate(candidate_urls):
             response, request_diag = self.reading_http_get(
@@ -389,7 +410,7 @@ class ReadingRssService:
                                 source_topic=source_topic,
                             )
                         )
-                    return {
+                    return _log_result({
                         "ok": True,
                         "feed_kind": "feedparser",
                         "source_url": feed_url,
@@ -412,7 +433,7 @@ class ReadingRssService:
                         "tried_urls": [str(attempt.get("feed_url", "") or "") for attempt in attempts if str(attempt.get("feed_url", "") or "").strip()],
                         "attempts": attempts,
                         "error": "",
-                    }
+                    })
                 continue
 
             items = []
@@ -453,7 +474,7 @@ class ReadingRssService:
                     )
                 )
 
-            return {
+            return _log_result({
                 "ok": True,
                 "feed_kind": feed_kind,
                 "source_url": feed_url,
@@ -476,10 +497,10 @@ class ReadingRssService:
                 "tried_urls": [str(attempt.get("feed_url", "") or "") for attempt in attempts if str(attempt.get("feed_url", "") or "").strip()],
                 "attempts": attempts,
                 "error": "",
-            }
+            })
 
         last_attempt = attempts[-1] if attempts else {}
-        return {
+        return _log_result({
             "ok": False,
             "feed_kind": "error",
             "source_url": feed_url,
@@ -502,4 +523,4 @@ class ReadingRssService:
             "tried_urls": [str(attempt.get("feed_url", "") or "") for attempt in attempts if str(attempt.get("feed_url", "") or "").strip()],
             "attempts": attempts,
             "error": str(last_attempt.get("error", "") or "") or "Unable to fetch feed.",
-        }
+        })

@@ -1,3 +1,5 @@
+import time
+
 from flask import Response, render_template
 
 
@@ -53,22 +55,45 @@ class YouTubePlaylistService:
         safe_message = message.encode("ascii", errors="backslashreplace").decode("ascii")
         print(safe_message)
 
+    def _perf_log(self, event, **fields):
+        parts = [f"event={event}"]
+        for key, value in fields.items():
+            if isinstance(value, float):
+                value = f"{value:.2f}"
+            elif isinstance(value, bool):
+                value = int(value)
+            if value in ("", None):
+                continue
+            parts.append(f"{key}={value}")
+        message = "[youtube-perf] " + " ".join(parts)
+        safe_message = message.encode("ascii", errors="backslashreplace").decode("ascii")
+        print(safe_message)
+
     def render_section_page(self, section_name, title=None, quick_delete_enabled=False):
+        route_started_at = time.monotonic()
+        admin_started_at = time.monotonic()
         admin_data = self.load_admin_data()
+        admin_elapsed_ms = (time.monotonic() - admin_started_at) * 1000
+        projection_started_at = time.monotonic()
         playlists_with_videos, default_limit, section_channel_groups = self.build_youtube_section_playlists(
             section_name,
             admin_data=admin_data,
         )
+        projection_elapsed_ms = (time.monotonic() - projection_started_at) * 1000
         section_title = self.canonical_section_name(title or section_name)
         section_profile = self.youtube_section_blueprint(section_name)
+        curation_started_at = time.monotonic()
         section_curation_context = self.build_youtube_channel_curation_context(
             section_name,
             admin_data=admin_data,
         )
+        curation_elapsed_ms = (time.monotonic() - curation_started_at) * 1000
+        feed_started_at = time.monotonic()
         section_feed_context = self.build_youtube_section_feed_context(
             section_name,
             admin_data=admin_data,
         )
+        feed_elapsed_ms = (time.monotonic() - feed_started_at) * 1000
         latest_fetch = (
             section_feed_context.get("latest_fetch_diagnostics", {})
             if isinstance(section_feed_context.get("latest_fetch_diagnostics", {}), dict)
@@ -90,7 +115,8 @@ class YouTubePlaylistService:
         section_profile.update(section_curation_context)
         section_profile["channel_groups"] = section_channel_groups
         ai_context = self.ai_context_for_section(section_name)
-        return render_template(
+        render_started_at = time.monotonic()
+        rendered = render_template(
             "youtube_section.html",
             title=section_title,
             playlists=playlists_with_videos,
@@ -104,6 +130,21 @@ class YouTubePlaylistService:
             ai_default_mode=ai_context["mode"],
             ai_page_context=ai_context["page_context"],
         )
+        render_elapsed_ms = (time.monotonic() - render_started_at) * 1000
+        self._perf_log(
+            "watchlater_route" if self.normalize_section_name(section_name) == self.normalize_section_name("YouTube Watch Later") else "section_route",
+            section_name=section_name,
+            admin_load_ms=admin_elapsed_ms,
+            projection_ms=projection_elapsed_ms,
+            curation_ms=curation_elapsed_ms,
+            playlist_refresh_ms=feed_elapsed_ms,
+            render_ms=render_elapsed_ms,
+            total_ms=(time.monotonic() - route_started_at) * 1000,
+            playlist_count=len(playlists_with_videos),
+            section_channel_group_count=len(section_channel_groups),
+            feed_count=section_feed_context.get("feed_count", section_feed_context.get("video_count", 0)),
+        )
+        return rendered
 
     def render_library(self):
         return self.render_section_page("Library", title="Library", quick_delete_enabled=False)

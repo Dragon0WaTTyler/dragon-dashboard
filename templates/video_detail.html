@@ -1300,6 +1300,32 @@
 {% block scripts %}
 <script>
 (function() {
+    const detailPerfStart = (window.performance && typeof window.performance.now === 'function')
+        ? window.performance.now()
+        : Date.now();
+    function detailPerfLog(stage, extra) {
+        const now = (window.performance && typeof window.performance.now === 'function')
+            ? window.performance.now()
+            : Date.now();
+        const payload = Object.assign({
+            stage: stage,
+            elapsed_ms: Math.round((now - detailPerfStart) * 100) / 100,
+            related_dom_count: document.querySelectorAll('#relatedGrid .video-card').length,
+            image_count: document.querySelectorAll('#relatedGrid img').length,
+            player_present: !!document.getElementById('youtubePlayer'),
+        }, extra || {});
+        window.__youtubeDetailPerfLogs = window.__youtubeDetailPerfLogs || [];
+        window.__youtubeDetailPerfLogs.push(payload);
+        try {
+            console.log('[youtube-detail-client-perf]', payload);
+        } catch (error) {
+        }
+    }
+
+    detailPerfLog('script_start', {
+        dom_node_count: document.getElementsByTagName('*').length,
+    });
+
     const relatedGrid = document.getElementById('relatedGrid');
     const shuffleVideo = document.getElementById('shuffleRelatedVideo');
     const shuffleOrder = document.getElementById('shuffleRelatedOrder');
@@ -1667,26 +1693,37 @@
     }
 
     if (relatedGrid && typeof window.loadDurationBadges === 'function') {
+        const durationBadgeStartedAt = (window.performance && typeof window.performance.now === 'function')
+            ? window.performance.now()
+            : Date.now();
         window.loadDurationBadges(relatedGrid);
+        detailPerfLog('duration_badges_loaded', {
+            duration_badges_ms: Math.round((((window.performance && typeof window.performance.now === 'function') ? window.performance.now() : Date.now()) - durationBadgeStartedAt) * 100) / 100,
+        });
     }
 
     syncPockettubeWatchedDetails();
+    detailPerfLog('post_init_sync');
 
     if (playerFrame) {
         window.onYouTubeIframeAPIReady = function() {
+            detailPerfLog('iframe_api_ready');
             player = new YT.Player('youtubePlayer', {
                 events: {
                     onReady: function() {
+                        detailPerfLog('player_ready');
                         saveProgress();
                         progressTimer = window.setInterval(saveProgress, 5000);
                     },
                     onStateChange: function(event) {
                         if (event.data === YT.PlayerState.PLAYING) {
+                            detailPerfLog('player_playing');
                             updateCinemaPlayback(true);
                             saveProgress();
                             if (!progressTimer) progressTimer = window.setInterval(saveProgress, 5000);
                         }
                         if (event.data === YT.PlayerState.PAUSED || event.data === YT.PlayerState.ENDED) {
+                            detailPerfLog('player_pause_or_end', { player_state: event.data });
                             updateCinemaPlayback(false);
                             saveProgress();
                         }
@@ -1697,12 +1734,24 @@
 
         const script = document.createElement('script');
         script.src = 'https://www.youtube.com/iframe_api';
+        detailPerfLog('iframe_api_script_append');
         document.head.appendChild(script);
 
         window.addEventListener('beforeunload', saveProgress);
         window.addEventListener('beforeunload', function() { updateCinemaPlayback(false); });
         window.addEventListener('beforeunload', function() { setTheaterView(false); });
     }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        detailPerfLog('dom_content_loaded', {
+            dom_node_count: document.getElementsByTagName('*').length,
+        });
+    });
+    window.addEventListener('load', function() {
+        detailPerfLog('window_load', {
+            dom_node_count: document.getElementsByTagName('*').length,
+        });
+    });
 })();
 </script>
 {% endblock %}

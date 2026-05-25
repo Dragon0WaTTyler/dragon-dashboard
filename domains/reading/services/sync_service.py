@@ -44,6 +44,7 @@ class ReadingSyncService:
         dragon_reading_sync_backfill_bbc,
         dragon_reading_sync_bbc_backfill_max,
         reading_github_sync_online_message,
+        app_logger,
     ):
         self.load_reading_data = load_reading_data
         self.save_reading_data = save_reading_data
@@ -84,6 +85,7 @@ class ReadingSyncService:
         self.dragon_reading_sync_backfill_bbc = dragon_reading_sync_backfill_bbc
         self.dragon_reading_sync_bbc_backfill_max = dragon_reading_sync_bbc_backfill_max
         self.reading_github_sync_online_message = reading_github_sync_online_message
+        self.app_logger = app_logger
 
     def _existing_content_keys(self):
         return (
@@ -120,11 +122,17 @@ class ReadingSyncService:
         return fetch_attempts
 
     def _merge_import_into_entries(self, entries, existing_by_key, source, imported):
+        merge_started_at = self.monotonic()
         dedupe_keys = self.reading_entry_dedupe_keys({
             **imported,
             "source_id": source.get("id", ""),
         })
         if not dedupe_keys:
+            self.app_logger.info(
+                "reading_sync merge elapsed_ms=%.1f source=%s imported=0 duplicate=0 missing_key=1 dedupe_keys=0",
+                (self.monotonic() - merge_started_at) * 1000,
+                self.reading_log_text(source.get("name", "Unknown Source")),
+            )
             return {"missing_key": True, "imported": False, "index": None}
 
         existing_index = next((existing_by_key[key] for key in dedupe_keys if key in existing_by_key), None)
@@ -180,6 +188,13 @@ class ReadingSyncService:
             entries[existing_index] = existing
             for dedupe_key in self.reading_entry_dedupe_keys(existing):
                 existing_by_key[dedupe_key] = existing_index
+            self.app_logger.info(
+                "reading_sync merge elapsed_ms=%.1f source=%s imported=0 duplicate=1 missing_key=0 dedupe_keys=%s preserve_existing_content=%s",
+                (self.monotonic() - merge_started_at) * 1000,
+                self.reading_log_text(source.get("name", "Unknown Source")),
+                len(dedupe_keys),
+                bool(preserve_existing_content),
+            )
             return {"missing_key": False, "imported": False, "index": existing_index}
 
         primary_key = sorted(dedupe_keys)[0]
@@ -188,6 +203,12 @@ class ReadingSyncService:
         new_index = len(entries) - 1
         for dedupe_key in self.reading_entry_dedupe_keys(normalized_import):
             existing_by_key[dedupe_key] = new_index
+        self.app_logger.info(
+            "reading_sync merge elapsed_ms=%.1f source=%s imported=1 duplicate=0 missing_key=0 dedupe_keys=%s",
+            (self.monotonic() - merge_started_at) * 1000,
+            self.reading_log_text(source.get("name", "Unknown Source")),
+            len(dedupe_keys),
+        )
         return {"missing_key": False, "imported": True, "index": new_index}
 
     def _sync_single_source(self, source, entries, existing_by_key, now):
@@ -415,6 +436,7 @@ class ReadingSyncService:
         return bbc_backfill_candidate_indexes
 
     def _run_extraction_phase(self, entries, extraction_candidate_indexes, extraction_summary):
+        extraction_phase_started_at = self.monotonic()
         bbc_backfill_candidate_indexes = self._collect_bbc_backfill_candidates(entries, extraction_summary)
         extract_full_content = bool(self.dragon_reading_sync_extract_full_content)
         extract_max_articles = int(self.dragon_reading_sync_extract_max_articles or 0)
@@ -568,10 +590,24 @@ class ReadingSyncService:
             key=lambda item: float(item.get("elapsed", 0.0) or 0.0),
             reverse=True,
         )[:extract_slow_log_limit]
+        self.app_logger.info(
+            "reading_sync extraction_phase elapsed_ms=%.1f candidate_indexes=%s attempted=%s enriched=%s failed=%s skipped_cached=%s skipped_recent_failure=%s bbc_backfill_attempted=%s",
+            (self.monotonic() - extraction_phase_started_at) * 1000,
+            len(extraction_candidate_indexes),
+            int(extraction_summary.get("attempted", 0) or 0),
+            int(extraction_summary.get("enriched", 0) or 0),
+            int(extraction_summary.get("failed", 0) or 0),
+            int(extraction_summary.get("skipped_cached", 0) or 0),
+            int(extraction_summary.get("skipped_recent_failure", 0) or 0),
+            int(extraction_summary.get("bbc_backfill_attempted", 0) or 0),
+        )
 
     def sync_reading_sources(self, source_id=""):
         sync_started_at = self.monotonic()
-        data = copy.deepcopy(self.load_reading_data())
+        copy_started_at = self.monotonic()
+        loaded_data = self.load_reading_data()
+        data = copy.deepcopy(loaded_data)
+        copy_elapsed_ms = (self.monotonic() - copy_started_at) * 1000
         source_id = str(source_id or "").strip()
         extract_full_content = bool(self.dragon_reading_sync_extract_full_content)
         extract_max_articles = int(self.dragon_reading_sync_extract_max_articles or 0)
@@ -603,6 +639,14 @@ class ReadingSyncService:
             print("[reading-sync] no active sources matched this sync run")
 
         entries = list(data.get("entries", []))
+        self.app_logger.info(
+            "reading_sync dataset_loaded elapsed_ms=%.1f copy_ms=%.1f source_id=%s entries=%s sources=%s dataset_copy=1",
+            (self.monotonic() - sync_started_at) * 1000,
+            copy_elapsed_ms,
+            source_id or "all",
+            len(entries),
+            len(data.get("sources", []) or []),
+        )
         existing_by_key = {}
         for index, entry in enumerate(entries):
             for dedupe_key in self.reading_entry_dedupe_keys(entry):
@@ -731,7 +775,13 @@ class ReadingSyncService:
                 "Proxy/403 failures from all active sources; keeping the existing snapshot unchanged. "
                 f"{self.reading_github_sync_online_message}"
             )
+            self.app_logger.warning(
+                "reading_sync preserve_snapshot active_sources=%s imported_total=%s stale_snapshot_resurrection_risk=1 save_skipped=1",
+                len(target_sources),
+                imported_total,
+            )
         else:
+            # Ownership note: sync still owns the full data rewrite, retention pass, and final save in one step.
             saved_data = self.save_reading_data(data, apply_retention=True, retention_reason="sync")
 
         total_elapsed = self.monotonic() - sync_started_at

@@ -26,14 +26,16 @@ from datetime import datetime, timedelta, timezone
 from html import escape, unescape
 from html.parser import HTMLParser
 from pathlib import Path
-from flask import Response, flash, jsonify, redirect, render_template, request, session, send_file, url_for
+from flask import Response, flash, g, has_request_context, jsonify, redirect, render_template, request, session, send_file, url_for
 from markupsafe import Markup
+from domains.chess import LichessProgressService, PuzzleAttemptService
 from domains.reading import (
     BooksService,
     QuotesService,
     ReadingCacheAccess,
     ReadingRssService,
-    ReadingService,
+    ReadingRuntimeProjectionService,
+    ReadingRuntimeService,
     ReadingSnapshotAccess,
     ReadingSyncService,
 )
@@ -84,6 +86,8 @@ READING_RUNTIME = RUNTIME_STATE.reading
 TMDB_RUNTIME = RUNTIME_STATE.tmdb
 YOUTUBE_RUNTIME = RUNTIME_STATE.youtube
 YTS_RUNTIME = RUNTIME_STATE.yts
+YOUTUBE_REFRESH_COOLDOWN_SECONDS = 30
+YOUTUBE_RUNTIME_MEMO_TTL_SECONDS = 2.0
 edge_tts = None
 genai = None
 try:
@@ -136,7 +140,8 @@ _QUOTES_SERVICE = None
 _READING_CACHE_ACCESS = None
 _READING_RSS_SERVICE = None
 _READING_SYNC_SERVICE = None
-_READING_SERVICE = None
+_READING_RUNTIME_PROJECTION_SERVICE = None
+_READING_RUNTIME_SERVICE = None
 _READING_SNAPSHOT_ACCESS = None
 
 
@@ -1079,86 +1084,69 @@ def default_chess_data():
     }
 
 
+CHESS_DATA_LOCK = threading.RLock()
+
+
 def load_chess_data():
-    raw = load_json_file(CHESS_DATA_PATH, default_chess_data())
-    if not isinstance(raw, dict):
-        raw = {}
-    data = default_chess_data()
-    for key in ("profiles", "imports", "games", "openings", "review_queue", "puzzle_seeds", "auto_puzzle_candidates", "puzzle_attempts"):
-        value = raw.get(key, [])
-        data[key] = [dict(item) for item in value if isinstance(item, dict)] if isinstance(value, list) else []
-    progress_map = raw.get("lichess_puzzle_progress", {})
-    if isinstance(progress_map, dict):
-        data["lichess_puzzle_progress"] = {
-            str(key or "").strip(): dict(value)
-            for key, value in progress_map.items()
-            if str(key or "").strip() and isinstance(value, dict)
-        }
-    settings = raw.get("settings", {})
-    if not isinstance(settings, dict):
-        settings = {}
-    active_profile_id = str(settings.get("active_profile_id", "") or "").strip() or None
-    data["settings"]["active_profile_id"] = active_profile_id
-    data["updated_at"] = str(raw.get("updated_at", "") or "").strip()
-    if CHESS_DATA_PATH.exists() and data != raw:
-        save_json_file(CHESS_DATA_PATH, data)
-    return data
+    with CHESS_DATA_LOCK:
+        raw = load_json_file(CHESS_DATA_PATH, default_chess_data())
+        if not isinstance(raw, dict):
+            raw = {}
+        data = default_chess_data()
+        for key in ("profiles", "imports", "games", "openings", "review_queue", "puzzle_seeds", "auto_puzzle_candidates", "puzzle_attempts"):
+            value = raw.get(key, [])
+            data[key] = [dict(item) for item in value if isinstance(item, dict)] if isinstance(value, list) else []
+        data["lichess_puzzle_progress"] = LICHESS_PROGRESS_SERVICE.coerce_lichess_progress_map(
+            raw.get("lichess_puzzle_progress", {})
+        )
+        settings = raw.get("settings", {})
+        if not isinstance(settings, dict):
+            settings = {}
+        active_profile_id = str(settings.get("active_profile_id", "") or "").strip() or None
+        data["settings"]["active_profile_id"] = active_profile_id
+        data["updated_at"] = str(raw.get("updated_at", "") or "").strip()
+        if CHESS_DATA_PATH.exists() and data != raw:
+            save_json_file(CHESS_DATA_PATH, data)
+        return data
 
 
 def save_chess_data(data):
-    payload = default_chess_data()
-    incoming = data if isinstance(data, dict) else {}
-    for key in ("profiles", "imports", "games", "openings", "review_queue", "puzzle_seeds", "auto_puzzle_candidates", "puzzle_attempts"):
-        value = incoming.get(key, [])
-        payload[key] = [dict(item) for item in value if isinstance(item, dict)] if isinstance(value, list) else []
-    progress_map = incoming.get("lichess_puzzle_progress", {})
-    if isinstance(progress_map, dict):
-        payload["lichess_puzzle_progress"] = {
-            str(key or "").strip(): dict(value)
-            for key, value in progress_map.items()
-            if str(key or "").strip() and isinstance(value, dict)
-        }
-    settings = incoming.get("settings", {})
-    if not isinstance(settings, dict):
-        settings = {}
-    payload["settings"]["active_profile_id"] = str(settings.get("active_profile_id", "") or "").strip() or None
-    payload["updated_at"] = current_timestamp()
-    save_json_file(CHESS_DATA_PATH, payload)
-    return payload
+    with CHESS_DATA_LOCK:
+        payload = default_chess_data()
+        incoming = data if isinstance(data, dict) else {}
+        for key in ("profiles", "imports", "games", "openings", "review_queue", "puzzle_seeds", "auto_puzzle_candidates", "puzzle_attempts"):
+            value = incoming.get(key, [])
+            payload[key] = [dict(item) for item in value if isinstance(item, dict)] if isinstance(value, list) else []
+        payload["lichess_puzzle_progress"] = LICHESS_PROGRESS_SERVICE.coerce_lichess_progress_map(
+            incoming.get("lichess_puzzle_progress", {})
+        )
+        settings = incoming.get("settings", {})
+        if not isinstance(settings, dict):
+            settings = {}
+        payload["settings"]["active_profile_id"] = str(settings.get("active_profile_id", "") or "").strip() or None
+        payload["updated_at"] = current_timestamp()
+        save_json_file(CHESS_DATA_PATH, payload)
+        return payload
 
 
 def normalize_puzzle_attempt_status(value):
-    normalized = str(value or "").strip().lower()
-    if normalized in {"started", "completed", "skipped", "archived"}:
-        return normalized
-    return "started"
+    return PUZZLE_ATTEMPT_SERVICE.normalize_puzzle_attempt_status(value)
 
 
 def normalize_puzzle_review_state(value):
-    normalized = str(value or "").strip().lower()
-    if normalized in {"new", "repeat_due", "scheduled", "review_due", "mastered"}:
-        return normalized
-    return "new"
+    return PUZZLE_ATTEMPT_SERVICE.normalize_puzzle_review_state(value)
 
 
 def _puzzle_attempt_sort_value(attempt):
-    if not isinstance(attempt, dict):
-        return datetime.min
-    return parse_timestamp(attempt.get("updated_at")) or parse_timestamp(attempt.get("created_at")) or datetime.min
+    return PUZZLE_ATTEMPT_SERVICE._puzzle_attempt_sort_value(attempt)
 
 
 def build_puzzle_attempt_id(candidate_id, started_at=""):
-    candidate_value = str(candidate_id or "").strip()
-    timestamp_value = str(started_at or current_timestamp()).strip() or current_timestamp()
-    digest = hashlib.sha1(f"{candidate_value}|{timestamp_value}".encode("utf-8")).hexdigest()[:14]
-    return f"attempt:{candidate_value}:{digest}"
+    return PUZZLE_ATTEMPT_SERVICE.build_puzzle_attempt_id(candidate_id, started_at=started_at)
 
 
 def safe_puzzle_attempt_int(value, default=0):
-    try:
-        return int(str(value or "").strip() or default)
-    except Exception:
-        return int(default)
+    return PUZZLE_ATTEMPT_SERVICE.safe_puzzle_attempt_int(value, default=default)
 
 
 def safe_non_negative_int(value, default=0):
@@ -1169,211 +1157,52 @@ def safe_non_negative_int(value, default=0):
 
 
 def _safe_attempt_timestamp_value(value):
-    return parse_timestamp(value) or None
+    return PUZZLE_ATTEMPT_SERVICE._safe_attempt_timestamp_value(value)
 
 
 def _copy_puzzle_review_fields(attempt):
-    payload = dict(attempt or {}) if isinstance(attempt, dict) else {}
-    return {
-        "review_state": normalize_puzzle_review_state(payload.get("review_state")),
-        "last_attempt_at": str(payload.get("last_attempt_at", "") or "").strip(),
-        "next_due_at": str(payload.get("next_due_at", "") or "").strip(),
-        "clean_streak": max(0, int(payload.get("clean_streak", 0) or 0)),
-        "miss_streak": max(0, int(payload.get("miss_streak", 0) or 0)),
-        "times_seen": max(0, int(payload.get("times_seen", 0) or 0)),
-        "times_clean": max(0, int(payload.get("times_clean", 0) or 0)),
-        "times_missed": max(0, int(payload.get("times_missed", 0) or 0)),
-        "mastered": bool(payload.get("mastered", False)),
-    }
+    return PUZZLE_ATTEMPT_SERVICE._copy_puzzle_review_fields(attempt)
 
 
 def build_puzzle_review_schedule(clean_streak=0, needs_repeat=False, skipped=False):
-    streak_value = max(0, int(clean_streak or 0))
-    now = datetime.now(timezone.utc)
-    if needs_repeat or skipped:
-        next_due = now
-        review_state = "repeat_due"
-        mastered = False
-    elif streak_value >= 3:
-        next_due = now + timedelta(days=14)
-        review_state = "mastered"
-        mastered = True
-    elif streak_value >= 2:
-        next_due = now + timedelta(days=3)
-        review_state = "scheduled"
-        mastered = False
-    else:
-        next_due = now + timedelta(days=1)
-        review_state = "scheduled"
-        mastered = False
-    return {
-        "review_state": review_state,
-        "next_due_at": next_due.isoformat(),
-        "mastered": mastered,
-    }
+    return PUZZLE_ATTEMPT_SERVICE.build_puzzle_review_schedule(
+        clean_streak=clean_streak,
+        needs_repeat=needs_repeat,
+        skipped=skipped,
+    )
 
 
 def find_previous_resolved_puzzle_attempt(data, candidate_id="", exclude_attempt_id=""):
-    payload = data if isinstance(data, dict) else default_chess_data()
-    candidate_value = str(candidate_id or "").strip()
-    exclude_value = str(exclude_attempt_id or "").strip()
-    matches = []
-    for item in payload.get("puzzle_attempts", []) or []:
-        if not isinstance(item, dict):
-            continue
-        if candidate_value and str(item.get("candidate_id", "") or "").strip() != candidate_value:
-            continue
-        if exclude_value and str(item.get("id", "") or "").strip() == exclude_value:
-            continue
-        if normalize_puzzle_attempt_status(item.get("status")) not in {"completed", "skipped"}:
-            continue
-        matches.append(item)
-    if not matches:
-        return None
-    matches.sort(key=_puzzle_attempt_sort_value, reverse=True)
-    return matches[0]
+    return PUZZLE_ATTEMPT_SERVICE.find_previous_resolved_puzzle_attempt(
+        data,
+        candidate_id=candidate_id,
+        exclude_attempt_id=exclude_attempt_id,
+    )
 
 
 def puzzle_attempt_due_now(attempt, now=None):
-    payload = dict(attempt or {}) if isinstance(attempt, dict) else {}
-    if not payload:
-        return False
-    status_value = normalize_puzzle_attempt_status(payload.get("status"))
-    if status_value in {"started", "archived"}:
-        return False
-    if latest_puzzle_attempt_needs_repeat(payload):
-        return True
-    mastered = bool(payload.get("mastered", False))
-    due_value = _safe_attempt_timestamp_value(payload.get("next_due_at"))
-    if due_value is None:
-        return not mastered
-    compare_now = now if isinstance(now, datetime) else datetime.now(timezone.utc)
-    return due_value <= compare_now
+    return PUZZLE_ATTEMPT_SERVICE.puzzle_attempt_due_now(attempt, now=now)
 
 
 def find_puzzle_attempt(data, attempt_id="", candidate_id="", status=None):
-    payload = data if isinstance(data, dict) else default_chess_data()
-    attempt_value = str(attempt_id or "").strip()
-    candidate_value = str(candidate_id or "").strip()
-    status_value = normalize_puzzle_attempt_status(status) if status else ""
-    matches = []
-    for item in payload.get("puzzle_attempts", []) or []:
-        if not isinstance(item, dict):
-            continue
-        if attempt_value and str(item.get("id", "") or "").strip() != attempt_value:
-            continue
-        if candidate_value and str(item.get("candidate_id", "") or "").strip() != candidate_value:
-            continue
-        if status_value and normalize_puzzle_attempt_status(item.get("status")) != status_value:
-            continue
-        matches.append(item)
-    if not matches:
-        return None
-    matches.sort(key=_puzzle_attempt_sort_value, reverse=True)
-    return matches[0]
+    return PUZZLE_ATTEMPT_SERVICE.find_puzzle_attempt(
+        data,
+        attempt_id=attempt_id,
+        candidate_id=candidate_id,
+        status=status,
+    )
 
 
 def build_puzzle_attempt_summary(attempt):
-    payload = dict(attempt or {}) if isinstance(attempt, dict) else {}
-    wrong_count = max(0, int(payload.get("wrong_count", 0) or 0))
-    reveal_used = bool(payload.get("reveal_used", False))
-    status_value = normalize_puzzle_attempt_status(payload.get("status"))
-    completed_clean = bool(payload.get("completed_clean", False))
-    needs_repeat = bool(payload.get("needs_repeat", False))
-    due_now = puzzle_attempt_due_now(payload)
-    mastered = bool(payload.get("mastered", False))
-    parts = []
-    if status_value == "completed":
-        if completed_clean:
-            parts.append("Clean solve")
-        elif needs_repeat:
-            parts.append("Needs another try")
-    elif status_value == "skipped":
-        parts.append("Skipped")
-    if due_now and status_value in {"completed", "skipped"} and not needs_repeat and not mastered:
-        parts.append("Due for review")
-    if mastered:
-        parts.append("Mastered")
-    if wrong_count > 0:
-        parts.append(f"{wrong_count} wrong move{'s' if wrong_count != 1 else ''}")
-    if reveal_used:
-        parts.append("Reveal used")
-    return {
-        "text": " · ".join(parts),
-        "wrong_count": wrong_count,
-        "reveal_used": reveal_used,
-        "completed_clean": completed_clean,
-        "needs_repeat": needs_repeat,
-        "due_now": due_now,
-        "mastered": mastered,
-        "status": status_value,
-    }
+    return PUZZLE_ATTEMPT_SERVICE.build_puzzle_attempt_summary(attempt)
 
 
 def get_latest_puzzle_attempt_map(data):
-    payload = data if isinstance(data, dict) else default_chess_data()
-    latest_map = {}
-    for raw_attempt in payload.get("puzzle_attempts", []) or []:
-        if not isinstance(raw_attempt, dict):
-            continue
-        candidate_id = str(raw_attempt.get("candidate_id", "") or "").strip()
-        if not candidate_id:
-            continue
-        existing = latest_map.get(candidate_id)
-        if existing is None or _puzzle_attempt_sort_value(raw_attempt) >= _puzzle_attempt_sort_value(existing):
-            latest_map[candidate_id] = raw_attempt
-    return latest_map
+    return PUZZLE_ATTEMPT_SERVICE.get_latest_puzzle_attempt_map(data)
 
 
 def build_puzzle_attempt_history_map(data):
-    payload = data if isinstance(data, dict) else default_chess_data()
-    history_map = {}
-    for raw_attempt in payload.get("puzzle_attempts", []) or []:
-        if not isinstance(raw_attempt, dict):
-            continue
-        candidate_id = str(raw_attempt.get("candidate_id", "") or "").strip()
-        if not candidate_id:
-            continue
-        entry = history_map.setdefault(candidate_id, {
-            "training_key": candidate_id,
-            "attempt_count": 0,
-            "completed_count": 0,
-            "clean_completed_count": 0,
-            "skipped_count": 0,
-            "difficult_attempt_count": 0,
-            "last_attempt_at": "",
-            "last_completed_at": "",
-            "last_result": "",
-            "last_wrong_count": 0,
-            "last_reveal_used": False,
-        })
-        entry["attempt_count"] += 1
-        status_value = normalize_puzzle_attempt_status(raw_attempt.get("status"))
-        completed_at = str(raw_attempt.get("completed_at", "") or "").strip()
-        updated_at = str(raw_attempt.get("updated_at", "") or "").strip()
-        created_at = str(raw_attempt.get("created_at", "") or "").strip()
-        last_attempt_at = completed_at or updated_at or created_at
-        previous_attempt_at = _safe_attempt_timestamp_value(entry.get("last_attempt_at"))
-        current_attempt_at = _safe_attempt_timestamp_value(last_attempt_at)
-        if current_attempt_at and (previous_attempt_at is None or current_attempt_at >= previous_attempt_at):
-            entry["last_attempt_at"] = last_attempt_at
-            entry["last_result"] = status_value
-            entry["last_wrong_count"] = safe_non_negative_int(raw_attempt.get("wrong_count", 0), 0)
-            entry["last_reveal_used"] = bool(raw_attempt.get("reveal_used", False))
-        if status_value == "completed":
-            entry["completed_count"] += 1
-            if bool(raw_attempt.get("completed_clean", False)):
-                entry["clean_completed_count"] += 1
-        elif status_value == "skipped":
-            entry["skipped_count"] += 1
-        if status_value in {"completed", "skipped"} and latest_puzzle_attempt_needs_repeat(raw_attempt):
-            entry["difficult_attempt_count"] += 1
-        if status_value == "completed" and completed_at:
-            previous_completed_at = _safe_attempt_timestamp_value(entry.get("last_completed_at"))
-            current_completed_at = _safe_attempt_timestamp_value(completed_at)
-            if current_completed_at and (previous_completed_at is None or current_completed_at >= previous_completed_at):
-                entry["last_completed_at"] = completed_at
-    return history_map
+    return PUZZLE_ATTEMPT_SERVICE.build_puzzle_attempt_history_map(data)
 
 
 def normalize_auto_puzzle_progress(raw_state=None, history_entry=None):
@@ -1521,19 +1350,7 @@ def record_auto_puzzle_candidate_progress(data, candidate_id, result="", attempt
 
 
 def latest_puzzle_attempt_needs_repeat(attempt):
-    payload = dict(attempt or {}) if isinstance(attempt, dict) else {}
-    if not payload:
-        return False
-    status_value = normalize_puzzle_attempt_status(payload.get("status"))
-    if status_value == "skipped":
-        return True
-    if bool(payload.get("needs_repeat", False)):
-        return True
-    if max(0, int(payload.get("wrong_count", 0) or 0)) > 0:
-        return True
-    if bool(payload.get("reveal_used", False)):
-        return True
-    return False
+    return PUZZLE_ATTEMPT_SERVICE.latest_puzzle_attempt_needs_repeat(attempt)
 
 
 def format_puzzle_move_label_from_fen(fen, move_uci, fallback=""):
@@ -1553,528 +1370,126 @@ def format_puzzle_move_label_from_fen(fen, move_uci, fallback=""):
 
 
 def build_puzzle_repeat_note(candidate, latest_attempt):
-    candidate_payload = dict(candidate or {}) if isinstance(candidate, dict) else {}
-    attempt_payload = dict(latest_attempt or {}) if isinstance(latest_attempt, dict) else {}
-    summary = build_puzzle_attempt_summary(attempt_payload)
-    if not latest_puzzle_attempt_needs_repeat(attempt_payload):
-        return {
-            "repeat_needed": False,
-            "note": "",
-            "title": "",
-            "reason": "",
-            "last_wrong_move": "",
-            "expected_move": "",
-            "comparison": "",
-            "highlight_move": "",
-            "summary": summary,
-        }
-
-    status_value = normalize_puzzle_attempt_status(attempt_payload.get("status"))
-    wrong_count = max(0, int(attempt_payload.get("wrong_count", 0) or 0))
-    reveal_used = bool(attempt_payload.get("reveal_used", False))
-    wrong_moves = attempt_payload.get("wrong_moves", [])
-    if not isinstance(wrong_moves, list):
-        wrong_moves = []
-    last_wrong = dict(wrong_moves[-1] or {}) if wrong_moves and isinstance(wrong_moves[-1], dict) else {}
-    last_wrong_move = format_puzzle_move_label_from_fen(last_wrong.get("fen", ""), last_wrong.get("attempted_move_uci", ""), last_wrong.get("attempted_move_san", ""))
-    expected_move = format_puzzle_move_label_from_fen(last_wrong.get("fen", ""), last_wrong.get("expected_move_uci", ""), candidate_payload.get("next_move_label", ""))
-    reason = ""
-    if status_value == "skipped":
-        reason = "Skipped before."
-    elif reveal_used and wrong_count > 0:
-        reason = "Reveal was used before."
-    elif reveal_used:
-        reason = "Reveal was used before."
-    elif wrong_count > 0:
-        reason = "Wrong move before."
-    else:
-        reason = "Needs another try."
-    note_bits = ["This puzzle came back because you missed it before."]
-    if reason:
-        note_bits.append(reason)
-    if last_wrong_move:
-        note_bits.append(f"Last time you tried {last_wrong_move}.")
-    if expected_move:
-        note_bits.append(f"This time, try to find {expected_move}.")
-    else:
-        note_bits.append("This time, try to find the line move.")
-    note_bits.append("Try to solve it cleanly this time.")
-    return {
-        "repeat_needed": True,
-        "note": " ".join(note_bits),
-        "title": "Try again",
-        "reason": reason,
-        "last_wrong_move": last_wrong_move,
-        "expected_move": expected_move,
-        "comparison": f"Last time: {last_wrong_move}." if last_wrong_move else "",
-        "highlight_move": last_wrong.get("attempted_move_uci", "") or "",
-        "summary": summary,
-    }
+    return PUZZLE_ATTEMPT_SERVICE.build_puzzle_repeat_note(candidate, latest_attempt)
 
 
 def get_candidate_repeat_state(candidate, latest_attempt):
-    candidate_payload = dict(candidate or {}) if isinstance(candidate, dict) else {}
-    attempt_payload = dict(latest_attempt or {}) if isinstance(latest_attempt, dict) else {}
-    base_status = normalize_chess_auto_candidate_status(candidate_payload.get("status", "candidate"))
-    if base_status == "archived":
-        repeat_note = build_puzzle_repeat_note(candidate_payload, attempt_payload)
-        return {
-            "repeat_needed": False,
-            "effective_status": "archived",
-            "latest_attempt": attempt_payload,
-            "latest_attempt_status": normalize_puzzle_attempt_status(attempt_payload.get("status")) if attempt_payload else "",
-            "summary": build_puzzle_attempt_summary(attempt_payload),
-            "reason": "",
-            "coach_note": "",
-            "repeat_note": repeat_note,
-        }
-
-    latest_status = normalize_puzzle_attempt_status(attempt_payload.get("status")) if attempt_payload else ""
-    repeat_needed = latest_puzzle_attempt_needs_repeat(attempt_payload)
-    due_now = puzzle_attempt_due_now(attempt_payload)
-    mastered = bool(attempt_payload.get("mastered", False))
-    review_state = normalize_puzzle_review_state(attempt_payload.get("review_state"))
-    candidate_status_timestamp = (
-        parse_timestamp(candidate_payload.get("updated_at", ""))
-        or parse_timestamp(candidate_payload.get("created_at", ""))
-        or datetime.min
-    )
-    attempt_timestamp = _puzzle_attempt_sort_value(attempt_payload) if attempt_payload else datetime.min
-    effective_status = base_status
-    repeat_note = build_puzzle_repeat_note(candidate_payload, attempt_payload)
-    reason = str(repeat_note.get("reason", "") or "").strip()
-    coach_note = str(repeat_note.get("note", "") or "").strip()
-    if repeat_needed:
-        if not coach_note:
-            coach_note = "This puzzle came back because you missed it before. Try to solve it cleanly this time."
-    elif latest_status == "completed" and due_now and not mastered:
-        coach_note = "This one is back for review. See if you can solve it cleanly again."
-        reason = "Due for review"
-
-    if latest_status == "completed":
-        if base_status in {"queued", "training"} and candidate_status_timestamp > attempt_timestamp:
-            effective_status = base_status
-        else:
-            effective_status = "candidate" if (repeat_needed or (due_now and not mastered)) else "done"
-    elif latest_status == "skipped":
-        if base_status in {"queued", "training"} and candidate_status_timestamp > attempt_timestamp:
-            effective_status = base_status
-        else:
-            effective_status = "candidate"
-    elif latest_status == "started" and base_status == "candidate":
-        effective_status = "training"
-
-    return {
-        "repeat_needed": repeat_needed,
-        "due_now": due_now,
-        "review_state": review_state,
-        "mastered": mastered,
-        "effective_status": effective_status,
-        "latest_attempt": attempt_payload,
-        "latest_attempt_status": latest_status,
-        "summary": build_puzzle_attempt_summary(attempt_payload),
-        "reason": reason,
-        "coach_note": coach_note,
-        "repeat_note": repeat_note,
-    }
+    return PUZZLE_ATTEMPT_SERVICE.get_candidate_repeat_state(candidate, latest_attempt)
 
 
 def get_or_create_active_puzzle_attempt(data, candidate, total_steps=0):
-    payload = data if isinstance(data, dict) else default_chess_data()
-    candidate_payload = dict(candidate or {}) if isinstance(candidate, dict) else {}
-    candidate_id = str(candidate_payload.get("id", "") or "").strip()
-    if not candidate_id:
-        return {"attempt": None, "changed": False, "created": False}
-    attempts = [
-        item for item in (payload.get("puzzle_attempts", []) or [])
-        if isinstance(item, dict)
-        and str(item.get("candidate_id", "") or "").strip() == candidate_id
-        and normalize_puzzle_attempt_status(item.get("status")) == "started"
-    ]
-    attempts.sort(key=_puzzle_attempt_sort_value, reverse=True)
-    changed = False
-    active_attempt = None
-    now = current_timestamp()
-    if attempts:
-        active_attempt = attempts[0]
-        for extra_attempt in attempts[1:]:
-            if normalize_puzzle_attempt_status(extra_attempt.get("status")) != "archived":
-                extra_attempt["status"] = "archived"
-                extra_attempt["updated_at"] = now
-                changed = True
-        total_steps_value = max(0, int(total_steps or 0))
-        if total_steps_value and int(active_attempt.get("total_steps", 0) or 0) != total_steps_value:
-            active_attempt["total_steps"] = total_steps_value
-            changed = True
-        for field_name, field_value in (
-            ("game_id", str(candidate_payload.get("game_id", "") or "").strip()),
-            ("source_type", str(candidate_payload.get("source_type", "") or "").strip()),
-        ):
-            if field_value and str(active_attempt.get(field_name, "") or "").strip() != field_value:
-                active_attempt[field_name] = field_value
-                changed = True
-        if changed:
-            active_attempt["updated_at"] = now
-        return {"attempt": dict(active_attempt), "changed": changed, "created": False}
-
-    created_at = now
-    total_steps_value = max(0, int(total_steps or 0))
-    previous_attempt = find_previous_resolved_puzzle_attempt(payload, candidate_id=candidate_id)
-    previous_review = _copy_puzzle_review_fields(previous_attempt)
-    new_attempt = {
-        "id": build_puzzle_attempt_id(candidate_id, created_at),
-        "candidate_id": candidate_id,
-        "game_id": str(candidate_payload.get("game_id", "") or "").strip(),
-        "source_type": str(candidate_payload.get("source_type", "") or "").strip(),
-        "started_at": created_at,
-        "completed_at": "",
-        "status": "started",
-        "wrong_count": 0,
-        "correct_count": 0,
-        "reveal_used": False,
-        "hint_used": False,
-        "engine_check_used": False,
-        "critical_moment_check_used": False,
-        "completed_clean": False,
-        "needs_repeat": False,
-        "final_step": 0,
-        "total_steps": total_steps_value,
-        "wrong_moves": [],
-        "review_state": previous_review.get("review_state", "new") if previous_attempt else "new",
-        "last_attempt_at": str(previous_review.get("last_attempt_at", previous_attempt.get("completed_at", "") if isinstance(previous_attempt, dict) else "") or "").strip(),
-        "next_due_at": str(previous_review.get("next_due_at", "") or "").strip(),
-        "clean_streak": max(0, int(previous_review.get("clean_streak", 0) or 0)),
-        "miss_streak": max(0, int(previous_review.get("miss_streak", 0) or 0)),
-        "times_seen": max(0, int(previous_review.get("times_seen", 0) or 0)) + 1,
-        "times_clean": max(0, int(previous_review.get("times_clean", 0) or 0)),
-        "times_missed": max(0, int(previous_review.get("times_missed", 0) or 0)),
-        "mastered": bool(previous_review.get("mastered", False)),
-        "created_at": created_at,
-        "updated_at": created_at,
-    }
-    payload.setdefault("puzzle_attempts", []).append(new_attempt)
-    return {"attempt": dict(new_attempt), "changed": True, "created": True}
+    return PUZZLE_ATTEMPT_SERVICE.get_or_create_active_puzzle_attempt(
+        data,
+        candidate,
+        total_steps=total_steps,
+    )
 
 
 def record_puzzle_wrong_move(data, attempt_id, step_index=0, fen="", attempted_move_uci="", attempted_move_san="", expected_move_uci="", engine_move_uci=""):
-    attempt = find_puzzle_attempt(data, attempt_id=attempt_id)
-    if not isinstance(attempt, dict):
-        return {"ok": False, "error": "Active puzzle attempt unavailable.", "attempt": None}
-    wrong_moves = attempt.get("wrong_moves")
-    if not isinstance(wrong_moves, list):
-        wrong_moves = []
-        attempt["wrong_moves"] = wrong_moves
-    wrong_moves.append({
-        "step_index": max(0, int(step_index or 0)),
-        "fen": str(fen or "").strip(),
-        "attempted_move_uci": str(attempted_move_uci or "").strip(),
-        "attempted_move_san": str(attempted_move_san or "").strip(),
-        "expected_move_uci": str(expected_move_uci or "").strip(),
-        "engine_move_uci": str(engine_move_uci or "").strip(),
-        "created_at": current_timestamp(),
-    })
-    attempt["wrong_count"] = max(0, int(attempt.get("wrong_count", 0) or 0)) + 1
-    attempt["final_step"] = max(max(0, int(attempt.get("final_step", 0) or 0)), max(0, int(step_index or 0)))
-    attempt["updated_at"] = current_timestamp()
-    return {"ok": True, "error": "", "attempt": dict(attempt)}
+    return PUZZLE_ATTEMPT_SERVICE.record_puzzle_wrong_move(
+        data,
+        attempt_id,
+        step_index=step_index,
+        fen=fen,
+        attempted_move_uci=attempted_move_uci,
+        attempted_move_san=attempted_move_san,
+        expected_move_uci=expected_move_uci,
+        engine_move_uci=engine_move_uci,
+    )
 
 
 def record_puzzle_correct_move(data, attempt_id, step_index=0):
-    attempt = find_puzzle_attempt(data, attempt_id=attempt_id)
-    if not isinstance(attempt, dict):
-        return {"ok": False, "error": "Active puzzle attempt unavailable.", "attempt": None}
-    attempt["correct_count"] = max(0, int(attempt.get("correct_count", 0) or 0)) + 1
-    attempt["final_step"] = max(max(0, int(attempt.get("final_step", 0) or 0)), max(0, int(step_index or 0)))
-    attempt["updated_at"] = current_timestamp()
-    return {"ok": True, "error": "", "attempt": dict(attempt)}
+    return PUZZLE_ATTEMPT_SERVICE.record_puzzle_correct_move(data, attempt_id, step_index=step_index)
 
 
 def record_puzzle_reveal(data, attempt_id):
-    attempt = find_puzzle_attempt(data, attempt_id=attempt_id)
-    if not isinstance(attempt, dict):
-        return {"ok": False, "error": "Active puzzle attempt unavailable.", "attempt": None}
-    if not bool(attempt.get("reveal_used", False)):
-        attempt["reveal_used"] = True
-        attempt["updated_at"] = current_timestamp()
-    return {"ok": True, "error": "", "attempt": dict(attempt)}
+    return PUZZLE_ATTEMPT_SERVICE.record_puzzle_reveal(data, attempt_id)
 
 
 def record_puzzle_engine_check(data, attempt_id):
-    attempt = find_puzzle_attempt(data, attempt_id=attempt_id)
-    if not isinstance(attempt, dict):
-        return {"ok": False, "error": "Active puzzle attempt unavailable.", "attempt": None}
-    if not bool(attempt.get("engine_check_used", False)):
-        attempt["engine_check_used"] = True
-        attempt["updated_at"] = current_timestamp()
-    return {"ok": True, "error": "", "attempt": dict(attempt)}
+    return PUZZLE_ATTEMPT_SERVICE.record_puzzle_engine_check(data, attempt_id)
 
 
 def record_puzzle_critical_moment_check(data, attempt_id):
-    attempt = find_puzzle_attempt(data, attempt_id=attempt_id)
-    if not isinstance(attempt, dict):
-        return {"ok": False, "error": "Active puzzle attempt unavailable.", "attempt": None}
-    if not bool(attempt.get("critical_moment_check_used", False)):
-        attempt["critical_moment_check_used"] = True
-        attempt["updated_at"] = current_timestamp()
-    return {"ok": True, "error": "", "attempt": dict(attempt)}
+    return PUZZLE_ATTEMPT_SERVICE.record_puzzle_critical_moment_check(data, attempt_id)
 
 
 def skip_puzzle_attempt(data, attempt_id, final_step=0, total_steps=0):
-    attempt = find_puzzle_attempt(data, attempt_id=attempt_id)
-    if not isinstance(attempt, dict):
-        return {"ok": False, "error": "Active puzzle attempt unavailable.", "attempt": None}
-    review = _copy_puzzle_review_fields(attempt)
-    schedule = build_puzzle_review_schedule(clean_streak=0, needs_repeat=True, skipped=True)
-    attempt["status"] = "skipped"
-    attempt["completed_at"] = current_timestamp()
-    attempt["completed_clean"] = False
-    attempt["needs_repeat"] = True
-    attempt["final_step"] = max(0, int(final_step or 0))
-    attempt["total_steps"] = max(max(0, int(attempt.get("total_steps", 0) or 0)), max(0, int(total_steps or 0)))
-    attempt["last_attempt_at"] = attempt["completed_at"]
-    attempt["clean_streak"] = 0
-    attempt["miss_streak"] = max(0, int(review.get("miss_streak", 0) or 0)) + 1
-    attempt["times_seen"] = max(1, int(review.get("times_seen", 0) or 0))
-    attempt["times_clean"] = max(0, int(review.get("times_clean", 0) or 0))
-    attempt["times_missed"] = max(0, int(review.get("times_missed", 0) or 0)) + 1
-    attempt["review_state"] = schedule["review_state"]
-    attempt["next_due_at"] = schedule["next_due_at"]
-    attempt["mastered"] = False
-    attempt["updated_at"] = current_timestamp()
-    record_auto_puzzle_candidate_progress(
+    return PUZZLE_ATTEMPT_SERVICE.skip_puzzle_attempt(
         data,
-        str(attempt.get("candidate_id", "") or "").strip(),
-        result="skipped",
-        attempt=attempt,
-        status_after="candidate",
+        attempt_id,
+        final_step=final_step,
+        total_steps=total_steps,
     )
-    return {"ok": True, "error": "", "attempt": dict(attempt)}
 
 
 def complete_puzzle_attempt(data, attempt_id, final_step=0, total_steps=0):
-    attempt = find_puzzle_attempt(data, attempt_id=attempt_id)
-    if not isinstance(attempt, dict):
-        return {"ok": False, "error": "Active puzzle attempt unavailable.", "attempt": None}
-    wrong_count = max(0, int(attempt.get("wrong_count", 0) or 0))
-    reveal_used = bool(attempt.get("reveal_used", False))
-    completed_clean = wrong_count == 0 and not reveal_used
-    review = _copy_puzzle_review_fields(attempt)
-    next_clean_streak = max(0, int(review.get("clean_streak", 0) or 0)) + 1 if completed_clean else 0
-    next_miss_streak = 0 if completed_clean else max(0, int(review.get("miss_streak", 0) or 0)) + 1
-    schedule = build_puzzle_review_schedule(clean_streak=next_clean_streak, needs_repeat=not completed_clean)
-    attempt["status"] = "completed"
-    attempt["completed_at"] = current_timestamp()
-    attempt["completed_clean"] = completed_clean
-    attempt["needs_repeat"] = not completed_clean
-    attempt["final_step"] = max(0, int(final_step or 0))
-    attempt["total_steps"] = max(max(0, int(attempt.get("total_steps", 0) or 0)), max(0, int(total_steps or 0)))
-    attempt["last_attempt_at"] = attempt["completed_at"]
-    attempt["clean_streak"] = next_clean_streak
-    attempt["miss_streak"] = next_miss_streak
-    attempt["times_seen"] = max(1, int(review.get("times_seen", 0) or 0))
-    attempt["times_clean"] = max(0, int(review.get("times_clean", 0) or 0)) + (1 if completed_clean else 0)
-    attempt["times_missed"] = max(0, int(review.get("times_missed", 0) or 0)) + (0 if completed_clean else 1)
-    attempt["review_state"] = schedule["review_state"]
-    attempt["next_due_at"] = schedule["next_due_at"]
-    attempt["mastered"] = bool(schedule["mastered"])
-    attempt["updated_at"] = current_timestamp()
-    record_auto_puzzle_candidate_progress(
+    return PUZZLE_ATTEMPT_SERVICE.complete_puzzle_attempt(
         data,
-        str(attempt.get("candidate_id", "") or "").strip(),
-        result="completed",
-        attempt=attempt,
-        status_after="done",
+        attempt_id,
+        final_step=final_step,
+        total_steps=total_steps,
     )
-    return {"ok": True, "error": "", "attempt": dict(attempt)}
 
 
 def normalize_lichess_progress_status(value):
-    normalized = str(value or "").strip().lower()
-    if normalized in {"solved", "missed", "skipped", "started"}:
-        return normalized
-    return "started"
+    return LICHESS_PROGRESS_SERVICE.normalize_lichess_progress_status(value)
 
 
 def _empty_lichess_progress_entry(puzzle_id=""):
-    return {
-        "puzzle_id": str(puzzle_id or "").strip(),
-        "status": "started",
-        "times_seen": 0,
-        "times_solved": 0,
-        "times_missed": 0,
-        "last_seen_at": "",
-        "solved_at": "",
-        "last_wrong_move": "",
-        "reveal_used": False,
-        "completed_clean": False,
-        "created_at": "",
-        "updated_at": "",
-    }
+    return LICHESS_PROGRESS_SERVICE._empty_lichess_progress_entry(puzzle_id)
 
 
 def _coerce_lichess_progress_entry(puzzle_id, raw_entry):
-    puzzle_id_value = str(puzzle_id or "").strip()
-    payload = _empty_lichess_progress_entry(puzzle_id_value)
-    source = dict(raw_entry or {}) if isinstance(raw_entry, dict) else {}
-    payload["status"] = normalize_lichess_progress_status(source.get("status"))
-    for field_name in ("last_seen_at", "solved_at", "last_wrong_move", "created_at", "updated_at"):
-        payload[field_name] = str(source.get(field_name, "") or "").strip()
-    payload["times_seen"] = max(0, int(source.get("times_seen", 0) or 0))
-    payload["times_solved"] = max(0, int(source.get("times_solved", 0) or 0))
-    payload["times_missed"] = max(0, int(source.get("times_missed", 0) or 0))
-    payload["reveal_used"] = bool(source.get("reveal_used", False))
-    payload["completed_clean"] = bool(source.get("completed_clean", False))
-    return payload
+    return LICHESS_PROGRESS_SERVICE._coerce_lichess_progress_entry(puzzle_id, raw_entry)
 
 
 def get_lichess_puzzle_progress_map(data):
-    payload = data if isinstance(data, dict) else default_chess_data()
-    source = payload.get("lichess_puzzle_progress", {})
-    progress_map = {}
-    if not isinstance(source, dict):
-        payload["lichess_puzzle_progress"] = progress_map
-        return progress_map
-    for puzzle_id, raw_entry in source.items():
-        puzzle_key = str(puzzle_id or "").strip()
-        if not puzzle_key:
-            continue
-        progress_map[puzzle_key] = _coerce_lichess_progress_entry(puzzle_key, raw_entry)
-    payload["lichess_puzzle_progress"] = progress_map
-    return progress_map
+    return LICHESS_PROGRESS_SERVICE.get_lichess_puzzle_progress_map(data)
 
 
 def get_lichess_puzzle_progress_entry(data, puzzle_id="", create=False):
-    puzzle_key = str(puzzle_id or "").strip()
-    if not puzzle_key:
-        return None
-    progress_map = get_lichess_puzzle_progress_map(data)
-    entry = progress_map.get(puzzle_key)
-    if entry is None and create:
-        now = current_timestamp()
-        entry = _empty_lichess_progress_entry(puzzle_key)
-        entry["created_at"] = now
-        entry["updated_at"] = now
-        progress_map[puzzle_key] = entry
-    return entry
+    return LICHESS_PROGRESS_SERVICE.get_lichess_puzzle_progress_entry(data, puzzle_id, create=create)
 
 
 def _mark_lichess_progress_missed(entry):
-    if not isinstance(entry, dict):
-        return
-    current_status = normalize_lichess_progress_status(entry.get("status"))
-    if current_status not in {"missed", "skipped"}:
-        entry["times_missed"] = max(0, int(entry.get("times_missed", 0) or 0)) + 1
-    entry["status"] = "missed"
-    entry["completed_clean"] = False
+    return LICHESS_PROGRESS_SERVICE._mark_lichess_progress_missed(entry)
 
 
 def record_lichess_puzzle_started(data, puzzle_id=""):
-    entry = get_lichess_puzzle_progress_entry(data, puzzle_id, create=True)
-    if not isinstance(entry, dict):
-        return {"ok": False, "error": "Lichess puzzle unavailable.", "progress": None}
-    now = current_timestamp()
-    increment_seen = True
-    last_seen_at = str(entry.get("last_seen_at", "") or "").strip()
-    if last_seen_at:
-        try:
-            last_seen_dt = datetime.fromisoformat(last_seen_at)
-            now_dt = datetime.fromisoformat(now)
-            increment_seen = (now_dt - last_seen_dt).total_seconds() > 600
-        except Exception:
-            increment_seen = True
-    if increment_seen:
-        entry["times_seen"] = max(0, int(entry.get("times_seen", 0) or 0)) + 1
-    entry["last_seen_at"] = now
-    if normalize_lichess_progress_status(entry.get("status")) != "solved":
-        entry["status"] = "started"
-    if not str(entry.get("created_at", "") or "").strip():
-        entry["created_at"] = now
-    entry["updated_at"] = now
-    return {"ok": True, "error": "", "progress": dict(entry)}
+    return LICHESS_PROGRESS_SERVICE.record_lichess_puzzle_started(data, puzzle_id)
 
 
 def record_lichess_puzzle_wrong_move(data, puzzle_id="", attempted_move=""):
-    entry = get_lichess_puzzle_progress_entry(data, puzzle_id, create=True)
-    if not isinstance(entry, dict):
-        return {"ok": False, "error": "Lichess puzzle unavailable.", "progress": None}
-    _mark_lichess_progress_missed(entry)
-    entry["last_wrong_move"] = str(attempted_move or "").strip()
-    entry["updated_at"] = current_timestamp()
-    return {"ok": True, "error": "", "progress": dict(entry)}
+    return LICHESS_PROGRESS_SERVICE.record_lichess_puzzle_wrong_move(
+        data,
+        puzzle_id,
+        attempted_move=attempted_move,
+    )
 
 
 def record_lichess_puzzle_reveal(data, puzzle_id=""):
-    entry = get_lichess_puzzle_progress_entry(data, puzzle_id, create=True)
-    if not isinstance(entry, dict):
-        return {"ok": False, "error": "Lichess puzzle unavailable.", "progress": None}
-    entry["reveal_used"] = True
-    _mark_lichess_progress_missed(entry)
-    entry["updated_at"] = current_timestamp()
-    return {"ok": True, "error": "", "progress": dict(entry)}
+    return LICHESS_PROGRESS_SERVICE.record_lichess_puzzle_reveal(data, puzzle_id)
 
 
 def record_lichess_puzzle_skipped(data, puzzle_id=""):
-    entry = get_lichess_puzzle_progress_entry(data, puzzle_id, create=True)
-    if not isinstance(entry, dict):
-        return {"ok": False, "error": "Lichess puzzle unavailable.", "progress": None}
-    current_status = normalize_lichess_progress_status(entry.get("status"))
-    if current_status not in {"skipped", "missed"}:
-        entry["times_missed"] = max(0, int(entry.get("times_missed", 0) or 0)) + 1
-    entry["status"] = "skipped"
-    entry["completed_clean"] = False
-    entry["updated_at"] = current_timestamp()
-    return {"ok": True, "error": "", "progress": dict(entry)}
+    return LICHESS_PROGRESS_SERVICE.record_lichess_puzzle_skipped(data, puzzle_id)
 
 
 def record_lichess_puzzle_complete(data, puzzle_id="", completed_clean=True):
-    entry = get_lichess_puzzle_progress_entry(data, puzzle_id, create=True)
-    if not isinstance(entry, dict):
-        return {"ok": False, "error": "Lichess puzzle unavailable.", "progress": None}
-    now = current_timestamp()
-    previous_status = normalize_lichess_progress_status(entry.get("status"))
-    clean_value = bool(completed_clean) and previous_status not in {"missed", "skipped"} and not bool(entry.get("reveal_used", False))
-    entry["status"] = "solved"
-    entry["times_solved"] = max(0, int(entry.get("times_solved", 0) or 0)) + 1
-    entry["solved_at"] = now
-    entry["completed_clean"] = clean_value
-    if not clean_value:
-        entry["times_missed"] = max(0, int(entry.get("times_missed", 0) or 0)) + (0 if previous_status in {"missed", "skipped"} else 1)
-    entry["updated_at"] = now
-    return {"ok": True, "error": "", "progress": dict(entry)}
+    return LICHESS_PROGRESS_SERVICE.record_lichess_puzzle_complete(
+        data,
+        puzzle_id,
+        completed_clean=completed_clean,
+    )
 
 
 def classify_lichess_progress_bucket(progress_entry):
-    if not isinstance(progress_entry, dict):
-        return 0
-    status_value = normalize_lichess_progress_status(progress_entry.get("status"))
-    if status_value == "solved" and bool(progress_entry.get("completed_clean", False)):
-        return 2
-    return 1
+    return LICHESS_PROGRESS_SERVICE.classify_lichess_progress_bucket(progress_entry)
 
 
 def build_lichess_progress_snapshot(data, valid_items=None):
-    progress_map = get_lichess_puzzle_progress_map(data)
-    valid_puzzle_ids = [
-        str((item.get("row", {}) or {}).get("puzzle_id", "") or "").strip()
-        for item in (valid_items or [])
-        if isinstance(item, dict)
-    ]
-    valid_puzzle_ids = [item for item in valid_puzzle_ids if item]
-    relevant_entries = [progress_map.get(puzzle_id) for puzzle_id in valid_puzzle_ids if progress_map.get(puzzle_id)]
-    solved_clean_count = sum(1 for entry in relevant_entries if classify_lichess_progress_bucket(entry) == 2)
-    solved_count = sum(1 for entry in relevant_entries if normalize_lichess_progress_status((entry or {}).get("status")) == "solved")
-    review_needed_count = sum(1 for entry in relevant_entries if classify_lichess_progress_bucket(entry) == 1)
-    total_count = len(valid_puzzle_ids)
-    remaining_count = max(0, total_count - solved_clean_count)
-    all_clean_solved = bool(total_count) and solved_clean_count >= total_count
-    return {
-        "total_count": total_count,
-        "solved_count": solved_count,
-        "solved_clean_count": solved_clean_count,
-        "remaining_count": remaining_count,
-        "review_needed_count": review_needed_count,
-        "all_clean_solved": all_clean_solved,
-    }
+    return LICHESS_PROGRESS_SERVICE.build_lichess_progress_snapshot(data, valid_items=valid_items)
 
 
 def default_chess_courses():
@@ -7251,6 +6666,21 @@ def parse_timestamp(value):
         return None
 
 
+PUZZLE_ATTEMPT_SERVICE = PuzzleAttemptService(
+    current_timestamp=current_timestamp,
+    parse_timestamp=parse_timestamp,
+    default_chess_data=default_chess_data,
+    safe_non_negative_int=safe_non_negative_int,
+    normalize_candidate_status=normalize_chess_auto_candidate_status,
+    format_move_label=format_puzzle_move_label_from_fen,
+)
+LICHESS_PROGRESS_SERVICE = LichessProgressService(
+    current_timestamp=current_timestamp,
+    default_chess_data=default_chess_data,
+)
+PUZZLE_ATTEMPT_SERVICE.set_candidate_progress_updater(record_auto_puzzle_candidate_progress)
+
+
 def normalize_timestamp_value(value):
     timestamp = parse_timestamp(value)
     if not timestamp:
@@ -9617,6 +9047,7 @@ def reading_entry_retention_category(entry):
 
 
 def apply_reading_retention_policy(data):
+    started_at = time.monotonic()
     data = data if isinstance(data, dict) else default_reading_data()
     entries = list(data.get("entries", []) or [])
     retained_entries = list(entries)
@@ -9691,6 +9122,15 @@ def apply_reading_retention_policy(data):
     data["retention_cap"] = READING_RETENTION_CAP
     data["retention_last_run_archived_count"] = archived_total
     data["retention_last_run_summary"] = summary_by_category
+    app.logger.info(
+        "reading_retention shape elapsed_ms=%.1f entries_in=%s entries_out=%s categories=%s archived_total=%s changed=%s copy_entries=1 mutates_retained_entries=1",
+        (time.monotonic() - started_at) * 1000,
+        len(entries),
+        len(retained_entries),
+        len(READING_RETENTION_CATEGORIES),
+        archived_total,
+        bool(changed),
+    )
     return data, {
         "changed": changed,
         "archived_total": archived_total,
@@ -10382,10 +9822,31 @@ def reading_entry_matches_filters(entry, source="All Sources", status="All Statu
     return True
 
 
+def _get_reading_runtime_projection_service():
+    global _READING_RUNTIME_PROJECTION_SERVICE
+    if _READING_RUNTIME_PROJECTION_SERVICE is None:
+        _READING_RUNTIME_PROJECTION_SERVICE = ReadingRuntimeProjectionService(
+            app_logger=app.logger,
+            normalize_reading_source=normalize_reading_source,
+            normalize_reading_url=normalize_reading_url,
+            absolutize_reading_url=absolutize_reading_url,
+            reading_hash_key=reading_hash_key,
+            normalize_reading_category=normalize_reading_category,
+            normalize_reading_status=normalize_reading_status,
+            reading_visible_topic_label=reading_visible_topic_label,
+            reading_short_text_direction=reading_short_text_direction,
+            reading_title_direction=reading_title_direction,
+            format_timestamp_label=format_timestamp_label,
+            monotonic=time.monotonic,
+        )
+    return _READING_RUNTIME_PROJECTION_SERVICE
+
+
 def _get_reading_cache_access():
     global _READING_CACHE_ACCESS
     if _READING_CACHE_ACCESS is None:
         _READING_CACHE_ACCESS = ReadingCacheAccess(
+            app_logger=app.logger,
             default_reading_data=default_reading_data,
             normalize_reading_source=normalize_reading_source,
             normalize_reading_entry=normalize_reading_entry,
@@ -10397,11 +9858,13 @@ def _get_reading_cache_access():
             load_json_file=load_json_file,
             save_json_file=save_json_file,
             reading_data_path=READING_DATA_PATH,
+            reading_runtime_projection_service=_get_reading_runtime_projection_service(),
             reading_runtime=READING_RUNTIME,
             reading_retention_cap=READING_RETENTION_CAP,
             reading_map_news_english_feed_url=READING_MAP_NEWS_ENGLISH_FEED_URL,
             reading_morocco_world_news_name=READING_MOROCCO_WORLD_NEWS_NAME,
             reading_data_cache_fingerprint=_reading_data_cache_fingerprint,
+            monotonic=time.monotonic,
         )
     return _READING_CACHE_ACCESS
 
@@ -10441,6 +9904,8 @@ def _get_reading_rss_service():
             normalize_reading_space=normalize_reading_space,
             xml_etree=ET,
             feedparser_module=feedparser,
+            app_logger=app.logger,
+            monotonic=time.monotonic,
         )
     return _READING_RSS_SERVICE
 
@@ -10488,6 +9953,7 @@ def _get_reading_sync_service():
             dragon_reading_sync_backfill_bbc=DRAGON_READING_SYNC_BACKFILL_BBC,
             dragon_reading_sync_bbc_backfill_max=DRAGON_READING_SYNC_BBC_BACKFILL_MAX,
             reading_github_sync_online_message=READING_GITHUB_SYNC_ONLINE_MESSAGE,
+            app_logger=app.logger,
         )
     return _READING_SYNC_SERVICE
 
@@ -10741,6 +10207,20 @@ def update_reading_entry(entry_id, updates):
     return updated_entry
 
 
+def persist_reading_article_entry_update(entry_id, updates, log_reason=""):
+    started_at = time.monotonic()
+    updated_entry = update_reading_entry(entry_id, updates)
+    app.logger.info(
+        "reading_article persistence_update elapsed_ms=%.1f entry_id=%s updated=%s fields=%s reason=%s",
+        (time.monotonic() - started_at) * 1000,
+        str(entry_id or "").strip(),
+        bool(updated_entry),
+        ",".join(sorted((updates or {}).keys())) if isinstance(updates, dict) else "",
+        log_reason or "unspecified",
+    )
+    return updated_entry
+
+
 def get_reading_entry(entry_id):
     data = load_reading_data_cached()
     for index, entry in enumerate(data.get("entries", [])):
@@ -10751,6 +10231,7 @@ def get_reading_entry(entry_id):
 
 
 def extract_reading_article_page(url, timeout_seconds=None):
+    started_at = time.monotonic()
     article_url = normalize_reading_url(url)
     if not article_url:
         return {"status": "failed", "error": "Missing article URL."}
@@ -10879,7 +10360,7 @@ def extract_reading_article_page(url, timeout_seconds=None):
             status = "ok"
         else:
             status = "partial"
-        return {
+        result = {
             "status": status,
             "canonical_url": canonical_url,
             "image_url": image_url,
@@ -10902,8 +10383,21 @@ def extract_reading_article_page(url, timeout_seconds=None):
             "fetch_timeout_reason": str(request_diag.get("timeout_reason", "") or ""),
             "error": "" if normalized_text or image_url else "No readable article body found.",
         }
+        app.logger.info(
+            "reading_article_extract elapsed_ms=%.1f url=%s status=%s content_score=%s text_length=%s selector=%s paragraph_count=%s status_code=%s retry_count=%s",
+            (time.monotonic() - started_at) * 1000,
+            article_url,
+            result.get("status", ""),
+            int(result.get("content_score", 0) or 0),
+            int(result.get("extraction_text_length", 0) or 0),
+            str(result.get("extraction_selector", "") or "").strip() or "unknown",
+            int(result.get("extraction_paragraph_count", 0) or 0),
+            int(result.get("fetch_status_code", 0) or 0),
+            int(result.get("fetch_retry_count", 0) or 0),
+        )
+        return result
     except Exception as exc:
-        return {
+        result = {
             "status": "failed",
             "canonical_url": article_url,
             "image_url": "",
@@ -10926,6 +10420,13 @@ def extract_reading_article_page(url, timeout_seconds=None):
             "fetch_timeout_reason": "",
             "error": reading_describe_article_fetch_error(exc, timeout_seconds=request_timeout),
         }
+        app.logger.warning(
+            "reading_article_extract failed elapsed_ms=%.1f url=%s error=%s",
+            (time.monotonic() - started_at) * 1000,
+            article_url,
+            result.get("error", ""),
+        )
+        return result
 
 
 def reading_article_live_extraction_allowed(force_refresh=False):
@@ -10933,8 +10434,23 @@ def reading_article_live_extraction_allowed(force_refresh=False):
 
 
 def ensure_reading_entry_content(entry_id, force_refresh=False, allow_live_extraction=False, log_reason=""):
+    started_at = time.monotonic()
+    lookup_started_at = time.monotonic()
     entry = get_reading_entry(entry_id)
+    app.logger.info(
+        "reading_article entry_lookup elapsed_ms=%.1f entry_id=%s found=%s reason=%s",
+        (time.monotonic() - lookup_started_at) * 1000,
+        entry_id,
+        bool(entry),
+        log_reason or "unspecified",
+    )
     if not entry:
+        app.logger.info(
+            "reading_article ensure_content elapsed_ms=%.1f entry_id=%s found=0 reason=%s",
+            (time.monotonic() - started_at) * 1000,
+            entry_id,
+            log_reason or "unspecified",
+        )
         return None
     media_needs_enrichment = reading_content_needs_media_enrichment(entry.get("content_html", ""))
     needs_upgrade = reading_entry_needs_content_upgrade(entry, force_refresh=force_refresh)
@@ -10942,20 +10458,52 @@ def ensure_reading_entry_content(entry_id, force_refresh=False, allow_live_extra
     if force_refresh:
         needs_upgrade = True
     if entry.get("content_html") and not media_needs_enrichment and not needs_upgrade:
+        app.logger.info(
+            "reading_article ensure_content elapsed_ms=%.1f entry_id=%s action=cache_hit_html status=%s reason=%s",
+            (time.monotonic() - started_at) * 1000,
+            entry_id,
+            str(entry.get("extraction_status", "") or "").strip() or "none",
+            log_reason or "unspecified",
+        )
         return entry
     if media_needs_enrichment and entry.get("extraction_status") == "failed" and entry.get("content_cached_at") and not needs_upgrade:
+        app.logger.info(
+            "reading_article ensure_content elapsed_ms=%.1f entry_id=%s action=skip_failed_media_retry reason=%s",
+            (time.monotonic() - started_at) * 1000,
+            entry_id,
+            log_reason or "unspecified",
+        )
         return entry
     if entry.get("content_text") and entry.get("image_url") and entry.get("extraction_status") == "ok" and not media_needs_enrichment and not needs_upgrade:
+        app.logger.info(
+            "reading_article ensure_content elapsed_ms=%.1f entry_id=%s action=cache_hit_ok reason=%s",
+            (time.monotonic() - started_at) * 1000,
+            entry_id,
+            log_reason or "unspecified",
+        )
         return entry
     if entry.get("extraction_status") in {"ok", "failed"} and entry.get("content_cached_at") and not media_needs_enrichment and not needs_upgrade:
+        app.logger.info(
+            "reading_article ensure_content elapsed_ms=%.1f entry_id=%s action=cache_hit_terminal status=%s reason=%s",
+            (time.monotonic() - started_at) * 1000,
+            entry_id,
+            str(entry.get("extraction_status", "") or "").strip() or "none",
+            log_reason or "unspecified",
+        )
         return entry
     if entry.get("content_text") and entry.get("extraction_status") == "feed" and entry.get("content_html") and not media_needs_enrichment and not needs_upgrade:
+        app.logger.info(
+            "reading_article ensure_content elapsed_ms=%.1f entry_id=%s action=feed_cache_hit reason=%s",
+            (time.monotonic() - started_at) * 1000,
+            entry_id,
+            log_reason or "unspecified",
+        )
         return entry
 
     if not live_extraction_allowed:
         if log_reason:
             app.logger.info(
-                "reading_article cache_only entry_id=%s reason=%s status=%s has_html=%s has_text=%s needs_upgrade=%s media_enrichment=%s",
+                "reading_article cache_only entry_id=%s reason=%s status=%s has_html=%s has_text=%s needs_upgrade=%s media_enrichment=%s elapsed_ms=%.1f",
                 entry_id,
                 log_reason,
                 str(entry.get("extraction_status", "") or "").strip() or "none",
@@ -10963,14 +10511,16 @@ def ensure_reading_entry_content(entry_id, force_refresh=False, allow_live_extra
                 bool(entry.get("content_text") or entry.get("excerpt")),
                 bool(needs_upgrade),
                 bool(media_needs_enrichment),
+                (time.monotonic() - started_at) * 1000,
             )
         return entry
 
     app.logger.info(
-        "reading_article live_extraction entry_id=%s reason=%s force_refresh=%s",
+        "reading_article live_extraction entry_id=%s reason=%s force_refresh=%s stale_retry_risk=%s",
         entry_id,
         log_reason or "unspecified",
         bool(force_refresh),
+        bool(entry.get("content_cached_at")) and str(entry.get("extraction_status", "") or "").strip().lower() == "failed",
     )
     extraction = extract_reading_article_page(entry.get("original_url") or entry.get("url"))
     merged = reading_merge_extraction_snapshot(entry, extraction, force_refresh=force_refresh)
@@ -10993,7 +10543,14 @@ def ensure_reading_entry_content(entry_id, force_refresh=False, allow_live_extra
         )
         if key in merged
     }
-    updated = update_reading_entry(entry_id, updates)
+    updated = persist_reading_article_entry_update(entry_id, updates, log_reason=f"{log_reason or 'article'}:hydration")
+    app.logger.info(
+        "reading_article ensure_content elapsed_ms=%.1f entry_id=%s action=live_extract_complete status=%s updated=%s",
+        (time.monotonic() - started_at) * 1000,
+        entry_id,
+        str((updated or merged or {}).get("extraction_status", "") or "").strip() or "none",
+        bool(updated),
+    )
     return updated or entry
 
 
@@ -11526,20 +11083,27 @@ def reading_tts_timings_url(entry_id, version=""):
     return url_for("reading_article_audio_timings", **params)
 
 
-def _get_reading_service():
-    global _READING_SERVICE
-    if _READING_SERVICE is None:
-        _READING_SERVICE = ReadingService(
+def _get_reading_runtime_service():
+    global _READING_RUNTIME_SERVICE
+    if _READING_RUNTIME_SERVICE is None:
+        # Ownership note: retained GET read shaping now lives in the runtime service layer.
+        _READING_RUNTIME_SERVICE = ReadingRuntimeService(
+            app_logger=app.logger,
             load_reading_data_cached=load_reading_data_cached,
             default_reading_data=default_reading_data,
             apply_reading_retention_policy=apply_reading_retention_policy,
             normalize_reading_source=normalize_reading_source,
             normalize_reading_url=normalize_reading_url,
+            absolutize_reading_url=absolutize_reading_url,
+            reading_hash_key=reading_hash_key,
+            reading_runtime_projection_service=_get_reading_runtime_projection_service(),
             normalize_reading_list_entry=normalize_reading_list_entry,
             parse_timestamp=parse_timestamp,
             normalize_reading_category=normalize_reading_category,
             normalize_reading_status=normalize_reading_status,
             reading_visible_topic_label=reading_visible_topic_label,
+            reading_short_text_direction=reading_short_text_direction,
+            reading_title_direction=reading_title_direction,
             reading_entry_matches_filters=reading_entry_matches_filters,
             reading_entry_sort_key=reading_entry_sort_key,
             reading_category_label=reading_category_label,
@@ -11549,24 +11113,59 @@ def _get_reading_service():
             reading_list_default_limit=READING_LIST_DEFAULT_LIMIT,
             reading_list_limit_max=READING_LIST_LIMIT_MAX,
             reading_list_limit_step=READING_LIST_LIMIT_STEP,
+            monotonic=time.monotonic,
         )
-    return _READING_SERVICE
+    return _READING_RUNTIME_SERVICE
+
+
+def _get_reading_service():
+    return _get_reading_runtime_service()
 
 
 def build_reading_view():
-    return _get_reading_service().build_reading_view(request.args)
+    started_at = time.monotonic()
+    view = _get_reading_runtime_service().build_reading_view(request.args)
+    app.logger.info(
+        "reading_route view_built elapsed_ms=%.1f entries_displayed=%s total_matching=%s source_count=%s has_more=%s",
+        (time.monotonic() - started_at) * 1000,
+        len((view or {}).get("entries", []) or []),
+        int((view or {}).get("total_matching", 0) or 0),
+        int((view or {}).get("source_count", 0) or 0),
+        bool((view or {}).get("has_more_entries", False)),
+    )
+    return view
+
+
+def build_reading_article_context(entry_id):
+    started_at = time.monotonic()
+    context = _get_reading_runtime_service().build_reading_article_context(entry_id, request.args)
+    current_index = (context or {}).get("current_index", -1)
+    app.logger.info(
+        "reading_route article_context_built elapsed_ms=%.1f entry_id=%s entries_displayed=%s current_index=%s found=%s",
+        (time.monotonic() - started_at) * 1000,
+        str(entry_id or "").strip(),
+        len((context or {}).get("entries", []) or []),
+        int(current_index if current_index is not None else -1),
+        bool((context or {}).get("preferred_entry")),
+    )
+    return context
 
 
 def build_reading_admin_context():
+    started_at = time.monotonic()
     data = load_reading_data()
-    sources = [normalize_reading_source(source, index) for index, source in enumerate(data.get("sources", []))]
+    projection = _get_reading_runtime_projection_service().build_projection(data, context_label="admin")
+    sources = [dict(source) for source in projection.sources]
     rss_sources = [source for source in sources if reading_is_rss_source(source)]
-    source_lookup = {source["name"].lower(): source["id"] for source in sources if source.get("name")}
-    source_lookup.update({normalize_reading_url(source.get("url", "")).lower(): source["id"] for source in sources if source.get("url")})
-    source_lookup.update({source["id"]: source["id"] for source in sources})
-    source_category_lookup = {source["id"]: source.get("category", "news") for source in sources}
-    source_category_lookup.update({source["name"].lower(): source.get("category", "news") for source in sources if source.get("name")})
-    entries = [normalize_reading_entry(entry, index, source_lookup=source_lookup, source_category_lookup=source_category_lookup) for index, entry in enumerate(data.get("entries", []))]
+    source_lookup = dict(projection.source_lookup)
+    source_category_lookup = dict(projection.source_category_lookup)
+    normalize_started_at = time.monotonic()
+    retention_entries = [
+        normalize_reading_entry(entry, index, source_lookup=source_lookup, source_category_lookup=source_category_lookup)
+        for index, entry in enumerate(data.get("entries", []))
+    ]
+    normalize_elapsed_ms = (time.monotonic() - normalize_started_at) * 1000
+    entries = [dict(entry) for entry in projection.lightweight_entries]
     source_entry_count = {}
     for entry in entries:
         key = entry.get("source_id") or entry.get("source", "")
@@ -11575,7 +11174,7 @@ def build_reading_admin_context():
     retention_current_counts = {}
     for category in READING_RETENTION_CATEGORIES:
         category_entries = [
-            entry for entry in entries
+            entry for entry in retention_entries
             if reading_entry_retention_category(entry) == category and normalize_reading_status(entry.get("status", "")) != "archived"
         ]
         retention_current_counts[category] = {
@@ -11599,6 +11198,15 @@ def build_reading_admin_context():
         source["rss_known_entries_count"] = int(source.get("known_entries_count", 0) or 0)
     backup_files = list_reading_backup_files()
     recovery_hits = collect_reading_recovery_trace_hits()
+    app.logger.info(
+        "reading_admin_context build elapsed_ms=%.1f projection_entries=%s normalize_ms=%.1f sources=%s entries=%s retention_summary_categories=%s full_entry_rebuild=1 owned_projection=1",
+        (time.monotonic() - started_at) * 1000,
+        len(entries),
+        normalize_elapsed_ms,
+        len(sources),
+        len(entries),
+        len(retention_current_counts),
+    )
     return {
         "reading_sources": sources,
         "reading_rss_sources": rss_sources,
@@ -11907,6 +11515,102 @@ def _youtube_trace(event, **fields):
     print(safe_message)
 
 
+def _youtube_perf_log(event, **fields):
+    parts = [f"event={event}"]
+    for key, value in fields.items():
+        if isinstance(value, float):
+            value = f"{value:.2f}"
+        elif isinstance(value, bool):
+            value = int(value)
+        if value in ("", None):
+            continue
+        parts.append(f"{key}={value}")
+    message = "[youtube-perf] " + " ".join(parts)
+    safe_message = message.encode("ascii", errors="backslashreplace").decode("ascii")
+    print(safe_message)
+
+
+def _request_runtime_memo_store():
+    if not has_request_context():
+        return None
+    store = getattr(g, "_dragon_runtime_memo", None)
+    if store is None:
+        store = {}
+        g._dragon_runtime_memo = store
+    return store
+
+
+def _request_runtime_memo_get(cache_key):
+    store = _request_runtime_memo_store()
+    if store is None:
+        return None
+    return store.get(cache_key)
+
+
+def _request_runtime_memo_set(cache_key, value):
+    store = _request_runtime_memo_store()
+    if store is not None:
+        store[cache_key] = value
+    return value
+
+
+def _timed_runtime_memo_get(bucket, cache_key, ttl_seconds=YOUTUBE_RUNTIME_MEMO_TTL_SECONDS):
+    now_value = time.monotonic()
+    with RUNTIME_CACHE_LOCK:
+        timed_memo = RUNTIME_CACHE.setdefault("timed_memo", {})
+        bucket_store = timed_memo.setdefault(bucket, {})
+        entry = bucket_store.get(cache_key)
+        if not isinstance(entry, dict):
+            return None
+        expires_at = float(entry.get("expires_at", 0.0) or 0.0)
+        if expires_at <= now_value:
+            bucket_store.pop(cache_key, None)
+            return None
+        value = entry.get("value")
+    return clone_json_compatible(value)
+
+
+def _timed_runtime_memo_set(bucket, cache_key, value, ttl_seconds=YOUTUBE_RUNTIME_MEMO_TTL_SECONDS):
+    expires_at = time.monotonic() + max(float(ttl_seconds or 0.0), 0.0)
+    cloned_value = clone_json_compatible(value)
+    with RUNTIME_CACHE_LOCK:
+        timed_memo = RUNTIME_CACHE.setdefault("timed_memo", {})
+        bucket_store = timed_memo.setdefault(bucket, {})
+        bucket_store[cache_key] = {
+            "value": cloned_value,
+            "expires_at": expires_at,
+        }
+    return clone_json_compatible(cloned_value)
+
+
+def _request_is_navigation_render():
+    return bool(has_request_context() and getattr(g, "_dragon_navigation_render_active", False))
+
+
+def _youtube_refresh_suppression_reason():
+    if not has_request_context():
+        return ""
+    if _request_is_navigation_render():
+        return "navigation_render"
+    endpoint = str(getattr(request, "endpoint", "") or "").strip().lower()
+    if endpoint == "video_detail":
+        return "video_detail_read"
+    if endpoint in {"watchlater", "library_yt", "section_page", "pockettube_groups"}:
+        return "section_read"
+    return ""
+
+
+def _shared_youtube_request_payload():
+    memoized = _request_runtime_memo_get("youtube_request_payload")
+    if isinstance(memoized, dict):
+        return memoized
+    payload = {
+        "playlists_by_section": load_playlists(),
+        "cache_data": load_cache_data(),
+    }
+    return _request_runtime_memo_set("youtube_request_payload", payload)
+
+
 def invalidate_youtube_derived_caches(reason="", clear_channel_latest=True, clear_section_feeds=True):
     reason_text = str(reason or "").strip() or "unspecified"
     with RUNTIME_CACHE_LOCK:
@@ -11959,12 +11663,63 @@ def invalidate_youtube_derived_caches(reason="", clear_channel_latest=True, clea
     )
 
 
-def schedule_youtube_cache_refresh(cache_key, refresh_fn):
+def schedule_youtube_cache_refresh(cache_key, refresh_fn, reason="", cooldown_seconds=YOUTUBE_REFRESH_COOLDOWN_SECONDS):
+    suppression_reason = _youtube_refresh_suppression_reason()
+    now_value = time.monotonic()
     with RUNTIME_CACHE_LOCK:
         refreshing = RUNTIME_CACHE.setdefault("refreshing", {})
+        refresh_meta = RUNTIME_CACHE.setdefault("refresh_meta", {})
+        meta = refresh_meta.setdefault(cache_key, {})
+        if suppression_reason:
+            suppressed_count = int(meta.get("suppressed_count", 0) or 0) + 1
+            meta["suppressed_count"] = suppressed_count
+            print(
+                f"[youtube-group-cache] key={cache_key} refresh=suppressed "
+                f"reason={suppression_reason} trigger={str(reason or 'unspecified')}"
+            )
+            _youtube_trace(
+                "background_refresh_suppressed",
+                cache_key=cache_key,
+                reason=suppression_reason,
+                trigger=str(reason or "unspecified"),
+                suppressed_count=suppressed_count,
+            )
+            return False
         if refreshing.get(cache_key):
+            coalesced_count = int(meta.get("coalesced_count", 0) or 0) + 1
+            meta["coalesced_count"] = coalesced_count
+            print(
+                f"[youtube-group-cache] key={cache_key} refresh=coalesced "
+                f"reason=inflight trigger={str(reason or 'unspecified')}"
+            )
+            _youtube_trace(
+                "background_refresh_coalesced",
+                cache_key=cache_key,
+                reason="inflight",
+                trigger=str(reason or "unspecified"),
+                coalesced_count=coalesced_count,
+            )
+            return False
+        last_started_at = float(meta.get("last_started_at", 0.0) or 0.0)
+        if last_started_at and (now_value - last_started_at) < max(float(cooldown_seconds or 0.0), 0.0):
+            coalesced_count = int(meta.get("coalesced_count", 0) or 0) + 1
+            meta["coalesced_count"] = coalesced_count
+            print(
+                f"[youtube-group-cache] key={cache_key} refresh=coalesced "
+                f"reason=cooldown trigger={str(reason or 'unspecified')}"
+            )
+            _youtube_trace(
+                "background_refresh_coalesced",
+                cache_key=cache_key,
+                reason="cooldown",
+                trigger=str(reason or "unspecified"),
+                cooldown_seconds=int(cooldown_seconds or 0),
+                coalesced_count=coalesced_count,
+            )
             return False
         refreshing[cache_key] = True
+        meta["last_started_at"] = now_value
+        meta["last_reason"] = str(reason or "").strip() or "unspecified"
 
     def _runner():
         try:
@@ -11987,6 +11742,9 @@ def schedule_youtube_cache_refresh(cache_key, refresh_fn):
         finally:
             with RUNTIME_CACHE_LOCK:
                 RUNTIME_CACHE.setdefault("refreshing", {})[cache_key] = False
+                refresh_meta = RUNTIME_CACHE.setdefault("refresh_meta", {})
+                meta = refresh_meta.setdefault(cache_key, {})
+                meta["last_completed_at"] = time.monotonic()
 
     threading.Thread(target=_runner, daemon=True).start()
     return True
@@ -12063,6 +11821,14 @@ def apply_limit(items, limit_value):
 
 
 def build_youtube_section_playlists(section_name, admin_data=None):
+    request_cache_key = f"youtube_section_playlists:{normalize_section_name(section_name)}:{request.full_path if has_request_context() else ''}"
+    memoized = _request_runtime_memo_get(request_cache_key)
+    if isinstance(memoized, dict):
+        return (
+            clone_json_compatible(memoized.get("playlists_with_videos", [])),
+            memoized.get("default_limit", 10),
+            clone_json_compatible(memoized.get("section_channel_groups", [])),
+        )
     playlists = get_section_playlists(section_name)
     limit_value = get_requested_limit(10)
     requested_page = request.args.get("playlist_page", "")
@@ -12076,6 +11842,8 @@ def build_youtube_section_playlists(section_name, admin_data=None):
         requested_page = max(int(requested_page), 1)
     except (TypeError, ValueError):
         requested_page = 1
+    shared_payload = _shared_youtube_request_payload()
+    shared_cache_data = shared_payload.get("cache_data", {})
 
     section_profile = youtube_section_blueprint(section_name)
     section_profile.update(build_youtube_channel_curation_context(section_name, admin_data=admin_data))
@@ -12083,7 +11851,7 @@ def build_youtube_section_playlists(section_name, admin_data=None):
     section_channel_inputs = []
     is_german_section = normalize_section_name(section_name) == normalize_section_name("German")
     for index, pl in enumerate(playlists):
-        videos = get_all_playlist_videos(pl["id"])
+        videos = get_all_playlist_videos(pl["id"], cache_data=shared_cache_data)
         # Some German admin playlists were cached from an earlier bad fetch with only
         # the first item. Retry through the normal playlistItems helper to refresh the
         # cache when the count looks suspiciously low.
@@ -12148,7 +11916,15 @@ def build_youtube_section_playlists(section_name, admin_data=None):
         section_name=section_name,
         section_profile=section_profile,
     )
-    return playlists_with_videos, limit_value, section_channel_groups
+    _request_runtime_memo_set(
+        request_cache_key,
+        {
+            "playlists_with_videos": playlists_with_videos,
+            "default_limit": limit_value,
+            "section_channel_groups": section_channel_groups,
+        },
+    )
+    return clone_json_compatible(playlists_with_videos), limit_value, clone_json_compatible(section_channel_groups)
 
 
 def youtube_dependencies_ready():
@@ -13664,6 +13440,11 @@ def _refresh_pockettube_section_runtime_cache(section_name, admin_data=None, lim
 
 
 def build_youtube_section_feed_context(section_name, admin_data=None, limit=24, force_refresh=False):
+    request_cache_key = f"youtube_section_feed_context:{_youtube_section_feed_cache_key(section_name)}:{int(limit)}:{int(force_refresh)}"
+    if not force_refresh:
+        memoized = _request_runtime_memo_get(request_cache_key)
+        if isinstance(memoized, dict):
+            return clone_json_compatible(memoized)
     admin_data = admin_data if isinstance(admin_data, dict) else load_admin_data()
     section_key = _youtube_section_feed_cache_key(section_name)
     _youtube_trace(
@@ -13706,9 +13487,12 @@ def build_youtube_section_feed_context(section_name, admin_data=None, limit=24, 
                         admin_data=admin_data,
                         limit=limit,
                     ),
+                    reason="stale_runtime_section_feed",
                 )
             if has_pockettube_feed_content(cached):
-                return _apply_pockettube_feed_pagination(cached)
+                result = _apply_pockettube_feed_pagination(cached)
+                _request_runtime_memo_set(request_cache_key, result)
+                return clone_json_compatible(result)
             app.logger.info("[youtube-group-cache] key=%s source=runtime-empty-rebuild", section_key)
             cached_feeds.pop(section_key, None)
 
@@ -13734,8 +13518,11 @@ def build_youtube_section_feed_context(section_name, admin_data=None, limit=24, 
                         admin_data=admin_data,
                         limit=limit,
                     ),
+                    reason="stale_persisted_section_feed",
                 )
-            return _apply_pockettube_feed_pagination(persisted_entry)
+            result = _apply_pockettube_feed_pagination(persisted_entry)
+            _request_runtime_memo_set(request_cache_key, result)
+            return clone_json_compatible(result)
         app.logger.info("[youtube-group-cache] key=%s source=disk-empty-rebuild", section_key)
         persisted_entry = None
         persisted_stale = True
@@ -13786,7 +13573,10 @@ def build_youtube_section_feed_context(section_name, admin_data=None, limit=24, 
             newest_published_at="-",
             source_used="none",
         )
-        return _apply_pockettube_feed_pagination(empty_context)
+        result = _apply_pockettube_feed_pagination(empty_context)
+        if not force_refresh:
+            _request_runtime_memo_set(request_cache_key, result)
+        return clone_json_compatible(result)
 
     section_profile.update({
         "section_kind": "curated",
@@ -13952,7 +13742,10 @@ def build_youtube_section_feed_context(section_name, admin_data=None, limit=24, 
         latest_fetch_found=(latest_fetch_diagnostics or {}).get("latest_videos_found", 0),
         **_youtube_trace_video_stats(feed_items),
     )
-    return _apply_pockettube_feed_pagination(feed_context)
+    result = _apply_pockettube_feed_pagination(feed_context)
+    if not force_refresh:
+        _request_runtime_memo_set(request_cache_key, result)
+    return clone_json_compatible(result)
 
 
 def _sanitize_admin_playlist(item):
@@ -14141,6 +13934,17 @@ def build_admin_sections():
 
 
 def build_combined_sections():
+    request_memoized = _request_runtime_memo_get("build_combined_sections")
+    if isinstance(request_memoized, list):
+        _youtube_perf_log("combined_sections_memo", cache_layer="request", status="hit", section_count=len(request_memoized))
+        return clone_json_compatible(request_memoized)
+    timed_memoized = _timed_runtime_memo_get("youtube_combined_sections", "default")
+    if isinstance(timed_memoized, list):
+        _youtube_perf_log("combined_sections_memo", cache_layer="runtime", status="hit", section_count=len(timed_memoized))
+        _request_runtime_memo_set("build_combined_sections", timed_memoized)
+        return clone_json_compatible(timed_memoized)
+
+    started_at = time.monotonic()
     merged = {}
     # Prefer current admin storage when the same playlist exists in both sources.
     # Legacy entries remain available only when there is no current admin copy.
@@ -14221,7 +14025,17 @@ def build_combined_sections():
     sections.sort(key=lambda item: (int(item.get("section_order", 999) or 999), item.get("name", "").lower()))
     for section in sections:
         section["playlists"].sort(key=lambda item: item.get("name", "").lower())
-    return sections
+    _timed_runtime_memo_set("youtube_combined_sections", "default", sections)
+    _request_runtime_memo_set("build_combined_sections", sections)
+    _youtube_perf_log(
+        "combined_sections_memo",
+        cache_layer="build",
+        status="miss",
+        section_count=len(sections),
+        elapsed_ms=(time.monotonic() - started_at) * 1000,
+        avoided_rebuilds=0,
+    )
+    return clone_json_compatible(sections)
 
 
 def find_admin_section(admin_data, section_name):
@@ -14660,6 +14474,9 @@ def get_section_route(section_name):
 
 
 def get_navigation_items():
+    memoized = _request_runtime_memo_get("navigation_items")
+    if isinstance(memoized, list):
+        return clone_json_compatible(memoized)
     core_items = [
         {"href": url_for("home"), "label": "Home", "short_label": "Home", "icon": "fa-solid fa-house", "active_paths": [url_for("home")]},
         {"href": url_for("library"), "label": "Movies", "short_label": "Movies", "icon": "fa-solid fa-film", "active_paths": [url_for("library")]},
@@ -14711,11 +14528,49 @@ def get_navigation_items():
         {"href": url_for("movies_review"), "label": "Review Queue", "short_label": "Review", "icon": "fa-solid fa-triangle-exclamation", "active_paths": [url_for("movies_review")]},
         {"href": url_for("admin"), "label": "Admin", "short_label": "Admin", "icon": "fa-solid fa-sliders", "active_paths": [url_for("admin")]},
     ]
-    return core_items + [pockettube_item] + content_items + tail_items
+    items = core_items + [pockettube_item] + content_items + tail_items
+    _request_runtime_memo_set("navigation_items", items)
+    return clone_json_compatible(items)
 
 
 def build_navigation_context():
-    nav_items = get_navigation_items()
+    request_memoized = _request_runtime_memo_get("navigation_context")
+    if isinstance(request_memoized, dict):
+        _youtube_perf_log(
+            "navigation_context_memo",
+            cache_layer="request",
+            status="hit",
+            avoided_rebuilds=1,
+            request_path=getattr(request, "path", ""),
+        )
+        return clone_json_compatible(request_memoized)
+
+    started_at = time.monotonic()
+    auth_key = (
+        int(dragon_auth_enabled()),
+        int(dragon_site_protection_enabled()),
+        int(dragon_is_authenticated()),
+    )
+    timed_cache_key = ":".join(str(part) for part in auth_key)
+    timed_memoized = _timed_runtime_memo_get("youtube_navigation_context", timed_cache_key)
+    if isinstance(timed_memoized, dict):
+        _request_runtime_memo_set("navigation_context", timed_memoized)
+        _youtube_perf_log(
+            "navigation_context_memo",
+            cache_layer="runtime",
+            status="hit",
+            avoided_rebuilds=1,
+            request_path=getattr(request, "path", ""),
+        )
+        return clone_json_compatible(timed_memoized)
+
+    if has_request_context():
+        g._dragon_navigation_render_active = True
+    try:
+        nav_items = get_navigation_items()
+    finally:
+        if has_request_context():
+            g._dragon_navigation_render_active = False
     top_priority_order = [
         normalize_section_name("Home"),
         normalize_section_name("Movies"),
@@ -14738,7 +14593,7 @@ def build_navigation_context():
         else:
             sidebar_dynamic_items.insert(0, item)
     top_nav_items = [top_nav_lookup[key] for key in top_priority_order if key in top_nav_lookup]
-    return {
+    context = {
         "nav_items": nav_items,
         "top_nav_items": top_nav_items,
         "sidebar_dynamic_items": sidebar_dynamic_items,
@@ -14748,6 +14603,24 @@ def build_navigation_context():
         "ai_default_mode": "cinematic",
         "ai_page_context": "general",
     }
+    _timed_runtime_memo_set("youtube_navigation_context", timed_cache_key, context)
+    _request_runtime_memo_set("navigation_context", context)
+    _youtube_perf_log(
+        "navigation_context",
+        elapsed_ms=(time.monotonic() - started_at) * 1000,
+        nav_count=len(nav_items),
+        top_nav_count=len(top_nav_items),
+        sidebar_dynamic_count=len(sidebar_dynamic_items),
+        request_path=getattr(request, "path", ""),
+    )
+    _youtube_perf_log(
+        "navigation_context_memo",
+        cache_layer="build",
+        status="miss",
+        avoided_rebuilds=0,
+        request_path=getattr(request, "path", ""),
+    )
+    return clone_json_compatible(context)
 
 
 def ai_context_for_section(section_name):
@@ -20091,6 +19964,7 @@ def adapt_german_playlist_for_shared_render(item):
     return adapted
 
 def load_playlists():
+    started_at = time.monotonic()
     default = {"German": [], "Chess": [], "Library": [], "YouTube Watch Later": []}
     playlists = {}
     for section in build_combined_sections():
@@ -20111,6 +19985,12 @@ def load_playlists():
     for key in default:
         if key not in playlists:
             playlists[key] = []
+    _youtube_perf_log(
+        "load_playlists",
+        elapsed_ms=(time.monotonic() - started_at) * 1000,
+        section_count=len(playlists),
+        playlist_count=sum(len(items) for items in playlists.values()),
+    )
     return playlists
 
 
@@ -20955,11 +20835,24 @@ def fetch_playlist_videos_from_youtube(playlist_id, max_total=5000):
     return []
 
 
-def get_all_playlist_videos(playlist_id, max_total=5000, force_refresh=False):
+def get_all_playlist_videos(playlist_id, max_total=5000, force_refresh=False, cache_data=None):
     if not playlist_id or playlist_id == "PASTE_PLAYLIST_ID_HERE":
         return []
+    request_cache_key = f"playlist_videos:{playlist_id}:{int(max_total)}:{int(force_refresh)}"
+    if not force_refresh:
+        memoized = _request_runtime_memo_get(request_cache_key)
+        if isinstance(memoized, list):
+            return clone_json_compatible(memoized)
 
-    cache_data = load_cache_data()
+    cache_load_started_at = time.monotonic()
+    cache_source = "shared"
+    if cache_data is None:
+        shared_payload = _shared_youtube_request_payload()
+        cache_data = shared_payload.get("cache_data")
+        if cache_data is None:
+            cache_data = load_cache_data()
+            cache_source = "disk"
+    cache_load_elapsed_ms = (time.monotonic() - cache_load_started_at) * 1000
     playlist_entry = cache_data.get("youtube_playlists", {}).get(playlist_id, {})
     cached_videos = []
     if isinstance(playlist_entry, dict):
@@ -20978,6 +20871,16 @@ def get_all_playlist_videos(playlist_id, max_total=5000, force_refresh=False):
         runtime_entry = YOUTUBE_RUNTIME.playlist_index.get(playlist_id)
         if runtime_entry is not None and not force_refresh and has_cached_videos:
             videos = apply_cached_durations([dict(video) for video in runtime_entry])
+            _youtube_perf_log(
+                "playlist_cache_hit",
+                playlist_id=playlist_id,
+                cache_layer="runtime",
+                cache_source=cache_source,
+                cache_load_ms=cache_load_elapsed_ms,
+                video_count=len(videos),
+                snapshot_age_seconds=int(snapshot_age_seconds or 0),
+                cache_stale=cache_stale,
+            )
             if cache_stale:
                 print(
                     f"[youtube-playlist-cache] key={playlist_id} "
@@ -20987,13 +20890,25 @@ def get_all_playlist_videos(playlist_id, max_total=5000, force_refresh=False):
                 schedule_youtube_cache_refresh(
                     f"playlist:{playlist_id}",
                     lambda: get_all_playlist_videos(playlist_id, max_total=max_total, force_refresh=True),
+                    reason="stale_runtime_snapshot",
                 )
-            return videos
+            _request_runtime_memo_set(request_cache_key, videos)
+            return clone_json_compatible(videos)
 
     if not force_refresh and has_cached_videos:
         videos = [dict(video) for video in cached_videos]
         with RUNTIME_CACHE_LOCK:
             YOUTUBE_RUNTIME.playlist_index[playlist_id] = [dict(video) for video in videos]
+        _youtube_perf_log(
+            "playlist_cache_hit",
+            playlist_id=playlist_id,
+            cache_layer="snapshot",
+            cache_source=cache_source,
+            cache_load_ms=cache_load_elapsed_ms,
+            video_count=len(videos),
+            snapshot_age_seconds=int(snapshot_age_seconds or 0),
+            cache_stale=cache_stale,
+        )
         if cache_stale:
             print(
                 f"[youtube-playlist-cache] key={playlist_id} "
@@ -21003,10 +20918,15 @@ def get_all_playlist_videos(playlist_id, max_total=5000, force_refresh=False):
             schedule_youtube_cache_refresh(
                 f"playlist:{playlist_id}",
                 lambda: get_all_playlist_videos(playlist_id, max_total=max_total, force_refresh=True),
+                reason="stale_snapshot",
             )
-        return apply_cached_durations(videos)
+        result = apply_cached_durations(videos)
+        _request_runtime_memo_set(request_cache_key, result)
+        return clone_json_compatible(result)
 
+    source_fetch_started_at = time.monotonic()
     videos = fetch_playlist_videos_from_youtube(playlist_id, max_total=max_total)
+    source_fetch_elapsed_ms = (time.monotonic() - source_fetch_started_at) * 1000
     if videos:
         source_changed = videos != cached_videos
         old_runtime_videos = None
@@ -21027,19 +20947,51 @@ def get_all_playlist_videos(playlist_id, max_total=5000, force_refresh=False):
             snapshot_size_after=len(videos),
             **_youtube_trace_video_stats(videos),
         )
+        _youtube_perf_log(
+            "playlist_cache_miss_refresh",
+            playlist_id=playlist_id,
+            cache_source=cache_source,
+            cache_load_ms=cache_load_elapsed_ms,
+            fetch_ms=source_fetch_elapsed_ms,
+            video_count=len(videos),
+            source_changed=source_changed,
+        )
         if source_changed:
             invalidate_youtube_derived_caches(reason=f"playlist_refresh:{playlist_id}")
-        return apply_cached_durations([dict(video) for video in videos])
+        result = apply_cached_durations([dict(video) for video in videos])
+        if not force_refresh:
+            _request_runtime_memo_set(request_cache_key, result)
+        return clone_json_compatible(result)
 
     if cached_videos:
         with RUNTIME_CACHE_LOCK:
             YOUTUBE_RUNTIME.playlist_index[playlist_id] = [dict(video) for video in cached_videos]
-        return apply_cached_durations([dict(video) for video in cached_videos])
+        _youtube_perf_log(
+            "playlist_cache_fallback",
+            playlist_id=playlist_id,
+            cache_source=cache_source,
+            cache_load_ms=cache_load_elapsed_ms,
+            fetch_ms=source_fetch_elapsed_ms,
+            video_count=len(cached_videos),
+        )
+        result = apply_cached_durations([dict(video) for video in cached_videos])
+        if not force_refresh:
+            _request_runtime_memo_set(request_cache_key, result)
+        return clone_json_compatible(result)
 
     set_playlist_cache_entry(cache_data, playlist_id, [])
     save_cache_data(cache_data)
     with RUNTIME_CACHE_LOCK:
         YOUTUBE_RUNTIME.playlist_index[playlist_id] = []
+    _youtube_perf_log(
+        "playlist_cache_empty",
+        playlist_id=playlist_id,
+        cache_source=cache_source,
+        cache_load_ms=cache_load_elapsed_ms,
+        fetch_ms=source_fetch_elapsed_ms,
+    )
+    if not force_refresh:
+        _request_runtime_memo_set(request_cache_key, [])
     return []
 
 def yts_url(title):
@@ -24579,16 +24531,43 @@ def apply_strong_csv_corrections(selected_keys=None):
 
 
 def collect_all_youtube_entries():
+    memoized = _request_runtime_memo_get("collect_all_youtube_entries")
+    if isinstance(memoized, list):
+        _youtube_perf_log("collect_all_youtube_entries_memo", cache_layer="request", status="hit", entry_count=len(memoized))
+        return clone_json_compatible(memoized)
+    started_at = time.monotonic()
     sections = ["German", "Chess", "Library", "YouTube Watch Later"]
+    payload_started_at = time.monotonic()
+    shared_payload = _shared_youtube_request_payload()
+    playlists_by_section = shared_payload.get("playlists_by_section", {})
+    shared_cache_data = shared_payload.get("cache_data", {})
+    payload_elapsed_ms = (time.monotonic() - payload_started_at) * 1000
     entries = []
+    total_playlist_count = 0
+    section_summaries = []
     for section in sections:
-        for playlist in get_section_playlists(section):
-            videos = get_all_playlist_videos(playlist["id"])
+        section_playlists = list(playlists_by_section.get(section, []) or [])
+        total_playlist_count += len(section_playlists)
+        section_video_count = 0
+        for playlist in section_playlists:
+            videos = get_all_playlist_videos(playlist["id"], cache_data=shared_cache_data)
+            section_video_count += len(videos)
             for video in videos:
                 entry = build_video_entry(video, playlist["name"], playlist["url"])
                 entry["section"] = section
                 entries.append(entry)
-    return entries
+        section_summaries.append(f"{section}:{len(section_playlists)}/{section_video_count}")
+    _youtube_perf_log(
+        "collect_all_youtube_entries",
+        elapsed_ms=(time.monotonic() - started_at) * 1000,
+        shared_payload_ms=payload_elapsed_ms,
+        section_count=len(sections),
+        playlist_count=total_playlist_count,
+        entry_count=len(entries),
+        sections=",".join(section_summaries),
+    )
+    _request_runtime_memo_set("collect_all_youtube_entries", entries)
+    return clone_json_compatible(entries)
 
 
 def _iter_cached_pockettube_group_feeds():
@@ -24797,17 +24776,37 @@ def get_video_detail_context(entry_id, force_refresh=False):
             "related_title": " / ".join(related_title_parts) or detail.get("category") or "Related Films"
         }
 
+    youtube_started_at = time.monotonic()
     youtube_entries = collect_all_youtube_entries()
+    entries_elapsed_ms = (time.monotonic() - youtube_started_at) * 1000
+    detail_lookup_started_at = time.monotonic()
     detail = next((video for video in youtube_entries if video["entry_id"] == entry_id), None)
     if not detail and entry_id.startswith("yt-"):
         fallback_id = entry_id[3:]
         detail = next((video for video in youtube_entries if video.get("video_id") == fallback_id), None)
+    detail_lookup_elapsed_ms = (time.monotonic() - detail_lookup_started_at) * 1000
     if not detail:
         pockettube_context = _resolve_pockettube_group_detail_context(entry_id)
         if pockettube_context:
+            _youtube_perf_log(
+                "video_detail_context",
+                entry_id=entry_id,
+                source="pockettube_fallback",
+                collect_entries_ms=entries_elapsed_ms,
+                detail_lookup_ms=detail_lookup_elapsed_ms,
+                youtube_entry_count=len(youtube_entries),
+            )
             return pockettube_context
     if not detail:
+        _youtube_perf_log(
+            "video_detail_context_missing",
+            entry_id=entry_id,
+            collect_entries_ms=entries_elapsed_ms,
+            detail_lookup_ms=detail_lookup_elapsed_ms,
+            youtube_entry_count=len(youtube_entries),
+        )
         return None
+    playlist_filter_started_at = time.monotonic()
     playlist_entries = [
         video for video in youtube_entries
         if video.get("playlist_name") == detail.get("playlist_name")
@@ -24816,6 +24815,20 @@ def get_video_detail_context(entry_id, force_refresh=False):
     prev_entry = playlist_entries[current_index - 1] if current_index > 0 else None
     next_entry = playlist_entries[current_index + 1] if current_index < len(playlist_entries) - 1 else None
     related = [video for video in playlist_entries if video["entry_id"] != entry_id]
+    playlist_filter_elapsed_ms = (time.monotonic() - playlist_filter_started_at) * 1000
+    _youtube_perf_log(
+        "video_detail_context",
+        entry_id=entry_id,
+        source="youtube",
+        collect_entries_ms=entries_elapsed_ms,
+        detail_lookup_ms=detail_lookup_elapsed_ms,
+        playlist_filter_ms=playlist_filter_elapsed_ms,
+        youtube_entry_count=len(youtube_entries),
+        playlist_entry_count=len(playlist_entries),
+        related_entry_count=len(related),
+        playlist_name=detail.get("playlist_name", ""),
+        section=detail.get("section", ""),
+    )
     return {
         "entry": detail,
         "entry_type": "youtube",
@@ -26558,10 +26571,11 @@ def books_quotes_migrate():
 
 @app.route("/reading")
 def reading():
+    route_started_at = time.monotonic()
     reading_view = build_reading_view()
     reading_view["success_message"] = str(request.args.get("success", "") or "").strip()
     reading_view["error_message"] = str(request.args.get("error", "") or "").strip()
-    return render_template(
+    rendered = render_template(
         "reading.html",
         title="Reading",
         build_query_url=build_query_url,
@@ -26569,6 +26583,13 @@ def reading():
         ai_page_context="general",
         **reading_view,
     )
+    app.logger.info(
+        "reading_route render elapsed_ms=%.1f entries_displayed=%s total_matching=%s",
+        (time.monotonic() - route_started_at) * 1000,
+        len((reading_view or {}).get("entries", []) or []),
+        int((reading_view or {}).get("total_matching", 0) or 0),
+    )
+    return rendered
 
 
 def _reading_github_actions_headers():
@@ -26720,6 +26741,7 @@ def _get_reading_snapshot_access():
             clear_reading_data_cache=_get_reading_cache_access().clear_reading_data_cache,
             reading_data_cache_fingerprint=_reading_data_cache_fingerprint,
             reading_format_mtime=_reading_format_mtime,
+            monotonic=time.monotonic,
         )
     return _READING_SNAPSHOT_ACCESS
 
@@ -26822,17 +26844,15 @@ def reading_article(entry_id):
     route_started_at = time.monotonic()
     normalized_entry_id = str(entry_id or "").strip()
     app.logger.info("reading_article start entry_id=%s path=%s", normalized_entry_id, request.full_path)
-    reading_view_started_at = time.monotonic()
-    reading_view = build_reading_view()
-    reading_view_elapsed_ms = (time.monotonic() - reading_view_started_at) * 1000
-    entries = list(reading_view.get("entries", []) or [])
-    preferred_card_entry = next((item for item in entries if item.get("id") == normalized_entry_id), None)
-    if not preferred_card_entry:
-        preferred_card_entry = get_reading_entry(normalized_entry_id)
+    article_context_started_at = time.monotonic()
+    article_context = build_reading_article_context(normalized_entry_id)
+    article_context_elapsed_ms = (time.monotonic() - article_context_started_at) * 1000
+    entries = list((article_context or {}).get("entries", []) or [])
+    preferred_card_entry = dict((article_context or {}).get("preferred_entry", {}) or {}) if isinstance((article_context or {}).get("preferred_entry"), dict) else None
     app.logger.info(
-        "reading_article data_lookup entry_id=%s build_reading_view_ms=%.1f entries=%s preferred_card_hit=%s",
+        "reading_article data_lookup entry_id=%s article_context_ms=%.1f entries=%s preferred_card_hit=%s",
         normalized_entry_id,
-        reading_view_elapsed_ms,
+        article_context_elapsed_ms,
         len(entries),
         bool(preferred_card_entry),
     )
@@ -26859,9 +26879,14 @@ def reading_article(entry_id):
     )
     if not entry:
         return Response("Reading entry not found.", status=404)
-    current_index = next((index for index, item in enumerate(entries) if item.get("id") == normalized_entry_id), -1)
+    current_index_value = (article_context or {}).get("current_index", -1)
+    current_index = int(current_index_value if current_index_value is not None else -1)
     if entry.get("status") == "unread":
-        updated_entry = update_reading_entry(normalized_entry_id, {"status": "reading"})
+        updated_entry = persist_reading_article_entry_update(
+            normalized_entry_id,
+            {"status": "reading"},
+            log_reason="article_open:mark_reading",
+        )
         if updated_entry:
             entry = updated_entry
             if current_index >= 0:
@@ -26923,9 +26948,9 @@ def reading_article(entry_id):
         strip_reading_html(entry.get("content_html", "")),
     )
     tts_payload = build_reading_tts_payload(entry)
-    prev_entry = entries[current_index - 1] if current_index > 0 else None
-    next_entry = entries[current_index + 1] if current_index >= 0 and current_index < len(entries) - 1 else None
-    article_query = reading_view.get("filter_query", {})
+    prev_entry = dict((article_context or {}).get("prev_entry", {}) or {}) if isinstance((article_context or {}).get("prev_entry"), dict) else None
+    next_entry = dict((article_context or {}).get("next_entry", {}) or {}) if isinstance((article_context or {}).get("next_entry"), dict) else None
+    article_query = dict((article_context or {}).get("filter_query", {}) or {}) if isinstance((article_context or {}).get("filter_query"), dict) else {}
     reading_return_url = url_for("reading", **article_query)
     render_started_at = time.monotonic()
     app.logger.info(
