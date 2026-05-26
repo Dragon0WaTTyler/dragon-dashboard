@@ -7,7 +7,7 @@ from ..puzzles.progress import (
     record_auto_puzzle_candidate_progress as record_auto_puzzle_candidate_progress_payload,
 )
 from ..services import LichessProgressService
-from ..services.puzzle_attempt_service import configure_puzzle_attempt_service
+from ..services import PuzzleAttemptService
 from .chess_storage import configure_chess_storage
 
 
@@ -42,7 +42,7 @@ class ChessRuntime:
         self.safe_non_negative_int = safe_non_negative_int
         self.normalize_candidate_status = normalize_candidate_status
         self.format_move_label = format_move_label
-        self.puzzle_attempt_service = configure_puzzle_attempt_service(
+        self.puzzle_attempt_service = PuzzleAttemptService(
             current_timestamp=current_timestamp,
             parse_timestamp=parse_timestamp,
             default_chess_data=default_chess_data,
@@ -291,4 +291,3 @@ class ChessRuntime:
 
 
 CHESS_RUNTIME = ChessRuntime()
-
