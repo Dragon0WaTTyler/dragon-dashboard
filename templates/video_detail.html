@@ -1145,6 +1145,13 @@
                 <div id="vidsrc-player-shell" class="movie-watch-player-shell">
                     <div class="vidsrc-embed-wrapper">
                         <div class="movie-watch-ratio">
+                            <video
+                                id="movie-runtime-video"
+                                controls
+                                preload="metadata"
+                                playsinline
+                                style="position:absolute; inset:0; width:100%; height:100%; display:none; background:#090909;">
+                            </video>
                             <iframe
                                 title="Watch {{ detail_title }} on external player"
                                 allowfullscreen
@@ -1155,6 +1162,10 @@
                                 data-sources='{{ template_player_sources | tojson }}'
                                 data-fallback-urls='{{ player_fallback_urls | tojson }}'>
                             </iframe>
+                            <div id="movie-watch-stream-status" class="movie-watch-stream-status" role="status" aria-live="polite">
+                                <span class="movie-watch-stream-spinner" aria-hidden="true"></span>
+                                <span id="movie-watch-stream-status-text">Fetching metadata</span>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1778,6 +1789,13 @@
                 const statusNode = document.getElementById('movie-playback-status');
                 const meterFill = document.getElementById('movie-runtime-meter-fill');
                 const meterLabel = document.getElementById('movie-runtime-meter-label');
+                const runtimeVideo = document.getElementById('movie-runtime-video');
+                const runtimeIframe = document.getElementById('vidsrc-iframe');
+                const playerShell = document.getElementById('vidsrc-player-shell');
+                const watchCard = document.querySelector('.movie-watch-card');
+                const openLink = document.getElementById('movie-watch-open-link');
+                const streamStatusNode = document.getElementById('movie-watch-stream-status');
+                const streamStatusTextNode = document.getElementById('movie-watch-stream-status-text');
                 const confidenceExplanation = document.getElementById('movie-confidence-explanation');
                 const fallbackExplanation = document.getElementById('movie-fallback-explanation');
                 const browserWarning = document.getElementById('movie-browser-warning');
@@ -1873,6 +1891,83 @@
                 const prepareEndpoint = String(playbackRoot.getAttribute('data-prepare-endpoint') || '').trim();
 
                 let selectedFingerprint = String((((initialPlan.selected_source || {}).source_fingerprint) || '')).trim();
+                let currentPlayback = Object.assign({}, initialPlan || {});
+                let runtimeSessionId = String((((initialPlan.runtime_session || {}).session_id) || '')).trim();
+                let runtimeSessionPollHandle = 0;
+
+                function runtimeSessionEndpoint(sessionId) {
+                    const cleanId = String(sessionId || '').trim();
+                    return cleanId ? '/api/runtime/session/' + window.encodeURIComponent(cleanId) : '';
+                }
+
+                function runtimeStateLabel(runtimeState) {
+                    const labels = {
+                        metadata_fetching: 'Fetching metadata',
+                        connecting_peers: 'Connecting to peers',
+                        selecting_media: 'Selecting media',
+                        buffering_video: 'Buffering video',
+                        ready_to_play: 'Ready to play',
+                        buffering: 'Buffering...',
+                        playback_stalled: 'Playback stalled',
+                        recovering_stream: 'Recovering stream',
+                        stream_failed: 'Playback stalled',
+                        completed: 'Ready to play'
+                    };
+                    return labels[String(runtimeState || '').trim()] || 'Preparing...';
+                }
+
+                async function syncRuntimeActivity(playbackState, lastStream) {
+                    if (!runtimeSessionId) {
+                        return;
+                    }
+                    try {
+                        await window.fetch(runtimeSessionEndpoint(runtimeSessionId), {
+                            method: 'POST',
+                            headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({
+                                playback_state: String(playbackState || '').trim(),
+                                last_stream: Boolean(lastStream)
+                            })
+                        });
+                    } catch (error) {}
+                }
+
+                function stopRuntimeSessionPolling() {
+                    if (runtimeSessionPollHandle) {
+                        window.clearInterval(runtimeSessionPollHandle);
+                        runtimeSessionPollHandle = 0;
+                    }
+                }
+
+                function startRuntimeSessionPolling(sessionId) {
+                    runtimeSessionId = String(sessionId || '').trim();
+                    stopRuntimeSessionPolling();
+                    if (!runtimeSessionId) {
+                        return;
+                    }
+                    runtimeSessionPollHandle = window.setInterval(async function() {
+                        try {
+                            const response = await window.fetch(runtimeSessionEndpoint(runtimeSessionId) + '?refresh=1');
+                            const data = await response.json();
+                            if (!response.ok || !data.ok) {
+                                if (streamStatusTextNode) {
+                                    streamStatusTextNode.textContent = data.error || 'Playback runtime became unavailable.';
+                                }
+                                showStreamStatus(data.error || 'Playback runtime became unavailable.');
+                                stopRuntimeSessionPolling();
+                                return;
+                            }
+                            const runtimeSession = data.runtime_session || {};
+                            setPlaybackSummary({
+                                runtime_session: runtimeSession,
+                                runtime_metrics: data.runtime_metrics || runtimeSession.runtime_metrics || {},
+                                runtime_state: runtimeSession.status || currentPlayback.runtime_state,
+                                playback_state: runtimeSession.playback_state || currentPlayback.playback_state,
+                                stream_url: runtimeSession.stream_url || currentPlayback.stream_url
+                            });
+                        } catch (error) {}
+                    }, 4000);
+                }
 
                 function sourceCards() {
                     return Array.prototype.slice.call(document.querySelectorAll('[data-source-card]'));
@@ -1899,6 +1994,8 @@
                 }
 
                 function setPlaybackSummary(playback) {
+                    currentPlayback = Object.assign({}, currentPlayback || {}, playback || {});
+                    playback = currentPlayback;
                     const source = playback && playback.selected_source ? playback.selected_source : {};
                     const diagnostics = playback && playback.runtime_diagnostics ? playback.runtime_diagnostics : {};
                     const preflight = playback && playback.runtime_preflight ? playback.runtime_preflight : {};
@@ -1956,6 +2053,8 @@
                     const arbitrationResult = playback && playback.arbitration_result ? playback.arbitration_result : {};
                     const forcedConstraints = Array.isArray(playback && playback.forced_constraints) ? playback.forced_constraints : [];
                     const runtimeRisk = playback && playback.runtime_risk ? playback.runtime_risk : {};
+                    const runtimeSession = playback && playback.runtime_session ? playback.runtime_session : {};
+                    const runtimeMetrics = playback && playback.runtime_metrics ? playback.runtime_metrics : (runtimeSession.runtime_metrics || {});
                     const readinessMeter = Number(playback.readiness_meter || 0);
                     if (runtimeBadge) {
                         runtimeBadge.textContent = playback.playback_runtime === 'browser_runtime' ? 'Browser Ready' : 'External Recommended';
@@ -1975,7 +2074,8 @@
                             + '</strong> • '
                             + titleize(playback.runtime_profile || 'external_player_only')
                             + ' • '
-                            + titleize(playback.playback_readiness || 'limited');
+                            + titleize(playback.playback_readiness || 'limited')
+                            + (runtimeMetrics.peers_connected ? ' • ' + String(runtimeMetrics.peers_connected) + ' peers' : '');
                     }
                     const runtimeStateNode = document.getElementById('movie-runtime-state-label');
                     if (runtimeStateNode) {
@@ -2458,6 +2558,17 @@
                         browserWarning.textContent = warningText;
                         browserWarning.style.display = warningText ? '' : 'none';
                     }
+                    if (runtimeSession.session_id) {
+                        runtimeSessionId = String(runtimeSession.session_id || '').trim();
+                    }
+                    if (playback.stream_url) {
+                        const runtimeStatusText = String(runtimeMetrics.runtime_state_label || runtimeStateLabel(playback.runtime_state)).trim();
+                        if (playback.runtime_state === 'ready_to_play' || playback.runtime_state === 'completed') {
+                            hideStreamStatus();
+                        } else {
+                            showStreamStatus(runtimeStatusText);
+                        }
+                    }
                     renderList(reasoningNode, diagnostics.selected_reasoning, 'No playback reasoning available yet.');
                     renderList(notesNode, diagnostics.compatibility_notes, '');
                     selectedFingerprint = String(source.source_fingerprint || '').trim();
@@ -2491,12 +2602,70 @@
                     }
                 }
 
+                function showStreamStatus(message) {
+                    if (streamStatusTextNode && message) {
+                        streamStatusTextNode.textContent = message;
+                    }
+                    if (streamStatusNode) {
+                        streamStatusNode.classList.add('is-visible');
+                    }
+                }
+
+                function hideStreamStatus() {
+                    if (streamStatusNode) {
+                        streamStatusNode.classList.remove('is-visible');
+                    }
+                }
+
+                function attachRuntimeStream(streamUrl, runtimeSession) {
+                    if (!runtimeVideo || !playerShell || !watchCard) {
+                        return;
+                    }
+                    if (runtimeSession && runtimeSession.session_id) {
+                        startRuntimeSessionPolling(runtimeSession.session_id);
+                    }
+                    if (runtimeIframe) {
+                        runtimeIframe.style.display = 'none';
+                    }
+                    runtimeVideo.style.display = 'block';
+                    runtimeVideo.src = streamUrl;
+                    runtimeVideo.load();
+                    playerShell.classList.add('is-visible');
+                    watchCard.classList.add('is-loaded');
+                    if (overlay) {
+                        overlay.style.display = 'none';
+                    }
+                    if (openLink) {
+                        openLink.href = streamUrl;
+                    }
+                    showStreamStatus(runtimeStateLabel((runtimeSession || {}).status || currentPlayback.runtime_state));
+                    const playPromise = runtimeVideo.play();
+                    if (playPromise && typeof playPromise.catch === 'function') {
+                        playPromise.catch(function() {});
+                    }
+                }
+
+                function clearRuntimeStream() {
+                    stopRuntimeSessionPolling();
+                    if (!runtimeVideo) {
+                        return;
+                    }
+                    runtimeVideo.pause();
+                    runtimeVideo.removeAttribute('src');
+                    runtimeVideo.load();
+                    runtimeVideo.style.display = 'none';
+                    if (runtimeIframe) {
+                        runtimeIframe.style.display = 'block';
+                    }
+                }
+
                 async function preparePlayback(source) {
                     if (!prepareEndpoint) return;
                     if (playNowButton) {
                         playNowButton.disabled = true;
                         playNowButton.textContent = 'Preparing...';
                     }
+                    showStreamStatus('Starting torrent runtime...');
                     try {
                         const data = await postJson(prepareEndpoint, {
                             movie: moviePayload,
@@ -2507,12 +2676,19 @@
                         });
                         const playback = data.playback || {};
                         setPlaybackSummary(playback);
-                        if (playback.playback_runtime === 'browser_runtime') {
+                        if (playback.stream_url) {
+                            attachRuntimeStream(playback.stream_url, playback.runtime_session || {});
+                        } else if (playback.playback_runtime === 'browser_runtime') {
+                            clearRuntimeStream();
+                            hideStreamStatus();
                             bootBrowserSurface();
                         } else {
+                            clearRuntimeStream();
+                            hideStreamStatus();
                             attemptExternalHandoff(source);
                         }
                     } catch (error) {
+                        hideStreamStatus();
                         if (statusNode) {
                             statusNode.textContent = error && error.message ? error.message : 'Playback preparation failed.';
                         }
@@ -2522,6 +2698,28 @@
                             playNowButton.textContent = 'Play Now';
                         }
                     }
+                }
+
+                if (runtimeVideo) {
+                    runtimeVideo.addEventListener('waiting', function() {
+                        showStreamStatus('Buffering...');
+                        syncRuntimeActivity('buffering', true);
+                    });
+                    runtimeVideo.addEventListener('stalled', function() {
+                        showStreamStatus('Playback stalled');
+                        syncRuntimeActivity('stalled', true);
+                    });
+                    runtimeVideo.addEventListener('playing', function() {
+                        hideStreamStatus();
+                        syncRuntimeActivity('playing', true);
+                    });
+                    runtimeVideo.addEventListener('pause', function() {
+                        syncRuntimeActivity('paused', false);
+                    });
+                    runtimeVideo.addEventListener('error', function() {
+                        showStreamStatus('Playback stalled');
+                        syncRuntimeActivity('failed', false);
+                    });
                 }
 
                 sourceCards().forEach(function(card) {

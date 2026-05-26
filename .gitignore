@@ -20,6 +20,7 @@ __pycache__/
 *.pyc
 .venv/
 venv/
+node_modules/
 
 backups/
 cache/

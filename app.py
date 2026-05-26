@@ -28,10 +28,11 @@ from html.parser import HTMLParser
 from pathlib import Path
 from flask import Response, flash, g, has_request_context, jsonify, redirect, render_template, request, session, send_file, url_for
 from markupsafe import Markup
-from domains.chess import LichessProgressService, PuzzleAttemptService
-from domains.chess.puzzles.progress import (
-    normalize_auto_puzzle_progress as normalize_auto_puzzle_progress_payload,
-    record_auto_puzzle_candidate_progress as record_auto_puzzle_candidate_progress_payload,
+from domains.chess.runtime import (
+    CHESS_RUNTIME,
+    default_chess_data,
+    load_chess_data,
+    save_chess_data,
 )
 from domains.magnets.playback import (
     build_playback_response_payload,
@@ -40,6 +41,7 @@ from domains.magnets.playback import (
     prepare_playback_runtime,
     serialize_playback_runtime,
 )
+from domains.magnets.playback_runtime import PlaybackRuntimeError, PlaybackRuntimeManager, build_stream_response
 from domains.magnets.services import ExperimentalRuntimeService, MovieSourcesService, SessionAnalyticsService, SourceActionService, StreamSessionService
 from domains.magnets.preferences import MagnetPreferenceService
 from domains.reading import (
@@ -1080,87 +1082,24 @@ def analyze_fen_with_stockfish(fen, depth=None, time_ms=None):
                 pass
 
 
-def default_chess_data():
-    return {
-        "profiles": [],
-        "imports": [],
-        "games": [],
-        "openings": [],
-        "review_queue": [],
-        "puzzle_seeds": [],
-        "auto_puzzle_candidates": [],
-        "puzzle_attempts": [],
-        "lichess_puzzle_progress": {},
-        "settings": {
-            "active_profile_id": None,
-        },
-        "updated_at": "",
-    }
-
-
-CHESS_DATA_LOCK = threading.RLock()
-
-
-def load_chess_data():
-    with CHESS_DATA_LOCK:
-        raw = load_json_file(CHESS_DATA_PATH, default_chess_data())
-        if not isinstance(raw, dict):
-            raw = {}
-        data = default_chess_data()
-        for key in ("profiles", "imports", "games", "openings", "review_queue", "puzzle_seeds", "auto_puzzle_candidates", "puzzle_attempts"):
-            value = raw.get(key, [])
-            data[key] = [dict(item) for item in value if isinstance(item, dict)] if isinstance(value, list) else []
-        data["lichess_puzzle_progress"] = LICHESS_PROGRESS_SERVICE.coerce_lichess_progress_map(
-            raw.get("lichess_puzzle_progress", {})
-        )
-        settings = raw.get("settings", {})
-        if not isinstance(settings, dict):
-            settings = {}
-        active_profile_id = str(settings.get("active_profile_id", "") or "").strip() or None
-        data["settings"]["active_profile_id"] = active_profile_id
-        data["updated_at"] = str(raw.get("updated_at", "") or "").strip()
-        if CHESS_DATA_PATH.exists() and data != raw:
-            save_json_file(CHESS_DATA_PATH, data)
-        return data
-
-
-def save_chess_data(data):
-    with CHESS_DATA_LOCK:
-        payload = default_chess_data()
-        incoming = data if isinstance(data, dict) else {}
-        for key in ("profiles", "imports", "games", "openings", "review_queue", "puzzle_seeds", "auto_puzzle_candidates", "puzzle_attempts"):
-            value = incoming.get(key, [])
-            payload[key] = [dict(item) for item in value if isinstance(item, dict)] if isinstance(value, list) else []
-        payload["lichess_puzzle_progress"] = LICHESS_PROGRESS_SERVICE.coerce_lichess_progress_map(
-            incoming.get("lichess_puzzle_progress", {})
-        )
-        settings = incoming.get("settings", {})
-        if not isinstance(settings, dict):
-            settings = {}
-        payload["settings"]["active_profile_id"] = str(settings.get("active_profile_id", "") or "").strip() or None
-        payload["updated_at"] = current_timestamp()
-        save_json_file(CHESS_DATA_PATH, payload)
-        return payload
-
-
 def normalize_puzzle_attempt_status(value):
-    return PUZZLE_ATTEMPT_SERVICE.normalize_puzzle_attempt_status(value)
+    return CHESS_RUNTIME.normalize_puzzle_attempt_status(value)
 
 
 def normalize_puzzle_review_state(value):
-    return PUZZLE_ATTEMPT_SERVICE.normalize_puzzle_review_state(value)
+    return CHESS_RUNTIME.normalize_puzzle_review_state(value)
 
 
 def _puzzle_attempt_sort_value(attempt):
-    return PUZZLE_ATTEMPT_SERVICE._puzzle_attempt_sort_value(attempt)
+    return CHESS_RUNTIME._puzzle_service()._puzzle_attempt_sort_value(attempt)
 
 
 def build_puzzle_attempt_id(candidate_id, started_at=""):
-    return PUZZLE_ATTEMPT_SERVICE.build_puzzle_attempt_id(candidate_id, started_at=started_at)
+    return CHESS_RUNTIME.build_attempt_id(candidate_id, started_at=started_at)
 
 
 def safe_puzzle_attempt_int(value, default=0):
-    return PUZZLE_ATTEMPT_SERVICE.safe_puzzle_attempt_int(value, default=default)
+    return CHESS_RUNTIME.safe_attempt_int(value, default=default)
 
 
 def safe_non_negative_int(value, default=0):
@@ -1171,15 +1110,15 @@ def safe_non_negative_int(value, default=0):
 
 
 def _safe_attempt_timestamp_value(value):
-    return PUZZLE_ATTEMPT_SERVICE._safe_attempt_timestamp_value(value)
+    return CHESS_RUNTIME.safe_attempt_timestamp_value(value)
 
 
 def _copy_puzzle_review_fields(attempt):
-    return PUZZLE_ATTEMPT_SERVICE._copy_puzzle_review_fields(attempt)
+    return CHESS_RUNTIME.copy_puzzle_review_fields(attempt)
 
 
 def build_puzzle_review_schedule(clean_streak=0, needs_repeat=False, skipped=False):
-    return PUZZLE_ATTEMPT_SERVICE.build_puzzle_review_schedule(
+    return CHESS_RUNTIME.build_review_schedule(
         clean_streak=clean_streak,
         needs_repeat=needs_repeat,
         skipped=skipped,
@@ -1187,7 +1126,7 @@ def build_puzzle_review_schedule(clean_streak=0, needs_repeat=False, skipped=Fal
 
 
 def find_previous_resolved_puzzle_attempt(data, candidate_id="", exclude_attempt_id=""):
-    return PUZZLE_ATTEMPT_SERVICE.find_previous_resolved_puzzle_attempt(
+    return CHESS_RUNTIME.find_previous_resolved_attempt(
         data,
         candidate_id=candidate_id,
         exclude_attempt_id=exclude_attempt_id,
@@ -1195,96 +1134,16 @@ def find_previous_resolved_puzzle_attempt(data, candidate_id="", exclude_attempt
 
 
 def puzzle_attempt_due_now(attempt, now=None):
-    return PUZZLE_ATTEMPT_SERVICE.puzzle_attempt_due_now(attempt, now=now)
+    return CHESS_RUNTIME.attempt_due_now(attempt, now=now)
 
 
 def find_puzzle_attempt(data, attempt_id="", candidate_id="", status=None):
-    return PUZZLE_ATTEMPT_SERVICE.find_puzzle_attempt(
+    return CHESS_RUNTIME.find_attempt(
         data,
         attempt_id=attempt_id,
         candidate_id=candidate_id,
         status=status,
     )
-
-
-def build_puzzle_attempt_summary(attempt):
-    return PUZZLE_ATTEMPT_SERVICE.build_puzzle_attempt_summary(attempt)
-
-
-def get_latest_puzzle_attempt_map(data):
-    return PUZZLE_ATTEMPT_SERVICE.get_latest_puzzle_attempt_map(data)
-
-
-def build_puzzle_attempt_history_map(data):
-    return PUZZLE_ATTEMPT_SERVICE.build_puzzle_attempt_history_map(data)
-
-
-def normalize_auto_puzzle_progress(raw_state=None, history_entry=None):
-    return normalize_auto_puzzle_progress_payload(
-        raw_state,
-        history_entry=history_entry,
-        safe_non_negative_int=safe_non_negative_int,
-        safe_attempt_timestamp_value=_safe_attempt_timestamp_value,
-    )
-
-
-def compute_auto_puzzle_rotation_penalty(progress, repeat_needed=False, due_now=False, mastered=False):
-    payload = dict(progress or {}) if isinstance(progress, dict) else {}
-    penalty = 0
-    completed_count = safe_non_negative_int(payload.get("completed_count", 0), 0)
-    clean_completed_count = safe_non_negative_int(payload.get("clean_completed_count", 0), 0)
-    skipped_count = safe_non_negative_int(payload.get("skipped_count", 0), 0)
-    difficult_attempt_count = safe_non_negative_int(payload.get("difficult_attempt_count", 0), 0)
-    attempt_count = safe_non_negative_int(payload.get("attempt_count", 0), 0)
-    recent_text = str(payload.get("last_completed_at", "") or payload.get("last_attempt_at", "") or "").strip()
-    recent_at = _safe_attempt_timestamp_value(recent_text)
-    now = datetime.now(timezone.utc)
-    if recent_at is not None:
-        age_hours = max(0.0, (now - recent_at).total_seconds() / 3600.0)
-        if age_hours < 1:
-            penalty += 130
-        elif age_hours < 6:
-            penalty += 100
-        elif age_hours < 24:
-            penalty += 72
-        elif age_hours < 72:
-            penalty += 44
-        elif age_hours < 168:
-            penalty += 20
-        else:
-            penalty += 8
-    penalty += min(completed_count, 6) * 8
-    penalty += min(clean_completed_count, 4) * 5
-    penalty += min(skipped_count, 4) * 4
-    penalty += min(attempt_count, 6) * 2
-    if mastered:
-        penalty += 24
-    if repeat_needed:
-        penalty = max(12, int(round(penalty * 0.45)))
-        penalty += min(difficult_attempt_count, 4) * 3
-    elif due_now and not mastered:
-        penalty = max(10, int(round(penalty * 0.65)))
-    return max(0, int(penalty))
-
-
-def record_auto_puzzle_candidate_progress(data, candidate_id, result="", attempt=None, status_after=None):
-    return record_auto_puzzle_candidate_progress_payload(
-        data,
-        candidate_id,
-        result=result,
-        attempt=attempt,
-        status_after=status_after,
-        default_chess_data=default_chess_data,
-        current_timestamp=current_timestamp,
-        normalize_candidate_status=normalize_chess_auto_candidate_status,
-        build_puzzle_attempt_history_map=build_puzzle_attempt_history_map,
-        normalize_auto_puzzle_progress=normalize_auto_puzzle_progress,
-        safe_non_negative_int=safe_non_negative_int,
-    )
-
-
-def latest_puzzle_attempt_needs_repeat(attempt):
-    return PUZZLE_ATTEMPT_SERVICE.latest_puzzle_attempt_needs_repeat(attempt)
 
 
 def format_puzzle_move_label_from_fen(fen, move_uci, fallback=""):
@@ -1301,129 +1160,6 @@ def format_puzzle_move_label_from_fen(fen, move_uci, fallback=""):
         except Exception:
             pass
     return str(fallback or move_text).strip()
-
-
-def build_puzzle_repeat_note(candidate, latest_attempt):
-    return PUZZLE_ATTEMPT_SERVICE.build_puzzle_repeat_note(candidate, latest_attempt)
-
-
-def get_candidate_repeat_state(candidate, latest_attempt):
-    return PUZZLE_ATTEMPT_SERVICE.get_candidate_repeat_state(candidate, latest_attempt)
-
-
-def get_or_create_active_puzzle_attempt(data, candidate, total_steps=0):
-    return PUZZLE_ATTEMPT_SERVICE.get_or_create_active_puzzle_attempt(
-        data,
-        candidate,
-        total_steps=total_steps,
-    )
-
-
-def record_puzzle_wrong_move(data, attempt_id, step_index=0, fen="", attempted_move_uci="", attempted_move_san="", expected_move_uci="", engine_move_uci=""):
-    return PUZZLE_ATTEMPT_SERVICE.record_puzzle_wrong_move(
-        data,
-        attempt_id,
-        step_index=step_index,
-        fen=fen,
-        attempted_move_uci=attempted_move_uci,
-        attempted_move_san=attempted_move_san,
-        expected_move_uci=expected_move_uci,
-        engine_move_uci=engine_move_uci,
-    )
-
-
-def record_puzzle_correct_move(data, attempt_id, step_index=0):
-    return PUZZLE_ATTEMPT_SERVICE.record_puzzle_correct_move(data, attempt_id, step_index=step_index)
-
-
-def record_puzzle_reveal(data, attempt_id):
-    return PUZZLE_ATTEMPT_SERVICE.record_puzzle_reveal(data, attempt_id)
-
-
-def record_puzzle_engine_check(data, attempt_id):
-    return PUZZLE_ATTEMPT_SERVICE.record_puzzle_engine_check(data, attempt_id)
-
-
-def record_puzzle_critical_moment_check(data, attempt_id):
-    return PUZZLE_ATTEMPT_SERVICE.record_puzzle_critical_moment_check(data, attempt_id)
-
-
-def skip_puzzle_attempt(data, attempt_id, final_step=0, total_steps=0):
-    return PUZZLE_ATTEMPT_SERVICE.skip_puzzle_attempt(
-        data,
-        attempt_id,
-        final_step=final_step,
-        total_steps=total_steps,
-    )
-
-
-def complete_puzzle_attempt(data, attempt_id, final_step=0, total_steps=0):
-    return PUZZLE_ATTEMPT_SERVICE.complete_puzzle_attempt(
-        data,
-        attempt_id,
-        final_step=final_step,
-        total_steps=total_steps,
-    )
-
-
-def normalize_lichess_progress_status(value):
-    return LICHESS_PROGRESS_SERVICE.normalize_lichess_progress_status(value)
-
-
-def _empty_lichess_progress_entry(puzzle_id=""):
-    return LICHESS_PROGRESS_SERVICE._empty_lichess_progress_entry(puzzle_id)
-
-
-def _coerce_lichess_progress_entry(puzzle_id, raw_entry):
-    return LICHESS_PROGRESS_SERVICE._coerce_lichess_progress_entry(puzzle_id, raw_entry)
-
-
-def get_lichess_puzzle_progress_map(data):
-    return LICHESS_PROGRESS_SERVICE.get_lichess_puzzle_progress_map(data)
-
-
-def get_lichess_puzzle_progress_entry(data, puzzle_id="", create=False):
-    return LICHESS_PROGRESS_SERVICE.get_lichess_puzzle_progress_entry(data, puzzle_id, create=create)
-
-
-def _mark_lichess_progress_missed(entry):
-    return LICHESS_PROGRESS_SERVICE._mark_lichess_progress_missed(entry)
-
-
-def record_lichess_puzzle_started(data, puzzle_id=""):
-    return LICHESS_PROGRESS_SERVICE.record_lichess_puzzle_started(data, puzzle_id)
-
-
-def record_lichess_puzzle_wrong_move(data, puzzle_id="", attempted_move=""):
-    return LICHESS_PROGRESS_SERVICE.record_lichess_puzzle_wrong_move(
-        data,
-        puzzle_id,
-        attempted_move=attempted_move,
-    )
-
-
-def record_lichess_puzzle_reveal(data, puzzle_id=""):
-    return LICHESS_PROGRESS_SERVICE.record_lichess_puzzle_reveal(data, puzzle_id)
-
-
-def record_lichess_puzzle_skipped(data, puzzle_id=""):
-    return LICHESS_PROGRESS_SERVICE.record_lichess_puzzle_skipped(data, puzzle_id)
-
-
-def record_lichess_puzzle_complete(data, puzzle_id="", completed_clean=True):
-    return LICHESS_PROGRESS_SERVICE.record_lichess_puzzle_complete(
-        data,
-        puzzle_id,
-        completed_clean=completed_clean,
-    )
-
-
-def classify_lichess_progress_bucket(progress_entry):
-    return LICHESS_PROGRESS_SERVICE.classify_lichess_progress_bucket(progress_entry)
-
-
-def build_lichess_progress_snapshot(data, valid_items=None):
-    return LICHESS_PROGRESS_SERVICE.build_lichess_progress_snapshot(data, valid_items=valid_items)
 
 
 def default_chess_courses():
@@ -4919,8 +4655,8 @@ def build_auto_puzzle_candidate_from_game(data, game_entry, state_map=None, line
 def build_auto_puzzle_candidates_snapshot(data):
     payload = data if isinstance(data, dict) else default_chess_data()
     state_map = build_auto_puzzle_candidate_state_map(payload)
-    latest_attempt_map = get_latest_puzzle_attempt_map(payload)
-    attempt_history_map = build_puzzle_attempt_history_map(payload)
+    latest_attempt_map = CHESS_RUNTIME.get_latest_attempt_map(payload)
+    attempt_history_map = CHESS_RUNTIME.build_attempt_history_map(payload)
     line_summary = build_opening_line_summary(payload, ply_count=8)
     opening_lookup = {
         str(item.get("key", "") or "").strip(): dict(item)
@@ -5001,7 +4737,7 @@ def build_auto_puzzle_candidates_snapshot(data):
         opening_key = str(candidate.get("opening_key", "") or "").strip() or "__unknown__"
         if not ignore_opening_cap and int(opening_counts.get(opening_key, 0) or 0) >= 3:
             return False
-        repeat_state = get_candidate_repeat_state(candidate, latest_attempt_map.get(candidate_id))
+        repeat_state = CHESS_RUNTIME.get_candidate_repeat_state(candidate, latest_attempt_map.get(candidate_id))
         candidate["latest_attempt"] = dict(repeat_state.get("latest_attempt", {}) or {})
         candidate["latest_attempt_summary"] = dict(repeat_state.get("summary", {}) or {})
         candidate["latest_attempt_status"] = str(repeat_state.get("latest_attempt_status", "") or "").strip()
@@ -5014,7 +4750,10 @@ def build_auto_puzzle_candidates_snapshot(data):
         candidate["repeat_note"] = dict(repeat_state.get("repeat_note", {}) or {})
         candidate["base_status"] = normalize_chess_auto_candidate_status(candidate.get("status", "candidate"))
         candidate["status"] = str(repeat_state.get("effective_status", candidate["base_status"]) or candidate["base_status"]).strip().lower() or candidate["base_status"]
-        state_progress = normalize_auto_puzzle_progress(state_map.get(candidate_id, {}).get("raw", {}), attempt_history_map.get(candidate_id, {}))
+        state_progress = CHESS_RUNTIME.normalize_auto_puzzle_progress(
+            state_map.get(candidate_id, {}).get("raw", {}),
+            history_entry=attempt_history_map.get(candidate_id, {}),
+        )
         candidate["training_key"] = str(state_progress.get("training_key", "") or candidate_id).strip() or candidate_id
         candidate["attempt_count"] = safe_non_negative_int(state_progress.get("attempt_count", 0), 0)
         candidate["completed_count"] = safe_non_negative_int(state_progress.get("completed_count", 0), 0)
@@ -5026,7 +4765,7 @@ def build_auto_puzzle_candidates_snapshot(data):
         candidate["last_result"] = str(state_progress.get("last_result", "") or "").strip()
         candidate["last_wrong_count"] = safe_non_negative_int(state_progress.get("last_wrong_count", 0), 0)
         candidate["last_reveal_used"] = bool(state_progress.get("last_reveal_used", False))
-        candidate["rotation_penalty"] = compute_auto_puzzle_rotation_penalty(
+        candidate["rotation_penalty"] = CHESS_RUNTIME.compute_auto_puzzle_rotation_penalty(
             state_progress,
             repeat_needed=bool(candidate["repeat_needed"]),
             due_now=bool(candidate["due_now"]),
@@ -6600,32 +6339,16 @@ def parse_timestamp(value):
         return None
 
 
-PUZZLE_ATTEMPT_SERVICE = PuzzleAttemptService(
+CHESS_RUNTIME.configure(
     current_timestamp=current_timestamp,
     parse_timestamp=parse_timestamp,
     default_chess_data=default_chess_data,
     safe_non_negative_int=safe_non_negative_int,
     normalize_candidate_status=normalize_chess_auto_candidate_status,
     format_move_label=format_puzzle_move_label_from_fen,
-)
-LICHESS_PROGRESS_SERVICE = LichessProgressService(
-    current_timestamp=current_timestamp,
-    default_chess_data=default_chess_data,
-)
-PUZZLE_ATTEMPT_SERVICE.set_candidate_progress_updater(
-    lambda data, candidate_id, result="", attempt=None, status_after=None: record_auto_puzzle_candidate_progress_payload(
-        data,
-        candidate_id,
-        result=result,
-        attempt=attempt,
-        status_after=status_after,
-        default_chess_data=default_chess_data,
-        current_timestamp=current_timestamp,
-        normalize_candidate_status=normalize_chess_auto_candidate_status,
-        build_puzzle_attempt_history_map=build_puzzle_attempt_history_map,
-        normalize_auto_puzzle_progress=normalize_auto_puzzle_progress,
-        safe_non_negative_int=safe_non_negative_int,
-    )
+    chess_data_path=CHESS_DATA_PATH,
+    load_json_file=load_json_file,
+    save_json_file=save_json_file,
 )
 
 
@@ -25782,6 +25505,7 @@ SOURCE_ACTION_SERVICE = SourceActionService(preference_service=MAGNET_PREFERENCE
 SESSION_ANALYTICS_SERVICE = SessionAnalyticsService()
 STREAM_SESSION_SERVICE = StreamSessionService(analytics_service=SESSION_ANALYTICS_SERVICE)
 EXPERIMENTAL_RUNTIME_SERVICE = ExperimentalRuntimeService()
+PLAYBACK_RUNTIME_MANAGER = PlaybackRuntimeManager()
 
 YOUTUBE_PLAYLIST_SERVICE = YouTubePlaylistService(
     load_admin_data=load_admin_data,
@@ -25953,7 +25677,72 @@ def api_movie_playback_prepare():
     prepared_result = STREAM_SESSION_SERVICE.prepare_session(session_id)
     if not prepared_result.get("ok"):
         return jsonify(prepared_result), 400
-    return jsonify(build_playback_response_payload(playback, session=prepared_result.get("session")))
+    try:
+        runtime_session = PLAYBACK_RUNTIME_MANAGER.create_session(
+            movie=request_payload["movie"],
+            source=request_payload["source"],
+            stream_base_url=request.host_url.rstrip("/"),
+        )
+    except PlaybackRuntimeError as exc:
+        return jsonify({"ok": False, "error": exc.message, "code": exc.code}), 400
+
+    playback_payload = dict(playback or {})
+    playback_payload["playback_runtime"] = "browser_runtime"
+    playback_payload["runtime_mode"] = "torrent_stream"
+    playback_payload["runtime_state"] = "stream_ready"
+    playback_payload["runtime_profile"] = "torrent_stream_html5"
+    playback_payload["playback_readiness"] = "stream_ready"
+    playback_payload["startup_confidence"] = "high" if int(runtime_session.get("downloaded_bytes", 0) or 0) >= 2 * 1024 * 1024 else "medium"
+    playback_payload["stream_url"] = str(runtime_session.get("stream_url") or "").strip()
+    playback_payload["runtime_transport"] = {
+        "strategy": "flask_range_stream",
+        "session_id": str(runtime_session.get("session_id") or "").strip(),
+    }
+    playback_payload["runtime_diagnostics"] = dict(playback_payload.get("runtime_diagnostics") or {})
+    playback_payload["runtime_diagnostics"]["fallback_reason"] = ""
+    playback_payload["runtime_diagnostics"]["confidence_factors"] = [
+        "Torrent metadata resolved and a playable video file is buffered for HTML5 playback."
+    ]
+    playback_payload["runtime_session"] = runtime_session
+    playback_payload["runtime_metrics"] = dict(runtime_session.get("runtime_metrics") or {})
+    response = build_playback_response_payload(playback_payload, session=prepared_result.get("session"))
+    response["runtime_session"] = runtime_session
+    return jsonify(response)
+
+
+@app.route("/api/runtime/stream/<session_id>")
+def api_runtime_stream(session_id):
+    try:
+        return build_stream_response(PLAYBACK_RUNTIME_MANAGER, session_id, request)
+    except PlaybackRuntimeError as exc:
+        status_code = 503 if exc.code in {"buffering", "metadata_timeout", "torrent_unavailable", "stream_unavailable"} else 404 if exc.code == "unknown_session" else 400
+        return jsonify({"ok": False, "error": exc.message, "code": exc.code}), status_code
+
+
+@app.route("/api/runtime/session/<session_id>", methods=["GET", "POST"])
+def api_runtime_session(session_id):
+    if request.method == "POST":
+        payload = request.get_json(silent=True) or {}
+        playback_state = str(payload.get("playback_state") or "").strip()
+        last_stream = bool(payload.get("last_stream"))
+        session = PLAYBACK_RUNTIME_MANAGER.mark_activity(
+            session_id,
+            playback_state=playback_state if playback_state else None,
+            last_stream=last_stream,
+        )
+        if session is None:
+            return jsonify({"ok": False, "error": "Playback session was not found.", "code": "unknown_session"}), 404
+        return jsonify({"ok": True, "runtime_session": session, "runtime_metrics": session.get("runtime_metrics", {})})
+
+    refresh = str(request.args.get("refresh", "1")).strip().lower() not in {"0", "false", "no"}
+    try:
+        session = PLAYBACK_RUNTIME_MANAGER.get_session(session_id, refresh=refresh)
+    except PlaybackRuntimeError as exc:
+        status_code = 503 if exc.code in {"torrent_unavailable", "stream_unavailable"} else 404 if exc.code == "unknown_session" else 400
+        return jsonify({"ok": False, "error": exc.message, "code": exc.code}), status_code
+    if session is None:
+        return jsonify({"ok": False, "error": "Playback session was not found.", "code": "unknown_session"}), 404
+    return jsonify({"ok": True, "runtime_session": session, "runtime_metrics": session.get("runtime_metrics", {})})
 
 
 @app.route("/api/movie-playback/runtime-profiles")
@@ -28577,7 +28366,7 @@ def build_ordered_lichess_valid_items(valid_items, progress_map=None):
         puzzle_id = str(row.get("puzzle_id", "") or "").strip()
         progress_entry = progress_map.get(puzzle_id)
         ordered.append({
-            "sort_bucket": classify_lichess_progress_bucket(progress_entry),
+            "sort_bucket": CHESS_RUNTIME.classify_lichess_progress_bucket(progress_entry),
             "times_seen": max(0, int((progress_entry or {}).get("times_seen", 0) or 0)),
             "times_missed": max(0, int((progress_entry or {}).get("times_missed", 0) or 0)),
             "source_index": int(item.get("source_index", index) or index),
@@ -28806,7 +28595,7 @@ def build_lichess_puzzle_solver_payload(puzzle_id="", filter_payload=None):
         "hub_href": url_for("chess_lichess_puzzles"),
         "source_status": source_status,
         "filter_query": build_lichess_solver_query_args(active_filter_payload),
-        "progress": build_lichess_progress_snapshot(chess_data, valid_items=[]),
+        "progress": CHESS_RUNTIME.build_lichess_progress_snapshot(chess_data, valid_items=[]),
         "show_cycle_note": False,
     }
     if not source_status.get("available"):
@@ -28815,8 +28604,8 @@ def build_lichess_puzzle_solver_payload(puzzle_id="", filter_payload=None):
 
     rows = [dict(row) for row in (source_status.get("sample_rows", []) or []) if isinstance(row, dict)]
     valid_items = build_lichess_valid_puzzle_list(rows, filter_payload=active_filter_payload)
-    progress_map = get_lichess_puzzle_progress_map(chess_data)
-    progress_snapshot = build_lichess_progress_snapshot(chess_data, valid_items=valid_items)
+    progress_map = CHESS_RUNTIME.get_lichess_puzzle_progress_map(chess_data)
+    progress_snapshot = CHESS_RUNTIME.build_lichess_progress_snapshot(chess_data, valid_items=valid_items)
     base_payload["progress"] = progress_snapshot
     if not valid_items:
         if str(puzzle_id or "").strip():
@@ -28873,7 +28662,7 @@ def build_lichess_puzzle_solver_payload(puzzle_id="", filter_payload=None):
     if progress_snapshot.get("all_clean_solved") and not target_id:
         base_payload["show_cycle_note"] = True
     current_progress = progress_map.get(current_puzzle_id)
-    current_solved_clean = classify_lichess_progress_bucket(current_progress) == 2
+    current_solved_clean = CHESS_RUNTIME.classify_lichess_progress_bucket(current_progress) == 2
     if len(valid_items) > 1 and current_item_index >= 0 and not next_puzzle_id:
         next_valid_index = (current_item_index + 1) % len(valid_items)
         next_row = dict(valid_items[next_valid_index].get("row") or {})
@@ -28896,7 +28685,7 @@ def build_lichess_puzzle_solver_payload(puzzle_id="", filter_payload=None):
         "game_url": str(current_row.get("game_url", "") or "").strip(),
         "position_label": f"{current_item_index + 1} / {len(valid_items)}" if valid_items else "Local sample",
         "already_solved": current_solved_clean,
-        "progress_status": normalize_lichess_progress_status((current_progress or {}).get("status")) if current_progress else "",
+        "progress_status": CHESS_RUNTIME.normalize_lichess_progress_status((current_progress or {}).get("status")) if current_progress else "",
         "progress_status_label": "Solved clean" if current_solved_clean else ("Needs another try" if current_progress else "Unseen"),
         "times_seen": int((current_progress or {}).get("times_seen", 0) or 0),
         "times_missed": int((current_progress or {}).get("times_missed", 0) or 0),
@@ -29196,7 +28985,7 @@ def chess_lichess_puzzles():
     custom_status_line = "Choose a local rating range and theme mix."
     custom_warning = ""
     valid_items = build_lichess_valid_puzzle_list(lichess_source_status.get("sample_rows", []), filter_payload={}) if lichess_source_status.get("available") else []
-    progress_snapshot = build_lichess_progress_snapshot(chess_data, valid_items=valid_items)
+    progress_snapshot = CHESS_RUNTIME.build_lichess_progress_snapshot(chess_data, valid_items=valid_items)
     if lichess_source_status.get("available"):
         selected_puzzle = choose_filtered_lichess_puzzle(
             lichess_source_status.get("sample_rows", []),
@@ -29290,7 +29079,7 @@ def _jsonify_lichess_progress_result(result, status_code=200):
 @app.route("/chess/lichess-puzzles/progress/start.json", methods=["POST"], endpoint="chess_lichess_puzzle_progress_start_json")
 def chess_lichess_puzzle_progress_start_json():
     chess_data = load_chess_data()
-    result = record_lichess_puzzle_started(chess_data, str(request.form.get("puzzle_id", "") or "").strip())
+    result = CHESS_RUNTIME.record_lichess_puzzle_started(chess_data, str(request.form.get("puzzle_id", "") or "").strip())
     if result.get("ok"):
         save_chess_data(chess_data)
         return _jsonify_lichess_progress_result(result)
@@ -29300,7 +29089,7 @@ def chess_lichess_puzzle_progress_start_json():
 @app.route("/chess/lichess-puzzles/progress/wrong.json", methods=["POST"], endpoint="chess_lichess_puzzle_progress_wrong_json")
 def chess_lichess_puzzle_progress_wrong_json():
     chess_data = load_chess_data()
-    result = record_lichess_puzzle_wrong_move(
+    result = CHESS_RUNTIME.record_lichess_puzzle_wrong_move(
         chess_data,
         str(request.form.get("puzzle_id", "") or "").strip(),
         attempted_move=str(request.form.get("attempted_move", "") or "").strip(),
@@ -29314,7 +29103,7 @@ def chess_lichess_puzzle_progress_wrong_json():
 @app.route("/chess/lichess-puzzles/progress/reveal.json", methods=["POST"], endpoint="chess_lichess_puzzle_progress_reveal_json")
 def chess_lichess_puzzle_progress_reveal_json():
     chess_data = load_chess_data()
-    result = record_lichess_puzzle_reveal(chess_data, str(request.form.get("puzzle_id", "") or "").strip())
+    result = CHESS_RUNTIME.record_lichess_puzzle_reveal(chess_data, str(request.form.get("puzzle_id", "") or "").strip())
     if result.get("ok"):
         save_chess_data(chess_data)
         return _jsonify_lichess_progress_result(result)
@@ -29325,7 +29114,7 @@ def chess_lichess_puzzle_progress_reveal_json():
 def chess_lichess_puzzle_progress_complete_json():
     chess_data = load_chess_data()
     completed_clean = str(request.form.get("completed_clean", "true") or "true").strip().lower() in {"1", "true", "yes", "on"}
-    result = record_lichess_puzzle_complete(
+    result = CHESS_RUNTIME.record_lichess_puzzle_complete(
         chess_data,
         str(request.form.get("puzzle_id", "") or "").strip(),
         completed_clean=completed_clean,
@@ -29339,7 +29128,7 @@ def chess_lichess_puzzle_progress_complete_json():
 @app.route("/chess/lichess-puzzles/progress/skip.json", methods=["POST"], endpoint="chess_lichess_puzzle_progress_skip_json")
 def chess_lichess_puzzle_progress_skip_json():
     chess_data = load_chess_data()
-    result = record_lichess_puzzle_skipped(chess_data, str(request.form.get("puzzle_id", "") or "").strip())
+    result = CHESS_RUNTIME.record_lichess_puzzle_skipped(chess_data, str(request.form.get("puzzle_id", "") or "").strip())
     if result.get("ok"):
         save_chess_data(chess_data)
         return _jsonify_lichess_progress_result(result)
@@ -30066,7 +29855,7 @@ def _jsonify_puzzle_attempt_result(result, status_code=200):
         "ok": bool(result.get("ok")),
         "error": str(result.get("error", "") or "").strip(),
         "attempt": attempt,
-        "attempt_summary": build_puzzle_attempt_summary(attempt),
+        "attempt_summary": CHESS_RUNTIME.build_attempt_summary(attempt),
     }), status_code
 
 
@@ -30077,9 +29866,9 @@ def chess_training_puzzle_attempt_move_json():
     attempt_id = str(request.form.get("attempt_id", "") or "").strip()
     step_index = safe_puzzle_attempt_int(request.form.get("step_index", "0"), 0)
     if result_type == "correct":
-        result = record_puzzle_correct_move(chess_data, attempt_id, step_index=step_index + 1)
+        result = CHESS_RUNTIME.record_correct_move(chess_data, attempt_id, step_index=step_index + 1)
     else:
-        result = record_puzzle_wrong_move(
+        result = CHESS_RUNTIME.record_wrong_move(
             chess_data,
             attempt_id,
             step_index=step_index + 1,
@@ -30098,7 +29887,7 @@ def chess_training_puzzle_attempt_move_json():
 @app.route("/chess/training/puzzle/attempt/reveal.json", methods=["POST"], endpoint="chess_training_puzzle_attempt_reveal_json")
 def chess_training_puzzle_attempt_reveal_json():
     chess_data = load_chess_data()
-    result = record_puzzle_reveal(chess_data, str(request.form.get("attempt_id", "") or "").strip())
+    result = CHESS_RUNTIME.record_reveal(chess_data, str(request.form.get("attempt_id", "") or "").strip())
     if result.get("ok"):
         save_chess_data(chess_data)
         return _jsonify_puzzle_attempt_result(result)
@@ -30108,7 +29897,7 @@ def chess_training_puzzle_attempt_reveal_json():
 @app.route("/chess/training/puzzle/attempt/engine-check.json", methods=["POST"], endpoint="chess_training_puzzle_attempt_engine_check_json")
 def chess_training_puzzle_attempt_engine_check_json():
     chess_data = load_chess_data()
-    result = record_puzzle_engine_check(chess_data, str(request.form.get("attempt_id", "") or "").strip())
+    result = CHESS_RUNTIME.record_engine_check(chess_data, str(request.form.get("attempt_id", "") or "").strip())
     if result.get("ok"):
         save_chess_data(chess_data)
         return _jsonify_puzzle_attempt_result(result)
@@ -30118,7 +29907,7 @@ def chess_training_puzzle_attempt_engine_check_json():
 @app.route("/chess/training/puzzle/attempt/critical-moment.json", methods=["POST"], endpoint="chess_training_puzzle_attempt_critical_moment_json")
 def chess_training_puzzle_attempt_critical_moment_json():
     chess_data = load_chess_data()
-    result = record_puzzle_critical_moment_check(chess_data, str(request.form.get("attempt_id", "") or "").strip())
+    result = CHESS_RUNTIME.record_critical_moment_check(chess_data, str(request.form.get("attempt_id", "") or "").strip())
     if result.get("ok"):
         save_chess_data(chess_data)
         return _jsonify_puzzle_attempt_result(result)
@@ -30128,7 +29917,7 @@ def chess_training_puzzle_attempt_critical_moment_json():
 @app.route("/chess/training/puzzle/attempt/skip.json", methods=["POST"], endpoint="chess_training_puzzle_attempt_skip_json")
 def chess_training_puzzle_attempt_skip_json():
     chess_data = load_chess_data()
-    result = skip_puzzle_attempt(
+    result = CHESS_RUNTIME.skip_attempt(
         chess_data,
         str(request.form.get("attempt_id", "") or "").strip(),
         final_step=safe_puzzle_attempt_int(request.form.get("final_step", "0"), 0),
@@ -30143,7 +29932,7 @@ def chess_training_puzzle_attempt_skip_json():
 @app.route("/chess/training/puzzle/attempt/complete.json", methods=["POST"], endpoint="chess_training_puzzle_attempt_complete_json")
 def chess_training_puzzle_attempt_complete_json():
     chess_data = load_chess_data()
-    result = complete_puzzle_attempt(
+    result = CHESS_RUNTIME.complete_attempt(
         chess_data,
         str(request.form.get("attempt_id", "") or "").strip(),
         final_step=safe_puzzle_attempt_int(request.form.get("final_step", "0"), 0),
@@ -30251,7 +30040,7 @@ def chess_training_puzzle():
     puzzle_payload = build_auto_training_puzzle_payload(chess_data, candidate_id=candidate_id)
     attempt_result = {"attempt": None, "changed": False, "created": False}
     if puzzle_payload.get("available") and isinstance(puzzle_payload.get("current_item"), dict):
-        attempt_result = get_or_create_active_puzzle_attempt(
+        attempt_result = CHESS_RUNTIME.get_or_create_active_attempt(
             chess_data,
             puzzle_payload.get("current_item", {}),
             total_steps=int(puzzle_payload.get("step_count", 0) or 0),
@@ -30259,7 +30048,7 @@ def chess_training_puzzle():
         if attempt_result.get("changed"):
             save_chess_data(chess_data)
     current_attempt = dict(attempt_result.get("attempt", {}) or {}) if isinstance(attempt_result.get("attempt"), dict) else {}
-    attempt_summary = build_puzzle_attempt_summary(current_attempt)
+    attempt_summary = CHESS_RUNTIME.build_attempt_summary(current_attempt)
     nav_items = [
         {"key": "home", "label": "Home", "href": url_for("chess"), "icon": "layout-dashboard"},
         {"key": "import", "label": "Import", "href": url_for("chess_import"), "icon": "download"},
