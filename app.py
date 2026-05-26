@@ -33,6 +33,13 @@ from domains.chess.puzzles.progress import (
     normalize_auto_puzzle_progress as normalize_auto_puzzle_progress_payload,
     record_auto_puzzle_candidate_progress as record_auto_puzzle_candidate_progress_payload,
 )
+from domains.magnets.playback import (
+    build_playback_response_payload,
+    get_runtime_profiles_catalog,
+    parse_playback_runtime_request,
+    prepare_playback_runtime,
+    serialize_playback_runtime,
+)
 from domains.magnets.services import ExperimentalRuntimeService, MovieSourcesService, SessionAnalyticsService, SourceActionService, StreamSessionService
 from domains.magnets.preferences import MagnetPreferenceService
 from domains.reading import (
@@ -24770,6 +24777,15 @@ def get_video_detail_context(entry_id, force_refresh=False):
         if tmdb_data and tmdb_review_confidence(tmdb_data, detail) != "low":
             top_billed_cast = tmdb_data.get("top_billed_cast", []) or []
         movie_sources = MOVIE_SOURCES_SERVICE.get_movie_sources(detail, force_refresh=force_refresh)
+        player_sources = movie_player_sources(detail, tmdb_data)
+        player_fallback_urls = get_vidsrc_embed_urls(detail)
+        playback_plan = prepare_playback_runtime(
+            movie=detail,
+            sources=list(movie_sources.get("sources") or []),
+            requested_profile=str(request.args.get("runtime_profile") or "").strip() if has_request_context() else "",
+            player_sources=player_sources,
+            fallback_urls=player_fallback_urls,
+        )
         related = rank_movie_detail_related_entries(detail, films, limit=24)
         related_title_parts = []
         if detail.get("director_entries"):
@@ -24796,11 +24812,13 @@ def get_video_detail_context(entry_id, force_refresh=False):
             "entry": detail,
             "entry_type": "film",
             "player_video_id": detail.get("video_id", ""),
-            "player_sources": movie_player_sources(detail, tmdb_data),
-            "player_fallback_urls": get_vidsrc_embed_urls(detail),
+            "player_sources": player_sources,
+            "player_fallback_urls": player_fallback_urls,
             "tmdb_data": tmdb_data,
             "top_billed_cast": top_billed_cast,
             "movie_sources": movie_sources,
+            "playback_plan": serialize_playback_runtime(playback_plan),
+            "runtime_profiles": get_runtime_profiles_catalog(),
             "related_entries": related,
             "related_title": " / ".join(related_title_parts) or detail.get("category") or "Related Films"
         }
@@ -25872,6 +25890,8 @@ def api_movie_stream_sessions():
             source=source,
             handoff_mode=str(payload.get("handoff_mode") or "").strip(),
             preferred_runtime=str(payload.get("preferred_runtime") or "").strip(),
+            player_sources=payload.get("player_sources") if isinstance(payload.get("player_sources"), list) else [],
+            fallback_urls=payload.get("fallback_urls") if isinstance(payload.get("fallback_urls"), list) else [],
         )
     elif action == "prepare":
         result = STREAM_SESSION_SERVICE.prepare_session(session_id)
@@ -25893,6 +25913,52 @@ def api_movie_stream_sessions():
         result = {"ok": False, "error": "Unsupported session action."}
 
     return jsonify(result), (200 if result.get("ok") else 400)
+
+
+@app.route("/api/movie-playback/select", methods=["POST"])
+def api_movie_playback_select():
+    request_payload = parse_playback_runtime_request(request.get_json(silent=True) or {})
+    result = prepare_playback_runtime(
+        movie=request_payload["movie"],
+        sources=request_payload["sources"],
+        requested_profile=request_payload["requested_profile"],
+        player_sources=request_payload["player_sources"],
+        fallback_urls=request_payload["fallback_urls"],
+    )
+    return jsonify(build_playback_response_payload(result))
+
+
+@app.route("/api/movie-playback/prepare", methods=["POST"])
+def api_movie_playback_prepare():
+    request_payload = parse_playback_runtime_request(request.get_json(silent=True) or {}, include_source=True)
+    playback = prepare_playback_runtime(
+        movie=request_payload["movie"],
+        selected_source=request_payload["source"],
+        sources=[request_payload["source"]] if request_payload["source"] else [],
+        requested_profile=request_payload["requested_profile"],
+        player_sources=request_payload["player_sources"],
+        fallback_urls=request_payload["fallback_urls"],
+    )
+    session_result = STREAM_SESSION_SERVICE.create_session(
+        movie=request_payload["movie"],
+        source=request_payload["source"],
+        handoff_mode=request_payload["handoff_mode"],
+        preferred_runtime="browser_stream" if playback.get("playback_runtime") == "browser_runtime" else "external_player",
+        player_sources=request_payload["player_sources"],
+        fallback_urls=request_payload["fallback_urls"],
+    )
+    if not session_result.get("ok"):
+        return jsonify(session_result), 400
+    session_id = str(((session_result.get("session") or {}).get("session_id")) or "").strip()
+    prepared_result = STREAM_SESSION_SERVICE.prepare_session(session_id)
+    if not prepared_result.get("ok"):
+        return jsonify(prepared_result), 400
+    return jsonify(build_playback_response_payload(playback, session=prepared_result.get("session")))
+
+
+@app.route("/api/movie-playback/runtime-profiles")
+def api_movie_playback_runtime_profiles():
+    return jsonify({"ok": True, "profiles": get_runtime_profiles_catalog()})
 
 
 @app.route("/api/movie-session-intelligence")

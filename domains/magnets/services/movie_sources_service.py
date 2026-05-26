@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Mapping
 
+from ..playback import prepare_playback_runtime, select_playback_candidates
 from ..preferences import MagnetPreferenceService
 from .source_handoff_service import SourceHandoffService
 from .search_service import MagnetSearchService
@@ -59,6 +60,15 @@ class MovieSourcesService:
             for result in results[: self.max_sources]
             if isinstance(result, dict)
         ]
+        selection = select_playback_candidates(visible_sources, movie=movie_data)
+        selected_source = dict(selection.get("selected_source") or {})
+        selected_fingerprint = str(selected_source.get("source_fingerprint") or "").strip()
+        visible_sources = list(selection.get("sources") or visible_sources)
+        playback_plan = prepare_playback_runtime(
+            movie=movie_data,
+            sources=visible_sources,
+            selected_source=selected_source,
+        )
         provider_labels = [
             self._provider_label(provider)
             for provider, count in provider_counts.items()
@@ -78,6 +88,13 @@ class MovieSourcesService:
             "cache_status": cache_status,
             "cache_label": self._cache_label(cache_status),
             "status_message": self._status_message(visible_sources=visible_sources, hidden_count=int(preference_meta.get("hidden_count", 0) or 0)),
+            "auto_selected_source_fingerprint": selected_fingerprint,
+            "playback_runtime": str(playback_plan.get("playback_runtime") or "").strip(),
+            "runtime_profile": str(playback_plan.get("runtime_profile") or "").strip(),
+            "playback_readiness": str(playback_plan.get("playback_readiness") or "").strip(),
+            "startup_confidence": str(playback_plan.get("startup_confidence") or "").strip(),
+            "runtime_warnings": list(playback_plan.get("runtime_warnings") or []),
+            "runtime_fallbacks": list(playback_plan.get("fallbacks") or []),
             "preference_summary": {
                 "favorite_group_count": int(preference_meta.get("favorite_group_count", 0) or 0),
                 "saved_source_count": int(preference_meta.get("saved_source_count", 0) or 0),
