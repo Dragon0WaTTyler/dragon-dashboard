@@ -14479,6 +14479,136 @@ SECTION_REFRESH_HANDLERS = {
     "german": refresh_german_section_lightweight,
 }
 
+
+def _run_section_refresh(section, scope=""):
+    section_key = str(section or "").strip().lower()
+    handler = SECTION_REFRESH_HANDLERS.get(section_key)
+    if handler is None:
+        raise KeyError(section_key)
+    result = handler(scope=scope)
+    payload = dict(result or {})
+    payload["section"] = str(payload.get("section", section_key) or section_key)
+    payload["message"] = str(payload.get("message", "Section refreshed.") or "Section refreshed.")
+    return payload
+
+
+def _watchlater_playlist_ids_for_scope(scope=""):
+    playlist_ids = [str(playlist_id or "").strip() for playlist_id in _watchlater_playlist_ids() if str(playlist_id or "").strip()]
+    scope_value = str(scope or "").strip()
+    if scope_value and scope_value in playlist_ids:
+        return [scope_value]
+    return playlist_ids
+
+
+def sync_articles_section(scope=""):
+    trigger_payload = {}
+    trigger_status_code = 200
+    status = "synced"
+    sync_message = "Articles synced and refreshed."
+
+    if _reading_github_actions_headers():
+        trigger_payload, trigger_status_code = trigger_reading_github_actions_sync()
+        trigger_payload = dict(trigger_payload or {})
+        if trigger_status_code >= 400 or trigger_payload.get("ok") is False:
+            raise RuntimeError(str(trigger_payload.get("error") or "Articles sync failed."))
+        if str(trigger_payload.get("status", "") or "").strip() in {"started", "already_running"}:
+            status = "pending"
+            sync_message = "Articles sync queued and refreshed."
+
+    snapshot_result = {}
+    try:
+        refreshed_snapshot = refresh_deployed_reading_snapshot_from_github()
+        if isinstance(refreshed_snapshot, dict):
+            snapshot_result = dict(refreshed_snapshot)
+    except Exception as exc:
+        app.logger.warning("section_sync articles snapshot_refresh_failed error=%s", exc)
+
+    return {
+        "status": status,
+        "message": sync_message,
+        "details": {
+            "trigger": trigger_payload,
+            "snapshot": snapshot_result,
+        },
+    }
+
+
+def sync_youtube_section(scope=""):
+    playlist_ids = _watchlater_playlist_ids_for_scope(scope=scope)
+    if not playlist_ids:
+        return {
+            "status": "unsupported",
+            "message": "YouTube Watch Later sync is not configured yet.",
+        }
+
+    refreshed = []
+    for playlist_id in playlist_ids:
+        videos = get_all_playlist_videos(
+            playlist_id,
+            force_refresh=True,
+            allow_global_invalidation=False,
+            refresh_reason="section_sync_watchlater",
+        )
+        refreshed.append({
+            "playlist_id": playlist_id,
+            "video_count": len(videos or []),
+        })
+
+    return {
+        "status": "synced",
+        "message": "YouTube synced and refreshed.",
+        "details": {
+            "playlists": refreshed,
+        },
+    }
+
+
+def sync_books_section(scope=""):
+    result = fetch_books_entries(force_refresh=True)
+    return {
+        "status": "synced",
+        "message": "Books synced and refreshed.",
+        "details": {
+            "entries": len((result or {}).get("entries", []) or []),
+            "error": str((result or {}).get("error", "") or "").strip(),
+        },
+    }
+
+
+def sync_movies_section(scope=""):
+    films = refresh_film_cache_from_source()
+    return {
+        "status": "synced",
+        "message": "Movies synced and refreshed.",
+        "details": {
+            "entries": len(films or []),
+        },
+    }
+
+
+def sync_chess_section(scope=""):
+    return {
+        "status": "unsupported",
+        "message": "Chess sync is manual. Use profile import.",
+    }
+
+
+def sync_german_section(scope=""):
+    return {
+        "status": "unsupported",
+        "message": "German sync is not configured yet.",
+    }
+
+
+SECTION_SYNC_HANDLERS = {
+    "articles": sync_articles_section,
+    "youtube": sync_youtube_section,
+    "books": sync_books_section,
+    "movies": sync_movies_section,
+    "chess": sync_chess_section,
+    "german": sync_german_section,
+}
+
 # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 #  NOTION FETCH (unchanged)
 # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
@@ -25593,6 +25723,53 @@ def section_refresh():
         "section": str(result.get("section", section) or section),
         "message": str(result.get("message", "Section refreshed.") or "Section refreshed."),
         "refreshed_at": current_timestamp(),
+        "reload": True,
+    })
+
+
+@app.route("/api/section-sync", methods=["POST"])
+def section_sync():
+    payload = request.get_json(silent=True) if request.is_json else {}
+    payload = payload if isinstance(payload, dict) else {}
+    section = str(payload.get("section", "") or "").strip().lower()
+    scope = str(payload.get("scope", "") or "").strip()
+    handler = SECTION_SYNC_HANDLERS.get(section)
+    if handler is None:
+        return jsonify({
+            "ok": False,
+            "section": section,
+            "status": "failed",
+            "message": "Unknown section.",
+            "synced_at": current_timestamp(),
+            "refresh": None,
+            "reload": False,
+        }), 400
+
+    try:
+        sync_result = dict(handler(scope=scope) or {})
+        sync_status = str(sync_result.get("status", "synced") or "synced")
+        refresh_result = None
+        if sync_status in {"synced", "pending", "unsupported"}:
+            refresh_result = _run_section_refresh(section, scope=scope)
+    except Exception as exc:
+        app.logger.warning("section_sync failed section=%s error=%s", section, exc)
+        return jsonify({
+            "ok": False,
+            "section": section,
+            "status": "failed",
+            "message": str(exc) or "Section sync failed.",
+            "synced_at": current_timestamp(),
+            "refresh": None,
+            "reload": False,
+        }), 500
+
+    return jsonify({
+        "ok": True,
+        "section": section,
+        "status": sync_status,
+        "message": str(sync_result.get("message", "Section synced.") or "Section synced."),
+        "synced_at": current_timestamp(),
+        "refresh": refresh_result,
         "reload": True,
     })
 

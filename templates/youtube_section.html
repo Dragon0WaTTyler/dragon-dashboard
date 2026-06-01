@@ -19,6 +19,14 @@
             onclick="dragonRefreshSection('{{ 'german' if is_german_section else 'youtube' }}')"
             data-default-label="Refresh"
             data-loading-label="Refreshing..."><i data-lucide="refresh-cw"></i>Refresh</button>
+        {% if is_watch_later_section %}
+        <button
+            type="button"
+            class="btn section-refresh-btn"
+            onclick="dragonSyncSection('youtube')"
+            data-default-label="Sync"
+            data-loading-label="Syncing..."><i data-lucide="refresh-cw"></i>Sync</button>
+        {% endif %}
     </div>
     {% endif %}
 </section>

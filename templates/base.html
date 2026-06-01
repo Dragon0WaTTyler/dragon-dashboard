@@ -981,6 +981,59 @@ body{font-family:'Manrope',sans-serif;background:radial-gradient(circle at top l
                     }
                 }
             };
+            window.dragonSyncSection = async function(section, scope, returnUrl, sourceButton) {
+                var button = sourceButton || (window.event && window.event.currentTarget) || document.activeElement;
+                var defaultHtml = button ? button.innerHTML : '';
+                var buttonLabel = button && !button.dataset.defaultLabel ? button.textContent.trim() : '';
+                var defaultLabel = button && button.dataset.defaultLabel ? button.dataset.defaultLabel : (buttonLabel || 'Sync');
+                var loadingLabel = button && button.dataset.loadingLabel ? button.dataset.loadingLabel : 'Syncing...';
+                var feedback = null;
+                if (button && button.parentElement) {
+                    feedback = button.parentElement.querySelector('[data-refresh-feedback]');
+                    if (!feedback) {
+                        feedback = document.createElement('div');
+                        feedback.className = 'section-refresh-feedback';
+                        feedback.setAttribute('data-refresh-feedback', 'true');
+                        button.parentElement.appendChild(feedback);
+                    }
+                    feedback.textContent = '';
+                }
+                if (button) {
+                    button.disabled = true;
+                    button.textContent = loadingLabel;
+                }
+                try {
+                    var response = await fetch('{{ url_for("section_sync") }}', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({
+                            section: section,
+                            scope: scope || '',
+                            return_url: returnUrl || window.location.href
+                        })
+                    });
+                    var payload = await response.json();
+                    if (!response.ok || !payload.ok) {
+                        throw new Error(payload.message || 'Sync failed.');
+                    }
+                    if (payload.reload) {
+                        window.location.reload();
+                        return;
+                    }
+                } catch (error) {
+                    var message = error && error.message ? error.message : 'Sync failed.';
+                    if (feedback) {
+                        feedback.textContent = message;
+                    } else {
+                        window.alert(message);
+                    }
+                } finally {
+                    if (button) {
+                        button.disabled = false;
+                        button.innerHTML = defaultHtml || defaultLabel;
+                    }
+                }
+            };
             window.setCinemaMode = setCinemaMode;
             window.updateCinemaPlayback = updateCinemaPlayback;
             window.setTheaterView = setTheaterView;

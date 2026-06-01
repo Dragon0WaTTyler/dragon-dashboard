@@ -112,6 +112,7 @@
         </div>
         <div class="reading-entry-actions">
             <button type="button" class="btn section-refresh-btn" onclick="dragonRefreshSection('articles')" data-default-label="Refresh" data-loading-label="Refreshing..."><i data-lucide="refresh-cw"></i>Refresh</button>
+            <button type="button" class="btn section-refresh-btn" onclick="dragonSyncSection('articles')" data-default-label="Sync" data-loading-label="Syncing..."><i data-lucide="refresh-cw"></i>Sync</button>
             <form method="post" action="{{ url_for('reading_trigger_sync') }}" data-reading-sync-form>
                 <button type="submit" class="btn" id="reading-sync-button" data-default-label="Check new" data-loading-label="Starting sync..."><i data-lucide="refresh-cw"></i>Check new</button>
             </form>
