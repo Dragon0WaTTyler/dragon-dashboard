@@ -14492,6 +14492,107 @@ def _run_section_refresh(section, scope=""):
     return payload
 
 
+ADMIN_GLOBAL_REFRESH_SECTIONS = ["articles", "youtube", "books", "movies", "chess", "german"]
+ADMIN_GLOBAL_SYNC_SECTIONS = ["articles", "youtube", "books", "movies"]
+ADMIN_GLOBAL_SYNC_SKIPPED_SECTIONS = ["chess", "german"]
+
+
+def _run_admin_global_refresh(sections=None, scope=""):
+    selected_sections = sections if isinstance(sections, (list, tuple)) else ADMIN_GLOBAL_REFRESH_SECTIONS
+    results = {}
+    all_ok = True
+    for section in selected_sections:
+        section_key = str(section or "").strip().lower()
+        if not section_key:
+            continue
+        try:
+            refresh_result = _run_section_refresh(section_key, scope=scope)
+            results[section_key] = {
+                "ok": True,
+                "section": section_key,
+                "status": "refreshed",
+                "message": str(refresh_result.get("message", "Section refreshed.") or "Section refreshed."),
+            }
+        except Exception as exc:
+            all_ok = False
+            app.logger.warning("admin_global_refresh failed section=%s error=%s", section_key, exc)
+            results[section_key] = {
+                "ok": False,
+                "section": section_key,
+                "status": "failed",
+                "message": str(exc) or "Section refresh failed.",
+            }
+    return {
+        "ok": all_ok,
+        "mode": "global_refresh",
+        "results": results,
+        "refreshed_at": current_timestamp(),
+        "reload": True,
+    }
+
+
+def _run_admin_global_sync(sections=None, scope=""):
+    selected_sections = sections if isinstance(sections, (list, tuple)) else ADMIN_GLOBAL_SYNC_SECTIONS
+    results = {}
+    all_ok = True
+    for section in selected_sections:
+        section_key = str(section or "").strip().lower()
+        if not section_key:
+            continue
+        handler = SECTION_SYNC_HANDLERS.get(section_key)
+        if handler is None:
+            all_ok = False
+            results[section_key] = {
+                "ok": False,
+                "section": section_key,
+                "status": "failed",
+                "message": "Unknown section.",
+                "refresh": None,
+            }
+            continue
+        try:
+            sync_result = dict(handler(scope=scope) or {})
+            sync_status = str(sync_result.get("status", "synced") or "synced")
+            refresh_result = None
+            if sync_status in {"synced", "pending", "unsupported"}:
+                refresh_result = _run_section_refresh(section_key, scope=scope)
+            results[section_key] = {
+                "ok": True,
+                "section": section_key,
+                "status": sync_status,
+                "message": str(sync_result.get("message", "Section synced.") or "Section synced."),
+                "refresh": refresh_result,
+            }
+        except Exception as exc:
+            all_ok = False
+            app.logger.warning("admin_global_sync failed section=%s error=%s", section_key, exc)
+            results[section_key] = {
+                "ok": False,
+                "section": section_key,
+                "status": "failed",
+                "message": str(exc) or "Section sync failed.",
+                "refresh": None,
+            }
+    for section in ADMIN_GLOBAL_SYNC_SKIPPED_SECTIONS:
+        section_key = str(section or "").strip().lower()
+        if section_key in results:
+            continue
+        results[section_key] = {
+            "ok": True,
+            "section": section_key,
+            "status": "skipped",
+            "message": f"{section_key.title()} sync is skipped in global sync.",
+            "refresh": None,
+        }
+    return {
+        "ok": all_ok,
+        "mode": "global_sync",
+        "results": results,
+        "synced_at": current_timestamp(),
+        "reload": True,
+    }
+
+
 def _watchlater_playlist_ids_for_scope(scope=""):
     playlist_ids = [str(playlist_id or "").strip() for playlist_id in _watchlater_playlist_ids() if str(playlist_id or "").strip()]
     scope_value = str(scope or "").strip()
@@ -25605,7 +25706,7 @@ def dragon_login_required_for_request():
         return False
     if dragon_site_protection_enabled():
         return True
-    return path.startswith("/admin")
+    return path.startswith("/admin") or path.startswith("/api/admin/")
 
 
 @app.before_request
@@ -25772,6 +25873,28 @@ def section_sync():
         "refresh": refresh_result,
         "reload": True,
     })
+
+
+@app.route("/api/admin/global-refresh", methods=["POST"])
+def admin_global_refresh():
+    payload = request.get_json(silent=True) if request.is_json else {}
+    payload = payload if isinstance(payload, dict) else {}
+    sections = payload.get("sections")
+    scope = str(payload.get("scope", "") or "").strip()
+    response_payload = _run_admin_global_refresh(sections=sections, scope=scope)
+    status_code = 200 if response_payload.get("ok") else 207
+    return jsonify(response_payload), status_code
+
+
+@app.route("/api/admin/global-sync", methods=["POST"])
+def admin_global_sync():
+    payload = request.get_json(silent=True) if request.is_json else {}
+    payload = payload if isinstance(payload, dict) else {}
+    sections = payload.get("sections")
+    scope = str(payload.get("scope", "") or "").strip()
+    response_payload = _run_admin_global_sync(sections=sections, scope=scope)
+    status_code = 200 if response_payload.get("ok") else 207
+    return jsonify(response_payload), status_code
 
 
 YOUTUBE_RECOMMENDATION_SERVICE = YouTubeRecommendationService(

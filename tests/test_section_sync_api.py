@@ -8,6 +8,8 @@ class SectionSyncApiTests(unittest.TestCase):
     def setUp(self):
         dragon_app.app.config["TESTING"] = True
         self.client = dragon_app.app.test_client()
+        with self.client.session_transaction() as session:
+            session["dragon_authenticated"] = True
 
     def test_valid_sections_return_json(self):
         for section in ["articles", "youtube", "books", "movies", "chess", "german"]:
@@ -160,6 +162,131 @@ class SectionSyncApiTests(unittest.TestCase):
         heavy_books.assert_not_called()
         heavy_movies.assert_not_called()
         self.assertEqual(refresh_mock.call_count, 2)
+
+    def test_admin_global_refresh_returns_per_section_results(self):
+        refresh_route = Mock()
+        with patch.object(dragon_app, "refresh", refresh_route), patch.object(
+            dragon_app,
+            "_run_section_refresh",
+            side_effect=lambda section, scope="": {"section": section, "message": f"{section} refreshed"},
+        ) as refresh_mock:
+            response = self.client.post("/api/admin/global-refresh", json={})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["mode"], "global_refresh")
+        self.assertTrue(payload["reload"])
+        for section in ["articles", "youtube", "books", "movies", "chess", "german"]:
+            self.assertIn(section, payload["results"])
+            self.assertTrue(payload["results"][section]["ok"])
+            self.assertEqual(payload["results"][section]["status"], "refreshed")
+        self.assertEqual(refresh_mock.call_count, 6)
+        refresh_route.assert_not_called()
+
+    def test_admin_global_refresh_continues_when_one_section_fails(self):
+        def fake_refresh(section, scope=""):
+            if section == "books":
+                raise RuntimeError("books failed")
+            return {"section": section, "message": f"{section} refreshed"}
+
+        with patch.object(dragon_app, "_run_section_refresh", side_effect=fake_refresh):
+            response = self.client.post("/api/admin/global-refresh", json={})
+
+        self.assertEqual(response.status_code, 207)
+        payload = response.get_json()
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["results"]["books"]["status"], "failed")
+        self.assertEqual(payload["results"]["books"]["message"], "books failed")
+        self.assertTrue(payload["results"]["articles"]["ok"])
+
+    def test_admin_global_sync_returns_per_section_results(self):
+        call_order = []
+
+        def build_sync_handler(section_name):
+            def handler(scope=""):
+                call_order.append("sync:" + section_name)
+                return {"status": "synced", "message": f"{section_name} synced"}
+            return handler
+
+        def fake_refresh(section, scope=""):
+            call_order.append("refresh:" + section)
+            return {"section": section, "message": f"{section} refreshed"}
+
+        refresh_route = Mock()
+        with patch.object(dragon_app, "refresh", refresh_route), patch.dict(
+            dragon_app.SECTION_SYNC_HANDLERS,
+            {
+                "articles": build_sync_handler("articles"),
+                "youtube": build_sync_handler("youtube"),
+                "books": build_sync_handler("books"),
+                "movies": build_sync_handler("movies"),
+            },
+            clear=False,
+        ), patch.object(dragon_app, "_run_section_refresh", side_effect=fake_refresh):
+            response = self.client.post("/api/admin/global-sync", json={})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["mode"], "global_sync")
+        self.assertEqual(
+            call_order,
+            [
+                "sync:articles",
+                "refresh:articles",
+                "sync:youtube",
+                "refresh:youtube",
+                "sync:books",
+                "refresh:books",
+                "sync:movies",
+                "refresh:movies",
+            ],
+        )
+        for section in ["articles", "youtube", "books", "movies"]:
+            self.assertIn(section, payload["results"])
+            self.assertTrue(payload["results"][section]["ok"])
+            self.assertEqual(payload["results"][section]["status"], "synced")
+            self.assertIsInstance(payload["results"][section]["refresh"], dict)
+        self.assertEqual(payload["results"]["chess"]["status"], "skipped")
+        self.assertEqual(payload["results"]["german"]["status"], "skipped")
+        refresh_route.assert_not_called()
+
+    def test_admin_global_sync_continues_when_one_section_fails(self):
+        def fake_sync_articles(scope=""):
+            return {"status": "synced", "message": "articles synced"}
+
+        def fake_sync_youtube(scope=""):
+            raise RuntimeError("youtube failed")
+
+        def fake_sync_books(scope=""):
+            return {"status": "synced", "message": "books synced"}
+
+        def fake_sync_movies(scope=""):
+            return {"status": "synced", "message": "movies synced"}
+
+        with patch.dict(
+            dragon_app.SECTION_SYNC_HANDLERS,
+            {
+                "articles": fake_sync_articles,
+                "youtube": fake_sync_youtube,
+                "books": fake_sync_books,
+                "movies": fake_sync_movies,
+            },
+            clear=False,
+        ), patch.object(
+            dragon_app,
+            "_run_section_refresh",
+            side_effect=lambda section, scope="": {"section": section, "message": f"{section} refreshed"},
+        ) as refresh_mock:
+            response = self.client.post("/api/admin/global-sync", json={})
+
+        self.assertEqual(response.status_code, 207)
+        payload = response.get_json()
+        self.assertFalse(payload["ok"])
+        self.assertEqual(payload["results"]["youtube"]["status"], "failed")
+        self.assertEqual(payload["results"]["youtube"]["message"], "youtube failed")
+        self.assertEqual(refresh_mock.call_count, 3)
 
 
 if __name__ == "__main__":

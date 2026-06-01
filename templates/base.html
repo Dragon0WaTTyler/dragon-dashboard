@@ -509,7 +509,6 @@ body{font-family:'Manrope',sans-serif;background:radial-gradient(circle at top l
                 {% for item in top_nav_items %}
                 <a class="top-tab {{ 'active' if request.path in item.active_paths else '' }}" href="{{ item.href }}" data-scroll-top="true" title="{{ item.label }}" aria-label="{{ item.label }}"><i class="nav-icon {{ item.icon }}" aria-hidden="true"></i><span>{{ item.short_label }}</span></a>
                 {% endfor %}
-                <a class="btn sync-tab" href="{{ url_for('refresh', next=current_location) }}" aria-label="Quick refresh only online; full sync uses Admin sync or scheduled sync." title="Quick refresh only online; full sync uses Admin sync or scheduled sync."><i data-lucide="refresh-cw"></i><span>Sync</span></a>
                 {% if dragon_auth_enabled and dragon_authenticated %}
                 <a class="btn sync-tab" href="{{ url_for('logout', next=url_for('login')) }}" aria-label="Log out of Dragon" title="Log out of Dragon"><i data-lucide="log-out"></i><span>Logout</span></a>
                 {% endif %}
@@ -928,13 +927,8 @@ body{font-family:'Manrope',sans-serif;background:radial-gradient(circle at top l
                 else setSidebar(readSidebarCollapsedState());
                 setAiSidebar(false);
             });
-            window.dragonRefreshSection = async function(section, scope, returnUrl, sourceButton) {
-                const button = sourceButton || (window.event && window.event.currentTarget) || document.activeElement;
-                const defaultHtml = button ? button.innerHTML : '';
-                const buttonLabel = button && !button.dataset.defaultLabel ? button.textContent.trim() : '';
-                const defaultLabel = button && button.dataset.defaultLabel ? button.dataset.defaultLabel : (buttonLabel || 'Refresh');
-                const loadingLabel = button && button.dataset.loadingLabel ? button.dataset.loadingLabel : 'Refreshing...';
-                let feedback = null;
+            function dragonEnsureInlineFeedback(button) {
+                var feedback = null;
                 if (button && button.parentElement) {
                     feedback = button.parentElement.querySelector('[data-refresh-feedback]');
                     if (!feedback) {
@@ -945,6 +939,43 @@ body{font-family:'Manrope',sans-serif;background:radial-gradient(circle at top l
                     }
                     feedback.textContent = '';
                 }
+                return feedback;
+            }
+            function dragonButtonLabels(button, defaultText, loadingText) {
+                var defaultHtml = button ? button.innerHTML : '';
+                var buttonLabel = button && !button.dataset.defaultLabel ? button.textContent.trim() : '';
+                return {
+                    defaultHtml: defaultHtml,
+                    defaultLabel: button && button.dataset.defaultLabel ? button.dataset.defaultLabel : (buttonLabel || defaultText),
+                    loadingLabel: button && button.dataset.loadingLabel ? button.dataset.loadingLabel : loadingText
+                };
+            }
+            function dragonSummarizeAdminResults(payload) {
+                var results = payload && payload.results ? payload.results : {};
+                var sections = [];
+                var failures = [];
+                for (var key in results) {
+                    if (!Object.prototype.hasOwnProperty.call(results, key)) continue;
+                    sections.push(key);
+                    if (!results[key] || results[key].ok === false || results[key].status === 'failed') {
+                        failures.push(key);
+                    }
+                }
+                if (failures.length) {
+                    return 'Completed with issues: ' + failures.join(', ') + '.';
+                }
+                if (sections.length) {
+                    return 'Completed: ' + sections.join(', ') + '.';
+                }
+                return 'Completed.';
+            }
+            window.dragonRefreshSection = async function(section, scope, returnUrl, sourceButton) {
+                const button = sourceButton || (window.event && window.event.currentTarget) || document.activeElement;
+                const defaultHtml = button ? button.innerHTML : '';
+                const buttonLabel = button && !button.dataset.defaultLabel ? button.textContent.trim() : '';
+                const defaultLabel = button && button.dataset.defaultLabel ? button.dataset.defaultLabel : (buttonLabel || 'Refresh');
+                const loadingLabel = button && button.dataset.loadingLabel ? button.dataset.loadingLabel : 'Refreshing...';
+                let feedback = dragonEnsureInlineFeedback(button);
                 if (button) {
                     button.disabled = true;
                     button.textContent = loadingLabel;
@@ -983,24 +1014,11 @@ body{font-family:'Manrope',sans-serif;background:radial-gradient(circle at top l
             };
             window.dragonSyncSection = async function(section, scope, returnUrl, sourceButton) {
                 var button = sourceButton || (window.event && window.event.currentTarget) || document.activeElement;
-                var defaultHtml = button ? button.innerHTML : '';
-                var buttonLabel = button && !button.dataset.defaultLabel ? button.textContent.trim() : '';
-                var defaultLabel = button && button.dataset.defaultLabel ? button.dataset.defaultLabel : (buttonLabel || 'Sync');
-                var loadingLabel = button && button.dataset.loadingLabel ? button.dataset.loadingLabel : 'Syncing...';
-                var feedback = null;
-                if (button && button.parentElement) {
-                    feedback = button.parentElement.querySelector('[data-refresh-feedback]');
-                    if (!feedback) {
-                        feedback = document.createElement('div');
-                        feedback.className = 'section-refresh-feedback';
-                        feedback.setAttribute('data-refresh-feedback', 'true');
-                        button.parentElement.appendChild(feedback);
-                    }
-                    feedback.textContent = '';
-                }
+                var labels = dragonButtonLabels(button, 'Sync', 'Syncing...');
+                var feedback = dragonEnsureInlineFeedback(button);
                 if (button) {
                     button.disabled = true;
-                    button.textContent = loadingLabel;
+                    button.textContent = labels.loadingLabel;
                 }
                 try {
                     var response = await fetch('{{ url_for("section_sync") }}', {
@@ -1030,7 +1048,92 @@ body{font-family:'Manrope',sans-serif;background:radial-gradient(circle at top l
                 } finally {
                     if (button) {
                         button.disabled = false;
-                        button.innerHTML = defaultHtml || defaultLabel;
+                        button.innerHTML = labels.defaultHtml || labels.defaultLabel;
+                    }
+                }
+            };
+            window.dragonAdminGlobalRefresh = async function(sourceButton, sections) {
+                var button = sourceButton || (window.event && window.event.currentTarget) || document.activeElement;
+                var labels = dragonButtonLabels(button, 'Global Refresh', 'Refreshing all...');
+                var feedback = dragonEnsureInlineFeedback(button);
+                if (feedback) feedback.textContent = 'Refreshing all...';
+                if (button) {
+                    button.disabled = true;
+                    button.textContent = labels.loadingLabel;
+                }
+                try {
+                    var response = await fetch('{{ url_for("admin_global_refresh") }}', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({
+                            sections: Array.isArray(sections) ? sections : [],
+                            return_url: window.location.href
+                        })
+                    });
+                    var payload = await response.json();
+                    if (!response.ok || !payload.ok) {
+                        if (payload && payload.results) {
+                            throw new Error(dragonSummarizeAdminResults(payload));
+                        }
+                        throw new Error((payload && (payload.error || payload.message)) || 'Global refresh failed.');
+                    }
+                    if (feedback) feedback.textContent = dragonSummarizeAdminResults(payload);
+                    if (payload.reload) {
+                        window.setTimeout(function() {
+                            window.location.reload();
+                        }, 700);
+                    }
+                } catch (error) {
+                    if (feedback) feedback.textContent = (error && error.message) ? error.message : 'Global refresh failed.';
+                    else window.alert((error && error.message) ? error.message : 'Global refresh failed.');
+                } finally {
+                    if (button) {
+                        button.disabled = false;
+                        button.innerHTML = labels.defaultHtml || labels.defaultLabel;
+                    }
+                }
+            };
+            window.dragonAdminGlobalSync = async function(sourceButton, sections) {
+                if (!window.confirm('This will sync Articles, YouTube, Books, and Movies. Continue?')) {
+                    return;
+                }
+                var button = sourceButton || (window.event && window.event.currentTarget) || document.activeElement;
+                var labels = dragonButtonLabels(button, 'Global Sync', 'Syncing selected sections...');
+                var feedback = dragonEnsureInlineFeedback(button);
+                if (feedback) feedback.textContent = 'Syncing selected sections...';
+                if (button) {
+                    button.disabled = true;
+                    button.textContent = labels.loadingLabel;
+                }
+                try {
+                    var response = await fetch('{{ url_for("admin_global_sync") }}', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({
+                            sections: Array.isArray(sections) ? sections : [],
+                            return_url: window.location.href
+                        })
+                    });
+                    var payload = await response.json();
+                    if (!response.ok || !payload.ok) {
+                        if (payload && payload.results) {
+                            throw new Error(dragonSummarizeAdminResults(payload));
+                        }
+                        throw new Error((payload && (payload.error || payload.message)) || 'Global sync failed.');
+                    }
+                    if (feedback) feedback.textContent = dragonSummarizeAdminResults(payload);
+                    if (payload.reload) {
+                        window.setTimeout(function() {
+                            window.location.reload();
+                        }, 700);
+                    }
+                } catch (error) {
+                    if (feedback) feedback.textContent = (error && error.message) ? error.message : 'Global sync failed.';
+                    else window.alert((error && error.message) ? error.message : 'Global sync failed.');
+                } finally {
+                    if (button) {
+                        button.disabled = false;
+                        button.innerHTML = labels.defaultHtml || labels.defaultLabel;
                     }
                 }
             };

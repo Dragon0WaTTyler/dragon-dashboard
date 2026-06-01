@@ -20,6 +20,11 @@
     .admin-sync-report summary{cursor:pointer;list-style:none}
     .admin-sync-report summary::-webkit-details-marker{display:none}
     .admin-sync-report-list{margin:0;padding-left:18px;color:var(--text-2);display:grid;gap:6px}
+    .admin-maintenance-card{display:grid;gap:14px}
+    .admin-maintenance-actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+    .admin-maintenance-quick{display:grid;gap:10px}
+    .admin-maintenance-quick-grid{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+    .admin-maintenance-label{font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;color:var(--text-2)}
 </style>
 <section class="page-hero">
     <div class="hero-meta"><span class="hero-badge">Admin Hub</span><span>Modular control center</span></div>
@@ -123,6 +128,40 @@
             </div>
         </div>
         {% endfor %}
+    </div>
+</section>
+
+<section class="surface-card section-card admin-maintenance-card">
+    <div class="hero-meta">
+        <span class="hero-badge">System Maintenance</span>
+        <span>Admin-only global controls</span>
+    </div>
+    <div>
+        <h3 style="margin:0; font-size:1.2rem;">Refresh and sync without the top bar</h3>
+        <p class="muted" style="margin-top:8px;">Use lightweight section-scoped refresh by default. Global sync stays limited to Articles, YouTube, Books, and Movies.</p>
+    </div>
+    <div class="admin-maintenance-actions">
+        <button type="button" class="btn section-refresh-btn" onclick="dragonAdminGlobalRefresh(this)" data-default-label="Global Refresh" data-loading-label="Refreshing all...">
+            <i data-lucide="refresh-cw"></i>Global Refresh
+        </button>
+        <button type="button" class="btn section-refresh-btn" onclick="dragonAdminGlobalSync(this)" data-default-label="Global Sync" data-loading-label="Syncing selected sections...">
+            <i data-lucide="rotate-cw"></i>Global Sync
+        </button>
+    </div>
+    <div class="admin-maintenance-quick">
+        <div class="admin-maintenance-label">Quick Section Controls</div>
+        <div class="admin-maintenance-quick-grid">
+            <button type="button" class="btn section-refresh-btn" onclick="dragonRefreshSection('articles', '', window.location.href, this)" data-default-label="Articles Refresh" data-loading-label="Refreshing...">Articles Refresh</button>
+            <button type="button" class="btn section-refresh-btn" onclick="dragonSyncSection('articles', '', window.location.href, this)" data-default-label="Articles Sync" data-loading-label="Syncing...">Articles Sync</button>
+            <button type="button" class="btn section-refresh-btn" onclick="dragonRefreshSection('youtube', '', window.location.href, this)" data-default-label="YouTube Refresh" data-loading-label="Refreshing...">YouTube Refresh</button>
+            <button type="button" class="btn section-refresh-btn" onclick="dragonSyncSection('youtube', '', window.location.href, this)" data-default-label="YouTube Sync" data-loading-label="Syncing...">YouTube Sync</button>
+            <button type="button" class="btn section-refresh-btn" onclick="dragonRefreshSection('books', '', window.location.href, this)" data-default-label="Books Refresh" data-loading-label="Refreshing...">Books Refresh</button>
+            <button type="button" class="btn section-refresh-btn" onclick="dragonSyncSection('books', '', window.location.href, this)" data-default-label="Books Sync" data-loading-label="Syncing...">Books Sync</button>
+            <button type="button" class="btn section-refresh-btn" onclick="dragonRefreshSection('movies', '', window.location.href, this)" data-default-label="Movies Refresh" data-loading-label="Refreshing...">Movies Refresh</button>
+            <button type="button" class="btn section-refresh-btn" onclick="dragonSyncSection('movies', '', window.location.href, this)" data-default-label="Movies Sync" data-loading-label="Syncing...">Movies Sync</button>
+            <button type="button" class="btn section-refresh-btn" onclick="dragonRefreshSection('chess', '', window.location.href, this)" data-default-label="Chess Refresh" data-loading-label="Refreshing...">Chess Refresh</button>
+            <button type="button" class="btn section-refresh-btn" onclick="dragonRefreshSection('german', '', window.location.href, this)" data-default-label="German Refresh" data-loading-label="Refreshing...">German Refresh</button>
+        </div>
     </div>
 </section>
 {% endblock %}
