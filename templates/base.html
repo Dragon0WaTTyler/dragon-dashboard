@@ -190,6 +190,10 @@ body{font-family:'Manrope',sans-serif;background:radial-gradient(circle at top l
         .music-player-bar .progress-fill,.bottom-player-bar .progress-fill{height:100%;background:#ff0000;box-shadow:0 0 12px rgba(255,0,0,.35)}
         .info-row{display:flex;justify-content:space-between;gap:12px;border-bottom:1px solid var(--border);padding-bottom:10px;font-size:.88rem}.info-row strong{color:var(--text)}
         .empty-state{padding:28px;border:1px dashed var(--border-strong);border-radius:24px;text-align:center;color:var(--text-2)}
+        .section-refresh-btn{min-height:32px;padding:7px 11px;border-radius:999px;font-size:.72rem;line-height:1;letter-spacing:.08em;text-transform:uppercase;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);color:var(--text-2);box-shadow:none}
+        .section-refresh-btn:hover,.section-refresh-btn:focus-visible{background:rgba(255,255,255,.07);border-color:rgba(255,0,0,.28);color:var(--text)}
+        .section-refresh-btn[disabled]{opacity:.7;cursor:wait}
+        .section-refresh-feedback{margin-top:8px;color:#f0b0b0;font-size:.78rem;line-height:1.4}
         html[data-theme="light"] .nav-link:hover,html[data-theme="light"] .top-tab:hover{background:rgba(200,20,20,.06)}
         html[data-theme="light"] .nav-link.active,html[data-theme="light"] .top-tab.active{background:rgba(200,20,20,.08);border-color:rgba(200,20,20,.18)}
         html[data-theme="light"] .nav-link.active .nav-icon,html[data-theme="light"] .top-tab.active .nav-icon{text-shadow:none}
@@ -924,6 +928,59 @@ body{font-family:'Manrope',sans-serif;background:radial-gradient(circle at top l
                 else setSidebar(readSidebarCollapsedState());
                 setAiSidebar(false);
             });
+            window.dragonRefreshSection = async function(section, scope, returnUrl, sourceButton) {
+                const button = sourceButton || (window.event && window.event.currentTarget) || document.activeElement;
+                const defaultHtml = button ? button.innerHTML : '';
+                const buttonLabel = button && !button.dataset.defaultLabel ? button.textContent.trim() : '';
+                const defaultLabel = button && button.dataset.defaultLabel ? button.dataset.defaultLabel : (buttonLabel || 'Refresh');
+                const loadingLabel = button && button.dataset.loadingLabel ? button.dataset.loadingLabel : 'Refreshing...';
+                let feedback = null;
+                if (button && button.parentElement) {
+                    feedback = button.parentElement.querySelector('[data-refresh-feedback]');
+                    if (!feedback) {
+                        feedback = document.createElement('div');
+                        feedback.className = 'section-refresh-feedback';
+                        feedback.setAttribute('data-refresh-feedback', 'true');
+                        button.parentElement.appendChild(feedback);
+                    }
+                    feedback.textContent = '';
+                }
+                if (button) {
+                    button.disabled = true;
+                    button.textContent = loadingLabel;
+                }
+                try {
+                    const response = await fetch('{{ url_for("section_refresh") }}', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({
+                            section: section,
+                            scope: scope || '',
+                            return_url: returnUrl || window.location.href
+                        })
+                    });
+                    const payload = await response.json();
+                    if (!response.ok || !payload.ok) {
+                        throw new Error(payload.message || 'Refresh failed.');
+                    }
+                    if (payload.reload) {
+                        window.location.reload();
+                        return;
+                    }
+                } catch (error) {
+                    const message = error && error.message ? error.message : 'Refresh failed.';
+                    if (feedback) {
+                        feedback.textContent = message;
+                    } else {
+                        window.alert(message);
+                    }
+                } finally {
+                    if (button) {
+                        button.disabled = false;
+                        button.innerHTML = defaultHtml || defaultLabel;
+                    }
+                }
+            };
             window.setCinemaMode = setCinemaMode;
             window.updateCinemaPlayback = updateCinemaPlayback;
             window.setTheaterView = setTheaterView;

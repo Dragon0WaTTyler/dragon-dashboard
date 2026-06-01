@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
 {% set is_german_section = 'german' in (title|lower) %}
+{% set is_watch_later_section = 'watch later' in (title|lower) %}
 <section class="page-hero">
     <div class="hero-meta">
         <span class="hero-badge">Video Workspace</span>
@@ -10,6 +11,16 @@
     <p class="subhead">
         Browse playlists like a lightweight media IDE: paginate quickly, shuffle the visible set, and open any lesson or match in a dedicated cinematic detail page.
     </p>
+    {% if is_german_section or is_watch_later_section %}
+    <div class="detail-controls">
+        <button
+            type="button"
+            class="btn section-refresh-btn"
+            onclick="dragonRefreshSection('{{ 'german' if is_german_section else 'youtube' }}')"
+            data-default-label="Refresh"
+            data-loading-label="Refreshing..."><i data-lucide="refresh-cw"></i>Refresh</button>
+    </div>
+    {% endif %}
 </section>
 
 {% if section_feed_context and section_feed_context.feed_visible %}

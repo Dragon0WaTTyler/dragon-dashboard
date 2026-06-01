@@ -8,6 +8,7 @@
     <h2>{{ chess_area.title }}</h2>
     <p class="subhead">{{ chess_area.summary }}</p>
     <div class="chess-hero-actions">
+        <button type="button" class="btn section-refresh-btn" onclick="dragonRefreshSection('chess')" data-default-label="Refresh" data-loading-label="Refreshing..."><i data-lucide="refresh-cw"></i><span>Refresh</span></button>
         {% if chess_area.cta_primary %}
         <a class="btn" href="{{ chess_area.cta_primary.href }}"><i data-lucide="sparkles"></i><span>{{ chess_area.cta_primary.label }}</span></a>
         {% endif %}

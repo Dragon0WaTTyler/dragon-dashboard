@@ -14412,6 +14412,73 @@ def refresh_all_cached_data(refresh_films=True, refresh_youtube=True, pockettube
                 f"pockettube_latest:{_youtube_section_feed_cache_key(pockettube_section_name)}"
             ] = json.loads(json.dumps(latest_result))
 
+
+def refresh_movies_section_lightweight(scope=""):
+    clear_film_cache_entry()
+    clear_runtime_film_cache_keys()
+    return {
+        "section": "movies",
+        "message": "Movie cache refreshed.",
+    }
+
+
+def refresh_youtube_section_lightweight(scope=""):
+    clear_youtube_runtime_cache()
+    invalidate_youtube_derived_caches(reason=f"section_refresh:{scope or 'youtube'}")
+    return {
+        "section": "youtube",
+        "message": "YouTube cache refreshed.",
+    }
+
+
+def refresh_articles_section_lightweight(scope=""):
+    clear_reading_data_cache()
+    try:
+        refresh_deployed_reading_snapshot_from_github()
+    except Exception:
+        pass
+    return {
+        "section": "articles",
+        "message": "Articles snapshot refreshed.",
+    }
+
+
+def refresh_books_section_lightweight(scope=""):
+    BOOKS_RUNTIME.cover_cache.clear()
+    BOOKS_RUNTIME.quotes_import.books = None
+    BOOKS_RUNTIME.quotes_import.updated_at = 0.0
+    invalidate_books_entries_cache()
+    invalidate_book_quotes_entries_cache()
+    return {
+        "section": "books",
+        "message": "Books cache refreshed.",
+    }
+
+
+def refresh_chess_section_lightweight(scope=""):
+    load_chess_data()
+    return {
+        "section": "chess",
+        "message": "Chess cache refreshed.",
+    }
+
+
+def refresh_german_section_lightweight(scope=""):
+    return {
+        "section": "german",
+        "message": "German section refreshed.",
+    }
+
+
+SECTION_REFRESH_HANDLERS = {
+    "movies": refresh_movies_section_lightweight,
+    "youtube": refresh_youtube_section_lightweight,
+    "articles": refresh_articles_section_lightweight,
+    "books": refresh_books_section_lightweight,
+    "chess": refresh_chess_section_lightweight,
+    "german": refresh_german_section_lightweight,
+}
+
 # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 #  NOTION FETCH (unchanged)
 # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
@@ -25491,6 +25558,43 @@ def refresh():
         pockettube_section_name=pockettube_section_name,
     )
     return redirect(next_url)
+
+
+@app.route("/api/section-refresh", methods=["POST"])
+def section_refresh():
+    payload = request.get_json(silent=True) if request.is_json else {}
+    payload = payload if isinstance(payload, dict) else {}
+    section = str(payload.get("section", "") or "").strip().lower()
+    scope = str(payload.get("scope", "") or "").strip()
+    _return_url = str(payload.get("return_url", "") or "").strip()
+    handler = SECTION_REFRESH_HANDLERS.get(section)
+    if handler is None:
+        return jsonify({
+            "ok": False,
+            "section": section,
+            "message": "Unknown section.",
+            "refreshed_at": current_timestamp(),
+            "reload": False,
+        }), 400
+    try:
+        result = handler(scope=scope)
+    except Exception as exc:
+        app.logger.warning("section_refresh failed section=%s error=%s", section, exc)
+        return jsonify({
+            "ok": False,
+            "section": section,
+            "message": str(exc) or "Section refresh failed.",
+            "refreshed_at": current_timestamp(),
+            "reload": False,
+        }), 500
+    result = dict(result or {})
+    return jsonify({
+        "ok": True,
+        "section": str(result.get("section", section) or section),
+        "message": str(result.get("message", "Section refreshed.") or "Section refreshed."),
+        "refreshed_at": current_timestamp(),
+        "reload": True,
+    })
 
 
 YOUTUBE_RECOMMENDATION_SERVICE = YouTubeRecommendationService(
