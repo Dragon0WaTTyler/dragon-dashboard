@@ -269,6 +269,60 @@ class YouTubeFreshnessServiceTests(unittest.TestCase):
             self.assertEqual(snapshot["channels"]["c1"]["latest_video_id"], "v1")
             self.assertEqual(snapshot["groups"]["science"]["latest_video_count"], 1)
 
+    def test_sync_snapshot_passes_normalized_section_channels_into_refresh(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            registry_payload = {
+                "latest": {
+                    "source_name": "PocketTube",
+                    "imported_at": FIXED_NOW.isoformat(),
+                    "fingerprint": "registry-refresh-input",
+                    "section_count": 1,
+                    "group_count": 1,
+                    "channel_count": 1,
+                    "sections": [
+                        {
+                            "section_name": "Science",
+                            "section_key": "science",
+                            "group_name": "Science",
+                            "group_key": "science",
+                            "tier": "best",
+                            "channel_count": 1,
+                            "channels": [
+                                {
+                                    "channel_name": "UCTDc1RLIHHNjN5WlHoZwXQg",
+                                    "channel_id": "",
+                                    "channel_key": "uctdc1rlihhnjn5wlhozwxqg",
+                                    "section_name": "Science",
+                                    "section_key": "science",
+                                    "group_name": "Science",
+                                    "group_key": "science",
+                                    "tier": "best",
+                                }
+                            ],
+                        }
+                    ],
+                    "channels": [],
+                }
+            }
+            refresh_mock = Mock(return_value={"group_name": "Science", "section_name": "Science", "latest_items": [], "latest_videos_found": 0})
+            service, _state = self._build_service(
+                temp_dir,
+                imported_sections=[],
+                registry_payload=registry_payload,
+                refresh_mock=refresh_mock,
+            )
+
+            snapshot = service.sync_snapshot()
+
+            self.assertEqual(refresh_mock.call_count, 1)
+            refresh_admin_data = refresh_mock.call_args.kwargs["admin_data"]
+            refresh_latest = refresh_admin_data["youtube_pockettube_imports"]["latest"]
+            self.assertEqual(len(refresh_latest["sections"]), 1)
+            self.assertEqual(len(refresh_latest["sections"][0]["channels"]), 1)
+            self.assertEqual(refresh_latest["sections"][0]["channels"][0]["channel_id"], "UCTDc1RLIHHNjN5WlHoZwXQg")
+            self.assertEqual(snapshot["groups"]["science"]["channel_count"], 1)
+            self.assertEqual(len(snapshot["channels"]), 1)
+
     def test_sync_snapshot_merges_same_latest_video_across_multiple_groups(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             imported_sections = [

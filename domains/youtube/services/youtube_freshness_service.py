@@ -287,6 +287,43 @@ class YouTubeFreshnessService:
 
         return snapshot
 
+    def _build_refresh_admin_data(self, admin_data=None, latest_import=None):
+        admin_data = admin_data if isinstance(admin_data, dict) else self.load_admin_data()
+        latest_import = latest_import if isinstance(latest_import, dict) else {}
+        normalized_latest = self._normalize_pockettube_import_source(latest_import)
+        latest_payload = dict(normalized_latest)
+        latest_payload["sections"] = [dict(section) for section in normalized_latest.get("sections", []) or []]
+        latest_payload["channels"] = [dict(channel) for channel in normalized_latest.get("channels", []) or []]
+        merged_admin_data = dict(admin_data)
+        pockettube_imports = merged_admin_data.get("youtube_pockettube_imports", {})
+        if not isinstance(pockettube_imports, dict):
+            pockettube_imports = {}
+        pockettube_imports = dict(pockettube_imports)
+        pockettube_imports["latest"] = latest_payload
+        merged_admin_data["youtube_pockettube_imports"] = pockettube_imports
+        return merged_admin_data
+
+    def _refresh_input_channel_count(self, admin_data, section_name):
+        _latest, sections, _source = self._resolve_pockettube_import_source(admin_data=admin_data)
+        wanted = self.normalize_pockettube_group_key(section_name)
+        for section in sections or []:
+            if not isinstance(section, dict):
+                continue
+            candidate_section_name = self.canonical_section_name(section.get("section_name", "") or section.get("group_name", "") or "")
+            candidate_group_name = self.canonical_section_name(section.get("group_name", "") or candidate_section_name or "")
+            candidate_section_key = self.normalize_pockettube_group_key(section.get("section_key", "") or candidate_section_name)
+            candidate_group_key = self.normalize_pockettube_group_key(section.get("group_key", "") or candidate_group_name)
+            candidate_keys = {
+                candidate_section_key,
+                candidate_group_key,
+                self.normalize_pockettube_group_key(candidate_section_name),
+                self.normalize_pockettube_group_key(candidate_group_name),
+            }
+            if wanted and wanted not in {key for key in candidate_keys if key}:
+                continue
+            return len([channel for channel in (section.get("channels", []) or []) if isinstance(channel, dict)])
+        return 0
+
     def finalize_snapshot(self, snapshot):
         snapshot = self._normalize_snapshot(snapshot)
         finalized_channels = {}
@@ -318,16 +355,25 @@ class YouTubeFreshnessService:
         admin_data = self.load_admin_data()
         latest_import, sections, registry_source = self._resolve_pockettube_import_source(admin_data=admin_data)
         filtered_sections = self._filter_sections_for_scope(sections, scope)
+        refresh_admin_data = self._build_refresh_admin_data(admin_data=admin_data, latest_import=latest_import)
         errors = []
         latest_results_by_group = {}
         if registry_source == "registry" and not sections:
             errors.append(f"PocketTube registry file missing or empty: {self.registry_path.name}")
         for section in filtered_sections:
             group_name = self._group_display_name(section)
+            normalized_channel_count = len([channel for channel in (section.get("channels", []) or []) if isinstance(channel, dict)])
+            refresh_input_channel_count = self._refresh_input_channel_count(refresh_admin_data, group_name)
+            self.app_logger.info(
+                "youtube_freshness_section_refresh_input section_name=%s normalized_channel_count=%s refresh_input_channel_count=%s",
+                group_name or "-",
+                normalized_channel_count,
+                refresh_input_channel_count,
+            )
             try:
                 latest_result = self.refresh_pockettube_section_latest_uploads(
                     group_name,
-                    admin_data=admin_data,
+                    admin_data=refresh_admin_data,
                     max_channels=max_channels,
                 )
                 if isinstance(latest_result, dict):
