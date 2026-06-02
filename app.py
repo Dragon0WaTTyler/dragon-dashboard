@@ -95,6 +95,7 @@ from dragon.paths import (
     READING_RECIPE_OF_DAY_PATH,
     READING_TTS_CACHE_DIR,
     YOUTUBE_LATEST_SNAPSHOT_PATH,
+    YOUTUBE_LATEST_SYNC_STATUS_PATH,
     YOUTUBE_CLIENT_SECRET_PATH,
     YOUTUBE_TOKEN_PATH,
     YTS_TORRENTS_CACHE_PATH,
@@ -108,6 +109,7 @@ YOUTUBE_RUNTIME = RUNTIME_STATE.youtube
 YTS_RUNTIME = RUNTIME_STATE.yts
 YOUTUBE_REFRESH_COOLDOWN_SECONDS = 30
 YOUTUBE_RUNTIME_MEMO_TTL_SECONDS = 2.0
+YOUTUBE_FRESHNESS_TRIGGER_LOCK = threading.Lock()
 edge_tts = None
 genai = None
 try:
@@ -267,6 +269,12 @@ READING_SYNC_GITHUB_WORKFLOW = "sync-reading.yml"
 READING_SYNC_GITHUB_BRANCH = "main"
 READING_SYNC_GITHUB_API_BASE = "https://api.github.com"
 READING_SYNC_GITHUB_RAW_SNAPSHOT_URL = "https://raw.githubusercontent.com/Dragon0WaTTyler/dragon-dashboard/main/reading_data.json"
+YOUTUBE_SYNC_GITHUB_OWNER = "Dragon0WaTTyler"
+YOUTUBE_SYNC_GITHUB_REPO = "dragon-dashboard"
+YOUTUBE_SYNC_GITHUB_WORKFLOW = "sync-youtube-freshness.yml"
+YOUTUBE_SYNC_GITHUB_BRANCH = "main"
+YOUTUBE_SYNC_GITHUB_API_BASE = "https://api.github.com"
+YOUTUBE_SYNC_GITHUB_RAW_SNAPSHOT_URL = "https://raw.githubusercontent.com/Dragon0WaTTyler/dragon-dashboard/main/cache/youtube_latest_snapshot.json"
 MOVIE_WANT_TO_UNION_FETCH_FLAG_NAME = "MOVIE_WANT_TO_UNION_FETCH_ENABLED"
 DEFAULT_MOVIE_FETCH_EXPERIMENT_UI_COUNT = 506
 MOVIE_FETCH_EXPERIMENT_ANCHOR_TITLES = (
@@ -25984,6 +25992,8 @@ YOUTUBE_FRESHNESS_SERVICE = YouTubeFreshnessService(
     pockettube_latest_import_snapshot=_pockettube_latest_import_snapshot,
     get_persisted_youtube_channel_latest_entry=get_persisted_youtube_channel_latest_entry,
     refresh_pockettube_section_latest_uploads=refresh_pockettube_section_latest_uploads,
+    trigger_github_actions_sync=lambda scope="": trigger_youtube_freshness_github_actions_sync(scope=scope),
+    refresh_snapshot_from_github=lambda: refresh_youtube_freshness_snapshot_from_github(),
     build_youtube_channel_video_summary=build_youtube_channel_video_summary,
     canonical_section_name=canonical_section_name,
     normalize_pockettube_group_key=normalize_pockettube_group_key,
@@ -25992,6 +26002,7 @@ YOUTUBE_FRESHNESS_SERVICE = YouTubeFreshnessService(
     load_json_file=load_json_file,
     save_json_file=save_json_file,
     snapshot_path=YOUTUBE_LATEST_SNAPSHOT_PATH,
+    sync_status_path=YOUTUBE_LATEST_SYNC_STATUS_PATH,
     app_logger=app.logger,
 )
 
@@ -27319,6 +27330,130 @@ def reading_github_snapshot_updated():
         result.get("downloaded_bytes", 0),
     )
     return jsonify(result), 200
+
+
+def _youtube_freshness_github_actions_headers():
+    token = str(GITHUB_ACTIONS_TOKEN or "").strip()
+    if not token:
+        return None
+    return {
+        "Authorization": f"Bearer {token}",
+        "Accept": "application/vnd.github+json",
+    }
+
+
+def _youtube_freshness_github_actions_runs_url():
+    return (
+        f"{YOUTUBE_SYNC_GITHUB_API_BASE}/repos/"
+        f"{YOUTUBE_SYNC_GITHUB_OWNER}/{YOUTUBE_SYNC_GITHUB_REPO}/actions/workflows/"
+        f"{YOUTUBE_SYNC_GITHUB_WORKFLOW}/runs"
+    )
+
+
+def _youtube_freshness_github_actions_dispatch_url():
+    return (
+        f"{YOUTUBE_SYNC_GITHUB_API_BASE}/repos/"
+        f"{YOUTUBE_SYNC_GITHUB_OWNER}/{YOUTUBE_SYNC_GITHUB_REPO}/actions/workflows/"
+        f"{YOUTUBE_SYNC_GITHUB_WORKFLOW}/dispatches"
+    )
+
+
+def _youtube_freshness_sync_status_from_run(run):
+    if not isinstance(run, dict):
+        return {
+            "status": "idle",
+            "updated_at": None,
+            "run_id": None,
+            "conclusion": None,
+            "run_url": None,
+        }
+    run_status = str(run.get("status", "") or "").strip().lower()
+    conclusion = run.get("conclusion")
+    updated_at = str(run.get("updated_at") or run.get("created_at") or "").strip() or None
+    run_id = str(run.get("id") or "").strip() or None
+    run_url = str(run.get("html_url") or "").strip() or None
+    if run_status == "completed":
+        normalized_conclusion = str(conclusion or "").strip().lower() or None
+        return {
+            "status": "completed" if normalized_conclusion in {"success", "neutral", "skipped"} else "failed",
+            "updated_at": updated_at,
+            "run_id": run_id,
+            "conclusion": normalized_conclusion,
+            "run_url": run_url,
+        }
+    if run_status in {"queued", "in_progress", "requested", "waiting", "pending", "action_required"}:
+        return {
+            "status": "queued" if run_status != "in_progress" else "in_progress",
+            "updated_at": updated_at,
+            "run_id": run_id,
+            "conclusion": None,
+            "run_url": run_url,
+        }
+    return {
+        "status": "queued",
+        "updated_at": updated_at,
+        "run_id": run_id,
+        "conclusion": None,
+        "run_url": run_url,
+    }
+
+
+def _youtube_freshness_github_actions_latest_run():
+    headers = _youtube_freshness_github_actions_headers()
+    if not headers:
+        return None, {"status": "missing_token"}
+    response = requests.get(
+        _youtube_freshness_github_actions_runs_url(),
+        headers=headers,
+        params={"branch": YOUTUBE_SYNC_GITHUB_BRANCH, "per_page": 1},
+        timeout=8,
+    )
+    if response.status_code != 200:
+        raise RuntimeError(f"GitHub workflow run lookup failed with status {response.status_code}")
+    payload = response.json()
+    workflow_runs = payload.get("workflow_runs", []) if isinstance(payload, dict) else []
+    latest_run = workflow_runs[0] if workflow_runs else None
+    return latest_run, _youtube_freshness_sync_status_from_run(latest_run)
+
+
+def trigger_youtube_freshness_github_actions_sync(scope=""):
+    headers = _youtube_freshness_github_actions_headers()
+    if not headers:
+        return {"ok": False, "error": "Missing GITHUB_ACTIONS_TOKEN."}, 500
+
+    with YOUTUBE_FRESHNESS_TRIGGER_LOCK:
+        try:
+            response = requests.post(
+                _youtube_freshness_github_actions_dispatch_url(),
+                headers=headers,
+                json={"ref": YOUTUBE_SYNC_GITHUB_BRANCH, "inputs": {"scope": str(scope or "").strip()}},
+                timeout=8,
+            )
+        except requests.RequestException as exc:
+            app.logger.warning("youtube_freshness_trigger dispatch_failed: %s", exc)
+            return {"ok": False, "error": "Could not trigger the YouTube freshness workflow."}, 502
+
+        if response.status_code != 204:
+            app.logger.warning(
+                "youtube_freshness_trigger dispatch_rejected status=%s body=%s",
+                response.status_code,
+                getattr(response, "text", "")[:500],
+            )
+            return {"ok": False, "error": "GitHub rejected the workflow dispatch request."}, 502
+
+    return {"status": "started", "scope": str(scope or "").strip()}, 200
+
+
+def refresh_youtube_freshness_snapshot_from_github():
+    response = requests.get(YOUTUBE_SYNC_GITHUB_RAW_SNAPSHOT_URL, timeout=15)
+    if response.status_code != 200:
+        raise RuntimeError(f"Download failed: GitHub returned status {response.status_code}")
+    payload = response.json()
+    if not isinstance(payload, dict):
+        raise RuntimeError("Download failed: invalid snapshot payload")
+    if not YOUTUBE_FRESHNESS_SERVICE.save_snapshot(payload):
+        raise RuntimeError("Download failed: unable to save youtube_latest_snapshot.json")
+    return payload
 
 
 @app.route("/reading/article/<entry_id>")
@@ -30732,6 +30867,8 @@ def pockettube_freshness():
     context = YOUTUBE_FRESHNESS_SERVICE.build_page_context()
     if request.args.get("synced"):
         context["sync_notice"] = "Freshness snapshot rebuilt."
+    if request.args.get("sync_requested"):
+        context["sync_notice"] = "Sync requested."
     return render_template(
         "pockettube_freshness.html",
         **context,
@@ -30743,8 +30880,32 @@ def pockettube_freshness():
 @app.route("/pockettube/freshness/sync", methods=["POST"])
 def pockettube_freshness_sync():
     scope = str(request.form.get("scope", "") or request.args.get("scope", "") or "").strip()
-    YOUTUBE_FRESHNESS_SERVICE.sync_snapshot(scope=scope)
-    return redirect(url_for("pockettube_freshness", synced="1"))
+    payload, status_code = YOUTUBE_FRESHNESS_SERVICE.request_sync(scope=scope)
+    if status_code >= 400 or not payload.get("ok", True):
+        return redirect(url_for("pockettube_freshness", sync_error=1))
+    return redirect(url_for("pockettube_freshness", sync_requested=1))
+
+
+@app.route("/pockettube/freshness/sync-status", methods=["GET"])
+def pockettube_freshness_sync_status():
+    return jsonify(YOUTUBE_FRESHNESS_SERVICE.load_sync_status())
+
+
+@app.route("/pockettube/freshness/github-snapshot-updated", methods=["POST"])
+def pockettube_freshness_github_snapshot_updated():
+    configured_secret = str(DRAGON_GITHUB_WEBHOOK_SECRET or "").strip()
+    provided_secret = request.headers.get("X-Dragon-GitHub-Secret", "")
+    if not configured_secret:
+        app.logger.warning("pockettube_freshness_github_snapshot_updated rejected reason=missing_server_secret")
+        return jsonify({"ok": False, "error": "Webhook secret is not configured."}), 403
+    if not secrets.compare_digest(str(provided_secret or "").strip(), configured_secret):
+        app.logger.warning("pockettube_freshness_github_snapshot_updated rejected reason=invalid_secret")
+        return jsonify({"ok": False, "error": "Forbidden"}), 403
+
+    payload = request.get_json(silent=True) if request.is_json else {}
+    payload = payload if isinstance(payload, dict) else {}
+    result = YOUTUBE_FRESHNESS_SERVICE.ingest_github_snapshot_update(payload)
+    return jsonify(result), 200
 
 
 @app.route("/proxy_notebook")

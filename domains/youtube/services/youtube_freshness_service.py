@@ -13,6 +13,8 @@ class YouTubeFreshnessService:
         pockettube_latest_import_snapshot,
         get_persisted_youtube_channel_latest_entry,
         refresh_pockettube_section_latest_uploads,
+        trigger_github_actions_sync,
+        refresh_snapshot_from_github,
         build_youtube_channel_video_summary,
         canonical_section_name,
         normalize_pockettube_group_key,
@@ -21,12 +23,15 @@ class YouTubeFreshnessService:
         load_json_file,
         save_json_file,
         snapshot_path,
+        sync_status_path,
         app_logger,
     ):
         self.load_admin_data = load_admin_data
         self.pockettube_latest_import_snapshot = pockettube_latest_import_snapshot
         self.get_persisted_youtube_channel_latest_entry = get_persisted_youtube_channel_latest_entry
         self.refresh_pockettube_section_latest_uploads = refresh_pockettube_section_latest_uploads
+        self.trigger_github_actions_sync = trigger_github_actions_sync
+        self.refresh_snapshot_from_github = refresh_snapshot_from_github
         self.build_youtube_channel_video_summary = build_youtube_channel_video_summary
         self.canonical_section_name = canonical_section_name
         self.normalize_pockettube_group_key = normalize_pockettube_group_key
@@ -35,6 +40,7 @@ class YouTubeFreshnessService:
         self.load_json_file = load_json_file
         self.save_json_file = save_json_file
         self.snapshot_path = Path(snapshot_path)
+        self.sync_status_path = Path(sync_status_path)
         self.app_logger = app_logger
 
     def empty_snapshot(self):
@@ -47,6 +53,20 @@ class YouTubeFreshnessService:
             "errors": [],
         }
 
+    def empty_sync_status(self):
+        return {
+            "status": "idle",
+            "requested_at": "",
+            "started_at": "",
+            "completed_at": "",
+            "last_error": "",
+            "scope": "",
+            "run_id": "",
+            "run_url": "",
+            "source": "",
+            "updated_at": "",
+        }
+
     def load_snapshot(self):
         payload = self.load_json_file(self.snapshot_path, self.empty_snapshot())
         return self._normalize_snapshot(payload)
@@ -54,6 +74,15 @@ class YouTubeFreshnessService:
     def save_snapshot(self, snapshot):
         payload = self._normalize_snapshot(snapshot)
         self.save_json_file(self.snapshot_path, payload)
+        return payload
+
+    def load_sync_status(self):
+        payload = self.load_json_file(self.sync_status_path, self.empty_sync_status())
+        return self._normalize_sync_status(payload)
+
+    def save_sync_status(self, status):
+        payload = self._normalize_sync_status(status)
+        self.save_json_file(self.sync_status_path, payload)
         return payload
 
     def build_snapshot_from_local_cache(self, admin_data=None, latest_import=None, sections=None, errors=None):
@@ -147,10 +176,106 @@ class YouTubeFreshnessService:
         snapshot["synced_at"] = self.current_timestamp()
         snapshot["errors"] = errors
         self.save_snapshot(snapshot)
+        self.save_sync_status({
+            "status": "completed",
+            "requested_at": self.load_sync_status().get("requested_at", ""),
+            "started_at": self.load_sync_status().get("started_at", ""),
+            "completed_at": self.current_timestamp(),
+            "last_error": "",
+            "scope": str(scope or "").strip(),
+            "run_id": self.load_sync_status().get("run_id", ""),
+            "run_url": self.load_sync_status().get("run_url", ""),
+            "source": "workflow",
+            "updated_at": self.current_timestamp(),
+        })
         return snapshot
+
+    def request_sync(self, scope=""):
+        scope_value = str(scope or "").strip()
+        status = self.load_sync_status()
+        status.update({
+            "status": "requested",
+            "requested_at": self.current_timestamp(),
+            "started_at": status.get("started_at", ""),
+            "completed_at": status.get("completed_at", ""),
+            "last_error": "",
+            "scope": scope_value,
+            "updated_at": self.current_timestamp(),
+            "source": "web_request",
+        })
+        self.save_sync_status(status)
+        trigger_payload, trigger_status_code = self.trigger_github_actions_sync(scope=scope_value)
+        trigger_payload = dict(trigger_payload or {})
+        if trigger_status_code >= 400 or trigger_payload.get("ok") is False:
+            status.update({
+                "status": "failed",
+                "last_error": str(trigger_payload.get("error") or "Could not queue the YouTube freshness sync.") or "Could not queue the YouTube freshness sync.",
+                "updated_at": self.current_timestamp(),
+                "source": "web_request",
+            })
+            self.save_sync_status(status)
+        else:
+            run_state = str(trigger_payload.get("status", "") or "").strip().lower()
+            if run_state in {"started", "queued", "in_progress"}:
+                status.update({
+                    "status": "queued" if run_state != "in_progress" else "in_progress",
+                    "run_id": str(trigger_payload.get("run_id", "") or "").strip(),
+                    "run_url": str(trigger_payload.get("run_url", "") or "").strip(),
+                    "updated_at": self.current_timestamp(),
+                    "source": "github_actions",
+                })
+                self.save_sync_status(status)
+            elif run_state == "already_running":
+                status.update({
+                    "status": "queued",
+                    "updated_at": self.current_timestamp(),
+                    "source": "github_actions",
+                })
+                self.save_sync_status(status)
+        return {
+            "ok": trigger_status_code < 400 and trigger_payload.get("ok", True) is not False,
+            "trigger": trigger_payload,
+            "sync_status": self.load_sync_status(),
+        }, 200 if trigger_status_code < 400 else trigger_status_code
+
+    def ingest_github_snapshot_update(self, payload):
+        payload = payload if isinstance(payload, dict) else {}
+        status = self.load_sync_status()
+        event_status = str(payload.get("status", "") or "").strip().lower()
+        if event_status in {"failed", "error"}:
+            status.update({
+                "status": "failed",
+                "last_error": str(payload.get("error", "") or payload.get("message", "") or "YouTube freshness sync failed.") or "YouTube freshness sync failed.",
+                "completed_at": self.current_timestamp(),
+                "updated_at": self.current_timestamp(),
+                "source": "github_actions",
+                "run_id": str(payload.get("run_id", "") or status.get("run_id", "") or "").strip(),
+                "run_url": str(payload.get("run_url", "") or status.get("run_url", "") or "").strip(),
+            })
+            self.save_sync_status(status)
+            return {"ok": True, "status": "failed", "sync_status": status}
+
+        snapshot = self.refresh_snapshot_from_github()
+        status.update({
+            "status": "completed",
+            "last_error": "",
+            "completed_at": self.current_timestamp(),
+            "updated_at": self.current_timestamp(),
+            "source": "github_actions",
+            "run_id": str(payload.get("run_id", "") or status.get("run_id", "") or "").strip(),
+            "run_url": str(payload.get("run_url", "") or status.get("run_url", "") or "").strip(),
+        })
+        self.save_sync_status(status)
+        return {
+            "ok": True,
+            "status": "completed",
+            "sync_status": status,
+            "snapshot": snapshot,
+        }
 
     def build_page_context(self):
         snapshot = self.load_snapshot()
+        sync_status = self.load_sync_status()
         groups = []
         has_latest = False
         for group_key, group in snapshot.get("groups", {}).items():
@@ -221,6 +346,7 @@ class YouTubeFreshnessService:
         return {
             "title": "PocketTube Freshness",
             "snapshot": snapshot,
+            "sync_status": sync_status,
             "groups": groups,
             "group_count": len(groups),
             "channel_count": sum(len(group.get("channels", [])) for group in groups),
@@ -230,7 +356,7 @@ class YouTubeFreshnessService:
             "errors": list(snapshot.get("errors", []) or []),
             "empty_state": not has_latest,
             "empty_reason": "no_snapshot" if not snapshot.get("groups") else "no_cached_latest",
-            "sync_notice": "",
+            "sync_notice": self._sync_notice(sync_status),
         }
 
     def _build_channel_payload(self, channel, group_name, group_key, latest_summary):
@@ -406,6 +532,41 @@ class YouTubeFreshnessService:
             str(section.get("section_name", "") or "").lower(),
             str(section.get("group_name", "") or "").lower(),
         )
+
+    def _sync_notice(self, sync_status):
+        status = str((sync_status or {}).get("status", "") or "").strip().lower()
+        if status == "requested":
+            return "Sync requested."
+        if status == "queued":
+            return "Sync queued in GitHub Actions."
+        if status == "in_progress":
+            return "Sync is in progress."
+        if status == "completed":
+            return "Last sync completed."
+        if status == "failed":
+            return str((sync_status or {}).get("last_error", "") or "Last sync failed.") or "Last sync failed."
+        return ""
+
+    def _normalize_sync_status(self, payload):
+        status = self.empty_sync_status()
+        if not isinstance(payload, dict):
+            return status
+        normalized = str(payload.get("status", "") or "idle").strip().lower() or "idle"
+        if normalized not in {"idle", "requested", "queued", "in_progress", "completed", "failed"}:
+            normalized = "idle"
+        status.update({
+            "status": normalized,
+            "requested_at": str(payload.get("requested_at", "") or "").strip(),
+            "started_at": str(payload.get("started_at", "") or "").strip(),
+            "completed_at": str(payload.get("completed_at", "") or "").strip(),
+            "last_error": str(payload.get("last_error", "") or "").strip(),
+            "scope": str(payload.get("scope", "") or "").strip(),
+            "run_id": str(payload.get("run_id", "") or "").strip(),
+            "run_url": str(payload.get("run_url", "") or "").strip(),
+            "source": str(payload.get("source", "") or "").strip(),
+            "updated_at": str(payload.get("updated_at", "") or "").strip(),
+        })
+        return status
 
     def _published_sort_key(self, value):
         text = str(value or "").strip()

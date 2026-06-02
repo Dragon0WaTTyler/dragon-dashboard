@@ -1,0 +1,130 @@
+name: Sync YouTube Freshness Snapshot
+
+on:
+  workflow_dispatch:
+    inputs:
+      scope:
+        description: "Optional PocketTube scope"
+        required: false
+        default: ""
+  schedule:
+    - cron: "15 */6 * * *"
+
+permissions:
+  contents: write
+
+jobs:
+  sync-youtube-freshness:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    concurrency:
+      group: sync-youtube-freshness
+      cancel-in-progress: false
+    env:
+      PYTHONUNBUFFERED: "1"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Sync YouTube freshness snapshot
+        id: sync
+        shell: bash
+        env:
+          YOUTUBE_FRESHNESS_SCOPE: ${{ github.event.inputs.scope }}
+        run: |
+          set +e
+          python -u scripts/sync_youtube_freshness.py --scope "${YOUTUBE_FRESHNESS_SCOPE:-}"
+          exit_code=$?
+          echo "exit_code=${exit_code}" >> "$GITHUB_OUTPUT"
+          if [ "$exit_code" -eq 0 ]; then
+            echo "status=completed" >> "$GITHUB_OUTPUT"
+          else
+            echo "status=failed" >> "$GITHUB_OUTPUT"
+          fi
+          exit 0
+
+      - name: Diagnostics
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          git status --short -- cache/youtube_latest_snapshot.json cache/youtube_latest_sync_status.json || true
+
+      - name: Commit freshness snapshot updates
+        id: commit_freshness_snapshot_updates
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "$(git status --porcelain -- cache/youtube_latest_snapshot.json cache/youtube_latest_sync_status.json)" ]; then
+            echo "No YouTube freshness snapshot changes to commit."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add cache/youtube_latest_snapshot.json cache/youtube_latest_sync_status.json
+          git commit -m "Sync YouTube freshness snapshot"
+          git pull origin main --rebase
+          git push origin main
+
+      - name: Notify PythonAnywhere freshness refresh
+        if: always()
+        shell: bash
+        env:
+          DRAGON_GITHUB_WEBHOOK_SECRET: ${{ secrets.DRAGON_GITHUB_WEBHOOK_SECRET }}
+          SYNC_STATUS: ${{ steps.sync.outputs.status }}
+          COMMIT_OUTCOME: ${{ steps.commit_freshness_snapshot_updates.outcome }}
+          YOUTUBE_FRESHNESS_SCOPE: ${{ github.event.inputs.scope }}
+        run: |
+          set +e
+          if [ -z "${DRAGON_GITHUB_WEBHOOK_SECRET:-}" ]; then
+            echo "PythonAnywhere notify skipped: DRAGON_GITHUB_WEBHOOK_SECRET is not configured in GitHub secrets."
+            exit 0
+          fi
+          status="${SYNC_STATUS:-failed}"
+          if [ "${COMMIT_OUTCOME:-failure}" != "success" ]; then
+            status="failed"
+          fi
+          if [ -z "$status" ]; then
+            status="failed"
+          fi
+          payload=$(python - <<'PY'
+import json
+import os
+
+payload = {
+    "status": os.environ.get("SYNC_STATUS", "failed"),
+    "scope": os.environ.get("YOUTUBE_FRESHNESS_SCOPE", ""),
+    "run_id": os.environ.get("GITHUB_RUN_ID", ""),
+    "run_url": f'{os.environ.get("GITHUB_SERVER_URL", "")}/{os.environ.get("GITHUB_REPOSITORY", "")}/actions/runs/{os.environ.get("GITHUB_RUN_ID", "")}',
+}
+print(json.dumps(payload))
+PY
+)
+          http_code=$(curl -sS -o /tmp/dragon-youtube-freshness-notify-response.txt -w "%{http_code}" \
+            -X POST "https://dragon99.pythonanywhere.com/pockettube/freshness/github-snapshot-updated" \
+            -H "X-Dragon-GitHub-Secret: ${DRAGON_GITHUB_WEBHOOK_SECRET}" \
+            -H "Content-Type: application/json" \
+            -d "$payload")
+          if [ "$http_code" -lt 200 ] || [ "$http_code" -ge 300 ]; then
+            echo "PythonAnywhere notify failed with HTTP $http_code"
+            cat /tmp/dragon-youtube-freshness-notify-response.txt || true
+            exit 0
+          fi
+          echo "PythonAnywhere notify succeeded with HTTP $http_code"
+          cat /tmp/dragon-youtube-freshness-notify-response.txt || true

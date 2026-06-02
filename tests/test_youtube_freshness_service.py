@@ -22,7 +22,16 @@ class YouTubeFreshnessServiceTests(unittest.TestCase):
     def _timestamp(self, hours_ago):
         return (FIXED_NOW - timedelta(hours=hours_ago)).isoformat()
 
-    def _build_service(self, temp_dir, *, imported_sections=None, latest_cache=None, refresh_mock=None):
+    def _build_service(
+        self,
+        temp_dir,
+        *,
+        imported_sections=None,
+        latest_cache=None,
+        refresh_mock=None,
+        trigger_mock=None,
+        github_refresh_mock=None,
+    ):
         imported_sections = list(imported_sections or [])
         latest_cache = dict(latest_cache or {})
         state = {
@@ -61,10 +70,15 @@ class YouTubeFreshnessServiceTests(unittest.TestCase):
             return datetime.fromisoformat(raw.replace("Z", "+00:00")).astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M")
 
         return YouTubeFreshnessService(
-            load_admin_data=lambda: {"youtube_pockettube_imports": state["latest_import"], "youtube_channel_curation": {"channels": []}},
+            load_admin_data=lambda: {
+                "youtube_pockettube_imports": state["latest_import"],
+                "youtube_channel_curation": {"channels": []},
+            },
             pockettube_latest_import_snapshot=pockettube_latest_import_snapshot,
             get_persisted_youtube_channel_latest_entry=get_persisted,
             refresh_pockettube_section_latest_uploads=refresh_mock or Mock(),
+            trigger_github_actions_sync=trigger_mock or Mock(return_value=({"status": "started", "ok": True}, 200)),
+            refresh_snapshot_from_github=github_refresh_mock or Mock(return_value={"version": 1, "groups": {}, "channels": {}, "errors": []}),
             build_youtube_channel_video_summary=build_summary,
             canonical_section_name=lambda value: str(value or "").strip(),
             normalize_pockettube_group_key=lambda value: "".join(ch.lower() for ch in str(value or "") if ch.isalnum()),
@@ -73,6 +87,7 @@ class YouTubeFreshnessServiceTests(unittest.TestCase):
             load_json_file=load_json_file,
             save_json_file=save_json_file,
             snapshot_path=Path(temp_dir) / "youtube_latest_snapshot.json",
+            sync_status_path=Path(temp_dir) / "youtube_latest_sync_status.json",
             app_logger=Mock(),
         ), state
 
@@ -85,6 +100,7 @@ class YouTubeFreshnessServiceTests(unittest.TestCase):
             self.assertTrue(context["empty_state"])
             self.assertEqual(context["groups"], [])
             self.assertEqual(context["synced_at"], "")
+            self.assertEqual(context["sync_status"]["status"], "idle")
 
     def test_snapshot_read_is_local_only(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -185,7 +201,7 @@ class YouTubeFreshnessServiceTests(unittest.TestCase):
                     }
                 },
             }
-            service, state = self._build_service(
+            service, _state = self._build_service(
                 temp_dir,
                 imported_sections=imported_sections,
                 latest_cache=latest_cache,
@@ -251,6 +267,65 @@ class YouTubeFreshnessServiceTests(unittest.TestCase):
             self.assertEqual(first["groups"], second["groups"])
             self.assertEqual(first["channels"], second["channels"])
 
+    def test_post_sync_returns_quickly_and_persists_requested_status(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            trigger_mock = Mock(return_value=({"status": "started", "ok": True}, 200))
+            service, _state = self._build_service(temp_dir, trigger_mock=trigger_mock)
+
+            payload, status_code = service.request_sync(scope="science")
+            saved_status = service.load_sync_status()
+
+            self.assertEqual(status_code, 200)
+            self.assertTrue(payload["ok"])
+            self.assertEqual(saved_status["status"], "queued")
+            self.assertEqual(saved_status["scope"], "science")
+            trigger_mock.assert_called_once_with(scope="science")
+
+    def test_existing_snapshot_still_renders_after_failed_or_queued_sync(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            trigger_mock = Mock(return_value=({"ok": False, "error": "boom"}, 502))
+            service, _state = self._build_service(temp_dir, trigger_mock=trigger_mock)
+            save_json_file(
+                service.snapshot_path,
+                {
+                    "version": 1,
+                    "generated_at": FIXED_NOW.isoformat(),
+                    "synced_at": FIXED_NOW.isoformat(),
+                    "groups": {
+                        "science": {
+                            "group_name": "Science",
+                            "group_key": "science",
+                            "section_name": "Science",
+                            "section_key": "science",
+                            "source_name": "PocketTube",
+                            "imported_at": FIXED_NOW.isoformat(),
+                            "channel_count": 1,
+                            "latest_video_count": 1,
+                            "latest_video": {
+                                "video_id": "v1",
+                                "title": "Cached Video",
+                                "channel_id": "c1",
+                                "channel_name": "Channel One",
+                                "published_at": FIXED_NOW.isoformat(),
+                                "url": "https://www.youtube.com/watch?v=v1",
+                            },
+                            "channels": [],
+                        }
+                    },
+                    "channels": {},
+                    "errors": [],
+                },
+            )
+
+            payload, status_code = service.request_sync(scope="")
+            context = service.build_page_context()
+
+            self.assertEqual(status_code, 502)
+            self.assertFalse(payload["ok"])
+            self.assertFalse(context["empty_state"])
+            self.assertEqual(context["groups"][0]["group_name"], "Science")
+            self.assertEqual(context["sync_status"]["status"], "failed")
+
     def test_get_page_builder_does_not_invoke_remote_fetch_method(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             refresh_mock = Mock()
@@ -279,6 +354,7 @@ class YouTubeFreshnessServiceTests(unittest.TestCase):
         mock_service.build_page_context.return_value = {
             "title": "PocketTube Freshness",
             "snapshot": {"version": 1, "groups": {}, "channels": {}, "errors": []},
+            "sync_status": {"status": "idle"},
             "groups": [],
             "group_count": 0,
             "channel_count": 0,
@@ -296,20 +372,36 @@ class YouTubeFreshnessServiceTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         mock_service.build_page_context.assert_called_once()
-        mock_service.sync_snapshot.assert_not_called()
+        mock_service.request_sync.assert_not_called()
 
-    def test_post_sync_redirects_back_to_freshness_page(self):
+    def test_post_sync_route_returns_quickly(self):
         dragon_app.app.config["TESTING"] = True
         client = dragon_app.app.test_client()
         mock_service = Mock()
-        mock_service.sync_snapshot.return_value = {"version": 1, "groups": {}, "channels": {}, "errors": []}
+        mock_service.request_sync.return_value = ({"ok": True, "trigger": {"status": "started"}, "sync_status": {"status": "queued"}}, 200)
 
         with patch.object(dragon_app, "YOUTUBE_FRESHNESS_SERVICE", mock_service):
             response = client.post("/pockettube/freshness/sync", data={"scope": ""})
 
         self.assertEqual(response.status_code, 302)
         self.assertIn("/pockettube/freshness", response.location)
-        mock_service.sync_snapshot.assert_called_once()
+        mock_service.request_sync.assert_called_once()
+
+    def test_github_snapshot_callback_updates_status_without_blocking(self):
+        dragon_app.app.config["TESTING"] = True
+        client = dragon_app.app.test_client()
+        mock_service = Mock()
+        mock_service.ingest_github_snapshot_update.return_value = {"ok": True, "status": "completed"}
+
+        with patch.object(dragon_app, "YOUTUBE_FRESHNESS_SERVICE", mock_service):
+            response = client.post(
+                "/pockettube/freshness/github-snapshot-updated",
+                json={"status": "completed", "run_id": "123"},
+                headers={"X-Dragon-GitHub-Secret": "test"},
+            )
+
+        self.assertEqual(response.status_code, 403)
+        mock_service.ingest_github_snapshot_update.assert_not_called()
 
 
 if __name__ == "__main__":
