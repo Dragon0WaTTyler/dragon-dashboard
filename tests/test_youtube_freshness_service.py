@@ -222,6 +222,191 @@ class YouTubeFreshnessServiceTests(unittest.TestCase):
             self.assertEqual(snapshot["channels"]["c2"]["group_names"], ["Philosophy", "Science"])
             self.assertEqual(snapshot["groups"]["science"]["latest_video"]["video_id"], "v2")
 
+    def test_sync_snapshot_attaches_latest_result_to_group_and_top_level_channels(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            imported_sections = [
+                {
+                    "section_name": "Science",
+                    "section_key": "science",
+                    "group_name": "Science",
+                    "group_key": "science",
+                    "channels": [
+                        {"channel_id": "c1", "channel_name": "Channel One"},
+                    ],
+                }
+            ]
+
+            refresh_mock = Mock(
+                return_value={
+                    "group_name": "Science",
+                    "section_name": "Science",
+                    "latest_videos_found": 1,
+                    "latest_items": [
+                        {
+                            "video_id": "v1",
+                            "title": "Science One",
+                            "channel_id": "c1",
+                            "channel_name": "Channel One",
+                            "published_at": FIXED_NOW.isoformat(),
+                            "url": "https://www.youtube.com/watch?v=v1",
+                            "thumb": "https://img.youtube.com/vi/v1/hqdefault.jpg",
+                        }
+                    ],
+                }
+            )
+            service, _state = self._build_service(
+                temp_dir,
+                imported_sections=imported_sections,
+                refresh_mock=refresh_mock,
+            )
+
+            snapshot = service.sync_snapshot()
+
+            self.assertEqual(snapshot["groups"]["science"]["channels"][0]["latest_video"]["video_id"], "v1")
+            self.assertEqual(snapshot["groups"]["science"]["channels"][0]["latest_video_id"], "v1")
+            self.assertEqual(snapshot["groups"]["science"]["latest_video"]["video_id"], "v1")
+            self.assertEqual(snapshot["channels"]["c1"]["latest_video"]["video_id"], "v1")
+            self.assertEqual(snapshot["channels"]["c1"]["latest_video_id"], "v1")
+            self.assertEqual(snapshot["groups"]["science"]["latest_video_count"], 1)
+
+    def test_sync_snapshot_merges_same_latest_video_across_multiple_groups(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            imported_sections = [
+                {
+                    "section_name": "Science",
+                    "section_key": "science",
+                    "group_name": "Science",
+                    "group_key": "science",
+                    "channels": [
+                        {"channel_id": "c1", "channel_name": "Channel One"},
+                    ],
+                },
+                {
+                    "section_name": "Knowledge",
+                    "section_key": "knowledge",
+                    "group_name": "Knowledge",
+                    "group_key": "knowledge",
+                    "channels": [
+                        {"channel_id": "c1", "channel_name": "Channel One"},
+                    ],
+                },
+            ]
+
+            def refresh_side_effect(section_name, admin_data=None, max_channels=200):
+                return {
+                    "group_name": section_name,
+                    "section_name": section_name,
+                    "latest_videos_found": 1,
+                    "latest_items": [
+                        {
+                            "video_id": "v1",
+                            "title": "Shared Video",
+                            "channel_id": "c1",
+                            "channel_name": "Channel One",
+                            "published_at": FIXED_NOW.isoformat(),
+                            "url": "https://www.youtube.com/watch?v=v1",
+                            "thumb": "https://img.youtube.com/vi/v1/hqdefault.jpg",
+                        }
+                    ],
+                }
+
+            service, _state = self._build_service(
+                temp_dir,
+                imported_sections=imported_sections,
+                refresh_mock=Mock(side_effect=refresh_side_effect),
+            )
+
+            snapshot = service.sync_snapshot()
+
+            self.assertEqual(list(snapshot["groups"].keys()), ["knowledge", "science"])
+            self.assertEqual(snapshot["groups"]["science"]["channels"][0]["latest_video"]["video_id"], "v1")
+            self.assertEqual(snapshot["groups"]["knowledge"]["channels"][0]["latest_video"]["video_id"], "v1")
+            self.assertEqual(snapshot["channels"]["c1"]["latest_video"]["video_id"], "v1")
+            self.assertEqual(snapshot["channels"]["c1"]["group_names"], ["Knowledge", "Science"])
+
+    def test_empty_latest_result_keeps_channel_entry_without_overwrite(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            imported_sections = [
+                {
+                    "section_name": "Science",
+                    "section_key": "science",
+                    "group_name": "Science",
+                    "group_key": "science",
+                    "channels": [
+                        {"channel_id": "c1", "channel_name": "Channel One"},
+                    ],
+                }
+            ]
+            latest_cache = {
+                "c1": {
+                    "latest_video": {
+                        "video_id": "v-real",
+                        "title": "Cached Real Video",
+                        "channel_id": "c1",
+                        "channel_name": "Channel One",
+                        "published_at": FIXED_NOW.isoformat(),
+                        "url": "https://www.youtube.com/watch?v=v-real",
+                        "thumb": "https://img.youtube.com/vi/v-real/hqdefault.jpg",
+                    }
+                }
+            }
+
+            service, _state = self._build_service(
+                temp_dir,
+                imported_sections=imported_sections,
+                latest_cache=latest_cache,
+                refresh_mock=Mock(return_value={"group_name": "Science", "section_name": "Science", "latest_items": [], "latest_videos_found": 0}),
+            )
+
+            snapshot = service.sync_snapshot()
+
+            self.assertEqual(snapshot["groups"]["science"]["channels"][0]["latest_video"]["video_id"], "v-real")
+            self.assertEqual(snapshot["channels"]["c1"]["latest_video"]["video_id"], "v-real")
+
+    def test_sync_snapshot_writes_latest_video_payloads_to_disk(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            imported_sections = [
+                {
+                    "section_name": "Science",
+                    "section_key": "science",
+                    "group_name": "Science",
+                    "group_key": "science",
+                    "channels": [
+                        {"channel_id": "c1", "channel_name": "Channel One"},
+                    ],
+                }
+            ]
+            service, _state = self._build_service(
+                temp_dir,
+                imported_sections=imported_sections,
+                refresh_mock=Mock(
+                    return_value={
+                        "group_name": "Science",
+                        "section_name": "Science",
+                        "latest_videos_found": 1,
+                        "latest_items": [
+                            {
+                                "video_id": "v1",
+                                "title": "Science One",
+                                "channel_id": "c1",
+                                "channel_name": "Channel One",
+                                "published_at": FIXED_NOW.isoformat(),
+                                "url": "https://www.youtube.com/watch?v=v1",
+                                "thumb": "https://img.youtube.com/vi/v1/hqdefault.jpg",
+                            }
+                        ],
+                    }
+                ),
+            )
+
+            snapshot = service.sync_snapshot()
+            saved_snapshot = load_json_file(service.snapshot_path, {})
+
+            self.assertEqual(saved_snapshot["groups"]["science"]["latest_video"]["video_id"], "v1")
+            self.assertEqual(saved_snapshot["groups"]["science"]["channels"][0]["latest_video"]["video_id"], "v1")
+            self.assertEqual(saved_snapshot["channels"]["c1"]["latest_video"]["video_id"], "v1")
+            self.assertEqual(snapshot["groups"]["science"]["latest_video_count"], 1)
+
     def test_finalize_snapshot_populates_top_level_channels_from_groups(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             service, _state = self._build_service(temp_dir)
