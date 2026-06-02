@@ -61,13 +61,14 @@ jobs:
         shell: bash
         run: |
           git status --short -- cache/youtube_latest_snapshot.json cache/youtube_latest_sync_status.json
+          ls -lh cache/youtube_latest_snapshot.json cache/youtube_latest_sync_status.json 2>/dev/null || true
 
       - name: Commit cache changes
         if: ${{ steps.sync.outcome == 'success' }}
         shell: bash
         run: |
           set -e
-          if git diff --quiet -- cache/youtube_latest_snapshot.json cache/youtube_latest_sync_status.json; then
+          if [ -z "$(git status --porcelain -- cache/youtube_latest_snapshot.json cache/youtube_latest_sync_status.json)" ]; then
             echo "No cache changes to commit."
             exit 0
           fi
