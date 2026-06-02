@@ -367,6 +367,11 @@ class YouTubeFreshnessService:
                 channel_id = str(channel.get("channel_id", "") or channel.get("channelId", "") or "").strip()
                 if not channel_id and channel_name and re.fullmatch(r"UC[a-zA-Z0-9_-]{20,}", channel_name):
                     channel_id = channel_name
+                if not channel_id:
+                    inferred_id, inferred_title = self._pockettube_channel_identity(channel)
+                    channel_id = str(inferred_id or "").strip()
+                    if inferred_title and not channel_name:
+                        channel_name = inferred_title
                 normalized_channel = dict(channel)
                 normalized_channel["channel_name"] = channel_name or channel_id
                 normalized_channel["channel_id"] = channel_id
@@ -396,6 +401,54 @@ class YouTubeFreshnessService:
                 "meta_keys": list(normalized["source_structure"].get("meta_keys", []) or []),
             }
         return normalized
+
+    def _pockettube_channel_identity(self, channel):
+        channel = channel if isinstance(channel, dict) else {}
+        candidate_values = [
+            channel.get("channel_id", ""),
+            channel.get("channelId", ""),
+            channel.get("id", ""),
+            channel.get("browse_id", ""),
+            channel.get("browseId", ""),
+            channel.get("channel_name", ""),
+            channel.get("channel_title", ""),
+            channel.get("title", ""),
+            channel.get("label", ""),
+            channel.get("channel_key", ""),
+            channel.get("url", ""),
+        ]
+        channel_id = ""
+        for value in candidate_values:
+            text = str(value or "").strip()
+            if not text:
+                continue
+            if text.startswith("http") and "/channel/" in text:
+                candidate = text.split("/channel/", 1)[1].split("?", 1)[0].split("/", 1)[0].strip()
+                if candidate:
+                    channel_id = candidate
+                    break
+            if re.fullmatch(r"UC[a-zA-Z0-9_-]{20,}", text):
+                channel_id = text
+                break
+            if not channel_id and text:
+                channel_id = text
+        channel_title = ""
+        for value in (
+            channel.get("channel_title", ""),
+            channel.get("title", ""),
+            channel.get("name", ""),
+            channel.get("label", ""),
+            channel.get("channel_name", ""),
+        ):
+            text = str(value or "").strip()
+            if text:
+                channel_title = text
+                break
+        if not channel_title:
+            channel_title = channel_id or "Unknown Channel"
+        if not channel_id:
+            channel_id = channel_title
+        return channel_id, channel_title
 
     def build_page_context(self):
         snapshot = self.load_snapshot()
@@ -484,8 +537,7 @@ class YouTubeFreshnessService:
         }
 
     def _build_channel_payload(self, channel, group_name, group_key, latest_summary):
-        channel_id = str(channel.get("channel_id", "") or "").strip()
-        channel_title = str(channel.get("channel_name", "") or channel.get("channel_title", "") or "").strip() or channel_id or "Unknown Channel"
+        channel_id, channel_title = self._pockettube_channel_identity(channel)
         latest_summary = latest_summary if isinstance(latest_summary, dict) else {}
         latest_exists = bool(latest_summary.get("video_id"))
         published_at = str(latest_summary.get("published_at", "") or "").strip()
@@ -508,6 +560,12 @@ class YouTubeFreshnessService:
 
     def _merge_channel_snapshot(self, channels_snapshot, channel_payload):
         channel_id = str(channel_payload.get("channel_id", "") or "").strip()
+        if not channel_id:
+            inferred_id, inferred_title = self._pockettube_channel_identity(channel_payload)
+            channel_id = str(inferred_id or "").strip()
+            if inferred_title and not str(channel_payload.get("channel_title", "") or "").strip():
+                channel_payload = dict(channel_payload)
+                channel_payload["channel_title"] = inferred_title
         if not channel_id:
             return
         existing = channels_snapshot.get(channel_id)

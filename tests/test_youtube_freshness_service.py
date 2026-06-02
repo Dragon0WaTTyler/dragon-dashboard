@@ -248,7 +248,7 @@ class YouTubeFreshnessServiceTests(unittest.TestCase):
                             "channels": [
                                 {
                                     "channel_name": "UCTDc1RLIHHNjN5WlHoZwXQg",
-                                    "channel_id": "UCTDc1RLIHHNjN5WlHoZwXQg",
+                                    "channel_id": "",
                                     "channel_key": "uctdc1rlihhnjn5wlhozwxqg",
                                     "section_name": "Science",
                                     "section_key": "science",
@@ -262,7 +262,7 @@ class YouTubeFreshnessServiceTests(unittest.TestCase):
                     "channels": [
                         {
                             "channel_name": "UCTDc1RLIHHNjN5WlHoZwXQg",
-                            "channel_id": "UCTDc1RLIHHNjN5WlHoZwXQg",
+                            "channel_id": "",
                             "channel_key": "uctdc1rlihhnjn5wlhozwxqg",
                             "section_name": "Science",
                             "section_key": "science",
@@ -298,9 +298,81 @@ class YouTubeFreshnessServiceTests(unittest.TestCase):
 
             self.assertEqual(list(snapshot["groups"].keys()), ["science"])
             self.assertEqual(snapshot["groups"]["science"]["channel_count"], 1)
+            self.assertEqual(len(snapshot["channels"]), 1)
             self.assertEqual(snapshot["channels"]["UCTDc1RLIHHNjN5WlHoZwXQg"]["group_names"], ["Science"])
             self.assertEqual(snapshot["groups"]["science"]["latest_video"]["video_id"], "v-science")
             self.assertEqual(snapshot["errors"], [])
+
+    def test_registry_multi_group_channel_is_deduped_with_multiple_group_names(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            registry_payload = {
+                "latest": {
+                    "source_name": "PocketTube",
+                    "imported_at": FIXED_NOW.isoformat(),
+                    "fingerprint": "registry-multi-group",
+                    "section_count": 2,
+                    "group_count": 2,
+                    "channel_count": 2,
+                    "sections": [
+                        {
+                            "section_name": "Science",
+                            "section_key": "science",
+                            "group_name": "Science",
+                            "group_key": "science",
+                            "tier": "best",
+                            "channel_count": 1,
+                            "channels": [
+                                {
+                                    "channel_name": "UCTDc1RLIHHNjN5WlHoZwXQg",
+                                    "channel_id": "",
+                                    "channel_key": "uctdc1rlihhnjn5wlhozwxqg",
+                                    "section_name": "Science",
+                                    "section_key": "science",
+                                    "group_name": "Science",
+                                    "group_key": "science",
+                                    "tier": "best",
+                                }
+                            ],
+                        },
+                        {
+                            "section_name": "Knowledge",
+                            "section_key": "knowledge",
+                            "group_name": "Knowledge",
+                            "group_key": "knowledge",
+                            "tier": "best",
+                            "channel_count": 1,
+                            "channels": [
+                                {
+                                    "channel_name": "UCTDc1RLIHHNjN5WlHoZwXQg",
+                                    "channel_id": "",
+                                    "channel_key": "uctdc1rlihhnjn5wlhozwxqg",
+                                    "section_name": "Knowledge",
+                                    "section_key": "knowledge",
+                                    "group_name": "Knowledge",
+                                    "group_key": "knowledge",
+                                    "tier": "best",
+                                }
+                            ],
+                        },
+                    ],
+                    "channels": [],
+                }
+            }
+            service, _state = self._build_service(
+                temp_dir,
+                imported_sections=[],
+                registry_payload=registry_payload,
+                refresh_mock=Mock(),
+            )
+
+            snapshot = service.sync_snapshot()
+            channel_entry = snapshot["channels"]["UCTDc1RLIHHNjN5WlHoZwXQg"]
+
+            self.assertEqual(list(snapshot["groups"].keys()), ["knowledge", "science"])
+            self.assertEqual(len(snapshot["channels"]), 1)
+            self.assertEqual(channel_entry["group_names"], ["Knowledge", "Science"])
+            self.assertEqual(snapshot["groups"]["science"]["channels"][0]["channel_id"], "UCTDc1RLIHHNjN5WlHoZwXQg")
+            self.assertEqual(snapshot["groups"]["knowledge"]["channels"][0]["channel_id"], "UCTDc1RLIHHNjN5WlHoZwXQg")
 
     def test_failed_latest_video_fetch_records_errors_but_writes_snapshot(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -323,7 +395,7 @@ class YouTubeFreshnessServiceTests(unittest.TestCase):
                             "channels": [
                                 {
                                     "channel_name": "UCTDc1RLIHHNjN5WlHoZwXQg",
-                                    "channel_id": "UCTDc1RLIHHNjN5WlHoZwXQg",
+                                    "channel_id": "",
                                     "channel_key": "uctdc1rlihhnjn5wlhozwxqg",
                                     "section_name": "Science",
                                     "section_key": "science",
@@ -348,6 +420,7 @@ class YouTubeFreshnessServiceTests(unittest.TestCase):
 
             self.assertEqual(list(snapshot["groups"].keys()), ["science"])
             self.assertEqual(snapshot["groups"]["science"]["channel_count"], 1)
+            self.assertEqual(len(snapshot["channels"]), 1)
             self.assertEqual(snapshot["groups"]["science"]["latest_video"], {})
             self.assertTrue(snapshot["errors"])
             self.assertIn("boom", snapshot["errors"][0])
