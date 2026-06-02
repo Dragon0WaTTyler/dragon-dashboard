@@ -750,6 +750,14 @@ class YouTubeFreshnessService:
             })
 
         groups.sort(key=lambda item: (item.get("group_name", "") or item.get("group_key", "")).lower())
+        feed_context = self._build_freshness_feed_context(snapshot)
+        feed_videos = list(feed_context.get("videos", []) or [])
+        feed_groups = list(feed_context.get("groups", []) or [])
+        empty_channels = list(feed_context.get("empty_channels", []) or [])
+        feed_video_count = len(feed_videos)
+        empty_channel_count = len(empty_channels)
+        empty_group_count = len([group for group in feed_groups if int(group.get("empty_channel_count", 0) or 0) > 0])
+        has_latest = bool(feed_video_count)
         return {
             "title": "PocketTube Freshness",
             "snapshot": snapshot,
@@ -757,6 +765,12 @@ class YouTubeFreshnessService:
             "groups": groups,
             "group_count": len(groups),
             "channel_count": sum(len(group.get("channels", [])) for group in groups),
+            "feed_videos": feed_videos,
+            "feed_groups": feed_groups,
+            "feed_video_count": feed_video_count,
+            "feed_empty_channels": empty_channels,
+            "feed_empty_channel_count": empty_channel_count,
+            "feed_empty_group_count": empty_group_count,
             "has_latest": has_latest,
             "generated_at": snapshot.get("generated_at", ""),
             "synced_at": snapshot.get("synced_at", ""),
@@ -764,6 +778,184 @@ class YouTubeFreshnessService:
             "empty_state": not has_latest,
             "empty_reason": "no_snapshot" if not snapshot.get("groups") else "no_cached_latest",
             "sync_notice": self._sync_notice(sync_status),
+        }
+
+    def _build_freshness_feed_context(self, snapshot):
+        snapshot = snapshot if isinstance(snapshot, dict) else self.empty_snapshot()
+        groups = snapshot.get("groups", {})
+        if not isinstance(groups, dict):
+            groups = {}
+        feed_by_video_id = {}
+        feed_groups = []
+        empty_channels = []
+        sorted_groups = sorted(
+            groups.items(),
+            key=lambda item: (str((item[1] or {}).get("group_name", "") or item[0]).lower(), str(item[0] or "").lower()),
+        )
+        for group_key, group in sorted_groups:
+            if not isinstance(group, dict):
+                continue
+            group_name = str(group.get("group_name", "") or group.get("section_name", "") or group_key or "").strip() or str(group_key or "").strip()
+            group_channels = [channel for channel in (group.get("channels", []) or []) if isinstance(channel, dict)]
+            group_video_ids = set()
+            group_empty_channels = 0
+            group_latest_video = group.get("latest_video", {}) if isinstance(group.get("latest_video", {}), dict) else {}
+            for channel in group_channels:
+                latest_video = channel.get("latest_video", {}) if isinstance(channel.get("latest_video", {}), dict) else {}
+                latest_video_id = str(channel.get("latest_video_id", "") or latest_video.get("video_id", "") or "").strip()
+                if not latest_video_id:
+                    group_empty_channels += 1
+                    empty_channels.append({
+                        "group_key": group_key,
+                        "group_name": group_name,
+                        "channel_id": str(channel.get("channel_id", "") or "").strip(),
+                        "channel_title": str(channel.get("channel_title", "") or "").strip() or "Unknown Channel",
+                    })
+                    continue
+
+                group_video_ids.add(latest_video_id)
+                existing = feed_by_video_id.get(latest_video_id)
+                if not isinstance(existing, dict):
+                    published_at = str(channel.get("published_at", "") or latest_video.get("published_at", "") or "").strip()
+                    thumbnail = str(
+                        latest_video.get("thumbnail", "")
+                        or latest_video.get("thumbnail_url", "")
+                        or latest_video.get("image_url", "")
+                        or latest_video.get("thumb", "")
+                        or channel.get("thumbnail", "")
+                        or ""
+                    ).strip()
+                    url = str(latest_video.get("url", "") or channel.get("url", "") or "").strip()
+                    if not url and latest_video_id:
+                        url = f"https://www.youtube.com/watch?v={latest_video_id}"
+                    feed_by_video_id[latest_video_id] = {
+                        "video_id": latest_video_id,
+                        "title": str(latest_video.get("title", "") or latest_video.get("name", "") or channel.get("channel_title", "") or "Untitled video").strip() or "Untitled video",
+                        "channel_id": str(channel.get("channel_id", "") or latest_video.get("channel_id", "") or "").strip(),
+                        "channel_title": str(
+                            latest_video.get("channel_name", "")
+                            or latest_video.get("channel_title", "")
+                            or channel.get("channel_title", "")
+                            or "Unknown Channel"
+                        ).strip() or "Unknown Channel",
+                        "published_at": published_at,
+                        "published_display": str(channel.get("published_display", "") or latest_video.get("published_display", "") or "").strip() or self.format_timestamp_label(published_at, default="") if published_at else "",
+                        "thumbnail": thumbnail,
+                        "url": url,
+                        "group_names": list(dict.fromkeys([
+                            str(name or "").strip()
+                            for name in list(channel.get("group_names", []) or []) + [group_name]
+                            if str(name or "").strip()
+                        ])),
+                        "group_keys": list(dict.fromkeys([
+                            str(key or "").strip()
+                            for key in [str(channel.get("group_key", "") or "").strip(), str(group_key or "").strip()]
+                            if str(key or "").strip()
+                        ])),
+                        "reason_tags": list(dict.fromkeys([
+                            str(tag or "").strip()
+                            for tag in list(channel.get("reason_tags", []) or []) + ["cached-latest"]
+                            if str(tag or "").strip()
+                        ])),
+                    }
+                else:
+                    group_names = list(existing.get("group_names", []) or [])
+                    for name in list(channel.get("group_names", []) or []) + [group_name]:
+                        normalized_name = str(name or "").strip()
+                        if normalized_name and normalized_name not in group_names:
+                            group_names.append(normalized_name)
+                    existing["group_names"] = sorted(dict.fromkeys(group_names), key=lambda value: str(value or "").lower())
+                    group_keys = list(existing.get("group_keys", []) or [])
+                    for key in [str(channel.get("group_key", "") or "").strip(), str(group_key or "").strip()]:
+                        if key and key not in group_keys:
+                            group_keys.append(key)
+                    existing["group_keys"] = sorted(dict.fromkeys(group_keys), key=lambda value: str(value or "").lower())
+                    if not str(existing.get("channel_title", "") or "").strip():
+                        existing["channel_title"] = str(
+                            latest_video.get("channel_name", "")
+                            or latest_video.get("channel_title", "")
+                            or channel.get("channel_title", "")
+                            or "Unknown Channel"
+                        ).strip() or "Unknown Channel"
+                    if not str(existing.get("thumbnail", "") or "").strip():
+                        existing["thumbnail"] = str(
+                            latest_video.get("thumbnail", "")
+                            or latest_video.get("thumbnail_url", "")
+                            or latest_video.get("image_url", "")
+                            or latest_video.get("thumb", "")
+                            or channel.get("thumbnail", "")
+                            or ""
+                        ).strip()
+                    if not str(existing.get("url", "") or "").strip():
+                        existing["url"] = str(latest_video.get("url", "") or channel.get("url", "") or "").strip()
+                    if not str(existing.get("published_at", "") or "").strip():
+                        existing["published_at"] = published_at
+                    if not str(existing.get("published_display", "") or "").strip() and published_at:
+                        existing["published_display"] = self.format_timestamp_label(published_at, default="")
+                    existing["reason_tags"] = list(dict.fromkeys([
+                        str(tag or "").strip()
+                        for tag in list(existing.get("reason_tags", []) or []) + list(channel.get("reason_tags", []) or []) + ["cached-latest"]
+                        if str(tag or "").strip()
+                    ]))
+
+            group_latest_video_id = str(group_latest_video.get("video_id", "") or "").strip()
+            if group_latest_video_id and group_latest_video_id not in feed_by_video_id:
+                published_at = str(group_latest_video.get("published_at", "") or "").strip()
+                thumbnail = str(
+                    group_latest_video.get("thumbnail", "")
+                    or group_latest_video.get("thumbnail_url", "")
+                    or group_latest_video.get("image_url", "")
+                    or group_latest_video.get("thumb", "")
+                    or ""
+                ).strip()
+                url = str(group_latest_video.get("url", "") or "").strip()
+                if not url:
+                    url = f"https://www.youtube.com/watch?v={group_latest_video_id}"
+                feed_by_video_id[group_latest_video_id] = {
+                    "video_id": group_latest_video_id,
+                    "title": str(group_latest_video.get("title", "") or group_latest_video.get("name", "") or group_name or "Untitled video").strip() or "Untitled video",
+                    "channel_id": str(group_latest_video.get("channel_id", "") or "").strip(),
+                    "channel_title": str(
+                        group_latest_video.get("channel_name", "")
+                        or group_latest_video.get("channel_title", "")
+                        or group_name
+                        or "Unknown Channel"
+                    ).strip() or "Unknown Channel",
+                    "published_at": published_at,
+                    "published_display": str(group_latest_video.get("published_display", "") or "").strip() or self.format_timestamp_label(published_at, default="") if published_at else "",
+                    "thumbnail": thumbnail,
+                    "url": url,
+                    "group_names": [group_name] if group_name else [],
+                    "group_keys": [str(group_key or "").strip()] if str(group_key or "").strip() else [],
+                    "reason_tags": ["cached-latest"],
+                }
+                group_video_ids.add(group_latest_video_id)
+
+            feed_groups.append({
+                "group_key": group_key,
+                "group_name": group_name,
+                "video_count": len(group_video_ids),
+                "channel_count": len(group_channels),
+                "empty_channel_count": group_empty_channels,
+            })
+
+        feed_videos = list(feed_by_video_id.values())
+        feed_videos.sort(key=lambda item: (
+            -self._published_sort_key(str(item.get("published_at", "") or "")),
+            str(item.get("title", "") or "").lower(),
+            str(item.get("channel_title", "") or "").lower(),
+            str(item.get("video_id", "") or "").lower(),
+        ))
+        feed_groups.sort(key=lambda item: (str(item.get("group_name", "") or item.get("group_key", "")).lower(), str(item.get("group_key", "") or "").lower()))
+        empty_channels.sort(key=lambda item: (
+            str(item.get("group_name", "") or "").lower(),
+            str(item.get("channel_title", "") or "").lower(),
+            str(item.get("channel_id", "") or "").lower(),
+        ))
+        return {
+            "videos": feed_videos,
+            "groups": feed_groups,
+            "empty_channels": empty_channels,
         }
 
     def _build_channel_payload(self, channel, group_name, group_key, latest_summary):

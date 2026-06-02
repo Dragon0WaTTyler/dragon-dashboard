@@ -147,6 +147,169 @@ class YouTubeFreshnessServiceTests(unittest.TestCase):
             self.assertEqual(context["group_count"], 1)
             self.assertEqual(context["groups"][0]["group_name"], "Philosophy")
 
+    def test_build_page_context_creates_unified_video_feed(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            service, _state = self._build_service(temp_dir)
+            payload = {
+                "version": 1,
+                "generated_at": FIXED_NOW.isoformat(),
+                "synced_at": FIXED_NOW.isoformat(),
+                "groups": {
+                    "science": {
+                        "group_name": "Science",
+                        "group_key": "science",
+                        "section_name": "Science",
+                        "section_key": "science",
+                        "source_name": "PocketTube",
+                        "imported_at": FIXED_NOW.isoformat(),
+                        "channel_count": 2,
+                        "latest_video_count": 1,
+                        "latest_video": {
+                            "video_id": "v1",
+                            "title": "Science One",
+                            "channel_id": "c1",
+                            "channel_name": "Channel One",
+                            "published_at": FIXED_NOW.isoformat(),
+                            "url": "https://www.youtube.com/watch?v=v1",
+                            "thumb": "https://img.youtube.com/vi/v1/hqdefault.jpg",
+                        },
+                        "channels": [
+                            {
+                                "channel_id": "c1",
+                                "channel_title": "Channel One",
+                                "group_names": ["Science"],
+                                "group_key": "science",
+                                "latest_video": {
+                                    "video_id": "v1",
+                                    "title": "Science One",
+                                    "channel_id": "c1",
+                                    "channel_name": "Channel One",
+                                    "published_at": FIXED_NOW.isoformat(),
+                                    "url": "https://www.youtube.com/watch?v=v1",
+                                    "thumb": "https://img.youtube.com/vi/v1/hqdefault.jpg",
+                                },
+                                "latest_video_id": "v1",
+                                "published_at": FIXED_NOW.isoformat(),
+                                "published_display": "2026-06-02 12:00",
+                                "thumbnail": "https://img.youtube.com/vi/v1/hqdefault.jpg",
+                                "url": "https://www.youtube.com/watch?v=v1",
+                                "reason_tags": ["latest-cached"],
+                            },
+                            {
+                                "channel_id": "c2",
+                                "channel_title": "Channel Two",
+                                "group_names": ["Science"],
+                                "group_key": "science",
+                                "latest_video": {},
+                                "latest_video_id": "",
+                                "published_at": "",
+                                "published_display": "",
+                                "thumbnail": "",
+                                "url": "",
+                                "reason_tags": ["source-diverse"],
+                            },
+                        ],
+                    },
+                    "knowledge": {
+                        "group_name": "Knowledge",
+                        "group_key": "knowledge",
+                        "section_name": "Knowledge",
+                        "section_key": "knowledge",
+                        "source_name": "PocketTube",
+                        "imported_at": FIXED_NOW.isoformat(),
+                        "channel_count": 1,
+                        "latest_video_count": 1,
+                        "latest_video": {
+                            "video_id": "v1",
+                            "title": "Science One",
+                            "channel_id": "c1",
+                            "channel_name": "Channel One",
+                            "published_at": FIXED_NOW.isoformat(),
+                            "url": "https://www.youtube.com/watch?v=v1",
+                            "thumb": "https://img.youtube.com/vi/v1/hqdefault.jpg",
+                        },
+                        "channels": [
+                            {
+                                "channel_id": "c1",
+                                "channel_title": "Channel One",
+                                "group_names": ["Knowledge"],
+                                "group_key": "knowledge",
+                                "latest_video": {
+                                    "video_id": "v1",
+                                    "title": "Science One",
+                                    "channel_id": "c1",
+                                    "channel_name": "Channel One",
+                                    "published_at": FIXED_NOW.isoformat(),
+                                    "url": "https://www.youtube.com/watch?v=v1",
+                                    "thumb": "https://img.youtube.com/vi/v1/hqdefault.jpg",
+                                },
+                                "latest_video_id": "v1",
+                                "published_at": FIXED_NOW.isoformat(),
+                                "published_display": "2026-06-02 12:00",
+                                "thumbnail": "https://img.youtube.com/vi/v1/hqdefault.jpg",
+                                "url": "https://www.youtube.com/watch?v=v1",
+                                "reason_tags": ["latest-cached"],
+                            }
+                        ],
+                    },
+                },
+                "channels": {
+                    "c1": {
+                        "channel_id": "c1",
+                        "channel_title": "Channel One",
+                        "latest_video": {
+                            "video_id": "v1",
+                            "title": "Science One",
+                            "channel_id": "c1",
+                            "channel_name": "Channel One",
+                            "published_at": FIXED_NOW.isoformat(),
+                            "url": "https://www.youtube.com/watch?v=v1",
+                            "thumb": "https://img.youtube.com/vi/v1/hqdefault.jpg",
+                        },
+                        "group_names": ["Knowledge", "Science"],
+                        "latest_video_id": "v1",
+                        "published_at": FIXED_NOW.isoformat(),
+                        "published_display": "2026-06-02 12:00",
+                        "thumbnail": "https://img.youtube.com/vi/v1/hqdefault.jpg",
+                        "url": "https://www.youtube.com/watch?v=v1",
+                        "reason_tags": ["latest-cached"],
+                    }
+                },
+                "errors": [],
+            }
+            save_json_file(service.snapshot_path, payload)
+
+            context = service.build_page_context()
+
+            self.assertFalse(context["empty_state"])
+            self.assertEqual(context["feed_video_count"], 1)
+            self.assertEqual(context["feed_empty_channel_count"], 1)
+            self.assertEqual(context["feed_groups"][0]["video_count"], 1)
+            self.assertEqual(context["feed_videos"][0]["video_id"], "v1")
+            self.assertEqual(context["feed_videos"][0]["group_names"], ["Knowledge", "Science"])
+            self.assertEqual(context["feed_videos"][0]["channel_title"], "Channel One")
+
+    def test_build_page_context_empty_snapshot_remains_safe_state(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            service, _state = self._build_service(temp_dir)
+            save_json_file(
+                service.snapshot_path,
+                {
+                    "version": 1,
+                    "generated_at": FIXED_NOW.isoformat(),
+                    "synced_at": FIXED_NOW.isoformat(),
+                    "groups": {},
+                    "channels": {},
+                    "errors": [],
+                },
+            )
+
+            context = service.build_page_context()
+
+            self.assertTrue(context["empty_state"])
+            self.assertEqual(context["feed_video_count"], 0)
+            self.assertEqual(context["feed_videos"], [])
+
     def test_latest_videos_group_by_channel_and_group(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             refresh_mock = Mock()
