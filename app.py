@@ -57,6 +57,7 @@ from domains.reading import (
 )
 from domains.youtube.services import (
     YouTubePlaylistService,
+    YouTubeFreshnessService,
     YouTubeRecommendationService,
     YouTubeVideoService,
     WatchLaterSyncService,
@@ -93,6 +94,7 @@ from dragon.paths import (
     READING_DATA_PATH,
     READING_RECIPE_OF_DAY_PATH,
     READING_TTS_CACHE_DIR,
+    YOUTUBE_LATEST_SNAPSHOT_PATH,
     YOUTUBE_CLIENT_SECRET_PATH,
     YOUTUBE_TOKEN_PATH,
     YTS_TORRENTS_CACHE_PATH,
@@ -25977,6 +25979,22 @@ YOUTUBE_PLAYLIST_SERVICE = YouTubePlaylistService(
     normalize_pockettube_group_key=normalize_pockettube_group_key,
 )
 
+YOUTUBE_FRESHNESS_SERVICE = YouTubeFreshnessService(
+    load_admin_data=load_admin_data,
+    pockettube_latest_import_snapshot=_pockettube_latest_import_snapshot,
+    get_persisted_youtube_channel_latest_entry=get_persisted_youtube_channel_latest_entry,
+    refresh_pockettube_section_latest_uploads=refresh_pockettube_section_latest_uploads,
+    build_youtube_channel_video_summary=build_youtube_channel_video_summary,
+    canonical_section_name=canonical_section_name,
+    normalize_pockettube_group_key=normalize_pockettube_group_key,
+    format_timestamp_label=format_timestamp_label,
+    current_timestamp=current_timestamp,
+    load_json_file=load_json_file,
+    save_json_file=save_json_file,
+    snapshot_path=YOUTUBE_LATEST_SNAPSHOT_PATH,
+    app_logger=app.logger,
+)
+
 YOUTUBE_VIDEO_SERVICE = YouTubeVideoService(
     get_video_detail_context=get_video_detail_context,
     recommendation_service=YOUTUBE_RECOMMENDATION_SERVICE,
@@ -30707,6 +30725,27 @@ def section_page(section_slug):
 @app.route("/pockettube")
 def pockettube_groups():
     return YOUTUBE_PLAYLIST_SERVICE.render_pockettube_groups(request.args)
+
+
+@app.route("/pockettube/freshness")
+def pockettube_freshness():
+    context = YOUTUBE_FRESHNESS_SERVICE.build_page_context()
+    if request.args.get("synced"):
+        context["sync_notice"] = "Freshness snapshot rebuilt."
+    return render_template(
+        "pockettube_freshness.html",
+        **context,
+        ai_default_mode="study",
+        ai_page_context="study",
+    )
+
+
+@app.route("/pockettube/freshness/sync", methods=["POST"])
+def pockettube_freshness_sync():
+    scope = str(request.form.get("scope", "") or request.args.get("scope", "") or "").strip()
+    YOUTUBE_FRESHNESS_SERVICE.sync_snapshot(scope=scope)
+    return redirect(url_for("pockettube_freshness", synced="1"))
+
 
 @app.route("/proxy_notebook")
 def proxy_notebook():

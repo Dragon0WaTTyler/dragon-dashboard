@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+    .pockettube-freshness-grid{display:grid;gap:16px}
+    .pockettube-freshness-group{display:grid;gap:14px}
+    .pockettube-freshness-group h3{margin:0;font-size:1.5rem}
+    .pockettube-freshness-card-grid{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
+    .pockettube-freshness-card{display:grid;gap:10px}
+    .pockettube-freshness-card .video-thumb{aspect-ratio:16/9;object-fit:cover;border-radius:14px;width:100%}
+    .pockettube-freshness-card .pockettube-tags{display:flex;gap:6px;flex-wrap:wrap}
+    .pockettube-freshness-card .score-pill{font-size:.72rem}
+</style>
+<section class="page-hero">
+    <div class="hero-meta">
+        <span class="hero-badge">PocketTube</span>
+        <span>Latest from your channels</span>
+    </div>
+    <h2>{{ title }}</h2>
+    <p class="subhead">
+        A cache-first snapshot of the latest cached video for each PocketTube channel, grouped by your imported PocketTube groups.
+    </p>
+    <div class="detail-controls">
+        <a class="btn" href="{{ url_for('pockettube_groups') }}"><i data-lucide="layers"></i>Back to groups</a>
+        <form method="post" action="{{ url_for('pockettube_freshness_sync') }}" style="display:inline-flex;gap:10px;align-items:center;flex-wrap:wrap;">
+            <input type="hidden" name="scope" value="">
+            <button type="submit" class="btn"><i data-lucide="refresh-cw"></i>Sync latest videos</button>
+        </form>
+    </div>
+    <div class="hero-meta" style="margin-top:12px;">
+        {% if generated_at %}
+        <span>Generated {{ generated_at }}</span>
+        {% endif %}
+        {% if synced_at %}
+        <span>Synced {{ synced_at }}</span>
+        {% endif %}
+        <span>{{ group_count }} groups</span>
+        <span>{{ channel_count }} channels</span>
+        {% if snapshot.version %}
+        <span>Snapshot v{{ snapshot.version }}</span>
+        {% endif %}
+    </div>
+    {% if sync_notice %}
+    <div class="muted" style="margin-top:10px;">{{ sync_notice }}</div>
+    {% endif %}
+</section>
+
+{% if errors %}
+<section class="surface-card section-card" style="margin-bottom:18px;">
+    <div class="detail-header">
+        <div>
+            <div class="hero-meta">
+                <span class="hero-badge">Sync notes</span>
+                <span>{{ errors|length }} issue{% if errors|length != 1 %}s{% endif %}</span>
+            </div>
+            <h3 style="font-size:1.4rem; margin-top:12px;">Snapshot warnings</h3>
+        </div>
+    </div>
+    <div class="muted" style="margin-top:12px; display:grid; gap:6px;">
+        {% for error in errors %}
+        <div>{{ error }}</div>
+        {% endfor %}
+    </div>
+</section>
+{% endif %}
+
+{% if groups %}
+<div class="pockettube-freshness-grid">
+    {% for group in groups %}
+    <section class="surface-card section-card pockettube-freshness-group">
+        <div class="detail-header">
+            <div>
+                <div class="hero-meta">
+                    <span class="hero-badge">{{ group.group_name or group.group_key }}</span>
+                    <span>{{ group.channel_count }} channels</span>
+                    {% if group.latest_video_count %}
+                    <span>{{ group.latest_video_count }} cached latest</span>
+                    {% endif %}
+                </div>
+                <h3>{{ group.section_name or group.group_name }}</h3>
+            </div>
+            <div class="muted" style="text-align:right;">
+                <div>{{ group.source_name or 'PocketTube' }}</div>
+                {% if group.imported_at %}
+                <div>Imported {{ group.imported_at }}</div>
+                {% endif %}
+            </div>
+        </div>
+        {% if group.channels %}
+        <div class="pockettube-freshness-card-grid">
+            {% for channel in group.channels %}
+            {% set latest_video_id = channel.latest_video.video_id if channel.latest_video and channel.latest_video.video_id else '' %}
+            {% set channel_href = url_for('video_detail', entry_id='yt-' ~ latest_video_id) if latest_video_id else '' %}
+            {% if channel_href %}
+            <a class="content-card pockettube-freshness-card" href="{{ channel_href }}">
+                <div class="video-frame video-poster">
+                    {% set thumb = channel.latest_video.thumbnail or channel.latest_video.thumbnail_url or channel.latest_video.thumb or ('https://img.youtube.com/vi/' ~ channel.latest_video.video_id ~ '/hqdefault.jpg' if channel.latest_video and channel.latest_video.video_id else '') %}
+                    {% if thumb %}
+                    <img class="video-thumb" src="{{ thumb }}" alt="{{ channel.latest_video.title or channel.channel_title }}" loading="lazy" decoding="async">
+                    {% else %}
+                    <div class="empty-state" style="min-height:160px; display:flex; align-items:center; justify-content:center;">No cached latest video yet.</div>
+                    {% endif %}
+                </div>
+                <div class="card-title">{{ channel.latest_video.title or channel.channel_title or 'Unknown Channel' }}</div>
+                <div class="card-meta channel-meta">{{ channel.channel_title or 'Unknown Channel' }}</div>
+                {% if channel.published_display %}
+                <div class="card-meta" style="opacity:.75;">Published: {{ channel.published_display }}</div>
+                {% endif %}
+                <div class="pockettube-tags">
+                    {% for tag in channel.reason_tags %}
+                    <span class="score-pill">{{ tag }}</span>
+                    {% endfor %}
+                </div>
+                {% if channel.url %}
+                <div class="muted" style="font-size:.78rem;">Open on YouTube</div>
+                {% endif %}
+            </a>
+            {% else %}
+            <div class="content-card pockettube-freshness-card">
+                <div class="video-frame video-poster">
+                    <div class="empty-state" style="min-height:160px; display:flex; align-items:center; justify-content:center;">No cached latest video yet.</div>
+                </div>
+                <div class="card-title">{{ channel.channel_title or 'Unknown Channel' }}</div>
+                <div class="card-meta channel-meta">{{ channel.channel_title or 'Unknown Channel' }}</div>
+                <div class="pockettube-tags">
+                    {% for tag in channel.reason_tags %}
+                    <span class="score-pill">{{ tag }}</span>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty-state">This group has no channels in the current snapshot.</div>
+        {% endif %}
+    </section>
+    {% endfor %}
+</div>
+{% else %}
+<section class="surface-card section-card">
+    <div class="empty-state">
+        {% if snapshot and snapshot.groups %}
+        No cached latest videos yet. Run Sync Latest Videos to populate the snapshot.
+        {% else %}
+        No freshness snapshot exists yet. Run Sync Latest Videos to build it.
+        {% endif %}
+    </div>
+</section>
+{% endif %}
+{% endblock %}
