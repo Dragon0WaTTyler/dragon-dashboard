@@ -59,7 +59,6 @@ class ReadingRuntimeService:
         self.reading_list_limit_step = reading_list_limit_step
         self.datetime_module = datetime_module
         self.monotonic = monotonic
-        self._read_model_comparison_logged = set()
 
     def reading_filter_query_params(self, filters=None):
         filters = filters if isinstance(filters, dict) else {}
@@ -134,52 +133,8 @@ class ReadingRuntimeService:
         )
         return data
 
-    def _build_normalized_entries(self, data, source_lookup=None, source_category_lookup=None, context_label="list"):
-        started_at = self.monotonic()
-        raw_entries = list(data.get("entries", []) or [])
-        normalized_entries = [
-            self.normalize_reading_list_entry(
-                entry,
-                index,
-                source_lookup=source_lookup or {},
-                source_category_lookup=source_category_lookup or {},
-            )
-            for index, entry in enumerate(raw_entries)
-        ]
-        self.app_logger.info(
-            "reading_normalize entries elapsed_ms=%.1f context=%s entries=%s include_content=0 include_body_image_scan=0",
-            (self.monotonic() - started_at) * 1000,
-            context_label,
-            len(normalized_entries),
-        )
-        return normalized_entries
-
     def _build_projection(self, data, context_label="list"):
         return self.reading_runtime_projection_service.build_projection(data, context_label=context_label)
-
-    def _log_read_model_comparison(self, data, source_lookup=None, source_category_lookup=None, context_label="list", lightweight_entries=None):
-        if context_label in self._read_model_comparison_logged:
-            return
-        self._read_model_comparison_logged.add(context_label)
-        started_at = self.monotonic()
-        normalized_entries = self._build_normalized_entries(
-            data,
-            source_lookup=source_lookup,
-            source_category_lookup=source_category_lookup,
-            context_label=f"{context_label}:legacy_compare",
-        )
-        legacy_elapsed_ms = (self.monotonic() - started_at) * 1000
-        lightweight_entries = lightweight_entries if isinstance(lightweight_entries, list) else []
-        avg_lightweight_fields = (sum(len(entry) for entry in lightweight_entries) / len(lightweight_entries)) if lightweight_entries else 0.0
-        avg_legacy_fields = (sum(len(entry) for entry in normalized_entries) / len(normalized_entries)) if normalized_entries else 0.0
-        self.app_logger.info(
-            "reading_read_model compare context=%s entries=%s lightweight_fields_avg=%.1f legacy_fields_avg=%.1f legacy_elapsed_ms=%.1f comparison_mode=shadow_once",
-            context_label,
-            len(lightweight_entries),
-            avg_lightweight_fields,
-            avg_legacy_fields,
-            legacy_elapsed_ms,
-        )
 
     def _entry_import_timestamp(self, entry):
         return (
@@ -267,13 +222,6 @@ class ReadingRuntimeService:
         source_lookup = dict(projection.source_lookup)
         source_category_lookup = dict(projection.source_category_lookup)
         entries = [dict(entry) for entry in projection.lightweight_entries]
-        self._log_read_model_comparison(
-            data,
-            source_lookup=source_lookup,
-            source_category_lookup=source_category_lookup,
-            context_label="list",
-            lightweight_entries=entries,
-        )
         last_sync_timestamp = self.parse_timestamp(str(data.get("last_sync_at", "") or "").strip())
         self._mark_fresh_import_entries(entries, last_sync_timestamp=last_sync_timestamp, context_label="list")
         active_entries = [entry for entry in entries if entry.get("status") != "archived"]
@@ -394,13 +342,6 @@ class ReadingRuntimeService:
         data = self._load_cached_data_for_get()
         projection = self._build_projection(data, context_label="article")
         entries = [dict(entry) for entry in projection.lightweight_entries]
-        self._log_read_model_comparison(
-            data,
-            source_lookup=dict(projection.source_lookup),
-            source_category_lookup=dict(projection.source_category_lookup),
-            context_label="article",
-            lightweight_entries=entries,
-        )
         filters = self._parse_view_filters(request_args)
         last_sync_timestamp = self.parse_timestamp(str(data.get("last_sync_at", "") or "").strip())
         self._mark_fresh_import_entries(entries, last_sync_timestamp=last_sync_timestamp, context_label="article")
