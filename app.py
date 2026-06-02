@@ -24900,6 +24900,30 @@ def get_video_detail_context(entry_id, force_refresh=False):
             "related_title": " / ".join(related_title_parts) or detail.get("category") or "Related Films"
         }
 
+    if entry_id.startswith("yt-"):
+        snapshot_lookup_started_at = time.monotonic()
+        snapshot_context = YOUTUBE_FRESHNESS_SERVICE.build_snapshot_video_detail_context(entry_id)
+        snapshot_lookup_elapsed_ms = (time.monotonic() - snapshot_lookup_started_at) * 1000
+        if snapshot_context:
+            snapshot_entry = snapshot_context.get("entry", {}) if isinstance(snapshot_context, dict) else {}
+            snapshot_related_entries = list(snapshot_context.get("related_entries", []) or []) if isinstance(snapshot_context, dict) else []
+            snapshot_playlist_entries = list(snapshot_context.get("playlist_entries", []) or []) if isinstance(snapshot_context, dict) else []
+            _youtube_perf_log(
+                "pockettube_video_detail_fast_path",
+                entry_id=entry_id,
+                related_count=len(snapshot_related_entries),
+                playlist_entries_count=len(snapshot_playlist_entries),
+            )
+            _youtube_perf_log(
+                "video_detail_context",
+                entry_id=entry_id,
+                source="pockettube_snapshot_fast_path",
+                collect_entries_ms=0,
+                detail_lookup_ms=snapshot_lookup_elapsed_ms,
+                youtube_entry_count=0,
+            )
+            return snapshot_context
+
     youtube_started_at = time.monotonic()
     youtube_entries = collect_all_youtube_entries()
     entries_elapsed_ms = (time.monotonic() - youtube_started_at) * 1000
@@ -24909,31 +24933,6 @@ def get_video_detail_context(entry_id, force_refresh=False):
         fallback_id = entry_id[3:]
         detail = next((video for video in youtube_entries if video.get("video_id") == fallback_id), None)
     detail_lookup_elapsed_ms = (time.monotonic() - detail_lookup_started_at) * 1000
-    if not detail:
-        snapshot_context = None
-        if entry_id.startswith("yt-"):
-            snapshot_context = YOUTUBE_FRESHNESS_SERVICE.build_snapshot_video_detail_context(entry_id)
-        if snapshot_context:
-            snapshot_entry = snapshot_context.get("entry", {}) if isinstance(snapshot_context, dict) else {}
-            snapshot_related_entries = list(snapshot_context.get("related_entries", []) or []) if isinstance(snapshot_context, dict) else []
-            snapshot_playlist_entries = list(snapshot_context.get("playlist_entries", []) or []) if isinstance(snapshot_context, dict) else []
-            _youtube_perf_log(
-                "pockettube_video_detail_related_active",
-                entry_id=entry_id,
-                video_id=snapshot_entry.get("video_id", ""),
-                related_count=len(snapshot_related_entries),
-                playlist_entries_count=len(snapshot_playlist_entries),
-                source="active_fallback",
-            )
-            _youtube_perf_log(
-                "video_detail_context",
-                entry_id=entry_id,
-                source="pockettube_snapshot_fallback",
-                collect_entries_ms=entries_elapsed_ms,
-                detail_lookup_ms=detail_lookup_elapsed_ms,
-                youtube_entry_count=len(youtube_entries),
-            )
-            return snapshot_context
     if not detail and not entry_id.startswith("yt-"):
         pockettube_context = _resolve_pockettube_group_detail_context(entry_id)
         if pockettube_context:

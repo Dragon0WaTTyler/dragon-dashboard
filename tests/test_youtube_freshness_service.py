@@ -1705,9 +1705,10 @@ class YouTubeFreshnessServiceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             service, _state = self._build_service(temp_dir)
             save_json_file(service.snapshot_path, self._build_related_snapshot_payload())
+            collect_mock = Mock(return_value=[])
 
             with patch.object(dragon_app, "YOUTUBE_FRESHNESS_SERVICE", service), \
-                 patch.object(dragon_app, "collect_all_youtube_entries", return_value=[]), \
+                 patch.object(dragon_app, "collect_all_youtube_entries", collect_mock), \
                  patch.object(dragon_app, "_youtube_perf_log") as perf_log_mock, \
                  patch.object(dragon_app, "get_youtube_duration", Mock()) as mocked_get_duration:
                 response = client.get("/video/yt-current")
@@ -1719,13 +1720,67 @@ class YouTubeFreshnessServiceTests(unittest.TestCase):
             self.assertIn("Breaking News Update", body)
             self.assertIn("/video/yt-news-2", body)
             self.assertNotIn("could not find the requested entry", body)
-            active_log_calls = [
+            fast_path_log_calls = [
                 call for call in perf_log_mock.call_args_list
-                if call.args and call.args[0] == "pockettube_video_detail_related_active"
+                if call.args and call.args[0] == "pockettube_video_detail_fast_path"
             ]
-            self.assertTrue(active_log_calls)
-            self.assertGreater(int(active_log_calls[0].kwargs.get("playlist_entries_count", 0)), 1)
+            self.assertTrue(fast_path_log_calls)
+            self.assertGreater(int(fast_path_log_calls[0].kwargs.get("playlist_entries_count", 0)), 1)
+            context_log_calls = [
+                call for call in perf_log_mock.call_args_list
+                if call.args and call.args[0] == "video_detail_context"
+            ]
+            self.assertTrue(context_log_calls)
+            self.assertEqual(context_log_calls[0].kwargs.get("source"), "pockettube_snapshot_fast_path")
+            collect_mock.assert_not_called()
             mocked_get_duration.assert_not_called()
+
+    def test_video_detail_route_snapshot_miss_still_uses_existing_collect_path(self):
+        dragon_app.app.config["TESTING"] = True
+        client = dragon_app.app.test_client()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            service, _state = self._build_service(temp_dir)
+            save_json_file(service.snapshot_path, {
+                "version": 1,
+                "generated_at": FIXED_NOW.isoformat(),
+                "synced_at": FIXED_NOW.isoformat(),
+                "groups": {},
+                "channels": {},
+                "errors": [],
+            })
+            collect_mock = Mock(return_value=[{
+                "entry_id": "yt-watch-1",
+                "video_id": "watch-1",
+                "watch_key": "watch-1",
+                "title": "Watch Later Sample",
+                "name": "Watch Later Sample",
+                "channel_name": "Sample Channel",
+                "channel_id": "c-watch-1",
+                "published_at": self._timestamp(1),
+                "published_display": "2026-06-02 11:00",
+                "url": "https://www.youtube.com/watch?v=watch-1",
+                "detail_url": "/video/yt-watch-1",
+                "thumbnail": "https://img.youtube.com/vi/watch-1/hqdefault.jpg",
+                "thumbnail_url": "https://img.youtube.com/vi/watch-1/hqdefault.jpg",
+                "image_url": "https://img.youtube.com/vi/watch-1/hqdefault.jpg",
+                "duration": "3:21",
+                "duration_seconds": 201,
+                "playlist_name": "Watch Later",
+                "playlist_url": "/watch-later",
+                "section": "Watch Later",
+                "source_type": "youtube",
+                "entry_type": "youtube",
+            }])
+
+            with patch.object(dragon_app, "YOUTUBE_FRESHNESS_SERVICE", service), \
+                 patch.object(dragon_app, "collect_all_youtube_entries", collect_mock), \
+                 patch.object(service, "build_snapshot_video_detail_context", wraps=service.build_snapshot_video_detail_context) as snapshot_mock:
+                response = client.get("/video/yt-watch-1")
+
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.get_data(as_text=True).count("Watch Later Sample") > 0, True)
+            snapshot_mock.assert_called_once_with("yt-watch-1")
+            collect_mock.assert_called_once()
 
     def test_freshness_route_redirects_to_main_pockettube(self):
         dragon_app.app.config["TESTING"] = True
