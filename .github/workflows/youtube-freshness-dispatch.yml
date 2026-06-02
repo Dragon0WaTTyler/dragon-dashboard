@@ -1,4 +1,4 @@
-name: Sync YouTube Freshness Snapshot
+name: YouTube Freshness Dispatch
 
 on:
   workflow_dispatch:
@@ -14,11 +14,11 @@ permissions:
   contents: write
 
 jobs:
-  sync-youtube-freshness:
+  youtube-freshness-dispatch:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     concurrency:
-      group: sync-youtube-freshness
+      group: youtube-freshness-dispatch
       cancel-in-progress: false
     env:
       PYTHONUNBUFFERED: "1"
@@ -103,12 +103,13 @@ jobs:
           if [ -z "$status" ]; then
             status="failed"
           fi
+          export STATUS_FOR_NOTIFY="$status"
           payload=$(python - <<'PY'
 import json
 import os
 
 payload = {
-    "status": os.environ.get("SYNC_STATUS", "failed"),
+    "status": os.environ.get("STATUS_FOR_NOTIFY", "failed"),
     "scope": os.environ.get("YOUTUBE_FRESHNESS_SCOPE", ""),
     "run_id": os.environ.get("GITHUB_RUN_ID", ""),
     "run_url": f'{os.environ.get("GITHUB_SERVER_URL", "")}/{os.environ.get("GITHUB_REPOSITORY", "")}/actions/runs/{os.environ.get("GITHUB_RUN_ID", "")}',
