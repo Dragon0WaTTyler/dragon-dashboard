@@ -130,3 +130,4 @@ PY
           echo "PythonAnywhere notify succeeded with HTTP $http_code"
           cat /tmp/dragon-youtube-freshness-notify-response.txt || true
 
+# encoding-normalized
