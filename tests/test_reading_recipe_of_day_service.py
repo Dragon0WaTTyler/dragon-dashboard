@@ -144,10 +144,36 @@ class ReadingRecipeOfDayServiceTests(unittest.TestCase):
                 [item["id"] for item in second["selected_articles"]],
             )
 
-    def test_max_two_articles_per_source(self):
+    def test_al_jazeera_variants_share_same_publisher_family(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             recipe_path = Path(temp_dir) / "reading_recipe_of_day.json"
-            entries = [self._entry(i, source_id="source-1", source="Source One", hours_ago=i + 1) for i in range(8)]
+            data_state = {
+                "data": self._base_data(
+                    [
+                        self._entry(1, source_id="aj-main", source="AL JAZEERA ENGLISH", hours_ago=1, url="https://www.aljazeera.com/news/one"),
+                        self._entry(2, source_id="aj-opinion", source="AL JAZEERA ENGLISH (Opinion)", hours_ago=2, url="https://www.aljazeera.com/opinions/two"),
+                        self._entry(3, source_id="aj-opinion-ar", source="Al Jazeera Opinion", hours_ago=3, url="https://www.aljazeera.com/opinions/three"),
+                    ],
+                    [
+                        self._source("aj-main", "AL JAZEERA ENGLISH"),
+                        self._source("aj-opinion", "AL JAZEERA ENGLISH (Opinion)"),
+                        self._source("aj-opinion-ar", "Al Jazeera Opinion"),
+                    ],
+                )
+            }
+            service = self._build_service(data_state, recipe_path)
+            recipe = service.build_today_recipe(force=True)
+
+            families = {item["publisher_family_key"] for item in recipe["selected_articles"]}
+            self.assertEqual(families, {"al-jazeera"})
+
+    def test_no_more_than_two_articles_per_publisher_family(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            recipe_path = Path(temp_dir) / "reading_recipe_of_day.json"
+            entries = [
+                self._entry(i, source_id=f"aj-{i}", source="AL JAZEERA ENGLISH (Opinion)" if i % 2 else "AL JAZEERA ENGLISH", hours_ago=i + 1, url=f"https://www.aljazeera.com/story-{i}")
+                for i in range(1, 8)
+            ]
             entries.extend([
                 self._entry(100, source_id="source-2", source="Source Two", hours_ago=2),
                 self._entry(101, source_id="source-3", source="Source Three", hours_ago=3),
@@ -156,7 +182,13 @@ class ReadingRecipeOfDayServiceTests(unittest.TestCase):
                 "data": self._base_data(
                     entries,
                     [
-                        self._source("source-1", "Source One"),
+                        self._source("aj-1", "AL JAZEERA ENGLISH"),
+                        self._source("aj-2", "AL JAZEERA ENGLISH (Opinion)"),
+                        self._source("aj-3", "AL JAZEERA ENGLISH"),
+                        self._source("aj-4", "AL JAZEERA ENGLISH (Opinion)"),
+                        self._source("aj-5", "AL JAZEERA ENGLISH"),
+                        self._source("aj-6", "AL JAZEERA ENGLISH (Opinion)"),
+                        self._source("aj-7", "AL JAZEERA ENGLISH"),
                         self._source("source-2", "Source Two"),
                         self._source("source-3", "Source Three"),
                     ],
@@ -165,27 +197,37 @@ class ReadingRecipeOfDayServiceTests(unittest.TestCase):
             service = self._build_service(data_state, recipe_path)
             recipe = service.build_today_recipe(force=True)
 
-            source_counts = Counter(item["source_id"] for item in recipe["selected_articles"])
-            self.assertLessEqual(source_counts["source-1"], 2)
+            family_counts = Counter(item["publisher_family_key"] for item in recipe["selected_articles"])
+            self.assertLessEqual(family_counts["al-jazeera"], 2)
 
-    def test_first_pass_selects_across_multiple_sources(self):
+    def test_first_pass_selects_across_different_publisher_families(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             recipe_path = Path(temp_dir) / "reading_recipe_of_day.json"
-            entries = []
-            sources = []
-            for index in range(1, 6):
-                source_id = f"source-{index}"
-                source_name = f"Source {index}"
-                sources.append(self._source(source_id, source_name))
-                entries.append(self._entry(index, source_id=source_id, source=source_name, hours_ago=index))
-                entries.append(self._entry(index + 10, source_id=source_id, source=source_name, hours_ago=index + 0.5))
+            entries = [
+                self._entry(1, source_id="aj-main", source="AL JAZEERA ENGLISH", hours_ago=1, url="https://www.aljazeera.com/a"),
+                self._entry(2, source_id="aj-opinion", source="AL JAZEERA ENGLISH (Opinion)", hours_ago=2, url="https://www.aljazeera.com/b"),
+                self._entry(3, source_id="bbc-main", source="BBC Culture", hours_ago=1, url="https://www.bbc.com/c"),
+                self._entry(4, source_id="hespress-main", source="Hespress", hours_ago=1, url="https://www.hespress.com/d"),
+                self._entry(5, source_id="map-main", source="MAP News English", hours_ago=1, url="https://www.mapnews.ma/e"),
+            ]
+            sources = [
+                self._source("aj-main", "AL JAZEERA ENGLISH"),
+                self._source("aj-opinion", "AL JAZEERA ENGLISH (Opinion)"),
+                self._source("bbc-main", "BBC Culture"),
+                self._source("hespress-main", "Hespress"),
+                self._source("map-main", "MAP News English"),
+            ]
             data_state = {"data": self._base_data(entries, sources)}
             service = self._build_service(data_state, recipe_path)
 
             recipe = service.build_today_recipe(force=True)
-            first_pass_sources = [item["source_id"] for item in recipe["selected_articles"][:5]]
+            first_pass_families = [
+                item["publisher_family_key"]
+                for item in recipe["selected_articles"]
+                if item.get("recipe_phase") == "source-first-pass"
+            ]
 
-            self.assertEqual(len(first_pass_sources), len(set(first_pass_sources)))
+            self.assertEqual(len(first_pass_families), len(set(first_pass_families)))
 
     def test_last_24h_articles_are_preferred(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -235,6 +277,36 @@ class ReadingRecipeOfDayServiceTests(unittest.TestCase):
 
             self.assertEqual([item["id"] for item in first["selected_articles"]], [item["id"] for item in second["selected_articles"]])
             self.assertTrue(second["reused_existing_snapshot"])
+
+    def test_force_regenerate_replaces_old_cached_same_day_recipe(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            recipe_path = Path(temp_dir) / "reading_recipe_of_day.json"
+            data_state = {
+                "data": self._base_data(
+                    [self._entry(1, source_id="aj-main", source="AL JAZEERA ENGLISH", hours_ago=1, url="https://www.aljazeera.com/a")],
+                    [self._source("aj-main", "AL JAZEERA ENGLISH")],
+                )
+            }
+            service = self._build_service(data_state, recipe_path)
+            first = service.build_today_recipe(force=False)
+
+            data_state["data"] = self._base_data(
+                [
+                    self._entry(2, source_id="bbc-main", source="BBC Culture", hours_ago=1, url="https://www.bbc.com/b"),
+                    self._entry(3, source_id="hespress-main", source="Hespress", hours_ago=2, url="https://www.hespress.com/c"),
+                ],
+                [
+                    self._source("bbc-main", "BBC Culture"),
+                    self._source("hespress-main", "Hespress"),
+                ],
+            )
+            second = service.build_today_recipe(force=True)
+
+            self.assertNotEqual(
+                [item["id"] for item in first["selected_articles"]],
+                [item["id"] for item in second["selected_articles"]],
+            )
+            self.assertFalse(second["reused_existing_snapshot"])
 
     def test_start_route_chooses_first_article(self):
         dragon_app.app.config["TESTING"] = True

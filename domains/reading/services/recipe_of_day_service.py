@@ -4,6 +4,7 @@ import copy
 import re
 from collections import Counter, defaultdict
 from datetime import timezone
+from urllib.parse import urlparse
 
 
 class ReadingRecipeOfDayService:
@@ -68,6 +69,28 @@ class ReadingRecipeOfDayService:
         "technology",
         "trump",
         "war",
+    }
+    _PUBLISHER_SUFFIX_PATTERNS = (
+        r"\((?:opinion|opinions|analysis|culture|news|world|video|podcast|editorial|commentary)\)",
+        r"\b(?:opinion|opinions|analysis|culture|news|world|video|podcast|editorial|commentary)\b$",
+    )
+    _PUBLISHER_ALIAS_MAP = {
+        "al jazeera": "al-jazeera",
+        "aljazeera": "al-jazeera",
+        "al jazeera english": "al-jazeera",
+        "aljazeera english": "al-jazeera",
+        "bbc": "bbc",
+        "bbc culture": "bbc",
+        "hespress": "hespress",
+        "map news english": "map-news",
+    }
+    _PUBLISHER_DOMAIN_MAP = {
+        "aljazeera.com": "al-jazeera",
+        "aljazeera.net": "al-jazeera",
+        "bbc.com": "bbc",
+        "bbc.co.uk": "bbc",
+        "hespress.com": "hespress",
+        "mapnews.ma": "map-news",
     }
 
     def __init__(
@@ -172,6 +195,76 @@ class ReadingRecipeOfDayService:
             if fallback:
                 keys.append(f"id:{fallback.lower()}")
         return keys
+
+    def _normalized_publisher_name(self, value):
+        text = str(value or "").strip().lower()
+        if not text:
+            return ""
+        for pattern in self._PUBLISHER_SUFFIX_PATTERNS:
+            text = re.sub(pattern, "", text, flags=re.IGNORECASE)
+        text = re.sub(r"[_|/:-]+", " ", text)
+        text = re.sub(r"[^a-z0-9\s]+", " ", text)
+        text = re.sub(r"\s+", " ", text).strip()
+        if not text:
+            return ""
+        if text in self._PUBLISHER_ALIAS_MAP:
+            return self._PUBLISHER_ALIAS_MAP[text]
+        for alias, canonical in self._PUBLISHER_ALIAS_MAP.items():
+            alias_tokens = alias.split()
+            if alias_tokens and text.startswith(alias):
+                tail = text[len(alias):].strip()
+                if not tail or tail in {"english", "arabic"}:
+                    return canonical
+        compact = text.replace(" ", "")
+        if compact in self._PUBLISHER_ALIAS_MAP:
+            return self._PUBLISHER_ALIAS_MAP[compact]
+        return text.replace(" ", "-")
+
+    def _publisher_family_from_domain(self, url_value):
+        normalized_url = self.normalize_reading_url(url_value or "")
+        if not normalized_url:
+            return ""
+        parsed = urlparse(normalized_url)
+        host = str(parsed.netloc or "").strip().lower()
+        if host.startswith("www."):
+            host = host[4:]
+        if not host:
+            return ""
+        for domain, canonical in self._PUBLISHER_DOMAIN_MAP.items():
+            if host == domain or host.endswith(f".{domain}"):
+                return canonical
+        host = re.sub(r":\d+$", "", host)
+        labels = [label for label in host.split(".") if label]
+        if len(labels) >= 2:
+            return f"{labels[-2]}-{labels[-1]}"
+        return host.replace(".", "-")
+
+    def _publisher_family_key_for_entry(self, entry, source=None):
+        entry = entry if isinstance(entry, dict) else {}
+        source = source if isinstance(source, dict) else {}
+        name_candidates = [
+            source.get("name", ""),
+            source.get("title", ""),
+            entry.get("source", ""),
+            entry.get("source_title", ""),
+            entry.get("source_label", ""),
+        ]
+        for candidate in name_candidates:
+            normalized_name = self._normalized_publisher_name(candidate)
+            if normalized_name:
+                return normalized_name
+        url_candidates = [
+            source.get("url", ""),
+            source.get("primary_url", ""),
+            entry.get("feed_url", ""),
+            entry.get("original_url", ""),
+            entry.get("url", ""),
+        ]
+        for candidate_url in url_candidates:
+            family = self._publisher_family_from_domain(candidate_url)
+            if family:
+                return family
+        return self._source_key_for_entry(entry, source=source).replace(":", "-")
 
     def _source_key_for_entry(self, entry, source=None):
         entry = entry if isinstance(entry, dict) else {}
@@ -318,6 +411,8 @@ class ReadingRecipeOfDayService:
         for tag in freshness_tags + source_tags + status_tags + interest_tags:
             if tag and tag not in tags:
                 tags.append(tag)
+        if is_recent and "fresh-24h" not in tags:
+            tags.append("fresh-24h")
         if star_score:
             tags.append("starred")
         score = freshness_score + source_score + status_score + interest_score + star_score
@@ -393,7 +488,7 @@ class ReadingRecipeOfDayService:
         reason_tags = list(candidate.get("reason_tags", []) or [])
         selection_phase = str(candidate.get("recipe_phase", "") or "").strip()
         if selection_phase:
-            phase_tag = "source:first-pass" if selection_phase == "source-first-pass" else "source:second-pass"
+            phase_tag = "source-diverse" if selection_phase == "source-first-pass" else "publisher-cap"
             if phase_tag not in reason_tags:
                 reason_tags.append(phase_tag)
         return {
@@ -404,6 +499,7 @@ class ReadingRecipeOfDayService:
             "source_dir": str(candidate.get("source_dir", "") or "auto").strip() or "auto",
             "source_id": str(candidate.get("source_id", "") or "").strip(),
             "source_key": str(candidate.get("source_key", "") or "").strip(),
+            "publisher_family_key": str(candidate.get("publisher_family_key", "") or "").strip(),
             "url": str(candidate.get("url", "") or "").strip(),
             "original_url": str(candidate.get("original_url", "") or "").strip(),
             "published_at": str(candidate.get("published_at", "") or "").strip(),
@@ -452,6 +548,7 @@ class ReadingRecipeOfDayService:
                 "source_dir": str(entry.get("source_dir", "") or "").strip() or "auto",
                 "source_id": source_id,
                 "source_key": self._source_key_for_entry(entry, source=source),
+                "publisher_family_key": self._publisher_family_key_for_entry(entry, source=source),
                 "url": str(entry.get("url", "") or "").strip(),
                 "original_url": str(entry.get("original_url", "") or entry.get("url", "") or "").strip(),
                 "published_at": str(entry.get("published_at", "") or "").strip(),
@@ -517,11 +614,11 @@ class ReadingRecipeOfDayService:
 
         grouped = defaultdict(list)
         for candidate in pool:
-            grouped[candidate["source_key"]].append(candidate)
+            grouped[candidate["publisher_family_key"]].append(candidate)
         for group in grouped.values():
             group.sort(key=lambda candidate: candidate["selection_key"])
 
-        source_order = sorted(
+        family_order = sorted(
             grouped.items(),
             key=lambda item: (
                 item[1][0]["selection_key"],
@@ -531,28 +628,28 @@ class ReadingRecipeOfDayService:
 
         selected = []
         selected_counts = defaultdict(int)
-        for source_key, group in source_order:
+        for family_key, group in family_order:
             if len(selected) >= self.MAX_SELECTION:
                 break
             best_candidate = group[0]
             best_candidate["recipe_phase"] = "source-first-pass"
             selected.append(best_candidate)
-            selected_counts[source_key] += 1
+            selected_counts[family_key] += 1
 
         remaining = []
-        for source_key, group in grouped.items():
+        for family_key, group in grouped.items():
             for candidate in group[1:]:
                 remaining.append(candidate)
         remaining.sort(key=lambda candidate: candidate["selection_key"])
         for candidate in remaining:
             if len(selected) >= self.MAX_SELECTION:
                 break
-            source_key = candidate["source_key"]
-            if selected_counts[source_key] >= 2:
+            family_key = candidate["publisher_family_key"]
+            if selected_counts[family_key] >= 2:
                 continue
             candidate["recipe_phase"] = "source-second-pass"
             selected.append(candidate)
-            selected_counts[source_key] += 1
+            selected_counts[family_key] += 1
 
         for index, candidate in enumerate(selected):
             candidate["recipe_index"] = index
