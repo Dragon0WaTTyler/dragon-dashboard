@@ -470,7 +470,7 @@ class YouTubeFreshnessService:
             "ai_page_context": "study",
         }
 
-    def find_snapshot_video_detail_context(self, entry_id):
+    def build_snapshot_video_detail_context(self, entry_id):
         lookup_entry_id = str(entry_id or "").strip()
         if not lookup_entry_id:
             return None
@@ -490,6 +490,9 @@ class YouTubeFreshnessService:
                 channel_title=candidate.get("channel_title", ""),
             )
         return None
+
+    def find_snapshot_video_detail_context(self, entry_id):
+        return self.build_snapshot_video_detail_context(entry_id)
 
     def build_snapshot_from_local_cache(self, admin_data=None, latest_import=None, sections=None, errors=None):
         admin_data = admin_data if isinstance(admin_data, dict) else self.load_admin_data()

@@ -1708,6 +1708,7 @@ class YouTubeFreshnessServiceTests(unittest.TestCase):
 
             with patch.object(dragon_app, "YOUTUBE_FRESHNESS_SERVICE", service), \
                  patch.object(dragon_app, "collect_all_youtube_entries", return_value=[]), \
+                 patch.object(dragon_app, "_youtube_perf_log") as perf_log_mock, \
                  patch.object(dragon_app, "get_youtube_duration", Mock()) as mocked_get_duration:
                 response = client.get("/video/yt-current")
 
@@ -1718,6 +1719,12 @@ class YouTubeFreshnessServiceTests(unittest.TestCase):
             self.assertIn("Breaking News Update", body)
             self.assertIn("/video/yt-news-2", body)
             self.assertNotIn("could not find the requested entry", body)
+            active_log_calls = [
+                call for call in perf_log_mock.call_args_list
+                if call.args and call.args[0] == "pockettube_video_detail_related_active"
+            ]
+            self.assertTrue(active_log_calls)
+            self.assertGreater(int(active_log_calls[0].kwargs.get("playlist_entries_count", 0)), 1)
             mocked_get_duration.assert_not_called()
 
     def test_freshness_route_redirects_to_main_pockettube(self):
