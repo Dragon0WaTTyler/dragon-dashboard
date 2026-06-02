@@ -14215,11 +14215,11 @@ def get_navigation_items():
         {"href": url_for("reading"), "label": "Reading", "short_label": "Reading", "icon": "fa-solid fa-book-open-reader", "active_paths": [url_for("reading")]},
     ]
     pockettube_item = {
-        "href": url_for("pockettube_groups"),
+        "href": url_for("pockettube"),
         "label": "PocketTube",
         "short_label": "PocketTube",
         "icon": "fa-solid fa-layer-group",
-        "active_paths": [url_for("pockettube_groups")],
+        "active_paths": [url_for("pockettube"), url_for("pockettube_groups")],
         "slug": section_slug("PocketTube"),
     }
     content_items = []
@@ -24910,6 +24910,20 @@ def get_video_detail_context(entry_id, force_refresh=False):
         detail = next((video for video in youtube_entries if video.get("video_id") == fallback_id), None)
     detail_lookup_elapsed_ms = (time.monotonic() - detail_lookup_started_at) * 1000
     if not detail:
+        snapshot_context = None
+        if entry_id.startswith("yt-"):
+            snapshot_context = YOUTUBE_FRESHNESS_SERVICE.find_snapshot_video_detail_context(entry_id)
+        if snapshot_context:
+            _youtube_perf_log(
+                "video_detail_context",
+                entry_id=entry_id,
+                source="pockettube_snapshot_fallback",
+                collect_entries_ms=entries_elapsed_ms,
+                detail_lookup_ms=detail_lookup_elapsed_ms,
+                youtube_entry_count=len(youtube_entries),
+            )
+            return snapshot_context
+    if not detail and not entry_id.startswith("yt-"):
         pockettube_context = _resolve_pockettube_group_detail_context(entry_id)
         if pockettube_context:
             _youtube_perf_log(

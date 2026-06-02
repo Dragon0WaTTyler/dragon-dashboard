@@ -87,6 +87,152 @@ class YouTubeFreshnessService:
         self.save_json_file(self.sync_status_path, payload)
         return payload
 
+    def _iter_snapshot_latest_videos(self, snapshot):
+        snapshot = snapshot if isinstance(snapshot, dict) else self.empty_snapshot()
+        groups = snapshot.get("groups", {})
+        if isinstance(groups, dict):
+            for group_key, group in groups.items():
+                if not isinstance(group, dict):
+                    continue
+                group_name = str(group.get("group_name", "") or group.get("section_name", "") or group_key or "").strip()
+                group_key_text = str(group.get("group_key", "") or group_key or "").strip()
+                channels = [channel for channel in (group.get("channels", []) or []) if isinstance(channel, dict)]
+                for channel in channels:
+                    latest_video = channel.get("latest_video", {})
+                    if not isinstance(latest_video, dict) or not latest_video:
+                        continue
+                    yield {
+                        "source": "group_channel",
+                        "group_key": group_key_text,
+                        "group_name": group_name,
+                        "channel_id": str(channel.get("channel_id", "") or "").strip(),
+                        "channel_title": str(channel.get("channel_title", "") or "").strip(),
+                        "latest_video": dict(latest_video),
+                    }
+
+        channels = snapshot.get("channels", {})
+        if isinstance(channels, dict):
+            for channel_id, channel in channels.items():
+                if not isinstance(channel, dict):
+                    continue
+                latest_video = channel.get("latest_video", {})
+                if not isinstance(latest_video, dict) or not latest_video:
+                    continue
+                yield {
+                    "source": "channel",
+                    "group_key": "",
+                    "group_name": "",
+                    "channel_id": str(channel.get("channel_id", "") or channel_id or "").strip(),
+                    "channel_title": str(channel.get("channel_title", "") or "").strip(),
+                    "latest_video": dict(latest_video),
+                }
+
+    def _snapshot_latest_video_matches(self, latest_video, lookup_entry_id="", lookup_video_id="", lookup_watch_key=""):
+        latest_video = latest_video if isinstance(latest_video, dict) else {}
+        candidate_entry_id = str(latest_video.get("entry_id", "") or "").strip()
+        candidate_video_id = str(latest_video.get("video_id", "") or "").strip()
+        candidate_watch_key = str(latest_video.get("watch_key", "") or "").strip()
+        return any(
+            candidate
+            and candidate in {
+                str(lookup_entry_id or "").strip(),
+                str(lookup_video_id or "").strip(),
+                str(lookup_watch_key or "").strip(),
+            }
+            for candidate in (candidate_entry_id, candidate_video_id, candidate_watch_key)
+        )
+
+    def _build_snapshot_video_detail_context(self, latest_video, *, lookup_entry_id="", group_name="", group_key="", channel_id="", channel_title=""):
+        latest_video = latest_video if isinstance(latest_video, dict) else {}
+        video_id = str(latest_video.get("video_id", "") or "").strip()
+        entry_id = str(latest_video.get("entry_id", "") or lookup_entry_id or "").strip()
+        if not entry_id and video_id:
+            entry_id = f"yt-{video_id}"
+        watch_key = str(latest_video.get("watch_key", "") or video_id or entry_id or "").strip()
+        published_at = str(latest_video.get("published_at", "") or "").strip()
+        title = str(latest_video.get("title", "") or latest_video.get("name", "") or channel_title or "Untitled video").strip() or "Untitled video"
+        resolved_channel_name = str(
+            latest_video.get("channel_name", "")
+            or latest_video.get("channel_title", "")
+            or channel_title
+            or "Unknown Channel"
+        ).strip() or "Unknown Channel"
+        detail = dict(latest_video)
+        detail.update({
+            "id": entry_id,
+            "entry_id": entry_id,
+            "title": title,
+            "name": detail.get("name", "") or title,
+            "video_id": video_id,
+            "watch_key": watch_key,
+            "state_key": watch_key,
+            "url": str(detail.get("url", "") or "").strip() or (f"https://www.youtube.com/watch?v={video_id}" if video_id else ""),
+            "detail_url": str(detail.get("detail_url", "") or "").strip() or (f"/video/{entry_id}" if entry_id else ""),
+            "thumb": str(detail.get("thumb", "") or "").strip() or str(detail.get("thumbnail", "") or detail.get("thumbnail_url", "") or detail.get("image_url", "") or "").strip(),
+            "thumbnail_url": str(detail.get("thumbnail_url", "") or detail.get("thumbnail", "") or detail.get("image_url", "") or detail.get("thumb", "") or "").strip(),
+            "thumbnail": str(detail.get("thumbnail", "") or detail.get("thumbnail_url", "") or detail.get("image_url", "") or detail.get("thumb", "") or "").strip(),
+            "image_url": str(detail.get("image_url", "") or detail.get("thumbnail_url", "") or detail.get("thumbnail", "") or detail.get("thumb", "") or "").strip(),
+            "channel_id": str(detail.get("channel_id", "") or channel_id or "").strip(),
+            "channel_name": resolved_channel_name,
+            "channel_title": resolved_channel_name,
+            "published_at": published_at,
+            "published_display": str(detail.get("published_display", "") or "").strip() or self.format_timestamp_label(published_at, default=""),
+            "source_type": "youtube",
+            "entry_type": "youtube",
+            "playlist_name": "PocketTube Freshness",
+            "playlist_url": "/pockettube",
+            "playlist_id": str(detail.get("playlist_id", "") or group_key or "").strip(),
+            "playlist_item_id": str(detail.get("playlist_item_id", "") or "").strip(),
+            "section": "PocketTube",
+            "status": str(detail.get("status", "") or "PocketTube Freshness").strip() or "PocketTube Freshness",
+            "category": str(detail.get("category", "") or resolved_channel_name or "PocketTube").strip() or "PocketTube",
+            "group_name": str(detail.get("group_name", "") or group_name or "").strip(),
+            "group_key": str(detail.get("group_key", "") or group_key or "").strip(),
+            "source_name": str(detail.get("source_name", "") or "PocketTube").strip() or "PocketTube",
+            "feed_source": "pockettube_snapshot",
+            "group_back_url": "/pockettube",
+            "group_back_context": group_name or resolved_channel_name or "PocketTube Freshness",
+        })
+        return {
+            "entry": detail,
+            "entry_type": "youtube",
+            "player_video_id": video_id,
+            "related_entries": [],
+            "related_title": group_name or resolved_channel_name or "PocketTube Freshness",
+            "playlist_entries": [detail],
+            "prev_entry": None,
+            "next_entry": None,
+            "related_total_pages": 0,
+            "related_page": 1,
+            "pagination_numbers": [],
+            "related_order": "normal",
+            "related_seed": "",
+            "delete_endpoint": False,
+            "ai_default_mode": "study",
+            "ai_page_context": "study",
+        }
+
+    def find_snapshot_video_detail_context(self, entry_id):
+        lookup_entry_id = str(entry_id or "").strip()
+        if not lookup_entry_id:
+            return None
+        lookup_video_id = lookup_entry_id[3:] if lookup_entry_id.startswith("yt-") else lookup_entry_id
+        lookup_watch_key = lookup_video_id or lookup_entry_id
+        snapshot = self.load_snapshot()
+        for candidate in self._iter_snapshot_latest_videos(snapshot):
+            latest_video = candidate.get("latest_video", {})
+            if not self._snapshot_latest_video_matches(latest_video, lookup_entry_id, lookup_video_id, lookup_watch_key):
+                continue
+            return self._build_snapshot_video_detail_context(
+                latest_video,
+                lookup_entry_id=lookup_entry_id,
+                group_name=candidate.get("group_name", ""),
+                group_key=candidate.get("group_key", ""),
+                channel_id=candidate.get("channel_id", ""),
+                channel_title=candidate.get("channel_title", ""),
+            )
+        return None
+
     def build_snapshot_from_local_cache(self, admin_data=None, latest_import=None, sections=None, errors=None):
         admin_data = admin_data if isinstance(admin_data, dict) else self.load_admin_data()
         latest_import = latest_import if isinstance(latest_import, dict) else {}

@@ -147,6 +147,96 @@ class YouTubeFreshnessServiceTests(unittest.TestCase):
             self.assertEqual(context["group_count"], 1)
             self.assertEqual(context["groups"][0]["group_name"], "Philosophy")
 
+    def test_snapshot_video_detail_context_matches_entry_id_video_id_and_watch_key(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            service, _state = self._build_service(temp_dir)
+            payload = {
+                "version": 1,
+                "generated_at": FIXED_NOW.isoformat(),
+                "synced_at": FIXED_NOW.isoformat(),
+                "groups": {
+                    "science": {
+                        "group_name": "Science",
+                        "group_key": "science",
+                        "section_name": "Science",
+                        "section_key": "science",
+                        "source_name": "PocketTube",
+                        "imported_at": FIXED_NOW.isoformat(),
+                        "channel_count": 1,
+                        "latest_video_count": 1,
+                        "latest_video": {},
+                        "channels": [
+                            {
+                                "channel_id": "UC-1",
+                                "channel_title": "Science Channel",
+                                "group_names": ["Science"],
+                                "group_key": "science",
+                                "latest_video": {
+                                    "entry_id": "yt-NvouldZEM",
+                                    "video_id": "NvouldZEM",
+                                    "watch_key": "NvouldZEM",
+                                    "title": "PocketTube Snapshot Title",
+                                    "channel_name": "Science Channel",
+                                    "channel_id": "UC-1",
+                                    "published_at": FIXED_NOW.isoformat(),
+                                    "published_display": "2026-06-02 12:00",
+                                    "url": "https://www.youtube.com/watch?v=NvouldZEM",
+                                    "detail_url": "/video/yt-NvouldZEM",
+                                    "thumbnail": "https://img.youtube.com/vi/NvouldZEM/hqdefault.jpg",
+                                    "thumbnail_url": "https://img.youtube.com/vi/NvouldZEM/hqdefault.jpg",
+                                    "image_url": "https://img.youtube.com/vi/NvouldZEM/hqdefault.jpg",
+                                    "source_type": "youtube",
+                                },
+                                "latest_video_id": "NvouldZEM",
+                                "published_at": FIXED_NOW.isoformat(),
+                                "published_display": "2026-06-02 12:00",
+                                "thumbnail": "https://img.youtube.com/vi/NvouldZEM/hqdefault.jpg",
+                                "url": "https://www.youtube.com/watch?v=NvouldZEM",
+                                "reason_tags": ["latest-cached"],
+                            }
+                        ],
+                    }
+                },
+                "channels": {
+                    "UC-1": {
+                        "channel_id": "UC-1",
+                        "channel_title": "Science Channel",
+                        "latest_video": {
+                            "entry_id": "yt-NvouldZEM",
+                            "video_id": "NvouldZEM",
+                            "watch_key": "NvouldZEM",
+                            "title": "PocketTube Snapshot Title",
+                            "channel_name": "Science Channel",
+                            "channel_id": "UC-1",
+                            "published_at": FIXED_NOW.isoformat(),
+                            "published_display": "2026-06-02 12:00",
+                            "url": "https://www.youtube.com/watch?v=NvouldZEM",
+                            "detail_url": "/video/yt-NvouldZEM",
+                            "thumbnail": "https://img.youtube.com/vi/NvouldZEM/hqdefault.jpg",
+                            "thumbnail_url": "https://img.youtube.com/vi/NvouldZEM/hqdefault.jpg",
+                            "image_url": "https://img.youtube.com/vi/NvouldZEM/hqdefault.jpg",
+                            "source_type": "youtube",
+                        },
+                    }
+                },
+                "errors": [],
+            }
+            save_json_file(service.snapshot_path, payload)
+
+            context = service.find_snapshot_video_detail_context("yt-NvouldZEM")
+
+            self.assertIsNotNone(context)
+            self.assertEqual(context["entry_type"], "youtube")
+            self.assertEqual(context["player_video_id"], "NvouldZEM")
+            self.assertEqual(context["entry"]["entry_id"], "yt-NvouldZEM")
+            self.assertEqual(context["entry"]["video_id"], "NvouldZEM")
+            self.assertEqual(context["entry"]["watch_key"], "NvouldZEM")
+            self.assertEqual(context["entry"]["title"], "PocketTube Snapshot Title")
+            self.assertEqual(context["entry"]["detail_url"], "/video/yt-NvouldZEM")
+            self.assertEqual(context["entry"]["playlist_url"], "/pockettube")
+            self.assertEqual(context["entry"]["source_type"], "youtube")
+            self.assertEqual(context["related_entries"], [])
+
     def test_build_page_context_creates_unified_video_feed(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             service, _state = self._build_service(temp_dir)
@@ -1372,6 +1462,96 @@ class YouTubeFreshnessServiceTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.get_data(as_text=True), "ok")
         mock_playlist_service.render_pockettube_groups.assert_called_once()
+
+    def test_video_detail_route_falls_back_to_snapshot_without_remote_lookup(self):
+        dragon_app.app.config["TESTING"] = True
+        client = dragon_app.app.test_client()
+        with tempfile.TemporaryDirectory() as temp_dir:
+            service, _state = self._build_service(temp_dir)
+            payload = {
+                "version": 1,
+                "generated_at": FIXED_NOW.isoformat(),
+                "synced_at": FIXED_NOW.isoformat(),
+                "groups": {
+                    "science": {
+                        "group_name": "Science",
+                        "group_key": "science",
+                        "section_name": "Science",
+                        "section_key": "science",
+                        "source_name": "PocketTube",
+                        "imported_at": FIXED_NOW.isoformat(),
+                        "channel_count": 1,
+                        "latest_video_count": 1,
+                        "latest_video": {},
+                        "channels": [
+                            {
+                                "channel_id": "UC-1",
+                                "channel_title": "Science Channel",
+                                "group_names": ["Science"],
+                                "group_key": "science",
+                                "latest_video": {
+                                    "entry_id": "yt-NvouldZEM",
+                                    "video_id": "NvouldZEM",
+                                    "watch_key": "NvouldZEM",
+                                    "title": "PocketTube Snapshot Title",
+                                    "channel_name": "Science Channel",
+                                    "channel_id": "UC-1",
+                                    "published_at": FIXED_NOW.isoformat(),
+                                    "published_display": "2026-06-02 12:00",
+                                    "url": "https://www.youtube.com/watch?v=NvouldZEM",
+                                    "detail_url": "/video/yt-NvouldZEM",
+                                    "thumbnail": "https://img.youtube.com/vi/NvouldZEM/hqdefault.jpg",
+                                    "thumbnail_url": "https://img.youtube.com/vi/NvouldZEM/hqdefault.jpg",
+                                    "image_url": "https://img.youtube.com/vi/NvouldZEM/hqdefault.jpg",
+                                    "source_type": "youtube",
+                                },
+                                "latest_video_id": "NvouldZEM",
+                                "published_at": FIXED_NOW.isoformat(),
+                                "published_display": "2026-06-02 12:00",
+                                "thumbnail": "https://img.youtube.com/vi/NvouldZEM/hqdefault.jpg",
+                                "url": "https://www.youtube.com/watch?v=NvouldZEM",
+                                "reason_tags": ["latest-cached"],
+                            }
+                        ],
+                    }
+                },
+                "channels": {
+                    "UC-1": {
+                        "channel_id": "UC-1",
+                        "channel_title": "Science Channel",
+                        "latest_video": {
+                            "entry_id": "yt-NvouldZEM",
+                            "video_id": "NvouldZEM",
+                            "watch_key": "NvouldZEM",
+                            "title": "PocketTube Snapshot Title",
+                            "channel_name": "Science Channel",
+                            "channel_id": "UC-1",
+                            "published_at": FIXED_NOW.isoformat(),
+                            "published_display": "2026-06-02 12:00",
+                            "url": "https://www.youtube.com/watch?v=NvouldZEM",
+                            "detail_url": "/video/yt-NvouldZEM",
+                            "thumbnail": "https://img.youtube.com/vi/NvouldZEM/hqdefault.jpg",
+                            "thumbnail_url": "https://img.youtube.com/vi/NvouldZEM/hqdefault.jpg",
+                            "image_url": "https://img.youtube.com/vi/NvouldZEM/hqdefault.jpg",
+                            "source_type": "youtube",
+                        },
+                    }
+                },
+                "errors": [],
+            }
+            save_json_file(service.snapshot_path, payload)
+
+            with patch.object(dragon_app, "YOUTUBE_FRESHNESS_SERVICE", service), \
+                 patch.object(dragon_app, "collect_all_youtube_entries", return_value=[]), \
+                 patch.object(dragon_app.YOUTUBE_VIDEO_SERVICE.recommendation_service, "enrich_video_detail_context", side_effect=lambda context, *args, **kwargs: context), \
+                 patch.object(dragon_app, "get_youtube_duration", Mock()) as mocked_get_duration:
+                response = client.get("/video/yt-NvouldZEM")
+
+            self.assertEqual(response.status_code, 200)
+            body = response.get_data(as_text=True)
+            self.assertIn("PocketTube Snapshot Title", body)
+            self.assertNotIn("could not find the requested entry", body)
+            mocked_get_duration.assert_not_called()
 
     def test_freshness_route_redirects_to_main_pockettube(self):
         dragon_app.app.config["TESTING"] = True
