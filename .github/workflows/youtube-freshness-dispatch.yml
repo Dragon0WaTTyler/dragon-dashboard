@@ -1,6 +1,6 @@
-name: YouTube Freshness Dispatch
+﻿name: YouTube Freshness Dispatch
 
-on:
+"on":
   workflow_dispatch:
     inputs:
       scope:
@@ -129,3 +129,4 @@ PY
           fi
           echo "PythonAnywhere notify succeeded with HTTP $http_code"
           cat /tmp/dragon-youtube-freshness-notify-response.txt || true
+
