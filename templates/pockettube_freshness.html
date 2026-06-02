@@ -1,10 +1,15 @@
 {% extends "base.html" %}
 {% block content %}
 <style>
-    .pockettube-freshness-shell{display:grid;grid-template-columns:minmax(220px,280px) minmax(0,1fr);gap:18px;align-items:start}
-    .pockettube-freshness-sidebar{position:sticky;top:16px;display:grid;gap:14px}
-    .pockettube-filter-list{display:grid;gap:8px}
-    .pockettube-filter-btn{display:flex;justify-content:space-between;align-items:center;gap:12px;width:100%;text-align:left;border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:10px 12px;background:rgba(255,255,255,.03);color:inherit;cursor:pointer;transition:transform .15s ease,border-color .15s ease,background .15s ease}
+    .pockettube-freshness-shell{display:grid;gap:18px}
+    .pockettube-feed-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap}
+    .pockettube-feed-filter{position:relative;min-width:220px}
+    .pockettube-feed-filter summary{list-style:none;display:flex;justify-content:space-between;align-items:center;gap:10px;border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:11px 14px;background:rgba(255,255,255,.03);cursor:pointer}
+    .pockettube-feed-filter summary::-webkit-details-marker{display:none}
+    .pockettube-feed-filter[open] summary{border-color:rgba(125,211,252,.35);background:rgba(125,211,252,.10)}
+    .pockettube-feed-filter-panel{position:absolute;right:0;top:calc(100% + 8px);z-index:20;width:min(320px,88vw);display:grid;gap:8px;padding:10px;border-radius:16px;background:rgba(10,14,22,.96);border:1px solid rgba(255,255,255,.08);box-shadow:0 22px 60px rgba(0,0,0,.45)}
+    .pockettube-filter-list{display:grid;gap:8px;max-height:360px;overflow:auto}
+    .pockettube-filter-btn{display:flex;justify-content:space-between;align-items:center;gap:12px;width:100%;text-align:left;border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:10px 12px;background:rgba(255,255,255,.03);color:inherit;cursor:pointer;transition:transform .15s ease,border-color .15s ease,background .15s ease}
     .pockettube-filter-btn:hover{transform:translateY(-1px);border-color:rgba(255,255,255,.18);background:rgba(255,255,255,.05)}
     .pockettube-filter-btn.is-active{border-color:var(--accent-color,#7dd3fc);background:rgba(125,211,252,.12);box-shadow:0 0 0 1px rgba(125,211,252,.12) inset}
     .pockettube-filter-btn .filter-count{font-size:.78rem;opacity:.8;white-space:nowrap}
@@ -24,8 +29,9 @@
     .pockettube-empty-item span{opacity:.86}
     .pockettube-empty-item strong{font-weight:600}
     @media (max-width: 980px){
-        .pockettube-freshness-shell{grid-template-columns:1fr}
-        .pockettube-freshness-sidebar{position:static}
+        .pockettube-feed-head{align-items:stretch}
+        .pockettube-feed-filter{width:100%}
+        .pockettube-feed-filter-panel{left:0;right:auto;width:100%}
     }
 </style>
 <section class="page-hero">
@@ -38,7 +44,6 @@
         A cache-first, YouTube-home style feed powered only by the latest saved PocketTube snapshot.
     </p>
     <div class="detail-controls">
-        <a class="btn" href="{{ url_for('pockettube_groups') }}"><i data-lucide="layers"></i>Back to groups</a>
         <form method="post" action="{{ url_for('pockettube_freshness_sync') }}" style="display:inline-flex;gap:10px;align-items:center;flex-wrap:wrap;">
             <input type="hidden" name="scope" value="">
             <button type="submit" class="btn"><i data-lucide="refresh-cw"></i>Sync latest videos</button>
@@ -106,33 +111,41 @@
 </section>
 {% else %}
 <div class="pockettube-freshness-shell">
-    <aside class="pockettube-freshness-sidebar">
-        <section class="surface-card section-card">
-            <div class="detail-header" style="margin-bottom:10px;">
-                <div>
-                    <div class="hero-meta">
-                        <span class="hero-badge">Groups</span>
-                        <span>{{ feed_groups|length }} filters</span>
+    <main class="pockettube-feed-grid">
+        <div class="pockettube-feed-head">
+            <div class="hero-meta">
+                <span class="hero-badge">Feed</span>
+                <span>{{ feed_video_count }} latest videos</span>
+                <span>{{ feed_empty_channel_count }} empty channels hidden by default</span>
+            </div>
+            <details class="pockettube-feed-filter" id="pockettube-feed-filter">
+                <summary>
+                    <span>Group filter</span>
+                    <strong id="pockettube-filter-label">All</strong>
+                </summary>
+                <div class="pockettube-feed-filter-panel">
+                    <div class="muted" style="font-size:.82rem;">Select a PocketTube group</div>
+                    <div class="pockettube-filter-list" id="pockettube-filter-list">
+                        <button type="button" class="pockettube-filter-btn is-active" data-filter="all" data-filter-label="All">
+                            <span>All</span>
+                            <span class="filter-count">{{ feed_video_count }}</span>
+                        </button>
+                        {% for group in feed_groups %}
+                        <button type="button" class="pockettube-filter-btn" data-filter="{{ group.group_key }}" data-filter-label="{{ group.group_name }}">
+                            <span>{{ group.group_name }}</span>
+                            <span class="filter-count">{{ group.video_count }}</span>
+                        </button>
+                        {% endfor %}
                     </div>
-                    <h3 style="font-size:1.2rem; margin-top:10px;">PocketTube filter</h3>
                 </div>
+            </details>
+        </div>
+        <div class="pockettube-feed-toolbar">
+            <div class="hero-meta">
+                <span>{{ group_count }} groups in snapshot</span>
+                <span>{{ channel_count }} channels indexed</span>
             </div>
-            <div class="pockettube-filter-list" id="pockettube-filter-list">
-                <button type="button" class="pockettube-filter-btn is-active" data-filter="all" data-filter-label="All">
-                    <span>All</span>
-                    <span class="filter-count">{{ feed_video_count }}</span>
-                </button>
-                {% for group in feed_groups %}
-                <button type="button" class="pockettube-filter-btn" data-filter="{{ group.group_key }}" data-filter-label="{{ group.group_name }}">
-                    <span>{{ group.group_name }}</span>
-                    <span class="filter-count">{{ group.video_count }}</span>
-                </button>
-                {% endfor %}
-            </div>
-        </section>
-
-        <section class="surface-card section-card pockettube-empty-panel">
-            <details>
+            <details class="pockettube-empty-panel">
                 <summary class="btn" style="display:inline-flex;align-items:center;gap:8px;">
                     <i data-lucide="eye"></i>Show empty channels ({{ feed_empty_channel_count }})
                 </summary>
@@ -160,16 +173,6 @@
                     {% endif %}
                 </div>
             </details>
-        </section>
-    </aside>
-
-    <main class="pockettube-feed-grid">
-        <div class="pockettube-feed-toolbar">
-            <div class="hero-meta">
-                <span class="hero-badge">Feed</span>
-                <span>{{ feed_video_count }} latest videos</span>
-                <span>{{ feed_empty_channel_count }} empty channels hidden by default</span>
-            </div>
         </div>
         <div class="pockettube-feed-cards" id="pockettube-feed-cards">
             {% for video in feed_videos %}
@@ -209,13 +212,19 @@
 (function() {
     const filterButtons = Array.from(document.querySelectorAll("[data-filter]"));
     const cards = Array.from(document.querySelectorAll("[data-video-id]"));
+    const filterLabel = document.getElementById("pockettube-filter-label");
+    const filterDetails = document.getElementById("pockettube-feed-filter");
     if (!filterButtons.length || !cards.length) {
         return;
     }
 
     function setActiveFilter(value) {
         filterButtons.forEach((button) => {
-            button.classList.toggle("is-active", button.dataset.filter === value);
+            const active = button.dataset.filter === value;
+            button.classList.toggle("is-active", active);
+            if (active && filterLabel) {
+                filterLabel.textContent = button.dataset.filterLabel || "All";
+            }
         });
         cards.forEach((card) => {
             const groupKeys = (card.dataset.groupKeys || "").split(/\s+/).filter(Boolean);
@@ -227,6 +236,9 @@
     filterButtons.forEach((button) => {
         button.addEventListener("click", () => {
             setActiveFilter(button.dataset.filter || "all");
+            if (filterDetails) {
+                filterDetails.open = false;
+            }
         });
     });
 

@@ -1307,7 +1307,7 @@ class YouTubeFreshnessServiceTests(unittest.TestCase):
             self.assertTrue(context["empty_state"])
             refresh_mock.assert_not_called()
 
-    def test_get_route_uses_snapshot_only(self):
+    def test_main_pockettube_route_uses_snapshot_only(self):
         dragon_app.app.config["TESTING"] = True
         client = dragon_app.app.test_client()
         mock_service = Mock()
@@ -1318,6 +1318,12 @@ class YouTubeFreshnessServiceTests(unittest.TestCase):
             "groups": [],
             "group_count": 0,
             "channel_count": 0,
+            "feed_videos": [],
+            "feed_groups": [],
+            "feed_video_count": 0,
+            "feed_empty_channels": [],
+            "feed_empty_channel_count": 0,
+            "feed_empty_group_count": 0,
             "has_latest": False,
             "generated_at": "",
             "synced_at": "",
@@ -1328,11 +1334,21 @@ class YouTubeFreshnessServiceTests(unittest.TestCase):
         }
 
         with patch.object(dragon_app, "YOUTUBE_FRESHNESS_SERVICE", mock_service):
-            response = client.get("/pockettube/freshness")
+            response = client.get("/pockettube")
 
         self.assertEqual(response.status_code, 200)
         mock_service.build_page_context.assert_called_once()
         mock_service.request_sync.assert_not_called()
+
+    def test_freshness_route_redirects_to_main_pockettube(self):
+        dragon_app.app.config["TESTING"] = True
+        client = dragon_app.app.test_client()
+
+        response = client.get("/pockettube/freshness?sync_requested=1")
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/pockettube", response.location)
+        self.assertIn("sync_requested=1", response.location)
 
     def test_post_sync_route_returns_quickly(self):
         dragon_app.app.config["TESTING"] = True
@@ -1344,7 +1360,7 @@ class YouTubeFreshnessServiceTests(unittest.TestCase):
             response = client.post("/pockettube/freshness/sync", data={"scope": ""})
 
         self.assertEqual(response.status_code, 302)
-        self.assertIn("/pockettube/freshness", response.location)
+        self.assertIn("/pockettube", response.location)
         mock_service.request_sync.assert_called_once()
 
     def test_github_snapshot_callback_updates_status_without_blocking(self):

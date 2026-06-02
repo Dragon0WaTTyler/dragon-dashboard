@@ -30860,12 +30860,7 @@ def section_page(section_slug):
 
 
 @app.route("/pockettube")
-def pockettube_groups():
-    return YOUTUBE_PLAYLIST_SERVICE.render_pockettube_groups(request.args)
-
-
-@app.route("/pockettube/freshness")
-def pockettube_freshness():
+def pockettube():
     context = YOUTUBE_FRESHNESS_SERVICE.build_page_context()
     if request.args.get("synced"):
         context["sync_notice"] = "Freshness snapshot rebuilt."
@@ -30879,13 +30874,24 @@ def pockettube_freshness():
     )
 
 
+@app.route("/pockettube/groups")
+def pockettube_groups():
+    return YOUTUBE_PLAYLIST_SERVICE.render_pockettube_groups(request.args)
+
+
+@app.route("/pockettube/freshness")
+def pockettube_freshness():
+    query_args = request.args.to_dict(flat=True)
+    return redirect(url_for("pockettube", **query_args), code=302)
+
+
 @app.route("/pockettube/freshness/sync", methods=["POST"])
 def pockettube_freshness_sync():
     scope = str(request.form.get("scope", "") or request.args.get("scope", "") or "").strip()
     payload, status_code = YOUTUBE_FRESHNESS_SERVICE.request_sync(scope=scope)
     if status_code >= 400 or not payload.get("ok", True):
-        return redirect(url_for("pockettube_freshness", sync_error=1))
-    return redirect(url_for("pockettube_freshness", sync_requested=1))
+        return redirect(url_for("pockettube", sync_error=1))
+    return redirect(url_for("pockettube", sync_requested=1))
 
 
 @app.route("/pockettube/freshness/sync-status", methods=["GET"])
