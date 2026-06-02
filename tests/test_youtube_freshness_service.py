@@ -288,6 +288,7 @@ class YouTubeFreshnessServiceTests(unittest.TestCase):
             self.assertEqual(context["feed_videos"][0]["video_id"], "v1")
             self.assertEqual(context["feed_videos"][0]["group_names"], ["Knowledge", "Science"])
             self.assertEqual(context["feed_videos"][0]["channel_title"], "Channel One")
+            self.assertEqual(context["feed_videos"][0]["detail_url"], "/video/yt-v1")
 
     def test_build_page_context_empty_snapshot_remains_safe_state(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -1318,18 +1319,32 @@ class YouTubeFreshnessServiceTests(unittest.TestCase):
             "groups": [],
             "group_count": 0,
             "channel_count": 0,
-            "feed_videos": [],
-            "feed_groups": [],
-            "feed_video_count": 0,
+            "feed_videos": [
+                {
+                    "video_id": "v1",
+                    "title": "PocketTube Test Video",
+                    "channel_title": "Channel One",
+                    "published_display": "2026-06-02 12:00",
+                    "published_at": FIXED_NOW.isoformat(),
+                    "thumbnail": "https://img.youtube.com/vi/v1/hqdefault.jpg",
+                    "detail_url": "/video/yt-v1",
+                    "url": "https://www.youtube.com/watch?v=v1",
+                    "group_names": ["Science"],
+                    "group_keys": ["science"],
+                    "reason_tags": ["cached-latest"],
+                }
+            ],
+            "feed_groups": [{"group_key": "science", "group_name": "Science", "video_count": 1, "channel_count": 1, "empty_channel_count": 0}],
+            "feed_video_count": 1,
             "feed_empty_channels": [],
             "feed_empty_channel_count": 0,
             "feed_empty_group_count": 0,
-            "has_latest": False,
+            "has_latest": True,
             "generated_at": "",
             "synced_at": "",
             "errors": [],
-            "empty_state": True,
-            "empty_reason": "no_snapshot",
+            "empty_state": False,
+            "empty_reason": "no_cached_latest",
             "sync_notice": "",
         }
 
@@ -1337,8 +1352,26 @@ class YouTubeFreshnessServiceTests(unittest.TestCase):
             response = client.get("/pockettube")
 
         self.assertEqual(response.status_code, 200)
+        body = response.get_data(as_text=True)
+        self.assertIn("Group filter", body)
+        self.assertIn("Open on YouTube", body)
+        self.assertIn("/video/yt-v1", body)
+        self.assertNotIn("Show empty channels", body)
         mock_service.build_page_context.assert_called_once()
         mock_service.request_sync.assert_not_called()
+
+    def test_pockettube_groups_route_still_works(self):
+        dragon_app.app.config["TESTING"] = True
+        client = dragon_app.app.test_client()
+        mock_playlist_service = Mock()
+        mock_playlist_service.render_pockettube_groups.return_value = "ok"
+
+        with patch.object(dragon_app, "YOUTUBE_PLAYLIST_SERVICE", mock_playlist_service):
+            response = client.get("/pockettube/groups")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_data(as_text=True), "ok")
+        mock_playlist_service.render_pockettube_groups.assert_called_once()
 
     def test_freshness_route_redirects_to_main_pockettube(self):
         dragon_app.app.config["TESTING"] = True

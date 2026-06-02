@@ -828,6 +828,9 @@ class YouTubeFreshnessService:
                     url = str(latest_video.get("url", "") or channel.get("url", "") or "").strip()
                     if not url and latest_video_id:
                         url = f"https://www.youtube.com/watch?v={latest_video_id}"
+                    detail_url = str(latest_video.get("detail_url", "") or channel.get("detail_url", "") or "").strip()
+                    if not detail_url and latest_video_id:
+                        detail_url = f"/video/yt-{latest_video_id}"
                     feed_by_video_id[latest_video_id] = {
                         "video_id": latest_video_id,
                         "title": str(latest_video.get("title", "") or latest_video.get("name", "") or channel.get("channel_title", "") or "Untitled video").strip() or "Untitled video",
@@ -841,6 +844,7 @@ class YouTubeFreshnessService:
                         "published_at": published_at,
                         "published_display": str(channel.get("published_display", "") or latest_video.get("published_display", "") or "").strip() or self.format_timestamp_label(published_at, default="") if published_at else "",
                         "thumbnail": thumbnail,
+                        "detail_url": detail_url,
                         "url": url,
                         "group_names": list(dict.fromkeys([
                             str(name or "").strip()
@@ -888,6 +892,8 @@ class YouTubeFreshnessService:
                         ).strip()
                     if not str(existing.get("url", "") or "").strip():
                         existing["url"] = str(latest_video.get("url", "") or channel.get("url", "") or "").strip()
+                    if not str(existing.get("detail_url", "") or "").strip():
+                        existing["detail_url"] = str(latest_video.get("detail_url", "") or channel.get("detail_url", "") or "").strip() or f"/video/yt-{latest_video_id}"
                     if not str(existing.get("published_at", "") or "").strip():
                         existing["published_at"] = published_at
                     if not str(existing.get("published_display", "") or "").strip() and published_at:
@@ -911,6 +917,9 @@ class YouTubeFreshnessService:
                 url = str(group_latest_video.get("url", "") or "").strip()
                 if not url:
                     url = f"https://www.youtube.com/watch?v={group_latest_video_id}"
+                detail_url = str(group_latest_video.get("detail_url", "") or "").strip()
+                if not detail_url:
+                    detail_url = f"/video/yt-{group_latest_video_id}"
                 feed_by_video_id[group_latest_video_id] = {
                     "video_id": group_latest_video_id,
                     "title": str(group_latest_video.get("title", "") or group_latest_video.get("name", "") or group_name or "Untitled video").strip() or "Untitled video",
@@ -924,6 +933,7 @@ class YouTubeFreshnessService:
                     "published_at": published_at,
                     "published_display": str(group_latest_video.get("published_display", "") or "").strip() or self.format_timestamp_label(published_at, default="") if published_at else "",
                     "thumbnail": thumbnail,
+                    "detail_url": detail_url,
                     "url": url,
                     "group_names": [group_name] if group_name else [],
                     "group_keys": [str(group_key or "").strip()] if str(group_key or "").strip() else [],

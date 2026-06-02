@@ -22,12 +22,9 @@
     .pockettube-feed-card .card-title{line-height:1.35;font-size:1rem}
     .pockettube-feed-card .card-meta{opacity:.82}
     .pockettube-feed-card .pockettube-tags{display:flex;gap:6px;flex-wrap:wrap}
+    .pockettube-feed-card .video-frame{position:relative}
+    .pockettube-feed-card .pockettube-youtube-btn{position:absolute;right:10px;top:10px;z-index:3}
     .pockettube-feed-card.hidden{display:none !important}
-    .pockettube-empty-panel{display:grid;gap:10px}
-    .pockettube-empty-list{display:grid;gap:8px;max-height:360px;overflow:auto;padding-right:4px}
-    .pockettube-empty-item{display:flex;justify-content:space-between;gap:10px;padding:8px 10px;border-radius:12px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.06)}
-    .pockettube-empty-item span{opacity:.86}
-    .pockettube-empty-item strong{font-weight:600}
     @media (max-width: 980px){
         .pockettube-feed-head{align-items:stretch}
         .pockettube-feed-filter{width:100%}
@@ -46,7 +43,7 @@
     <div class="detail-controls">
         <form method="post" action="{{ url_for('pockettube_freshness_sync') }}" style="display:inline-flex;gap:10px;align-items:center;flex-wrap:wrap;">
             <input type="hidden" name="scope" value="">
-            <button type="submit" class="btn"><i data-lucide="refresh-cw"></i>Sync latest videos</button>
+            <button type="submit" class="btn section-refresh-btn" data-default-label="Sync" data-loading-label="Syncing..."><i data-lucide="refresh-cw"></i>Sync</button>
         </form>
     </div>
     <div class="hero-meta" style="margin-top:12px;">
@@ -144,47 +141,23 @@
             <div class="hero-meta">
                 <span>{{ group_count }} groups in snapshot</span>
                 <span>{{ channel_count }} channels indexed</span>
+                <span>{{ feed_empty_channel_count }} empty channels hidden</span>
             </div>
-            <details class="pockettube-empty-panel">
-                <summary class="btn" style="display:inline-flex;align-items:center;gap:8px;">
-                    <i data-lucide="eye"></i>Show empty channels ({{ feed_empty_channel_count }})
-                </summary>
-                <div style="margin-top:12px;" class="muted">
-                    {% if feed_empty_channel_count %}
-                    <div style="display:grid;gap:10px;">
-                        <div>{{ feed_empty_group_count }} groups include empty cached channels.</div>
-                        <div class="pockettube-empty-list">
-                            {% for item in feed_empty_channels[:36] %}
-                            <div class="pockettube-empty-item">
-                                <strong>{{ item.channel_title }}</strong>
-                                <span>{{ item.group_name }}</span>
-                            </div>
-                            {% endfor %}
-                            {% if feed_empty_channel_count > 36 %}
-                            <div class="pockettube-empty-item">
-                                <strong>+{{ feed_empty_channel_count - 36 }} more</strong>
-                                <span>Hidden for brevity</span>
-                            </div>
-                            {% endif %}
-                        </div>
-                    </div>
-                    {% else %}
-                    No empty cached channels in the current snapshot.
-                    {% endif %}
-                </div>
-            </details>
         </div>
         <div class="pockettube-feed-cards" id="pockettube-feed-cards">
             {% for video in feed_videos %}
             <article class="content-card pockettube-feed-card" data-group-keys="{{ (video.group_keys or [])|join(' ') }}" data-group-names="{{ (video.group_names or [])|join(' | ') }}" data-video-id="{{ video.video_id }}">
-                <a href="{{ video.url or ('https://www.youtube.com/watch?v=' ~ video.video_id) }}" target="_blank" rel="noopener" class="video-frame video-poster" style="display:block;">
+                <a href="{{ video.detail_url or ('/video/yt-' ~ video.video_id) }}" class="video-frame video-poster" style="display:block;" data-scroll-top="true">
                     {% if video.thumbnail %}
                     <img class="video-thumb" src="{{ video.thumbnail }}" alt="{{ video.title or video.channel_title }}" loading="lazy" decoding="async">
                     {% else %}
                     <div class="empty-state" style="min-height:160px; display:flex; align-items:center; justify-content:center;">No thumbnail available.</div>
                     {% endif %}
                 </a>
-                <a class="card-title" href="{{ video.url or ('https://www.youtube.com/watch?v=' ~ video.video_id) }}" target="_blank" rel="noopener">{{ video.title or 'Untitled video' }}</a>
+                {% if video.url %}
+                <a class="card-quick-action pockettube-youtube-btn" href="{{ video.url }}" target="_blank" rel="noopener" aria-label="Open video on YouTube" title="Open video on YouTube"><i data-lucide="external-link"></i></a>
+                {% endif %}
+                <a class="card-title" href="{{ video.detail_url or ('/video/yt-' ~ video.video_id) }}" data-scroll-top="true">{{ video.title or 'Untitled video' }}</a>
                 <div class="card-meta channel-meta">{{ video.channel_title or 'Unknown Channel' }}</div>
                 {% if video.published_display %}
                 <div class="card-meta" style="opacity:.75;">Published: {{ video.published_display }}</div>
