@@ -1708,12 +1708,12 @@ class YouTubeFreshnessServiceTests(unittest.TestCase):
 
             with patch.object(dragon_app, "YOUTUBE_FRESHNESS_SERVICE", service), \
                  patch.object(dragon_app, "collect_all_youtube_entries", return_value=[]), \
-                 patch.object(dragon_app.YOUTUBE_VIDEO_SERVICE.recommendation_service, "enrich_video_detail_context", side_effect=lambda context, *args, **kwargs: context), \
                  patch.object(dragon_app, "get_youtube_duration", Mock()) as mocked_get_duration:
                 response = client.get("/video/yt-current")
 
             self.assertEqual(response.status_code, 200)
             body = response.get_data(as_text=True)
+            self.assertNotIn("No related entries available yet.", body)
             self.assertIn("Current News Story", body)
             self.assertIn("Breaking News Update", body)
             self.assertIn("/video/yt-news-2", body)

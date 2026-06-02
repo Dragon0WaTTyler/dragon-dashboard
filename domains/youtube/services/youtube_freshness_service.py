@@ -191,7 +191,14 @@ class YouTubeFreshnessService:
             entry = pool.setdefault(video_id, dict(summary))
             entry["source_type"] = "youtube"
             entry["entry_type"] = "youtube"
-            entry["detail_url"] = str(entry.get("detail_url", "") or summary.get("detail_url", "") or "").strip() or f"/video/{entry.get('entry_id', f'yt-{video_id}')}"
+            entry_id = str(entry.get("entry_id", "") or summary.get("entry_id", "") or summary.get("id", "") or "").strip()
+            if not entry_id:
+                entry_id = f"yt-{video_id}"
+            entry["id"] = str(entry.get("id", "") or entry_id).strip() or entry_id
+            entry["entry_id"] = entry_id
+            entry["watch_key"] = str(entry.get("watch_key", "") or summary.get("watch_key", "") or video_id or entry_id).strip()
+            entry["state_key"] = str(entry.get("state_key", "") or summary.get("state_key", "") or entry["watch_key"] or video_id or entry_id).strip()
+            entry["detail_url"] = str(entry.get("detail_url", "") or summary.get("detail_url", "") or "").strip() or f"/video/{entry_id}"
             entry["url"] = str(entry.get("url", "") or summary.get("url", "") or "").strip()
             entry["thumb"] = str(entry.get("thumb", "") or summary.get("thumb", "") or "").strip()
             entry["thumbnail_url"] = str(entry.get("thumbnail_url", "") or summary.get("thumbnail_url", "") or "").strip()
@@ -320,6 +327,27 @@ class YouTubeFreshnessService:
             related_entries.append(candidate)
             if len(related_entries) >= max(int(limit or 12), 1):
                 break
+        if len(related_entries) < max(int(limit or 12), 1):
+            fallback_candidates = [
+                candidate
+                for candidate in sorted(
+                    pool.values(),
+                    key=lambda item: (
+                        -int(item.get("published_sort", 0) or 0),
+                        str(item.get("title", "") or "").lower(),
+                        str(item.get("video_id", "") or "").lower(),
+                    ),
+                )
+                if str(candidate.get("video_id", "") or "").strip() and str(candidate.get("video_id", "") or "").strip() != current_video_id
+            ]
+            for candidate in fallback_candidates:
+                video_id = str(candidate.get("video_id", "") or "").strip()
+                if not video_id or video_id in seen_video_ids:
+                    continue
+                related_entries.append(dict(candidate))
+                seen_video_ids.add(video_id)
+                if len(related_entries) >= max(int(limit or 12), 1):
+                    break
         return related_entries
 
     def _build_snapshot_video_detail_context(self, latest_video, *, lookup_entry_id="", group_name="", group_key="", channel_id="", channel_title=""):
@@ -391,19 +419,50 @@ class YouTubeFreshnessService:
             current_channel_id=detail.get("channel_id", ""),
             limit=12,
         )
+        related_title = group_name or resolved_channel_name or "PocketTube related videos"
+        template_keys = [
+            "related_entries",
+            "related_entries_full",
+            "related_videos",
+            "related_items",
+            "related_title",
+            "related_page",
+            "related_total_pages",
+            "pagination_numbers",
+        ]
+        self.app_logger.info(
+            "pockettube_video_detail_related entry_id=%s video_id=%s groups=%s related_count=%s template_keys=%s",
+            entry_id,
+            video_id,
+            ",".join([
+                value
+                for value in [
+                    str(group_name or "").strip(),
+                    str(detail.get("group_name", "") or "").strip(),
+                    ",".join([name for name in detail.get("group_names", []) or [] if str(name or "").strip()]),
+                ]
+                if value
+            ]),
+            len(related_entries),
+            ",".join(template_keys),
+        )
         return {
             "entry": detail,
             "entry_type": "youtube",
             "player_video_id": video_id,
             "related_entries": related_entries,
             "related_entries_full": related_entries,
-            "related_title": group_name or resolved_channel_name or "PocketTube related videos",
-            "playlist_entries": [detail],
+            "related_videos": related_entries,
+            "related_items": related_entries,
+            "related_title": related_title,
+            "playlist_entries": [detail] + related_entries,
             "prev_entry": None,
             "next_entry": None,
             "related_total_pages": 1 if related_entries else 0,
             "related_page": 1,
             "pagination_numbers": [1] if related_entries else [],
+            "recommendations": related_entries,
+            "entries": related_entries,
             "related_order": "normal",
             "related_seed": "",
             "delete_endpoint": False,
