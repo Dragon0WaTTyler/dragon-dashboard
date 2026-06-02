@@ -1,4 +1,4 @@
-﻿name: YouTube Freshness Dispatch
+name: YouTube Freshness Dispatch
 
 "on":
   workflow_dispatch:
