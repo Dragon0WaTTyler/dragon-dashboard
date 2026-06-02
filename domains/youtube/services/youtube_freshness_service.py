@@ -24,6 +24,7 @@ class YouTubeFreshnessService:
         save_json_file,
         snapshot_path,
         sync_status_path,
+        registry_path=None,
         app_logger,
     ):
         self.load_admin_data = load_admin_data
@@ -41,6 +42,7 @@ class YouTubeFreshnessService:
         self.save_json_file = save_json_file
         self.snapshot_path = Path(snapshot_path)
         self.sync_status_path = Path(sync_status_path)
+        self.registry_path = Path(registry_path) if registry_path else Path(__file__).resolve().parents[1] / "data" / "pockettube_registry.json"
         self.app_logger = app_logger
 
     def empty_snapshot(self):
@@ -89,7 +91,9 @@ class YouTubeFreshnessService:
         admin_data = admin_data if isinstance(admin_data, dict) else self.load_admin_data()
         latest_import = latest_import if isinstance(latest_import, dict) else {}
         if sections is None:
-            _, sections = self.pockettube_latest_import_snapshot(admin_data)
+            resolved_import, resolved_sections, _source = self._resolve_pockettube_import_source(admin_data=admin_data, latest_import=latest_import)
+            latest_import = resolved_import
+            sections = resolved_sections
         section_records = [section for section in (sections or []) if isinstance(section, dict)]
         section_records.sort(key=lambda item: (
             self._section_sort_key(item),
@@ -151,9 +155,11 @@ class YouTubeFreshnessService:
 
     def sync_snapshot(self, scope="", max_channels=200):
         admin_data = self.load_admin_data()
-        latest_import, sections = self.pockettube_latest_import_snapshot(admin_data)
+        latest_import, sections, registry_source = self._resolve_pockettube_import_source(admin_data=admin_data)
         filtered_sections = self._filter_sections_for_scope(sections, scope)
         errors = []
+        if registry_source == "registry" and not sections:
+            errors.append(f"PocketTube registry file missing or empty: {self.registry_path.name}")
         for section in filtered_sections:
             group_name = self._group_display_name(section)
             try:
@@ -292,6 +298,104 @@ class YouTubeFreshnessService:
             "sync_status": status,
             "snapshot": snapshot,
         }
+
+    def _resolve_pockettube_import_source(self, admin_data=None, latest_import=None, sections=None):
+        admin_data = admin_data if isinstance(admin_data, dict) else self.load_admin_data()
+        if isinstance(latest_import, dict) and isinstance(sections, list) and sections:
+            normalized_latest = self._normalize_pockettube_import_source(latest_import)
+            return normalized_latest, normalized_latest.get("sections", []), "explicit"
+
+        primary_latest, primary_sections = self.pockettube_latest_import_snapshot(admin_data)
+        primary_latest = self._normalize_pockettube_import_source(primary_latest)
+        if primary_sections:
+            return primary_latest, primary_latest.get("sections", []), "admin_data"
+
+        registry_latest = self._load_pockettube_registry_payload()
+        registry_latest = self._normalize_pockettube_import_source(registry_latest)
+        if registry_latest.get("sections"):
+            return registry_latest, registry_latest.get("sections", []), "registry"
+
+        return self._empty_pockettube_import_source(), [], "empty"
+
+    def _load_pockettube_registry_payload(self):
+        payload = self.load_json_file(self.registry_path, self._empty_pockettube_import_source())
+        if not isinstance(payload, dict):
+            return self._empty_pockettube_import_source()
+        if isinstance(payload.get("latest"), dict) and isinstance(payload["latest"].get("sections"), list):
+            return payload["latest"]
+        if isinstance(payload.get("sections"), list):
+            return payload
+        return self._empty_pockettube_import_source()
+
+    def _empty_pockettube_import_source(self):
+        return {
+            "source_name": "PocketTube",
+            "source_structure": {
+                "top_level_groups": [],
+                "main_collection_page": "",
+                "meta_keys": [],
+            },
+            "fingerprint": "",
+            "imported_at": "",
+            "section_count": 0,
+            "group_count": 0,
+            "channel_count": 0,
+            "sections": [],
+            "channels": [],
+        }
+
+    def _normalize_pockettube_import_source(self, payload):
+        if not isinstance(payload, dict):
+            return self._empty_pockettube_import_source()
+        normalized = self._empty_pockettube_import_source()
+        normalized["source_name"] = str(payload.get("source_name", "") or payload.get("source", "") or "PocketTube").strip() or "PocketTube"
+        normalized["fingerprint"] = str(payload.get("fingerprint", "") or "").strip()
+        normalized["imported_at"] = str(payload.get("imported_at", "") or "").strip() or self.current_timestamp()
+        source_structure = payload.get("source_structure", {})
+        normalized["source_structure"] = source_structure if isinstance(source_structure, dict) else normalized["source_structure"]
+        sections = []
+        channels = []
+        for section in payload.get("sections", []) or []:
+            if not isinstance(section, dict):
+                continue
+            normalized_section = dict(section)
+            normalized_channels = []
+            for channel in section.get("channels", []) or []:
+                if not isinstance(channel, dict):
+                    continue
+                channel_name = str(channel.get("channel_name", "") or channel.get("channel_title", "") or "").strip()
+                channel_id = str(channel.get("channel_id", "") or channel.get("channelId", "") or "").strip()
+                if not channel_id and channel_name and re.fullmatch(r"UC[a-zA-Z0-9_-]{20,}", channel_name):
+                    channel_id = channel_name
+                normalized_channel = dict(channel)
+                normalized_channel["channel_name"] = channel_name or channel_id
+                normalized_channel["channel_id"] = channel_id
+                normalized_channel["channel_key"] = str(channel.get("channel_key", "") or channel_id or channel_name or "").strip()
+                normalized_channel["section_name"] = str(channel.get("section_name", "") or normalized_section.get("section_name", "") or "").strip()
+                normalized_channel["section_key"] = str(channel.get("section_key", "") or normalized_section.get("section_key", "") or "").strip()
+                normalized_channel["group_name"] = str(channel.get("group_name", "") or normalized_section.get("group_name", "") or "").strip()
+                normalized_channel["group_key"] = str(channel.get("group_key", "") or normalized_section.get("group_key", "") or "").strip()
+                normalized_channels.append(normalized_channel)
+                channels.append(normalized_channel)
+            normalized_section["channels"] = normalized_channels
+            normalized_section["section_name"] = str(normalized_section.get("section_name", "") or normalized_section.get("group_name", "") or "").strip()
+            normalized_section["section_key"] = str(normalized_section.get("section_key", "") or normalized_section["section_name"] or "").strip()
+            normalized_section["group_name"] = str(normalized_section.get("group_name", "") or normalized_section["section_name"] or "").strip()
+            normalized_section["group_key"] = str(normalized_section.get("group_key", "") or normalized_section["group_name"] or "").strip()
+            normalized_section["channel_count"] = int(normalized_section.get("channel_count", len(normalized_channels)) or len(normalized_channels))
+            sections.append(normalized_section)
+        normalized["sections"] = sections
+        normalized["channels"] = channels
+        normalized["section_count"] = int(payload.get("section_count", len(sections)) or len(sections))
+        normalized["group_count"] = int(payload.get("group_count", len(sections)) or len(sections))
+        normalized["channel_count"] = int(payload.get("channel_count", len(channels)) or len(channels))
+        if not normalized["source_structure"].get("top_level_groups"):
+            normalized["source_structure"] = {
+                "top_level_groups": [str(section.get("section_name", "") or section.get("group_name", "") or "").strip() for section in sections if str(section.get("section_name", "") or section.get("group_name", "") or "").strip()],
+                "main_collection_page": str(normalized["source_structure"].get("main_collection_page", "") or "").strip(),
+                "meta_keys": list(normalized["source_structure"].get("meta_keys", []) or []),
+            }
+        return normalized
 
     def build_page_context(self):
         snapshot = self.load_snapshot()

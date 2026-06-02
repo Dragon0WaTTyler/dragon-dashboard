@@ -28,6 +28,7 @@ class YouTubeFreshnessServiceTests(unittest.TestCase):
         *,
         imported_sections=None,
         latest_cache=None,
+        registry_payload=None,
         refresh_mock=None,
         trigger_mock=None,
         github_refresh_mock=None,
@@ -69,6 +70,10 @@ class YouTubeFreshnessServiceTests(unittest.TestCase):
                 return default
             return datetime.fromisoformat(raw.replace("Z", "+00:00")).astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M")
 
+        registry_path = Path(temp_dir) / "pockettube_registry.json"
+        if registry_payload is not None:
+            save_json_file(registry_path, registry_payload)
+
         return YouTubeFreshnessService(
             load_admin_data=lambda: {
                 "youtube_pockettube_imports": state["latest_import"],
@@ -88,6 +93,7 @@ class YouTubeFreshnessServiceTests(unittest.TestCase):
             save_json_file=save_json_file,
             snapshot_path=Path(temp_dir) / "youtube_latest_snapshot.json",
             sync_status_path=Path(temp_dir) / "youtube_latest_sync_status.json",
+            registry_path=registry_path,
             app_logger=Mock(),
         ), state
 
@@ -215,6 +221,137 @@ class YouTubeFreshnessServiceTests(unittest.TestCase):
             self.assertEqual(snapshot["groups"]["philosophy"]["channel_count"], 2)
             self.assertEqual(snapshot["channels"]["c2"]["group_names"], ["Philosophy", "Science"])
             self.assertEqual(snapshot["groups"]["science"]["latest_video"]["video_id"], "v2")
+
+    def test_registry_fallback_builds_non_empty_snapshot(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            registry_payload = {
+                "latest": {
+                    "source_name": "PocketTube",
+                    "imported_at": FIXED_NOW.isoformat(),
+                    "fingerprint": "registry-fallback",
+                    "source_structure": {
+                        "top_level_groups": ["Science"],
+                        "main_collection_page": "",
+                        "meta_keys": [],
+                    },
+                    "section_count": 1,
+                    "group_count": 1,
+                    "channel_count": 1,
+                    "sections": [
+                        {
+                            "section_name": "Science",
+                            "section_key": "science",
+                            "group_name": "Science",
+                            "group_key": "science",
+                            "tier": "best",
+                            "channel_count": 1,
+                            "channels": [
+                                {
+                                    "channel_name": "UCTDc1RLIHHNjN5WlHoZwXQg",
+                                    "channel_id": "UCTDc1RLIHHNjN5WlHoZwXQg",
+                                    "channel_key": "uctdc1rlihhnjn5wlhozwxqg",
+                                    "section_name": "Science",
+                                    "section_key": "science",
+                                    "group_name": "Science",
+                                    "group_key": "science",
+                                    "tier": "best",
+                                }
+                            ],
+                        }
+                    ],
+                    "channels": [
+                        {
+                            "channel_name": "UCTDc1RLIHHNjN5WlHoZwXQg",
+                            "channel_id": "UCTDc1RLIHHNjN5WlHoZwXQg",
+                            "channel_key": "uctdc1rlihhnjn5wlhozwxqg",
+                            "section_name": "Science",
+                            "section_key": "science",
+                            "group_name": "Science",
+                            "group_key": "science",
+                            "tier": "best",
+                        }
+                    ],
+                }
+            }
+            latest_cache = {
+                "UCTDc1RLIHHNjN5WlHoZwXQg": {
+                    "latest_video": {
+                        "video_id": "v-science",
+                        "title": "Science Today",
+                        "channel_id": "UCTDc1RLIHHNjN5WlHoZwXQg",
+                        "channel_name": "Science Channel",
+                        "published_at": FIXED_NOW.isoformat(),
+                        "url": "https://www.youtube.com/watch?v=v-science",
+                        "thumb": "https://img.youtube.com/vi/v-science/hqdefault.jpg",
+                    }
+                }
+            }
+            service, _state = self._build_service(
+                temp_dir,
+                imported_sections=[],
+                latest_cache=latest_cache,
+                registry_payload=registry_payload,
+                refresh_mock=Mock(),
+            )
+
+            snapshot = service.sync_snapshot()
+
+            self.assertEqual(list(snapshot["groups"].keys()), ["science"])
+            self.assertEqual(snapshot["groups"]["science"]["channel_count"], 1)
+            self.assertEqual(snapshot["channels"]["UCTDc1RLIHHNjN5WlHoZwXQg"]["group_names"], ["Science"])
+            self.assertEqual(snapshot["groups"]["science"]["latest_video"]["video_id"], "v-science")
+            self.assertEqual(snapshot["errors"], [])
+
+    def test_failed_latest_video_fetch_records_errors_but_writes_snapshot(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            registry_payload = {
+                "latest": {
+                    "source_name": "PocketTube",
+                    "imported_at": FIXED_NOW.isoformat(),
+                    "fingerprint": "registry-fallback",
+                    "section_count": 1,
+                    "group_count": 1,
+                    "channel_count": 1,
+                    "sections": [
+                        {
+                            "section_name": "Science",
+                            "section_key": "science",
+                            "group_name": "Science",
+                            "group_key": "science",
+                            "tier": "best",
+                            "channel_count": 1,
+                            "channels": [
+                                {
+                                    "channel_name": "UCTDc1RLIHHNjN5WlHoZwXQg",
+                                    "channel_id": "UCTDc1RLIHHNjN5WlHoZwXQg",
+                                    "channel_key": "uctdc1rlihhnjn5wlhozwxqg",
+                                    "section_name": "Science",
+                                    "section_key": "science",
+                                    "group_name": "Science",
+                                    "group_key": "science",
+                                    "tier": "best",
+                                }
+                            ],
+                        }
+                    ],
+                    "channels": [],
+                }
+            }
+            service, _state = self._build_service(
+                temp_dir,
+                imported_sections=[],
+                registry_payload=registry_payload,
+                refresh_mock=Mock(side_effect=RuntimeError("boom")),
+            )
+
+            snapshot = service.sync_snapshot()
+
+            self.assertEqual(list(snapshot["groups"].keys()), ["science"])
+            self.assertEqual(snapshot["groups"]["science"]["channel_count"], 1)
+            self.assertEqual(snapshot["groups"]["science"]["latest_video"], {})
+            self.assertTrue(snapshot["errors"])
+            self.assertIn("boom", snapshot["errors"][0])
+            self.assertTrue(service.snapshot_path.exists())
 
     def test_sync_output_is_deterministic_for_mocked_input(self):
         with tempfile.TemporaryDirectory() as temp_dir:
