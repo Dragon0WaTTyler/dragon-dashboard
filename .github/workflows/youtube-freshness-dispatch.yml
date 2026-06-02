@@ -1,4 +1,4 @@
-name: YouTube Freshness Dispatch
+﻿name: YouTube Freshness Dispatch
 
 "on":
   workflow_dispatch:
@@ -48,7 +48,6 @@ jobs:
         shell: bash
         run: |
           set +e
-          git checkout -B main
           python -u scripts/sync_youtube_freshness.py --scope "${YOUTUBE_FRESHNESS_SCOPE:-}"
           status_code=$?
           if [ "$status_code" -eq 0 ]; then
@@ -104,3 +103,4 @@ jobs:
             -H "X-Dragon-GitHub-Secret: ${DRAGON_GITHUB_WEBHOOK_SECRET}" \
             --data "$payload" \
             "https://dragon99.pythonanywhere.com/pockettube/freshness/github-snapshot-updated" || true
+
