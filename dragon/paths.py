@@ -10,6 +10,7 @@ CACHE_DIR = BASE_DIR / "cache"
 BACKUPS_DIR = BASE_DIR / "backups"
 READING_BACKUPS_DIR = BACKUPS_DIR / "reading"
 READING_TTS_CACHE_DIR = CACHE_DIR / "reading_tts"
+READING_RECIPE_OF_DAY_PATH = CACHE_DIR / "reading_recipe_of_day.json"
 BOOKS_SNAPSHOT_PATH = CACHE_DIR / "books_snapshot.json"
 BOOK_QUOTES_SNAPSHOT_PATH = CACHE_DIR / "quotes_snapshot.json"
 

@@ -121,6 +121,7 @@
             <form method="post" action="{{ url_for('reading_trigger_sync') }}" data-reading-sync-form>
                 <button type="submit" class="btn" id="reading-sync-button" data-default-label="Check new" data-loading-label="Starting sync..."><i data-lucide="refresh-cw"></i>Check new</button>
             </form>
+            <a class="btn" href="{{ url_for('reading_recipe_of_day') }}"><i data-lucide="sparkles"></i>Recipe of the Day</a>
         </div>
     </div>
     <div class="reading-freshness-banner is-{{ snapshot_freshness_state }}">

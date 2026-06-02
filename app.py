@@ -49,6 +49,7 @@ from domains.reading import (
     QuotesService,
     ReadingCacheAccess,
     ReadingRssService,
+    ReadingRecipeOfDayService,
     ReadingRuntimeProjectionService,
     ReadingRuntimeService,
     ReadingSnapshotAccess,
@@ -90,6 +91,7 @@ from dragon.paths import (
     PLAYLISTS_PATH,
     READING_BACKUPS_DIR,
     READING_DATA_PATH,
+    READING_RECIPE_OF_DAY_PATH,
     READING_TTS_CACHE_DIR,
     YOUTUBE_CLIENT_SECRET_PATH,
     YOUTUBE_TOKEN_PATH,
@@ -158,6 +160,7 @@ _READING_RSS_SERVICE = None
 _READING_SYNC_SERVICE = None
 _READING_RUNTIME_PROJECTION_SERVICE = None
 _READING_RUNTIME_SERVICE = None
+_READING_RECIPE_OF_DAY_SERVICE = None
 _READING_SNAPSHOT_ACCESS = None
 
 
@@ -10788,6 +10791,27 @@ def _get_reading_runtime_service():
             monotonic=time.monotonic,
         )
     return _READING_RUNTIME_SERVICE
+
+
+def _get_reading_recipe_of_day_service():
+    global _READING_RECIPE_OF_DAY_SERVICE
+    if _READING_RECIPE_OF_DAY_SERVICE is None:
+        _READING_RECIPE_OF_DAY_SERVICE = ReadingRecipeOfDayService(
+            app_logger=app.logger,
+            load_reading_data_cached=load_reading_data_cached,
+            default_reading_data=default_reading_data,
+            reading_runtime_projection_service=_get_reading_runtime_projection_service(),
+            normalize_reading_status=normalize_reading_status,
+            parse_timestamp=parse_timestamp,
+            format_timestamp_label=format_timestamp_label,
+            normalize_reading_url=normalize_reading_url,
+            save_json_file=save_json_file,
+            load_json_file=load_json_file,
+            reading_recipe_of_day_path=READING_RECIPE_OF_DAY_PATH,
+            datetime_module=datetime,
+            monotonic=time.monotonic,
+        )
+    return _READING_RECIPE_OF_DAY_SERVICE
 
 
 def _get_reading_service():
@@ -26964,6 +26988,38 @@ def reading():
         int((reading_view or {}).get("total_matching", 0) or 0),
     )
     return rendered
+
+
+@app.route("/reading/recipe", methods=["GET"])
+def reading_recipe_of_day():
+    route_started_at = time.monotonic()
+    recipe = _get_reading_recipe_of_day_service().build_today_recipe(force=False)
+    recipe_notice = "Recipe rebuilt for today." if str(request.args.get("regenerated", "") or "").strip() else ""
+    rendered = render_template(
+        "reading_recipe_of_day.html",
+        title="Recipe of the Day",
+        reading_return_url=url_for("reading"),
+        recipe_notice=recipe_notice,
+        **recipe,
+    )
+    app.logger.info(
+        "reading_recipe_route render elapsed_ms=%.1f selected=%s reused=%s",
+        (time.monotonic() - route_started_at) * 1000,
+        len((recipe or {}).get("selected_articles", []) or []),
+        bool((recipe or {}).get("reused_existing_snapshot", False)),
+    )
+    return rendered
+
+
+@app.route("/reading/recipe/regenerate", methods=["POST"])
+def reading_recipe_of_day_regenerate():
+    route_started_at = time.monotonic()
+    _get_reading_recipe_of_day_service().build_today_recipe(force=True)
+    app.logger.info(
+        "reading_recipe_route regenerate elapsed_ms=%.1f",
+        (time.monotonic() - route_started_at) * 1000,
+    )
+    return redirect(url_for("reading_recipe_of_day", regenerated="1"))
 
 
 def _reading_github_actions_headers():
