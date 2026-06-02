@@ -97,6 +97,211 @@ class YouTubeFreshnessServiceTests(unittest.TestCase):
             app_logger=Mock(),
         ), state
 
+    def _build_related_snapshot_payload(self):
+        return {
+            "version": 1,
+            "generated_at": FIXED_NOW.isoformat(),
+            "synced_at": FIXED_NOW.isoformat(),
+            "groups": {
+                "news": {
+                    "group_name": "News",
+                    "group_key": "news",
+                    "section_name": "News",
+                    "section_key": "news",
+                    "source_name": "PocketTube",
+                    "imported_at": FIXED_NOW.isoformat(),
+                    "channel_count": 4,
+                    "latest_video_count": 4,
+                    "latest_video": {},
+                    "channels": [
+                        {
+                            "channel_id": "c-current",
+                            "channel_title": "News Channel",
+                            "group_names": ["News"],
+                            "group_key": "news",
+                            "latest_video": {
+                                "entry_id": "yt-current",
+                                "video_id": "current",
+                                "watch_key": "current",
+                                "title": "Current News Story",
+                                "channel_id": "c-current",
+                                "channel_name": "News Channel",
+                                "published_at": self._timestamp(1),
+                                "published_display": "2026-06-02 11:00",
+                                "url": "https://www.youtube.com/watch?v=current",
+                                "detail_url": "/video/yt-current",
+                                "thumbnail": "https://img.youtube.com/vi/current/hqdefault.jpg",
+                                "thumbnail_url": "https://img.youtube.com/vi/current/hqdefault.jpg",
+                                "image_url": "https://img.youtube.com/vi/current/hqdefault.jpg",
+                                "source_type": "youtube",
+                            },
+                            "latest_video_id": "current",
+                            "published_at": self._timestamp(1),
+                            "published_display": "2026-06-02 11:00",
+                            "thumbnail": "https://img.youtube.com/vi/current/hqdefault.jpg",
+                            "url": "https://www.youtube.com/watch?v=current",
+                            "reason_tags": ["latest-cached"],
+                        },
+                        {
+                            "channel_id": "c-news-2",
+                            "channel_title": "News Desk",
+                            "group_names": ["News"],
+                            "group_key": "news",
+                            "latest_video": {
+                                "entry_id": "yt-news-2",
+                                "video_id": "news-2",
+                                "watch_key": "news-2",
+                                "title": "Breaking News Update",
+                                "channel_id": "c-news-2",
+                                "channel_name": "News Desk",
+                                "published_at": self._timestamp(2),
+                                "published_display": "2026-06-02 10:00",
+                                "url": "https://www.youtube.com/watch?v=news-2",
+                                "detail_url": "/video/yt-news-2",
+                                "thumbnail": "https://img.youtube.com/vi/news-2/hqdefault.jpg",
+                                "thumbnail_url": "https://img.youtube.com/vi/news-2/hqdefault.jpg",
+                                "image_url": "https://img.youtube.com/vi/news-2/hqdefault.jpg",
+                                "source_type": "youtube",
+                            },
+                            "latest_video_id": "news-2",
+                            "published_at": self._timestamp(2),
+                            "published_display": "2026-06-02 10:00",
+                            "thumbnail": "https://img.youtube.com/vi/news-2/hqdefault.jpg",
+                            "url": "https://www.youtube.com/watch?v=news-2",
+                            "reason_tags": ["latest-cached"],
+                        },
+                        {
+                            "channel_id": "c-dup",
+                            "channel_title": "News Mirror",
+                            "group_names": ["News"],
+                            "group_key": "news",
+                            "latest_video": {
+                                "entry_id": "yt-dup-1",
+                                "video_id": "dup-1",
+                                "watch_key": "dup-1",
+                                "title": "Duplicated Snapshot Story",
+                                "channel_id": "c-dup",
+                                "channel_name": "News Mirror",
+                                "published_at": self._timestamp(3),
+                                "published_display": "2026-06-02 09:00",
+                                "url": "https://www.youtube.com/watch?v=dup-1",
+                                "detail_url": "/video/yt-dup-1",
+                                "thumbnail": "https://img.youtube.com/vi/dup-1/hqdefault.jpg",
+                                "thumbnail_url": "https://img.youtube.com/vi/dup-1/hqdefault.jpg",
+                                "image_url": "https://img.youtube.com/vi/dup-1/hqdefault.jpg",
+                                "source_type": "youtube",
+                            },
+                            "latest_video_id": "dup-1",
+                            "published_at": self._timestamp(3),
+                            "published_display": "2026-06-02 09:00",
+                            "thumbnail": "https://img.youtube.com/vi/dup-1/hqdefault.jpg",
+                            "url": "https://www.youtube.com/watch?v=dup-1",
+                            "reason_tags": ["latest-cached"],
+                        },
+                    ],
+                },
+                "archive": {
+                    "group_name": "Archive",
+                    "group_key": "archive",
+                    "section_name": "Archive",
+                    "section_key": "archive",
+                    "source_name": "PocketTube",
+                    "imported_at": FIXED_NOW.isoformat(),
+                    "channel_count": 3,
+                    "latest_video_count": 3,
+                    "latest_video": {},
+                    "channels": [
+                        {
+                            "channel_id": "c-current",
+                            "channel_title": "News Channel",
+                            "group_names": ["Archive", "News"],
+                            "group_key": "archive",
+                            "latest_video": {
+                                "entry_id": "yt-current-archive",
+                                "video_id": "current-archive",
+                                "watch_key": "current-archive",
+                                "title": "Current Channel Archive Cut",
+                                "channel_id": "c-current",
+                                "channel_name": "News Channel",
+                                "published_at": self._timestamp(4),
+                                "published_display": "2026-06-02 08:00",
+                                "url": "https://www.youtube.com/watch?v=current-archive",
+                                "detail_url": "/video/yt-current-archive",
+                                "thumbnail": "https://img.youtube.com/vi/current-archive/hqdefault.jpg",
+                                "thumbnail_url": "https://img.youtube.com/vi/current-archive/hqdefault.jpg",
+                                "image_url": "https://img.youtube.com/vi/current-archive/hqdefault.jpg",
+                                "source_type": "youtube",
+                            },
+                            "latest_video_id": "current-archive",
+                            "published_at": self._timestamp(4),
+                            "published_display": "2026-06-02 08:00",
+                            "thumbnail": "https://img.youtube.com/vi/current-archive/hqdefault.jpg",
+                            "url": "https://www.youtube.com/watch?v=current-archive",
+                            "reason_tags": ["latest-cached"],
+                        },
+                        {
+                            "channel_id": "c-shared",
+                            "channel_title": "World News",
+                            "group_names": ["Archive", "News", "World"],
+                            "group_key": "archive",
+                            "latest_video": {
+                                "entry_id": "yt-shared-1",
+                                "video_id": "shared-1",
+                                "watch_key": "shared-1",
+                                "title": "World News Bulletin",
+                                "channel_id": "c-shared",
+                                "channel_name": "World News",
+                                "published_at": self._timestamp(5),
+                                "published_display": "2026-06-02 07:00",
+                                "url": "https://www.youtube.com/watch?v=shared-1",
+                                "detail_url": "/video/yt-shared-1",
+                                "thumbnail": "https://img.youtube.com/vi/shared-1/hqdefault.jpg",
+                                "thumbnail_url": "https://img.youtube.com/vi/shared-1/hqdefault.jpg",
+                                "image_url": "https://img.youtube.com/vi/shared-1/hqdefault.jpg",
+                                "source_type": "youtube",
+                            },
+                            "latest_video_id": "shared-1",
+                            "published_at": self._timestamp(5),
+                            "published_display": "2026-06-02 07:00",
+                            "thumbnail": "https://img.youtube.com/vi/shared-1/hqdefault.jpg",
+                            "url": "https://www.youtube.com/watch?v=shared-1",
+                            "reason_tags": ["latest-cached"],
+                        },
+                        {
+                            "channel_id": "c-dup",
+                            "channel_title": "News Mirror",
+                            "group_names": ["Archive"],
+                            "group_key": "archive",
+                            "latest_video": {
+                                "entry_id": "yt-dup-1",
+                                "video_id": "dup-1",
+                                "watch_key": "dup-1",
+                                "title": "Duplicated Snapshot Story",
+                                "channel_id": "c-dup",
+                                "channel_name": "News Mirror",
+                                "published_at": self._timestamp(3),
+                                "published_display": "2026-06-02 09:00",
+                                "url": "https://www.youtube.com/watch?v=dup-1",
+                                "detail_url": "/video/yt-dup-1",
+                                "thumbnail": "https://img.youtube.com/vi/dup-1/hqdefault.jpg",
+                                "thumbnail_url": "https://img.youtube.com/vi/dup-1/hqdefault.jpg",
+                                "image_url": "https://img.youtube.com/vi/dup-1/hqdefault.jpg",
+                                "source_type": "youtube",
+                            },
+                            "latest_video_id": "dup-1",
+                            "published_at": self._timestamp(3),
+                            "published_display": "2026-06-02 09:00",
+                            "thumbnail": "https://img.youtube.com/vi/dup-1/hqdefault.jpg",
+                            "url": "https://www.youtube.com/watch?v=dup-1",
+                            "reason_tags": ["latest-cached"],
+                        },
+                    ],
+                },
+            },
+            "channels": {},
+            "errors": [],
+        }
+
     def test_missing_snapshot_returns_safe_empty_state(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             service, _state = self._build_service(temp_dir)
@@ -236,6 +441,37 @@ class YouTubeFreshnessServiceTests(unittest.TestCase):
             self.assertEqual(context["entry"]["playlist_url"], "/pockettube")
             self.assertEqual(context["entry"]["source_type"], "youtube")
             self.assertEqual(context["related_entries"], [])
+
+    def test_snapshot_related_videos_prioritize_same_group_and_exclude_current(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            service, _state = self._build_service(temp_dir)
+            payload = self._build_related_snapshot_payload()
+            save_json_file(service.snapshot_path, payload)
+
+            context = service.find_snapshot_video_detail_context("yt-current")
+            related = context["related_entries"]
+            related_ids = [item["video_id"] for item in related]
+
+            self.assertGreaterEqual(len(related), 3)
+            self.assertEqual(related[0]["video_id"], "news-2")
+            self.assertNotIn("current", related_ids)
+            self.assertEqual(len(related_ids), len(set(related_ids)))
+            self.assertIn("current-archive", related_ids)
+            self.assertIn("shared-1", related_ids)
+
+    def test_snapshot_related_videos_include_same_channel_and_dedupe(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            service, _state = self._build_service(temp_dir)
+            payload = self._build_related_snapshot_payload()
+            save_json_file(service.snapshot_path, payload)
+
+            context = service.find_snapshot_video_detail_context("yt-current")
+            related = context["related_entries"]
+            related_ids = [item["video_id"] for item in related]
+
+            self.assertIn("current-archive", related_ids)
+            self.assertEqual(related_ids.count("dup-1"), 1)
+            self.assertTrue(all(item["detail_url"].startswith("/video/yt-") for item in related))
 
     def test_build_page_context_creates_unified_video_feed(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -1468,88 +1704,19 @@ class YouTubeFreshnessServiceTests(unittest.TestCase):
         client = dragon_app.app.test_client()
         with tempfile.TemporaryDirectory() as temp_dir:
             service, _state = self._build_service(temp_dir)
-            payload = {
-                "version": 1,
-                "generated_at": FIXED_NOW.isoformat(),
-                "synced_at": FIXED_NOW.isoformat(),
-                "groups": {
-                    "science": {
-                        "group_name": "Science",
-                        "group_key": "science",
-                        "section_name": "Science",
-                        "section_key": "science",
-                        "source_name": "PocketTube",
-                        "imported_at": FIXED_NOW.isoformat(),
-                        "channel_count": 1,
-                        "latest_video_count": 1,
-                        "latest_video": {},
-                        "channels": [
-                            {
-                                "channel_id": "UC-1",
-                                "channel_title": "Science Channel",
-                                "group_names": ["Science"],
-                                "group_key": "science",
-                                "latest_video": {
-                                    "entry_id": "yt-NvouldZEM",
-                                    "video_id": "NvouldZEM",
-                                    "watch_key": "NvouldZEM",
-                                    "title": "PocketTube Snapshot Title",
-                                    "channel_name": "Science Channel",
-                                    "channel_id": "UC-1",
-                                    "published_at": FIXED_NOW.isoformat(),
-                                    "published_display": "2026-06-02 12:00",
-                                    "url": "https://www.youtube.com/watch?v=NvouldZEM",
-                                    "detail_url": "/video/yt-NvouldZEM",
-                                    "thumbnail": "https://img.youtube.com/vi/NvouldZEM/hqdefault.jpg",
-                                    "thumbnail_url": "https://img.youtube.com/vi/NvouldZEM/hqdefault.jpg",
-                                    "image_url": "https://img.youtube.com/vi/NvouldZEM/hqdefault.jpg",
-                                    "source_type": "youtube",
-                                },
-                                "latest_video_id": "NvouldZEM",
-                                "published_at": FIXED_NOW.isoformat(),
-                                "published_display": "2026-06-02 12:00",
-                                "thumbnail": "https://img.youtube.com/vi/NvouldZEM/hqdefault.jpg",
-                                "url": "https://www.youtube.com/watch?v=NvouldZEM",
-                                "reason_tags": ["latest-cached"],
-                            }
-                        ],
-                    }
-                },
-                "channels": {
-                    "UC-1": {
-                        "channel_id": "UC-1",
-                        "channel_title": "Science Channel",
-                        "latest_video": {
-                            "entry_id": "yt-NvouldZEM",
-                            "video_id": "NvouldZEM",
-                            "watch_key": "NvouldZEM",
-                            "title": "PocketTube Snapshot Title",
-                            "channel_name": "Science Channel",
-                            "channel_id": "UC-1",
-                            "published_at": FIXED_NOW.isoformat(),
-                            "published_display": "2026-06-02 12:00",
-                            "url": "https://www.youtube.com/watch?v=NvouldZEM",
-                            "detail_url": "/video/yt-NvouldZEM",
-                            "thumbnail": "https://img.youtube.com/vi/NvouldZEM/hqdefault.jpg",
-                            "thumbnail_url": "https://img.youtube.com/vi/NvouldZEM/hqdefault.jpg",
-                            "image_url": "https://img.youtube.com/vi/NvouldZEM/hqdefault.jpg",
-                            "source_type": "youtube",
-                        },
-                    }
-                },
-                "errors": [],
-            }
-            save_json_file(service.snapshot_path, payload)
+            save_json_file(service.snapshot_path, self._build_related_snapshot_payload())
 
             with patch.object(dragon_app, "YOUTUBE_FRESHNESS_SERVICE", service), \
                  patch.object(dragon_app, "collect_all_youtube_entries", return_value=[]), \
                  patch.object(dragon_app.YOUTUBE_VIDEO_SERVICE.recommendation_service, "enrich_video_detail_context", side_effect=lambda context, *args, **kwargs: context), \
                  patch.object(dragon_app, "get_youtube_duration", Mock()) as mocked_get_duration:
-                response = client.get("/video/yt-NvouldZEM")
+                response = client.get("/video/yt-current")
 
             self.assertEqual(response.status_code, 200)
             body = response.get_data(as_text=True)
-            self.assertIn("PocketTube Snapshot Title", body)
+            self.assertIn("Current News Story", body)
+            self.assertIn("Breaking News Update", body)
+            self.assertIn("/video/yt-news-2", body)
             self.assertNotIn("could not find the requested entry", body)
             mocked_get_duration.assert_not_called()
 

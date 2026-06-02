@@ -105,6 +105,16 @@ class YouTubeFreshnessService:
                         "source": "group_channel",
                         "group_key": group_key_text,
                         "group_name": group_name,
+                        "group_names": list(dict.fromkeys([
+                            str(name or "").strip()
+                            for name in list(channel.get("group_names", []) or []) + ([group_name] if group_name else [])
+                            if str(name or "").strip()
+                        ])),
+                        "group_keys": list(dict.fromkeys([
+                            str(key or "").strip()
+                            for key in list(channel.get("group_keys", []) or []) + ([group_key_text] if group_key_text else [])
+                            if str(key or "").strip()
+                        ])),
                         "channel_id": str(channel.get("channel_id", "") or "").strip(),
                         "channel_title": str(channel.get("channel_title", "") or "").strip(),
                         "latest_video": dict(latest_video),
@@ -122,6 +132,12 @@ class YouTubeFreshnessService:
                     "source": "channel",
                     "group_key": "",
                     "group_name": "",
+                    "group_names": list(dict.fromkeys([
+                        str(name or "").strip()
+                        for name in list(channel.get("group_names", []) or [])
+                        if str(name or "").strip()
+                    ])),
+                    "group_keys": [],
                     "channel_id": str(channel.get("channel_id", "") or channel_id or "").strip(),
                     "channel_title": str(channel.get("channel_title", "") or "").strip(),
                     "latest_video": dict(latest_video),
@@ -141,6 +157,170 @@ class YouTubeFreshnessService:
             }
             for candidate in (candidate_entry_id, candidate_video_id, candidate_watch_key)
         )
+
+    def _snapshot_title_tokens(self, value):
+        raw_tokens = re.findall(r"[a-z0-9]+", str(value or "").lower())
+        stop_words = {
+            "the",
+            "and",
+            "for",
+            "with",
+            "from",
+            "this",
+            "that",
+            "video",
+            "channel",
+            "news",
+            "latest",
+            "pockettube",
+        }
+        return {token for token in raw_tokens if len(token) > 2 and token not in stop_words}
+
+    def _snapshot_video_pool(self, snapshot):
+        pool = {}
+        for candidate in self._iter_snapshot_latest_videos(snapshot):
+            latest_video = candidate.get("latest_video", {})
+            if not isinstance(latest_video, dict) or not latest_video:
+                continue
+            summary = self.build_youtube_channel_video_summary(latest_video)
+            if not isinstance(summary, dict):
+                continue
+            video_id = str(summary.get("video_id", "") or "").strip()
+            if not video_id:
+                continue
+            entry = pool.setdefault(video_id, dict(summary))
+            entry["source_type"] = "youtube"
+            entry["entry_type"] = "youtube"
+            entry["detail_url"] = str(entry.get("detail_url", "") or summary.get("detail_url", "") or "").strip() or f"/video/{entry.get('entry_id', f'yt-{video_id}')}"
+            entry["url"] = str(entry.get("url", "") or summary.get("url", "") or "").strip()
+            entry["thumb"] = str(entry.get("thumb", "") or summary.get("thumb", "") or "").strip()
+            entry["thumbnail_url"] = str(entry.get("thumbnail_url", "") or summary.get("thumbnail_url", "") or "").strip()
+            entry["thumbnail"] = str(entry.get("thumbnail", "") or summary.get("thumbnail", "") or entry["thumbnail_url"] or "").strip()
+            entry["image_url"] = str(entry.get("image_url", "") or summary.get("image_url", "") or entry["thumbnail_url"] or "").strip()
+            entry["channel_id"] = str(entry.get("channel_id", "") or summary.get("channel_id", "") or "").strip()
+            entry["channel_name"] = str(entry.get("channel_name", "") or summary.get("channel_name", "") or entry.get("channel_title", "") or "").strip()
+            entry["channel_title"] = str(entry.get("channel_title", "") or summary.get("channel_title", "") or entry.get("channel_name", "") or "").strip()
+            entry["published_at"] = str(entry.get("published_at", "") or summary.get("published_at", "") or "").strip()
+            entry["published_display"] = str(entry.get("published_display", "") or summary.get("published_display", "") or "").strip()
+            entry["group_names"] = list(dict.fromkeys([
+                str(name or "").strip()
+                for name in list(entry.get("group_names", []) or [])
+                + list(candidate.get("group_names", []) or [])
+                + ([candidate.get("group_name", "")] if candidate.get("group_name", "") else [])
+                if str(name or "").strip()
+            ]))
+            entry["group_keys"] = list(dict.fromkeys([
+                str(key or "").strip()
+                for key in list(entry.get("group_keys", []) or [])
+                + list(candidate.get("group_keys", []) or [])
+                + ([candidate.get("group_key", "")] if candidate.get("group_key", "") else [])
+                if str(key or "").strip()
+            ]))
+            if not str(entry.get("group_name", "") or "").strip():
+                entry["group_name"] = str(candidate.get("group_name", "") or "").strip()
+            if not str(entry.get("group_key", "") or "").strip():
+                entry["group_key"] = str(candidate.get("group_key", "") or "").strip()
+            if not str(entry.get("watch_key", "") or "").strip():
+                entry["watch_key"] = str(summary.get("watch_key", "") or "").strip()
+            if not str(entry.get("state_key", "") or "").strip():
+                entry["state_key"] = str(summary.get("state_key", "") or entry.get("watch_key", "") or "").strip()
+            entry["published_sort"] = self._published_sort_key(entry.get("published_at", ""))
+            entry["title_tokens"] = self._snapshot_title_tokens(entry.get("title", ""))
+            entry["has_thumbnail"] = bool(str(entry.get("thumbnail", "") or entry.get("thumbnail_url", "") or entry.get("image_url", "") or "").strip())
+            entry["has_title"] = bool(str(entry.get("title", "") or "").strip())
+        return pool
+
+    def _snapshot_related_video_score(self, candidate, current_video_id, current_channel_id, current_group_names, current_group_keys, current_title_tokens, current_group_name="", current_group_key=""):
+        candidate = candidate if isinstance(candidate, dict) else {}
+        candidate_video_id = str(candidate.get("video_id", "") or "").strip()
+        if not candidate_video_id or candidate_video_id == current_video_id:
+            return None
+        candidate_channel_id = str(candidate.get("channel_id", "") or "").strip()
+        candidate_group_name = str(candidate.get("group_name", "") or "").strip().lower()
+        candidate_group_key = str(candidate.get("group_key", "") or "").strip().lower()
+        candidate_group_names = {str(name or "").strip().lower() for name in candidate.get("group_names", []) or [] if str(name or "").strip()}
+        candidate_group_keys = {str(key or "").strip().lower() for key in candidate.get("group_keys", []) or [] if str(key or "").strip()}
+        current_group_names = {str(name or "").strip().lower() for name in (current_group_names or []) if str(name or "").strip()}
+        current_group_keys = {str(key or "").strip().lower() for key in (current_group_keys or []) if str(key or "").strip()}
+        current_group_name = str(current_group_name or "").strip().lower()
+        current_group_key = str(current_group_key or "").strip().lower()
+        same_primary_group = bool(
+            (current_group_key and current_group_key == candidate_group_key)
+            or (current_group_name and current_group_name == candidate_group_name)
+        )
+        same_channel = bool(current_channel_id and candidate_channel_id == str(current_channel_id or "").strip())
+        shared_group_tags = bool((candidate_group_names | candidate_group_keys) & (current_group_names | current_group_keys))
+        title_overlap = len(set(candidate.get("title_tokens", []) or []) & set(current_title_tokens or []))
+        return (
+            1 if same_primary_group else 0,
+            1 if same_channel else 0,
+            1 if shared_group_tags else 0,
+            int(candidate.get("published_sort", 0) or 0),
+            title_overlap,
+            1 if bool(candidate.get("has_thumbnail")) else 0,
+            1 if bool(candidate.get("has_title")) else 0,
+        )
+
+    def _build_snapshot_related_entries(self, snapshot, *, current_latest_video, current_group_name="", current_group_key="", current_channel_id="", limit=12):
+        pool = self._snapshot_video_pool(snapshot)
+        current_latest_video = current_latest_video if isinstance(current_latest_video, dict) else {}
+        current_video_id = str(current_latest_video.get("video_id", "") or "").strip()
+        current_title = str(current_latest_video.get("title", "") or current_latest_video.get("name", "") or "").strip()
+        current_title_tokens = self._snapshot_title_tokens(current_title)
+        current_group_names = list(dict.fromkeys([
+            str(name or "").strip()
+            for name in list(current_latest_video.get("group_names", []) or []) + ([current_group_name] if current_group_name else [])
+            if str(name or "").strip()
+        ]))
+        current_group_keys = list(dict.fromkeys([
+            str(key or "").strip()
+            for key in list(current_latest_video.get("group_keys", []) or []) + ([current_group_key] if current_group_key else [])
+            if str(key or "").strip()
+        ]))
+        ranked_candidates = []
+        for candidate in pool.values():
+            score = self._snapshot_related_video_score(
+                candidate,
+                current_video_id,
+                current_channel_id,
+                current_group_names,
+                current_group_keys,
+                current_title_tokens,
+                current_group_name=current_group_name,
+                current_group_key=current_group_key,
+            )
+            if score is None:
+                continue
+            candidate_copy = dict(candidate)
+            candidate_copy["detail_url"] = str(candidate_copy.get("detail_url", "") or "").strip() or f"/video/{candidate_copy.get('entry_id', '')}"
+            candidate_copy["url"] = str(candidate_copy.get("url", "") or "").strip()
+            candidate_copy["group_names"] = list(dict.fromkeys([str(name or "").strip() for name in candidate_copy.get("group_names", []) or [] if str(name or "").strip()]))
+            candidate_copy["group_keys"] = list(dict.fromkeys([str(key or "").strip() for key in candidate_copy.get("group_keys", []) or [] if str(key or "").strip()]))
+            ranked_candidates.append((score, candidate_copy))
+        ranked_candidates.sort(
+            key=lambda item: (
+                -item[0][0],
+                -item[0][1],
+                -item[0][2],
+                -item[0][3],
+                -item[0][4],
+                -item[0][5],
+                -item[0][6],
+                str(item[1].get("title", "") or "").lower(),
+                str(item[1].get("video_id", "") or "").lower(),
+            )
+        )
+        related_entries = []
+        seen_video_ids = set()
+        for _score, candidate in ranked_candidates:
+            video_id = str(candidate.get("video_id", "") or "").strip()
+            if not video_id or video_id in seen_video_ids:
+                continue
+            seen_video_ids.add(video_id)
+            related_entries.append(candidate)
+            if len(related_entries) >= max(int(limit or 12), 1):
+                break
+        return related_entries
 
     def _build_snapshot_video_detail_context(self, latest_video, *, lookup_entry_id="", group_name="", group_key="", channel_id="", channel_title=""):
         latest_video = latest_video if isinstance(latest_video, dict) else {}
@@ -188,23 +368,42 @@ class YouTubeFreshnessService:
             "category": str(detail.get("category", "") or resolved_channel_name or "PocketTube").strip() or "PocketTube",
             "group_name": str(detail.get("group_name", "") or group_name or "").strip(),
             "group_key": str(detail.get("group_key", "") or group_key or "").strip(),
+            "group_names": list(dict.fromkeys([
+                str(name or "").strip()
+                for name in list(detail.get("group_names", []) or []) + ([group_name] if group_name else [])
+                if str(name or "").strip()
+            ])),
+            "group_keys": list(dict.fromkeys([
+                str(key or "").strip()
+                for key in list(detail.get("group_keys", []) or []) + ([group_key] if group_key else [])
+                if str(key or "").strip()
+            ])),
             "source_name": str(detail.get("source_name", "") or "PocketTube").strip() or "PocketTube",
             "feed_source": "pockettube_snapshot",
             "group_back_url": "/pockettube",
             "group_back_context": group_name or resolved_channel_name or "PocketTube Freshness",
         })
+        related_entries = self._build_snapshot_related_entries(
+            self.load_snapshot(),
+            current_latest_video=detail,
+            current_group_name=group_name,
+            current_group_key=group_key,
+            current_channel_id=detail.get("channel_id", ""),
+            limit=12,
+        )
         return {
             "entry": detail,
             "entry_type": "youtube",
             "player_video_id": video_id,
-            "related_entries": [],
-            "related_title": group_name or resolved_channel_name or "PocketTube Freshness",
+            "related_entries": related_entries,
+            "related_entries_full": related_entries,
+            "related_title": group_name or resolved_channel_name or "PocketTube related videos",
             "playlist_entries": [detail],
             "prev_entry": None,
             "next_entry": None,
-            "related_total_pages": 0,
+            "related_total_pages": 1 if related_entries else 0,
             "related_page": 1,
-            "pagination_numbers": [],
+            "pagination_numbers": [1] if related_entries else [],
             "related_order": "normal",
             "related_seed": "",
             "delete_endpoint": False,
