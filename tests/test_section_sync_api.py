@@ -68,6 +68,18 @@ class SectionSyncApiTests(unittest.TestCase):
         global_refresh.assert_not_called()
         refresh_mock.assert_called_once_with("articles", scope="")
 
+    def test_articles_refresh_is_local_cache_only(self):
+        with patch.object(dragon_app, "clear_reading_data_cache") as clear_cache, patch.object(
+            dragon_app,
+            "refresh_deployed_reading_snapshot_from_github",
+        ) as remote_snapshot:
+            result = dragon_app.refresh_articles_section_lightweight()
+
+        self.assertEqual(result["section"], "articles")
+        self.assertEqual(result["message"], "Articles cache refreshed from local snapshot.")
+        clear_cache.assert_called_once_with()
+        remote_snapshot.assert_not_called()
+
     def test_youtube_sync_stays_watchlater_scoped_and_runs_refresh(self):
         global_refresh = Mock()
         refresh_mock = Mock(return_value={"section": "youtube", "message": "YouTube cache refreshed."})

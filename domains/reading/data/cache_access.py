@@ -162,8 +162,11 @@ class ReadingCacheAccess:
             normalized["retention_summary"] = retention_summary
         self.backup_reading_data_file(retention_reason if apply_retention else "save")
         self.save_json_file(self.reading_data_path, normalized)
+        with self.reading_runtime.data_cache_lock:
+            self.reading_runtime.data_cache["fingerprint"] = self.reading_data_cache_fingerprint()
+            self.reading_runtime.data_cache["data"] = normalized
         self.app_logger.info(
-            "reading_cache save elapsed_ms=%.1f apply_retention=%s retention_changed=%s archived_total=%s entries=%s sources=%s reason=%s",
+            "reading_cache save elapsed_ms=%.1f apply_retention=%s retention_changed=%s archived_total=%s entries=%s sources=%s reason=%s cache_hydrated=1",
             (self.monotonic() - started_at) * 1000,
             bool(apply_retention),
             bool(retention_summary.get("changed")),

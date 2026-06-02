@@ -10762,7 +10762,7 @@ def _get_reading_runtime_service():
             app_logger=app.logger,
             load_reading_data_cached=load_reading_data_cached,
             default_reading_data=default_reading_data,
-            apply_reading_retention_policy=apply_reading_retention_policy,
+            reading_data_path=READING_DATA_PATH,
             normalize_reading_source=normalize_reading_source,
             normalize_reading_url=normalize_reading_url,
             absolutize_reading_url=absolutize_reading_url,
@@ -10784,6 +10784,7 @@ def _get_reading_runtime_service():
             reading_list_default_limit=READING_LIST_DEFAULT_LIMIT,
             reading_list_limit_max=READING_LIST_LIMIT_MAX,
             reading_list_limit_step=READING_LIST_LIMIT_STEP,
+            datetime_module=datetime,
             monotonic=time.monotonic,
         )
     return _READING_RUNTIME_SERVICE
@@ -14433,13 +14434,9 @@ def refresh_youtube_section_lightweight(scope=""):
 
 def refresh_articles_section_lightweight(scope=""):
     clear_reading_data_cache()
-    try:
-        refresh_deployed_reading_snapshot_from_github()
-    except Exception:
-        pass
     return {
         "section": "articles",
-        "message": "Articles snapshot refreshed.",
+        "message": "Articles cache refreshed from local snapshot.",
     }
 
 

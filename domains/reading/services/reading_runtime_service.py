@@ -1,6 +1,3 @@
-import copy
-
-
 class ReadingRuntimeService:
     """GET-path retained read shaping and lightweight article/list runtime context."""
 
@@ -10,7 +7,7 @@ class ReadingRuntimeService:
         app_logger,
         load_reading_data_cached,
         default_reading_data,
-        apply_reading_retention_policy,
+        reading_data_path,
         normalize_reading_source,
         normalize_reading_url,
         absolutize_reading_url,
@@ -32,12 +29,13 @@ class ReadingRuntimeService:
         reading_list_default_limit,
         reading_list_limit_max,
         reading_list_limit_step,
+        datetime_module,
         monotonic,
     ):
         self.app_logger = app_logger
         self.load_reading_data_cached = load_reading_data_cached
         self.default_reading_data = default_reading_data
-        self.apply_reading_retention_policy = apply_reading_retention_policy
+        self.reading_data_path = reading_data_path
         self.normalize_reading_source = normalize_reading_source
         self.normalize_reading_url = normalize_reading_url
         self.absolutize_reading_url = absolutize_reading_url
@@ -59,6 +57,7 @@ class ReadingRuntimeService:
         self.reading_list_default_limit = reading_list_default_limit
         self.reading_list_limit_max = reading_list_limit_max
         self.reading_list_limit_step = reading_list_limit_step
+        self.datetime_module = datetime_module
         self.monotonic = monotonic
         self._read_model_comparison_logged = set()
 
@@ -89,27 +88,51 @@ class ReadingRuntimeService:
             query["limit"] = normalized_limit
         return query
 
-    def _load_retained_data(self):
+    def _snapshot_freshness(self):
+        try:
+            stat_result = self.reading_data_path.stat()
+        except OSError:
+            return {
+                "snapshot_path": str(self.reading_data_path),
+                "snapshot_updated_at": "",
+                "snapshot_updated_display": "Missing",
+                "snapshot_age_seconds": None,
+                "snapshot_freshness_state": "missing",
+                "snapshot_freshness_label": "Snapshot missing",
+            }
+        updated_at = self.datetime_module.fromtimestamp(stat_result.st_mtime).astimezone()
+        now = self.datetime_module.now().astimezone()
+        age_seconds = max(0, int((now - updated_at).total_seconds()))
+        if age_seconds <= 6 * 60 * 60:
+            state = "fresh"
+            label = "Fresh snapshot"
+        elif age_seconds <= 24 * 60 * 60:
+            state = "aging"
+            label = "Snapshot aging"
+        else:
+            state = "stale"
+            label = "Stale snapshot"
+        return {
+            "snapshot_path": str(self.reading_data_path),
+            "snapshot_updated_at": updated_at.isoformat(),
+            "snapshot_updated_display": self.format_timestamp_label(updated_at.isoformat(), default="Unknown"),
+            "snapshot_age_seconds": age_seconds,
+            "snapshot_freshness_state": state,
+            "snapshot_freshness_label": label,
+        }
+
+    def _load_cached_data_for_get(self):
         started_at = self.monotonic()
         data = self.load_reading_data_cached()
         if not isinstance(data, dict):
             data = self.default_reading_data()
-        copy_started_at = self.monotonic()
-        copied_data = copy.deepcopy(data)
-        copy_elapsed_ms = (self.monotonic() - copy_started_at) * 1000
-        retained_data, retention_summary = self.apply_reading_retention_policy(copied_data)
-        if isinstance(retained_data, dict):
-            data = retained_data
         self.app_logger.info(
-            "reading_retained_data load elapsed_ms=%.1f copy_ms=%.1f entries=%s sources=%s retention_changed=%s archived_total=%s dataset_copy=1",
+            "reading_get_data load elapsed_ms=%.1f entries=%s sources=%s cache_first=1 retention_on_get=0",
             (self.monotonic() - started_at) * 1000,
-            copy_elapsed_ms,
-            len((copied_data or {}).get("entries", []) or []),
-            len((copied_data or {}).get("sources", []) or []),
-            bool((retention_summary or {}).get("changed")),
-            int((retention_summary or {}).get("archived_total", 0) or 0),
+            len((data or {}).get("entries", []) or []),
+            len((data or {}).get("sources", []) or []),
         )
-        return data, retention_summary
+        return data
 
     def _build_normalized_entries(self, data, source_lookup=None, source_category_lookup=None, context_label="list"):
         started_at = self.monotonic()
@@ -237,10 +260,8 @@ class ReadingRuntimeService:
 
     def build_reading_view(self, request_args):
         started_at = self.monotonic()
-        retention_started_at = self.monotonic()
-        data, retention_summary = self._load_retained_data()
-        retention_elapsed_ms = (self.monotonic() - retention_started_at) * 1000
-        # Ownership note: list-view shaping still performs a full retained snapshot rebuild on each request.
+        data = self._load_cached_data_for_get()
+        snapshot_freshness = self._snapshot_freshness()
         projection = self._build_projection(data, context_label="list")
         sources = [dict(source) for source in projection.sources]
         source_lookup = dict(projection.source_lookup)
@@ -305,19 +326,17 @@ class ReadingRuntimeService:
         showing_archived = selected_status == "archived"
         total_elapsed_ms = (self.monotonic() - started_at) * 1000
         self.app_logger.info(
-            "reading_view build elapsed_ms=%.1f retention_ms=%.1f entries_total=%s entries_filtered=%s entries_displayed=%s sources=%s fresh_only=%s search=%s retention_changed=%s archived_total=%s lightweight_read_model=1 full_entry_rebuild=0",
+            "reading_view build elapsed_ms=%.1f entries_total=%s entries_filtered=%s entries_displayed=%s sources=%s fresh_only=%s search=%s snapshot_state=%s lightweight_read_model=1 full_entry_rebuild=0",
             total_elapsed_ms,
-            retention_elapsed_ms,
             len(entries),
             total_matching,
             len(displayed_entries),
             len(sources),
             bool(fresh_only),
             bool(raw_search),
-            bool((retention_summary or {}).get("changed")),
-            int((retention_summary or {}).get("archived_total", 0) or 0),
+            snapshot_freshness.get("snapshot_freshness_state", ""),
         )
-        return {
+        view = {
             "entries": displayed_entries,
             "sources": source_filters,
             "source_options": source_filters,
@@ -367,12 +386,12 @@ class ReadingRuntimeService:
             "last_sync_sources": int(data.get("last_sync_sources", 0) or 0),
             "last_sync_message": str(data.get("last_sync_message", "") or "").strip(),
         }
+        view.update(snapshot_freshness)
+        return view
 
     def build_reading_article_context(self, entry_id, request_args):
         started_at = self.monotonic()
-        retention_started_at = self.monotonic()
-        data, retention_summary = self._load_retained_data()
-        retention_elapsed_ms = (self.monotonic() - retention_started_at) * 1000
+        data = self._load_cached_data_for_get()
         projection = self._build_projection(data, context_label="article")
         entries = [dict(entry) for entry in projection.lightweight_entries]
         self._log_read_model_comparison(
@@ -395,14 +414,12 @@ class ReadingRuntimeService:
         )
         total_elapsed_ms = (self.monotonic() - started_at) * 1000
         self.app_logger.info(
-            "reading_article_context build elapsed_ms=%.1f retention_ms=%.1f entry_id=%s entries_total=%s entries_displayed=%s current_index=%s retention_changed=%s lightweight_read_model=1",
+            "reading_article_context build elapsed_ms=%.1f entry_id=%s entries_total=%s entries_displayed=%s current_index=%s lightweight_read_model=1 retention_on_get=0",
             total_elapsed_ms,
-            retention_elapsed_ms,
             normalized_entry_id,
             len(entries),
             len(displayed_entries),
             current_index,
-            bool((retention_summary or {}).get("changed")),
         )
         return {
             "entries": displayed_entries,
