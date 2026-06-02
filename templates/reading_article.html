@@ -113,7 +113,7 @@
     <section class="page-hero">
         <div class="reading-article-top">
             <div class="reading-article-actions">
-                <a class="btn" href="{{ reading_return_url }}"><i data-lucide="arrow-left"></i>Back to inbox</a>
+                <a class="btn" href="{{ reading_return_url }}"><i data-lucide="arrow-left"></i>{{ 'Back to recipe' if reading_recipe_flow else 'Back to inbox' }}</a>
                 {% if entry.url %}
                 <a class="btn" href="{{ entry.url }}" target="_blank" rel="noopener"><i data-lucide="external-link"></i>Open original</a>
                 {% endif %}
@@ -201,8 +201,24 @@
                         {{ reading_tts_status_message }}
                         {% endif %}
                     </div>
-                </div>
             </div>
+        </div>
+
+        {% if reading_recipe_flow %}
+        <div class="reading-entry-actions" style="margin-top:8px;">
+            <form method="post" action="{{ url_for('reading_entry_action', entry_id=entry.id) }}">
+                <input type="hidden" name="next" value="{{ reading_recipe_next_url or reading_return_url }}">
+                <input type="hidden" name="action" value="finished">
+                <button type="submit" class="btn"><i data-lucide="check-check"></i>Done / Next</button>
+            </form>
+            <form method="post" action="{{ url_for('reading_entry_action', entry_id=entry.id) }}">
+                <input type="hidden" name="next" value="{{ reading_recipe_next_url or reading_return_url }}">
+                <input type="hidden" name="action" value="unread">
+                <button type="submit" class="btn"><i data-lucide="skip-forward"></i>Skip / Next</button>
+            </form>
+            <a class="btn" href="{{ reading_return_url }}"><i data-lucide="arrow-left"></i>Back to recipe</a>
+        </div>
+        {% endif %}
 
             <div class="reading-entry-actions">
                 <form method="post" action="{{ url_for('reading_entry_action', entry_id=entry.id) }}">

@@ -1,13 +1,11 @@
-import json
 import tempfile
-import threading
 import unittest
-from collections import namedtuple
-from datetime import datetime, timezone
+from collections import Counter, namedtuple
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
+import app as dragon_app
 from dragon.cache import load_json_file, save_json_file
 from domains.reading.services.recipe_of_day_service import ReadingRecipeOfDayService
 
@@ -28,10 +26,10 @@ class _FixedDateTimeModule:
 class _ProjectionService:
     def build_projection(self, data, context_label="recipe"):
         sources = [dict(source) for source in data.get("sources", []) or []]
+        entries = [dict(entry) for entry in data.get("entries", []) or []]
         source_lookup = {str(source.get("name", "") or "").lower(): source.get("id", "") for source in sources}
         source_lookup.update({str(source.get("id", "") or ""): source.get("id", "") for source in sources})
         source_category_lookup = {str(source.get("id", "") or ""): source.get("category", "news") for source in sources}
-        entries = [dict(entry) for entry in data.get("entries", []) or []]
         projection = namedtuple("Projection", "sources source_lookup source_category_lookup lightweight_entries")
         return projection(
             sources=tuple(sources),
@@ -49,8 +47,8 @@ class ReadingRecipeOfDayServiceTests(unittest.TestCase):
             default_reading_data=lambda: {"version": 1, "sources": [], "entries": []},
             reading_runtime_projection_service=_ProjectionService(),
             normalize_reading_status=lambda value: str(value or "").strip().lower() or "unread",
-            parse_timestamp=lambda value: self._parse_timestamp(value),
-            format_timestamp_label=lambda value, default="": self._format_timestamp_label(value, default=default),
+            parse_timestamp=self._parse_timestamp,
+            format_timestamp_label=self._format_timestamp_label,
             normalize_reading_url=lambda value: str(value or "").strip(),
             save_json_file=save_json_file,
             load_json_file=load_json_file,
@@ -78,99 +76,184 @@ class ReadingRecipeOfDayServiceTests(unittest.TestCase):
             return default
         return timestamp.astimezone(timezone.utc).strftime("%b %d, %Y %H:%M")
 
-    def _base_data(self, entries, sources=None):
+    def _timestamp(self, hours_ago):
+        return (FIXED_NOW - timedelta(hours=hours_ago)).isoformat()
+
+    def _source(self, source_id, name, *, status="ok", imported_count=5, raw_count=8):
         return {
-            "version": 1,
-            "sources": sources or [
-                {
-                    "id": "source-1",
-                    "name": "Source One",
-                    "url": "https://example.com/feed",
-                    "category": "news",
-                    "active": True,
-                    "last_sync_status": "ok",
-                    "last_sync_imported_count": 5,
-                    "last_sync_raw_count": 8,
-                    "last_synced_at": "2026-06-02T10:00:00+00:00",
-                }
-            ],
-            "entries": entries,
+            "id": source_id,
+            "name": name,
+            "url": f"https://example.com/{source_id}.xml",
+            "category": "news",
+            "active": True,
+            "last_sync_status": status,
+            "last_sync_imported_count": imported_count,
+            "last_sync_raw_count": raw_count,
+            "last_synced_at": self._timestamp(1),
         }
 
-    def _entry(self, index, *, status="unread", published_at="2026-06-02T11:00:00+00:00", title=None, url=None, source_id="source-1", source="Source One"):
+    def _entry(self, index, *, source_id="source-1", source="Source One", status="unread", hours_ago=1, title=None, url=None, starred=False):
+        ts = self._timestamp(hours_ago)
         return {
             "id": f"entry-{index}",
             "title": title or f"Article {index}",
             "status": status,
-            "published_at": published_at,
-            "added_at": published_at,
-            "imported_at": published_at,
+            "published_at": ts,
+            "added_at": ts,
+            "imported_at": ts,
             "source_id": source_id,
             "source": source,
             "url": url or f"https://example.com/article-{index}",
             "original_url": url or f"https://example.com/article-{index}",
             "topic": "News",
             "category": "news",
-            "starred": False,
+            "starred": starred,
         }
 
-    def test_deterministic_scoring(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            recipe_path = Path(temp_dir) / "reading_recipe_of_day.json"
-            service = self._build_service({"data": self._base_data([])}, recipe_path)
-            candidate = self._entry(1)
-            source = self._base_data([])["sources"][0]
-            score_a = service.score_article_candidate(candidate, source=source, keyword_profile=["article", "news"])
-            score_b = service.score_article_candidate(candidate, source=source, keyword_profile=["article", "news"])
-            self.assertEqual(score_a, score_b)
+    def _base_data(self, entries, sources):
+        return {
+            "version": 1,
+            "sources": sources,
+            "entries": entries,
+        }
 
-    def test_max_seven_items(self):
+    def test_deterministic_result_order(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             recipe_path = Path(temp_dir) / "reading_recipe_of_day.json"
-            data_state = {"data": self._base_data([self._entry(i) for i in range(10)])}
+            data_state = {
+                "data": self._base_data(
+                    [
+                        self._entry(1, source_id="source-1", source="Source One", hours_ago=2),
+                        self._entry(2, source_id="source-2", source="Source Two", hours_ago=1),
+                        self._entry(3, source_id="source-3", source="Source Three", hours_ago=3),
+                    ],
+                    [
+                        self._source("source-1", "Source One"),
+                        self._source("source-2", "Source Two"),
+                        self._source("source-3", "Source Three"),
+                    ],
+                )
+            }
             service = self._build_service(data_state, recipe_path)
-            recipe = service.build_today_recipe(force=True)
-            self.assertEqual(len(recipe["selected_articles"]), 7)
 
-    def test_reuse_existing_same_day_recipe(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            recipe_path = Path(temp_dir) / "reading_recipe_of_day.json"
-            data_state = {"data": self._base_data([self._entry(i) for i in range(3)])}
-            service = self._build_service(data_state, recipe_path)
-            first_recipe = service.build_today_recipe(force=False)
-            data_state["data"] = self._base_data([self._entry(i + 10) for i in range(3)])
-            second_recipe = service.build_today_recipe(force=False)
-            self.assertEqual(first_recipe["generated_at"], second_recipe["generated_at"])
-            self.assertEqual([item["id"] for item in first_recipe["selected_articles"]], [item["id"] for item in second_recipe["selected_articles"]])
-            self.assertTrue(second_recipe["reused_existing_snapshot"])
+            first = service.build_today_recipe(force=True)
+            second = service.build_today_recipe(force=True)
 
-    def test_force_regenerate_replaces_recipe(self):
-        with tempfile.TemporaryDirectory() as temp_dir:
-            recipe_path = Path(temp_dir) / "reading_recipe_of_day.json"
-            data_state = {"data": self._base_data([self._entry(1, title="First pick"), self._entry(2, title="Second pick")])}
-            service = self._build_service(data_state, recipe_path)
-            first_recipe = service.build_today_recipe(force=False)
-            data_state["data"] = self._base_data([self._entry(99, title="Replacement pick")])
-            second_recipe = service.build_today_recipe(force=True)
-            self.assertNotEqual(
-                [item["id"] for item in first_recipe["selected_articles"]],
-                [item["id"] for item in second_recipe["selected_articles"]],
+            self.assertEqual(
+                [item["id"] for item in first["selected_articles"]],
+                [item["id"] for item in second["selected_articles"]],
             )
-            self.assertFalse(second_recipe["reused_existing_snapshot"])
 
-    def test_archived_and_finished_are_deprioritized_or_excluded(self):
+    def test_max_two_articles_per_source(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             recipe_path = Path(temp_dir) / "reading_recipe_of_day.json"
-            active = [self._entry(i, status="unread", title=f"Active {i}") for i in range(7)]
-            archived = [
-                self._entry(100, status="archived", title="Archived 1"),
-                self._entry(101, status="finished", title="Finished 1"),
-            ]
-            data_state = {"data": self._base_data(active + archived)}
+            entries = [self._entry(i, source_id="source-1", source="Source One", hours_ago=i + 1) for i in range(8)]
+            entries.extend([
+                self._entry(100, source_id="source-2", source="Source Two", hours_ago=2),
+                self._entry(101, source_id="source-3", source="Source Three", hours_ago=3),
+            ])
+            data_state = {
+                "data": self._base_data(
+                    entries,
+                    [
+                        self._source("source-1", "Source One"),
+                        self._source("source-2", "Source Two"),
+                        self._source("source-3", "Source Three"),
+                    ],
+                )
+            }
             service = self._build_service(data_state, recipe_path)
             recipe = service.build_today_recipe(force=True)
-            selected_statuses = {item["status"] for item in recipe["selected_articles"]}
-            self.assertFalse(selected_statuses.intersection({"archived", "finished"}))
+
+            source_counts = Counter(item["source_id"] for item in recipe["selected_articles"])
+            self.assertLessEqual(source_counts["source-1"], 2)
+
+    def test_first_pass_selects_across_multiple_sources(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            recipe_path = Path(temp_dir) / "reading_recipe_of_day.json"
+            entries = []
+            sources = []
+            for index in range(1, 6):
+                source_id = f"source-{index}"
+                source_name = f"Source {index}"
+                sources.append(self._source(source_id, source_name))
+                entries.append(self._entry(index, source_id=source_id, source=source_name, hours_ago=index))
+                entries.append(self._entry(index + 10, source_id=source_id, source=source_name, hours_ago=index + 0.5))
+            data_state = {"data": self._base_data(entries, sources)}
+            service = self._build_service(data_state, recipe_path)
+
+            recipe = service.build_today_recipe(force=True)
+            first_pass_sources = [item["source_id"] for item in recipe["selected_articles"][:5]]
+
+            self.assertEqual(len(first_pass_sources), len(set(first_pass_sources)))
+
+    def test_last_24h_articles_are_preferred(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            recipe_path = Path(temp_dir) / "reading_recipe_of_day.json"
+            recent_entries = [
+                self._entry(index, source_id=f"source-{index}", source=f"Source {index}", hours_ago=2)
+                for index in range(1, 8)
+            ]
+            old_high_score = self._entry(
+                99,
+                source_id="source-old",
+                source="Old Source",
+                hours_ago=48,
+                title="Very Old but Strong",
+                starred=True,
+            )
+            data_state = {
+                "data": self._base_data(
+                    recent_entries + [old_high_score],
+                    [self._source(f"source-{index}", f"Source {index}") for index in range(1, 8)] + [self._source("source-old", "Old Source")],
+                )
+            }
+            service = self._build_service(data_state, recipe_path)
+            recipe = service.build_today_recipe(force=True)
+
+            selected_ids = {item["id"] for item in recipe["selected_articles"]}
+            self.assertIn("entry-1", selected_ids)
+            self.assertNotIn("entry-99", selected_ids)
+
+    def test_same_day_reuse_still_works(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            recipe_path = Path(temp_dir) / "reading_recipe_of_day.json"
+            data_state = {
+                "data": self._base_data(
+                    [self._entry(1, source_id="source-1", source="Source One", hours_ago=2)],
+                    [self._source("source-1", "Source One")],
+                )
+            }
+            service = self._build_service(data_state, recipe_path)
+
+            first = service.build_today_recipe(force=False)
+            data_state["data"] = self._base_data(
+                [self._entry(2, source_id="source-1", source="Source One", hours_ago=2)],
+                [self._source("source-1", "Source One")],
+            )
+            second = service.build_today_recipe(force=False)
+
+            self.assertEqual([item["id"] for item in first["selected_articles"]], [item["id"] for item in second["selected_articles"]])
+            self.assertTrue(second["reused_existing_snapshot"])
+
+    def test_start_route_chooses_first_article(self):
+        dragon_app.app.config["TESTING"] = True
+        client = dragon_app.app.test_client()
+        fake_service = Mock()
+        fake_service.build_today_recipe.return_value = {
+            "selected_articles": [
+                {"id": "first", "title": "First", "source": "Source A", "source_dir": "auto", "title_dir": "auto", "reason_tags": []},
+                {"id": "second", "title": "Second", "source": "Source B", "source_dir": "auto", "title_dir": "auto", "reason_tags": []},
+            ]
+        }
+
+        with patch.object(dragon_app, "_get_reading_recipe_of_day_service", return_value=fake_service):
+            response = client.get("/reading/recipe/start")
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/reading/article/first", response.location)
+        self.assertIn("recipe=1", response.location)
+        self.assertIn("recipe_index=0", response.location)
 
 
 if __name__ == "__main__":

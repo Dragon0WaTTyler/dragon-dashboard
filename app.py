@@ -10814,6 +10814,31 @@ def _get_reading_recipe_of_day_service():
     return _READING_RECIPE_OF_DAY_SERVICE
 
 
+def _build_reading_recipe_flow(recipe):
+    recipe = recipe if isinstance(recipe, dict) else {}
+    selected_articles = [dict(article) for article in (recipe.get("selected_articles", []) or []) if isinstance(article, dict)]
+    total = len(selected_articles)
+    for index, article in enumerate(selected_articles):
+        article["recipe_index"] = index
+        article["recipe_article_url"] = url_for("reading_article", entry_id=article.get("id", ""), recipe=1, recipe_index=index)
+        article["recipe_prev_url"] = (
+            url_for("reading_recipe_of_day")
+            if index == 0
+            else url_for("reading_article", entry_id=selected_articles[index - 1].get("id", ""), recipe=1, recipe_index=index - 1)
+        )
+        article["recipe_next_url"] = (
+            url_for("reading_recipe_of_day")
+            if index >= total - 1
+            else url_for("reading_article", entry_id=selected_articles[index + 1].get("id", ""), recipe=1, recipe_index=index + 1)
+        )
+        article["recipe_back_url"] = url_for("reading_recipe_of_day")
+    recipe_flow = dict(recipe)
+    recipe_flow["selected_articles"] = selected_articles
+    recipe_flow["recipe_start_url"] = selected_articles[0]["recipe_article_url"] if selected_articles else url_for("reading_recipe_of_day")
+    recipe_flow["recipe_back_url"] = url_for("reading_recipe_of_day")
+    return recipe_flow
+
+
 def _get_reading_service():
     return _get_reading_runtime_service()
 
@@ -26993,7 +27018,7 @@ def reading():
 @app.route("/reading/recipe", methods=["GET"])
 def reading_recipe_of_day():
     route_started_at = time.monotonic()
-    recipe = _get_reading_recipe_of_day_service().build_today_recipe(force=False)
+    recipe = _build_reading_recipe_flow(_get_reading_recipe_of_day_service().build_today_recipe(force=False))
     recipe_notice = "Recipe rebuilt for today." if str(request.args.get("regenerated", "") or "").strip() else ""
     rendered = render_template(
         "reading_recipe_of_day.html",
@@ -27009,6 +27034,15 @@ def reading_recipe_of_day():
         bool((recipe or {}).get("reused_existing_snapshot", False)),
     )
     return rendered
+
+
+@app.route("/reading/recipe/start", methods=["GET"])
+def reading_recipe_of_day_start():
+    recipe = _build_reading_recipe_flow(_get_reading_recipe_of_day_service().build_today_recipe(force=False))
+    start_url = str((recipe or {}).get("recipe_start_url", "") or "").strip()
+    if not start_url:
+        return redirect(url_for("reading_recipe_of_day"))
+    return redirect(start_url)
 
 
 @app.route("/reading/recipe/regenerate", methods=["POST"])
@@ -27382,6 +27416,51 @@ def reading_article(entry_id):
     next_entry = dict((article_context or {}).get("next_entry", {}) or {}) if isinstance((article_context or {}).get("next_entry"), dict) else None
     article_query = dict((article_context or {}).get("filter_query", {}) or {}) if isinstance((article_context or {}).get("filter_query"), dict) else {}
     reading_return_url = url_for("reading", **article_query)
+    reading_prev_url = url_for("reading_article", entry_id=prev_entry.get("id"), **article_query) if prev_entry else ""
+    reading_next_url = url_for("reading_article", entry_id=next_entry.get("id"), **article_query) if next_entry else ""
+    reading_context_label = " / ".join([value for value in [
+        entry.get("source", ""),
+        reading_category_label(entry.get("category", "")) if entry.get("category") else "",
+        entry.get("topic_display", "") or "",
+        entry.get("status", ""),
+    ] if value])
+    reading_recipe_flow = str(request.args.get("recipe", "") or "").strip().lower() in {"1", "true", "yes", "on"}
+    reading_recipe_index = -1
+    reading_recipe_total = 0
+    reading_recipe_next_url = ""
+    reading_recipe_prev_url = ""
+    if reading_recipe_flow:
+        recipe_payload = _build_reading_recipe_flow(_get_reading_recipe_of_day_service().build_today_recipe(force=False))
+        recipe_articles = list((recipe_payload or {}).get("selected_articles", []) or [])
+        reading_recipe_total = len(recipe_articles)
+        try:
+            reading_recipe_index = int(request.args.get("recipe_index", 0) or 0)
+        except (TypeError, ValueError):
+            reading_recipe_index = 0
+        if reading_recipe_total:
+            reading_recipe_index = max(0, min(reading_recipe_index, reading_recipe_total - 1))
+            current_recipe_article = recipe_articles[reading_recipe_index]
+            reading_return_url = url_for("reading_recipe_of_day")
+            reading_recipe_prev_url = str(current_recipe_article.get("recipe_prev_url", "") or "").strip()
+            reading_recipe_next_url = str(current_recipe_article.get("recipe_next_url", "") or "").strip()
+            reading_prev_url = reading_recipe_prev_url
+            reading_next_url = reading_recipe_next_url
+            article_query = {
+                "recipe": "1",
+                "recipe_index": reading_recipe_index,
+            }
+            reading_context_label = " / ".join([value for value in [
+                "Recipe of the Day",
+                f"{reading_recipe_index + 1} of {reading_recipe_total}",
+                entry.get("source", ""),
+                reading_category_label(entry.get("category", "")) if entry.get("category", "") else "",
+                entry.get("topic_display", "") or "",
+                entry.get("status", ""),
+            ] if value])
+        else:
+            reading_return_url = url_for("reading_recipe_of_day")
+            reading_recipe_prev_url = url_for("reading_recipe_of_day")
+            reading_recipe_next_url = url_for("reading_recipe_of_day")
     render_started_at = time.monotonic()
     app.logger.info(
         "reading_article render_template start entry_id=%s article_html=%s paragraph_count=%s tts_available=%s",
@@ -27412,14 +27491,14 @@ def reading_article(entry_id):
         reading_tts_version=tts_payload["text_hash"],
         article_query=article_query,
         reading_return_url=reading_return_url,
-        reading_prev_url=url_for("reading_article", entry_id=prev_entry.get("id"), **article_query) if prev_entry else "",
-        reading_next_url=url_for("reading_article", entry_id=next_entry.get("id"), **article_query) if next_entry else "",
-        reading_context_label=" / ".join([value for value in [
-            entry.get("source", ""),
-            reading_category_label(entry.get("category", "")) if entry.get("category") else "",
-            entry.get("topic_display", "") or "",
-            entry.get("status", ""),
-        ] if value]),
+        reading_prev_url=reading_prev_url,
+        reading_next_url=reading_next_url,
+        reading_recipe_flow=reading_recipe_flow,
+        reading_recipe_index=reading_recipe_index,
+        reading_recipe_total=reading_recipe_total,
+        reading_recipe_next_url=reading_recipe_next_url,
+        reading_recipe_prev_url=reading_recipe_prev_url,
+        reading_context_label=reading_context_label,
         ai_default_mode="cinematic",
         ai_page_context="general",
     )

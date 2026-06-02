@@ -46,6 +46,7 @@
             {% endif %}
         </div>
         <div class="recipe-controls">
+            <a class="btn" href="{{ recipe_start_url }}"><i data-lucide="play"></i>Start recipe</a>
             <a class="btn" href="{{ reading_return_url }}"><i data-lucide="arrow-left"></i>Back to Reading</a>
             <form method="post" action="{{ url_for('reading_recipe_of_day_regenerate') }}">
                 <button type="submit" class="btn"><i data-lucide="refresh-cw"></i>Rebuild today&apos;s recipe</button>
@@ -93,13 +94,14 @@
                 {% if article.topic_display or article.reason_tags %}
                 <div class="recipe-tags">
                     {% if article.topic_display %}<span class="recipe-tag">{{ article.topic_display }}</span>{% endif %}
+                    {% if article.recipe_phase %}<span class="recipe-tag">{{ article.recipe_phase }}</span>{% endif %}
                     {% for tag in article.reason_tags %}
                     <span class="recipe-tag">{{ tag }}</span>
                     {% endfor %}
                 </div>
                 {% endif %}
                 <div class="recipe-actions">
-                    <a class="btn" href="{{ url_for('reading_article', entry_id=article.id) }}"><i data-lucide="book-open"></i>Open detail</a>
+                    <a class="btn" href="{{ article.recipe_article_url }}"><i data-lucide="book-open"></i>Open detail</a>
                     {% if article.url %}
                     <a class="btn" href="{{ article.url }}" target="_blank" rel="noopener"><i data-lucide="external-link"></i>Open original</a>
                     {% endif %}

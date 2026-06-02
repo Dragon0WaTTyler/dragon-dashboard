@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import copy
 import re
-from collections import Counter
-from datetime import timedelta, timezone
+from collections import Counter, defaultdict
+from datetime import timezone
 
 
 class ReadingRecipeOfDayService:
@@ -173,6 +173,17 @@ class ReadingRecipeOfDayService:
                 keys.append(f"id:{fallback.lower()}")
         return keys
 
+    def _source_key_for_entry(self, entry, source=None):
+        entry = entry if isinstance(entry, dict) else {}
+        source = source if isinstance(source, dict) else {}
+        source_id = str(source.get("id", "") or entry.get("source_id", "") or "").strip()
+        if source_id:
+            return f"id:{source_id.lower()}"
+        source_name = str(source.get("name", "") or entry.get("source", "") or "").strip().lower()
+        if source_name:
+            return f"name:{re.sub(r'[^a-z0-9]+', '-', source_name).strip('-')}"
+        return "unknown"
+
     def _source_quality(self, source):
         source = source if isinstance(source, dict) else {}
         score = 0
@@ -273,6 +284,26 @@ class ReadingRecipeOfDayService:
         tags = [f"interest:{keyword}" for keyword in matches[:3]]
         return score, tags
 
+    def _selection_sort_key(self, candidate):
+        candidate = candidate if isinstance(candidate, dict) else {}
+        published_ts = candidate.get("published_timestamp")
+        added_ts = candidate.get("added_timestamp")
+        published_value = published_ts.timestamp() if published_ts else float("-inf")
+        added_value = added_ts.timestamp() if added_ts else float("-inf")
+        return (
+            -int(candidate.get("score", 0) or 0),
+            -int(candidate.get("freshness_score", 0) or 0),
+            -int(candidate.get("source_quality_score", 0) or 0),
+            -int(candidate.get("interest_score", 0) or 0),
+            -int(candidate.get("star_score", 0) or 0),
+            -self._status_priority(candidate.get("status", "")),
+            -published_value,
+            -added_value,
+            str(candidate.get("source_key", "") or ""),
+            str(candidate.get("title", "") or "").lower(),
+            str(candidate.get("id", "") or ""),
+        )
+
     def score_article_candidate(self, candidate, source=None, keyword_profile=None):
         candidate = candidate if isinstance(candidate, dict) else {}
         source = source if isinstance(source, dict) else {}
@@ -359,6 +390,12 @@ class ReadingRecipeOfDayService:
 
     def _serialize_candidate(self, candidate):
         candidate = candidate if isinstance(candidate, dict) else {}
+        reason_tags = list(candidate.get("reason_tags", []) or [])
+        selection_phase = str(candidate.get("recipe_phase", "") or "").strip()
+        if selection_phase:
+            phase_tag = "source:first-pass" if selection_phase == "source-first-pass" else "source:second-pass"
+            if phase_tag not in reason_tags:
+                reason_tags.append(phase_tag)
         return {
             "id": str(candidate.get("id", "") or "").strip(),
             "title": str(candidate.get("title", "") or "").strip(),
@@ -366,6 +403,7 @@ class ReadingRecipeOfDayService:
             "source": str(candidate.get("source", "") or "").strip() or "Unknown Source",
             "source_dir": str(candidate.get("source_dir", "") or "auto").strip() or "auto",
             "source_id": str(candidate.get("source_id", "") or "").strip(),
+            "source_key": str(candidate.get("source_key", "") or "").strip(),
             "url": str(candidate.get("url", "") or "").strip(),
             "original_url": str(candidate.get("original_url", "") or "").strip(),
             "published_at": str(candidate.get("published_at", "") or "").strip(),
@@ -385,7 +423,8 @@ class ReadingRecipeOfDayService:
             "star_score": int(candidate.get("star_score", 0) or 0),
             "age_hours": None if candidate.get("age_hours") is None else round(float(candidate.get("age_hours", 0.0) or 0.0), 2),
             "is_recent": bool(candidate.get("is_recent", False)),
-            "reason_tags": list(candidate.get("reason_tags", []) or []),
+            "recipe_phase": selection_phase,
+            "reason_tags": reason_tags,
             "score_breakdown": dict(candidate.get("score_breakdown", {}) or {}),
         }
 
@@ -412,6 +451,7 @@ class ReadingRecipeOfDayService:
                 "source": source_name or "Unknown Source",
                 "source_dir": str(entry.get("source_dir", "") or "").strip() or "auto",
                 "source_id": source_id,
+                "source_key": self._source_key_for_entry(entry, source=source),
                 "url": str(entry.get("url", "") or "").strip(),
                 "original_url": str(entry.get("original_url", "") or entry.get("url", "") or "").strip(),
                 "published_at": str(entry.get("published_at", "") or "").strip(),
@@ -438,6 +478,7 @@ class ReadingRecipeOfDayService:
                 "star": candidate["star_score"],
             }
             candidate["sort_key"] = self._candidate_rank_key(candidate)
+            candidate["selection_key"] = self._selection_sort_key(candidate)
             enriched.append(candidate)
 
         deduped = []
@@ -474,13 +515,53 @@ class ReadingRecipeOfDayService:
         else:
             pool = active_candidates + [candidate for candidate in deduped if candidate["status"] in {"archived", "finished"}]
 
-        pool.sort(key=lambda candidate: candidate["sort_key"], reverse=True)
-        selected = pool[: self.MAX_SELECTION]
+        grouped = defaultdict(list)
+        for candidate in pool:
+            grouped[candidate["source_key"]].append(candidate)
+        for group in grouped.values():
+            group.sort(key=lambda candidate: candidate["selection_key"])
+
+        source_order = sorted(
+            grouped.items(),
+            key=lambda item: (
+                item[1][0]["selection_key"],
+                item[0],
+            ),
+        )
+
+        selected = []
+        selected_counts = defaultdict(int)
+        for source_key, group in source_order:
+            if len(selected) >= self.MAX_SELECTION:
+                break
+            best_candidate = group[0]
+            best_candidate["recipe_phase"] = "source-first-pass"
+            selected.append(best_candidate)
+            selected_counts[source_key] += 1
+
+        remaining = []
+        for source_key, group in grouped.items():
+            for candidate in group[1:]:
+                remaining.append(candidate)
+        remaining.sort(key=lambda candidate: candidate["selection_key"])
+        for candidate in remaining:
+            if len(selected) >= self.MAX_SELECTION:
+                break
+            source_key = candidate["source_key"]
+            if selected_counts[source_key] >= 2:
+                continue
+            candidate["recipe_phase"] = "source-second-pass"
+            selected.append(candidate)
+            selected_counts[source_key] += 1
+
+        for index, candidate in enumerate(selected):
+            candidate["recipe_index"] = index
         return {
             "selected_articles": [self._serialize_candidate(candidate) for candidate in selected],
             "candidate_count": len(deduped),
             "active_candidate_count": len(active_candidates),
             "recent_active_count": len(recent_active),
+            "source_count": len(grouped),
             "keyword_profile": keyword_profile,
         }
 
