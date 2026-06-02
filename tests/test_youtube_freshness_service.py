@@ -222,6 +222,284 @@ class YouTubeFreshnessServiceTests(unittest.TestCase):
             self.assertEqual(snapshot["channels"]["c2"]["group_names"], ["Philosophy", "Science"])
             self.assertEqual(snapshot["groups"]["science"]["latest_video"]["video_id"], "v2")
 
+    def test_finalize_snapshot_populates_top_level_channels_from_groups(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            service, _state = self._build_service(temp_dir)
+            raw_snapshot = {
+                "version": 1,
+                "generated_at": FIXED_NOW.isoformat(),
+                "synced_at": FIXED_NOW.isoformat(),
+                "groups": {
+                    "science": {
+                        "group_name": "Science",
+                        "group_key": "science",
+                        "section_name": "Science",
+                        "section_key": "science",
+                        "source_name": "PocketTube",
+                        "imported_at": FIXED_NOW.isoformat(),
+                        "channel_count": 1,
+                        "latest_video_count": 0,
+                        "latest_video": {},
+                        "channels": [
+                            {
+                                "channel_id": "c1",
+                                "channel_title": "Channel One",
+                                "group_names": ["Science"],
+                                "group_key": "science",
+                                "latest_video": {},
+                                "latest_video_id": "",
+                                "published_at": "",
+                                "thumbnail": "",
+                                "url": "",
+                                "reason_tags": ["source-diverse"],
+                            }
+                        ],
+                    }
+                },
+                "channels": {},
+                "errors": [],
+            }
+
+            finalized = service.finalize_snapshot(raw_snapshot)
+
+            self.assertEqual(list(finalized["groups"].keys()), ["science"])
+            self.assertEqual(list(finalized["channels"].keys()), ["c1"])
+            self.assertEqual(finalized["channels"]["c1"]["group_names"], ["Science"])
+            self.assertEqual(finalized["channels"]["c1"]["latest_video"], {})
+
+    def test_finalize_snapshot_merges_duplicate_group_names(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            service, _state = self._build_service(temp_dir)
+            raw_snapshot = {
+                "version": 1,
+                "generated_at": FIXED_NOW.isoformat(),
+                "synced_at": FIXED_NOW.isoformat(),
+                "groups": {
+                    "science": {
+                        "group_name": "Science",
+                        "group_key": "science",
+                        "section_name": "Science",
+                        "section_key": "science",
+                        "source_name": "PocketTube",
+                        "imported_at": FIXED_NOW.isoformat(),
+                        "channel_count": 1,
+                        "latest_video_count": 0,
+                        "latest_video": {},
+                        "channels": [
+                            {
+                                "channel_id": "c1",
+                                "channel_title": "Channel One",
+                                "group_names": ["Science"],
+                                "group_key": "science",
+                                "latest_video": {},
+                                "latest_video_id": "",
+                                "published_at": "",
+                                "thumbnail": "",
+                                "url": "",
+                                "reason_tags": ["source-diverse"],
+                            }
+                        ],
+                    },
+                    "knowledge": {
+                        "group_name": "Knowledge",
+                        "group_key": "knowledge",
+                        "section_name": "Knowledge",
+                        "section_key": "knowledge",
+                        "source_name": "PocketTube",
+                        "imported_at": FIXED_NOW.isoformat(),
+                        "channel_count": 1,
+                        "latest_video_count": 0,
+                        "latest_video": {},
+                        "channels": [
+                            {
+                                "channel_id": "c1",
+                                "channel_title": "Channel One",
+                                "group_names": ["Knowledge"],
+                                "group_key": "knowledge",
+                                "latest_video": {},
+                                "latest_video_id": "",
+                                "published_at": "",
+                                "thumbnail": "",
+                                "url": "",
+                                "reason_tags": ["source-diverse"],
+                            }
+                        ],
+                    },
+                },
+                "channels": {},
+                "errors": [],
+            }
+
+            finalized = service.finalize_snapshot(raw_snapshot)
+
+            self.assertEqual(list(finalized["channels"].keys()), ["c1"])
+            self.assertEqual(finalized["channels"]["c1"]["group_names"], ["Knowledge", "Science"])
+
+    def test_finalize_snapshot_keeps_empty_latest_video_channel_entry(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            service, _state = self._build_service(temp_dir)
+            raw_snapshot = {
+                "version": 1,
+                "generated_at": FIXED_NOW.isoformat(),
+                "synced_at": FIXED_NOW.isoformat(),
+                "groups": {
+                    "science": {
+                        "group_name": "Science",
+                        "group_key": "science",
+                        "section_name": "Science",
+                        "section_key": "science",
+                        "source_name": "PocketTube",
+                        "imported_at": FIXED_NOW.isoformat(),
+                        "channel_count": 1,
+                        "latest_video_count": 0,
+                        "latest_video": {},
+                        "channels": [
+                            {
+                                "channel_id": "c1",
+                                "channel_title": "Channel One",
+                                "group_names": ["Science"],
+                                "group_key": "science",
+                                "latest_video": {},
+                                "latest_video_id": "",
+                                "published_at": "",
+                                "thumbnail": "",
+                                "url": "",
+                                "reason_tags": ["source-diverse"],
+                            }
+                        ],
+                    }
+                },
+                "channels": {},
+                "errors": [],
+            }
+
+            finalized = service.finalize_snapshot(raw_snapshot)
+
+            self.assertEqual(list(finalized["channels"].keys()), ["c1"])
+            self.assertEqual(finalized["channels"]["c1"]["latest_video"], {})
+
+    def test_finalize_snapshot_preserves_real_latest_video(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            service, _state = self._build_service(temp_dir)
+            raw_snapshot = {
+                "version": 1,
+                "generated_at": FIXED_NOW.isoformat(),
+                "synced_at": FIXED_NOW.isoformat(),
+                "groups": {
+                    "science": {
+                        "group_name": "Science",
+                        "group_key": "science",
+                        "section_name": "Science",
+                        "section_key": "science",
+                        "source_name": "PocketTube",
+                        "imported_at": FIXED_NOW.isoformat(),
+                        "channel_count": 1,
+                        "latest_video_count": 1,
+                        "latest_video": {
+                            "video_id": "v1",
+                            "title": "Science One",
+                            "channel_id": "c1",
+                            "channel_name": "Channel One",
+                            "published_at": FIXED_NOW.isoformat(),
+                            "url": "https://www.youtube.com/watch?v=v1",
+                            "thumb": "https://img.youtube.com/vi/v1/hqdefault.jpg",
+                        },
+                        "channels": [
+                            {
+                                "channel_id": "c1",
+                                "channel_title": "Channel One",
+                                "group_names": ["Science"],
+                                "group_key": "science",
+                                "latest_video": {
+                                    "video_id": "v1",
+                                    "title": "Science One",
+                                    "channel_id": "c1",
+                                    "channel_name": "Channel One",
+                                    "published_at": FIXED_NOW.isoformat(),
+                                    "url": "https://www.youtube.com/watch?v=v1",
+                                    "thumb": "https://img.youtube.com/vi/v1/hqdefault.jpg",
+                                },
+                                "latest_video_id": "v1",
+                                "published_at": FIXED_NOW.isoformat(),
+                                "thumbnail": "https://img.youtube.com/vi/v1/hqdefault.jpg",
+                                "url": "https://www.youtube.com/watch?v=v1",
+                                "reason_tags": ["latest-cached"],
+                            }
+                        ],
+                    }
+                },
+                "channels": {},
+                "errors": [],
+            }
+
+            finalized = service.finalize_snapshot(raw_snapshot)
+
+            self.assertEqual(finalized["channels"]["c1"]["latest_video"]["video_id"], "v1")
+            self.assertEqual(finalized["channels"]["c1"]["latest_video_id"], "v1")
+
+    def test_finalize_snapshot_does_not_overwrite_real_latest_with_empty(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            service, _state = self._build_service(temp_dir)
+            raw_snapshot = {
+                "version": 1,
+                "generated_at": FIXED_NOW.isoformat(),
+                "synced_at": FIXED_NOW.isoformat(),
+                "groups": {
+                    "science": {
+                        "group_name": "Science",
+                        "group_key": "science",
+                        "section_name": "Science",
+                        "section_key": "science",
+                        "source_name": "PocketTube",
+                        "imported_at": FIXED_NOW.isoformat(),
+                        "channel_count": 1,
+                        "latest_video_count": 0,
+                        "latest_video": {},
+                        "channels": [
+                            {
+                                "channel_id": "c1",
+                                "channel_title": "Channel One",
+                                "group_names": ["Science"],
+                                "group_key": "science",
+                                "latest_video": {},
+                                "latest_video_id": "",
+                                "published_at": "",
+                                "thumbnail": "",
+                                "url": "",
+                                "reason_tags": ["source-diverse"],
+                            }
+                        ],
+                    }
+                },
+                "channels": {
+                    "c1": {
+                        "channel_title": "Channel One",
+                        "latest_video": {
+                            "video_id": "v-real",
+                            "title": "Real Video",
+                            "channel_id": "c1",
+                            "channel_name": "Channel One",
+                            "published_at": FIXED_NOW.isoformat(),
+                            "url": "https://www.youtube.com/watch?v=v-real",
+                            "thumb": "https://img.youtube.com/vi/v-real/hqdefault.jpg",
+                        },
+                        "group_names": ["Science"],
+                        "latest_video_id": "v-real",
+                        "published_at": FIXED_NOW.isoformat(),
+                        "published_display": "2026-06-02 12:00",
+                        "thumbnail": "https://img.youtube.com/vi/v-real/hqdefault.jpg",
+                        "url": "https://www.youtube.com/watch?v=v-real",
+                        "reason_tags": ["latest-cached"],
+                    }
+                },
+                "errors": [],
+            }
+
+            finalized = service.finalize_snapshot(raw_snapshot)
+
+            self.assertEqual(finalized["channels"]["c1"]["latest_video"]["video_id"], "v-real")
+            self.assertEqual(finalized["channels"]["c1"]["latest_video_id"], "v-real")
+
     def test_registry_fallback_builds_non_empty_snapshot(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             registry_payload = {
@@ -696,6 +974,66 @@ class YouTubeFreshnessServiceTests(unittest.TestCase):
             self.assertEqual(snapshot["channels"], {})
             self.assertTrue(service.snapshot_path.exists())
             self.assertEqual(load_json_file(service.snapshot_path, {}), snapshot)
+
+    def test_sync_snapshot_finalizes_before_save(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            registry_payload = {
+                "latest": {
+                    "source_name": "PocketTube",
+                    "imported_at": FIXED_NOW.isoformat(),
+                    "fingerprint": "registry-save",
+                    "section_count": 1,
+                    "group_count": 1,
+                    "channel_count": 1,
+                    "sections": [
+                        {
+                            "section_name": "Science",
+                            "section_key": "science",
+                            "group_name": "Science",
+                            "group_key": "science",
+                            "tier": "best",
+                            "channel_count": 1,
+                            "channels": [
+                                {
+                                    "channel_name": "UCTDc1RLIHHNjN5WlHoZwXQg",
+                                    "channel_id": "",
+                                    "channel_key": "uctdc1rlihhnjn5wlhozwxqg",
+                                    "section_name": "Science",
+                                    "section_key": "science",
+                                    "group_name": "Science",
+                                    "group_key": "science",
+                                    "tier": "best",
+                                }
+                            ],
+                        }
+                    ],
+                    "channels": [],
+                }
+            }
+            service, _state = self._build_service(
+                temp_dir,
+                imported_sections=[],
+                registry_payload=registry_payload,
+                refresh_mock=Mock(),
+            )
+            saved_payloads = {}
+
+            def capture_save(path, payload):
+                key = str(path)
+                if key.endswith("youtube_latest_snapshot.json"):
+                    saved_payloads["snapshot"] = payload
+                elif key.endswith("youtube_latest_sync_status.json"):
+                    saved_payloads["status"] = payload
+
+            service.save_json_file = Mock(side_effect=capture_save)
+
+            with patch.object(service, "finalize_snapshot", wraps=service.finalize_snapshot) as finalize_mock:
+                snapshot = service.sync_snapshot()
+
+            self.assertGreaterEqual(finalize_mock.call_count, 1)
+            self.assertIn("snapshot", saved_payloads)
+            self.assertGreater(len(saved_payloads["snapshot"].get("channels", {})), 0)
+            self.assertGreater(len(snapshot.get("channels", {})), 0)
 
 
 if __name__ == "__main__":

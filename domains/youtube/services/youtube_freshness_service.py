@@ -74,7 +74,7 @@ class YouTubeFreshnessService:
         return self._normalize_snapshot(payload)
 
     def save_snapshot(self, snapshot):
-        payload = self._normalize_snapshot(snapshot)
+        payload = self.finalize_snapshot(snapshot)
         self.save_json_file(self.snapshot_path, payload)
         return payload
 
@@ -150,9 +150,33 @@ class YouTubeFreshnessService:
             snapshot["groups"][group_key] = group_payload
 
         snapshot["groups"] = dict(sorted(snapshot["groups"].items(), key=lambda item: (item[1].get("group_name", "") or item[0]).lower()))
-        snapshot["channels"] = {}
-        self._populate_top_level_channels_from_groups(snapshot)
-        snapshot["channels"] = dict(sorted(snapshot["channels"].items(), key=lambda item: item[0].lower()))
+        return self.finalize_snapshot(snapshot)
+
+    def finalize_snapshot(self, snapshot):
+        snapshot = self._normalize_snapshot(snapshot)
+        finalized_channels = {}
+        existing_channels = snapshot.get("channels", {})
+        if isinstance(existing_channels, dict):
+            for channel_id, channel in existing_channels.items():
+                normalized_channel = self._normalize_channel_entry(channel, channel_id_hint=channel_id)
+                if normalized_channel:
+                    finalized_channels[normalized_channel["channel_id"]] = normalized_channel
+        groups = snapshot.get("groups", {})
+        if isinstance(groups, dict):
+            for group_key, group in groups.items():
+                if not isinstance(group, dict):
+                    continue
+                group_name = str(group.get("group_name", "") or group.get("section_name", "") or group_key or "").strip() or str(group_key or "").strip()
+                for channel in group.get("channels", []) or []:
+                    if not isinstance(channel, dict):
+                        continue
+                    channel_payload = dict(channel)
+                    group_names = list(channel_payload.get("group_names", []) or [])
+                    if group_name and group_name not in group_names:
+                        group_names.append(group_name)
+                    channel_payload["group_names"] = group_names
+                    self._merge_channel_snapshot(finalized_channels, channel_payload)
+        snapshot["channels"] = dict(sorted(finalized_channels.items(), key=lambda item: item[0].lower()))
         return snapshot
 
     def sync_snapshot(self, scope="", max_channels=200):
@@ -183,6 +207,21 @@ class YouTubeFreshnessService:
         snapshot["generated_at"] = self.current_timestamp()
         snapshot["synced_at"] = self.current_timestamp()
         snapshot["errors"] = errors
+        snapshot = self.finalize_snapshot(snapshot)
+        group_channels_total = sum(len(group.get("channels", []) or []) for group in snapshot.get("groups", {}).values() if isinstance(group, dict))
+        latest_videos_total = sum(
+            1
+            for channel in snapshot.get("channels", {}).values()
+            if isinstance(channel, dict) and isinstance(channel.get("latest_video", {}), dict) and channel["latest_video"].get("video_id")
+        )
+        self.app_logger.info(
+            "youtube_freshness_snapshot_finalized groups=%s group_channels=%s channels=%s latest_videos=%s errors=%s",
+            len(snapshot.get("groups", {}) or {}),
+            group_channels_total,
+            len(snapshot.get("channels", {}) or {}),
+            latest_videos_total,
+            len(errors or []),
+        )
         self.save_snapshot(snapshot)
         self.save_sync_status({
             "status": "completed",
@@ -675,7 +714,9 @@ class YouTubeFreshnessService:
         for channel_id, channel in (payload.get("channels", {}) or {}).items():
             if not isinstance(channel, dict):
                 continue
-            normalized_channel = self._normalize_channel_entry(channel)
+            enriched_channel = dict(channel)
+            enriched_channel.setdefault("channel_id", channel_id)
+            normalized_channel = self._normalize_channel_entry(enriched_channel, channel_id_hint=channel_id)
             if normalized_channel:
                 snapshot["channels"][channel_id] = normalized_channel
         return snapshot
@@ -697,12 +738,19 @@ class YouTubeFreshnessService:
             "reason_tags": list(channel.get("reason_tags", []) or []),
         }
 
-    def _normalize_channel_entry(self, channel):
-        channel_id = str(channel.get("channel_id", "") or "").strip()
+    def _normalize_channel_entry(self, channel, channel_id_hint=""):
+        channel_id = str(channel.get("channel_id", "") or channel_id_hint or "").strip()
+        if not channel_id:
+            inferred_id, inferred_title = self._pockettube_channel_identity(channel)
+            channel_id = str(inferred_id or "").strip()
+            if inferred_title and not str(channel.get("channel_title", "") or "").strip():
+                channel = dict(channel)
+                channel["channel_title"] = inferred_title
         if not channel_id:
             return None
         latest_video = channel.get("latest_video", {})
         return {
+            "channel_id": channel_id,
             "channel_title": str(channel.get("channel_title", "") or "").strip(),
             "latest_video": latest_video if isinstance(latest_video, dict) else {},
             "group_names": list(dict.fromkeys([str(name or "").strip() for name in channel.get("group_names", []) or [] if str(name or "").strip()])),
