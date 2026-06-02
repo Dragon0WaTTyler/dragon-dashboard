@@ -135,7 +135,7 @@ class YouTubeFreshnessService:
                 group_channels.append(channel_payload)
                 self._merge_channel_snapshot(snapshot["channels"], channel_payload)
 
-            group_payload = {
+                group_payload = {
                 "group_name": group_name,
                 "group_key": group_key,
                 "section_name": self.canonical_section_name(section.get("section_name", "") or group_name),
@@ -150,6 +150,8 @@ class YouTubeFreshnessService:
             snapshot["groups"][group_key] = group_payload
 
         snapshot["groups"] = dict(sorted(snapshot["groups"].items(), key=lambda item: (item[1].get("group_name", "") or item[0]).lower()))
+        snapshot["channels"] = {}
+        self._populate_top_level_channels_from_groups(snapshot)
         snapshot["channels"] = dict(sorted(snapshot["channels"].items(), key=lambda item: item[0].lower()))
         return snapshot
 
@@ -589,16 +591,45 @@ class YouTubeFreshnessService:
                 existing_groups.append(group_name)
         current_sort = self._published_sort_key(existing.get("published_at", ""))
         next_sort = self._published_sort_key(channel_payload.get("published_at", ""))
-        if next_sort >= current_sort:
+        existing_latest = existing.get("latest_video", {}) if isinstance(existing.get("latest_video", {}), dict) else {}
+        new_latest = channel_payload.get("latest_video", {}) if isinstance(channel_payload.get("latest_video", {}), dict) else {}
+        existing_has_latest = bool(existing_latest.get("video_id"))
+        new_has_latest = bool(new_latest.get("video_id"))
+        if new_has_latest and (not existing_has_latest or next_sort >= current_sort):
             existing["channel_title"] = channel_payload.get("channel_title", existing.get("channel_title", ""))
-            existing["latest_video"] = dict(channel_payload.get("latest_video", {})) if channel_payload.get("latest_video") else {}
+            existing["latest_video"] = dict(new_latest)
             existing["latest_video_id"] = channel_payload.get("latest_video_id", "")
             existing["published_at"] = channel_payload.get("published_at", "")
             existing["published_display"] = channel_payload.get("published_display", "")
             existing["thumbnail"] = channel_payload.get("thumbnail", "")
             existing["url"] = channel_payload.get("url", "")
             existing["reason_tags"] = list(channel_payload.get("reason_tags", []) or [])
+        elif not existing_has_latest and not new_has_latest:
+            existing["channel_title"] = channel_payload.get("channel_title", existing.get("channel_title", ""))
         existing["group_names"] = sorted(dict.fromkeys(existing_groups), key=lambda value: str(value or "").lower())
+
+    def _populate_top_level_channels_from_groups(self, snapshot):
+        groups = (snapshot or {}).get("groups", {})
+        if not isinstance(groups, dict):
+            return
+        channels_snapshot = (snapshot or {}).setdefault("channels", {})
+        if not isinstance(channels_snapshot, dict):
+            snapshot["channels"] = {}
+            channels_snapshot = snapshot["channels"]
+        for group_key, group in groups.items():
+            if not isinstance(group, dict):
+                continue
+            group_name = str(group.get("group_name", "") or group.get("section_name", "") or group_key or "").strip() or str(group_key or "").strip()
+            for channel in group.get("channels", []) or []:
+                if not isinstance(channel, dict):
+                    continue
+                channel_payload = dict(channel)
+                channel_payload.setdefault("group_names", [])
+                group_names = list(channel_payload.get("group_names", []) or [])
+                if group_name and group_name not in group_names:
+                    group_names.append(group_name)
+                channel_payload["group_names"] = group_names
+                self._merge_channel_snapshot(channels_snapshot, channel_payload)
 
     def _latest_video_for_channel(self, channel_id):
         cache_key = str(channel_id or "").strip()
