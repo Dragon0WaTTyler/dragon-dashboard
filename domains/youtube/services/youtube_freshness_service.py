@@ -255,7 +255,27 @@ class YouTubeFreshnessService:
             self.save_sync_status(status)
             return {"ok": True, "status": "failed", "sync_status": status}
 
-        snapshot = self.refresh_snapshot_from_github()
+        try:
+            snapshot = self.refresh_snapshot_from_github()
+        except Exception as exc:
+            error_message = self._github_snapshot_download_error_message(exc)
+            status.update({
+                "status": "failed",
+                "last_error": error_message,
+                "completed_at": self.current_timestamp(),
+                "updated_at": self.current_timestamp(),
+                "source": "github_actions",
+                "run_id": str(payload.get("run_id", "") or status.get("run_id", "") or "").strip(),
+                "run_url": str(payload.get("run_url", "") or status.get("run_url", "") or "").strip(),
+            })
+            self.save_sync_status(status)
+            return {
+                "ok": False,
+                "status": "failed",
+                "error": error_message,
+                "sync_status": status,
+            }
+
         status.update({
             "status": "completed",
             "last_error": "",
@@ -581,3 +601,13 @@ class YouTubeFreshnessService:
         if parsed.tzinfo is None:
             parsed = parsed.replace(tzinfo=timezone.utc)
         return int(parsed.timestamp())
+
+    def _github_snapshot_download_error_message(self, exc):
+        message = str(exc or "").strip()
+        if "GitHub snapshot file missing:" in message:
+            return message
+        if "GitHub returned status 404" in message or "404" in message:
+            return "GitHub snapshot file missing: cache/youtube_latest_snapshot.json"
+        if message:
+            return f"Download failed: {message}"
+        return "Download failed: unable to refresh youtube_latest_snapshot.json"

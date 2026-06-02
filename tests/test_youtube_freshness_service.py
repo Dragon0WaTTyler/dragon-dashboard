@@ -326,6 +326,76 @@ class YouTubeFreshnessServiceTests(unittest.TestCase):
             self.assertEqual(context["groups"][0]["group_name"], "Science")
             self.assertEqual(context["sync_status"]["status"], "failed")
 
+    def test_failed_payload_does_not_download_and_marks_failed(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            github_refresh_mock = Mock()
+            service, _state = self._build_service(temp_dir, github_refresh_mock=github_refresh_mock)
+
+            result = service.ingest_github_snapshot_update({
+                "status": "failed",
+                "error": "workflow failed",
+                "run_id": "run-1",
+                "run_url": "https://example.test/run-1",
+            })
+
+            self.assertTrue(result["ok"])
+            self.assertEqual(result["status"], "failed")
+            self.assertEqual(result["sync_status"]["status"], "failed")
+            self.assertIn("workflow failed", result["sync_status"]["last_error"])
+            github_refresh_mock.assert_not_called()
+
+    def test_completed_payload_404_keeps_local_snapshot_and_marks_failed(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            github_refresh_mock = Mock(side_effect=RuntimeError("GitHub snapshot file missing: cache/youtube_latest_snapshot.json"))
+            service, _state = self._build_service(temp_dir, github_refresh_mock=github_refresh_mock)
+            original_snapshot = {
+                "version": 1,
+                "generated_at": FIXED_NOW.isoformat(),
+                "synced_at": FIXED_NOW.isoformat(),
+                "groups": {
+                    "science": {
+                        "group_name": "Science",
+                        "group_key": "science",
+                        "section_name": "Science",
+                        "section_key": "science",
+                        "source_name": "PocketTube",
+                        "imported_at": FIXED_NOW.isoformat(),
+                        "channel_count": 1,
+                        "latest_video_count": 1,
+                        "latest_video": {
+                            "video_id": "v1",
+                            "title": "Cached Video",
+                            "channel_id": "c1",
+                            "channel_name": "Channel One",
+                            "published_at": FIXED_NOW.isoformat(),
+                            "url": "https://www.youtube.com/watch?v=v1",
+                        },
+                        "channels": [],
+                    }
+                },
+                "channels": {},
+                "errors": [],
+            }
+            save_json_file(service.snapshot_path, original_snapshot)
+
+            result = service.ingest_github_snapshot_update({
+                "status": "completed",
+                "run_id": "run-2",
+                "run_url": "https://example.test/run-2",
+            })
+
+            self.assertFalse(result["ok"])
+            self.assertEqual(result["status"], "failed")
+            self.assertEqual(result["sync_status"]["status"], "failed")
+            self.assertEqual(result["sync_status"]["run_id"], "run-2")
+            self.assertEqual(result["sync_status"]["run_url"], "https://example.test/run-2")
+            self.assertEqual(
+                result["sync_status"]["last_error"],
+                "GitHub snapshot file missing: cache/youtube_latest_snapshot.json",
+            )
+            self.assertEqual(load_json_file(service.snapshot_path, {}), original_snapshot)
+            github_refresh_mock.assert_called_once()
+
     def test_get_page_builder_does_not_invoke_remote_fetch_method(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             refresh_mock = Mock()
@@ -400,8 +470,22 @@ class YouTubeFreshnessServiceTests(unittest.TestCase):
                 headers={"X-Dragon-GitHub-Secret": "test"},
             )
 
-        self.assertEqual(response.status_code, 403)
-        mock_service.ingest_github_snapshot_update.assert_not_called()
+            self.assertEqual(response.status_code, 403)
+            mock_service.ingest_github_snapshot_update.assert_not_called()
+
+    def test_empty_sync_snapshot_writes_valid_empty_snapshot(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            service, _state = self._build_service(temp_dir, imported_sections=[], latest_cache={})
+
+            snapshot = service.sync_snapshot(scope="")
+
+            self.assertEqual(snapshot["version"], 1)
+            self.assertTrue(snapshot["generated_at"])
+            self.assertTrue(snapshot["synced_at"])
+            self.assertEqual(snapshot["groups"], {})
+            self.assertEqual(snapshot["channels"], {})
+            self.assertTrue(service.snapshot_path.exists())
+            self.assertEqual(load_json_file(service.snapshot_path, {}), snapshot)
 
 
 if __name__ == "__main__":

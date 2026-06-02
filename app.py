@@ -27446,6 +27446,8 @@ def trigger_youtube_freshness_github_actions_sync(scope=""):
 
 def refresh_youtube_freshness_snapshot_from_github():
     response = requests.get(YOUTUBE_SYNC_GITHUB_RAW_SNAPSHOT_URL, timeout=15)
+    if response.status_code == 404:
+        raise RuntimeError("GitHub snapshot file missing: cache/youtube_latest_snapshot.json")
     if response.status_code != 200:
         raise RuntimeError(f"Download failed: GitHub returned status {response.status_code}")
     payload = response.json()
