@@ -24,6 +24,7 @@ jobs:
     env:
       YOUTUBE_FRESHNESS_SCOPE: ${{ github.event.inputs.scope || '' }}
       DRAGON_GITHUB_WEBHOOK_SECRET: ${{ secrets.DRAGON_GITHUB_WEBHOOK_SECRET }}
+      YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
 
     steps:
       - name: Checkout
@@ -41,6 +42,15 @@ jobs:
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then
             pip install -r requirements.txt
+          fi
+
+      - name: Check YouTube API key
+        shell: bash
+        run: |
+          if [ -n "${YOUTUBE_API_KEY:-}" ]; then
+            echo "YOUTUBE_API_KEY present: yes"
+          else
+            echo "YOUTUBE_API_KEY present: no"
           fi
 
       - name: Sync YouTube freshness
