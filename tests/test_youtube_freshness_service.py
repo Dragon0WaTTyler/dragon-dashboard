@@ -1,3 +1,4 @@
+import json
 import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
@@ -43,6 +44,17 @@ class _FakeRequestsModule:
 class YouTubeFreshnessServiceTests(unittest.TestCase):
     def _timestamp(self, hours_ago):
         return (FIXED_NOW - timedelta(hours=hours_ago)).isoformat()
+
+    def _group_video(self, video_id, *, channel_id="c1", channel_name="Channel One", hours_ago=1, title=None):
+        return {
+            "video_id": video_id,
+            "title": title or f"Video {video_id}",
+            "channel_id": channel_id,
+            "channel_name": channel_name,
+            "published_at": self._timestamp(hours_ago),
+            "url": f"https://www.youtube.com/watch?v={video_id}",
+            "thumb": f"https://img.youtube.com/vi/{video_id}/hqdefault.jpg",
+        }
 
     def _build_service(
         self,
@@ -1135,6 +1147,413 @@ class YouTubeFreshnessServiceTests(unittest.TestCase):
             self.assertEqual(saved_snapshot["channels"]["c1"]["latest_video"]["video_id"], "v1")
             self.assertEqual(snapshot["groups"]["science"]["latest_video_count"], 1)
 
+    def test_sync_snapshot_caps_group_videos_at_200(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            imported_sections = [
+                {
+                    "section_name": "Science",
+                    "section_key": "science",
+                    "group_name": "Science",
+                    "group_key": "science",
+                    "channels": [
+                        {"channel_id": "c1", "channel_name": "Channel One"},
+                        {"channel_id": "c2", "channel_name": "Channel Two"},
+                    ],
+                }
+            ]
+            latest_items = [
+                self._group_video(
+                    f"v{index:03d}",
+                    channel_id="c1" if index % 2 == 0 else "c2",
+                    channel_name="Channel One" if index % 2 == 0 else "Channel Two",
+                    hours_ago=index,
+                )
+                for index in range(250)
+            ]
+            service, _state = self._build_service(
+                temp_dir,
+                imported_sections=imported_sections,
+                refresh_mock=Mock(return_value={
+                    "group_name": "Science",
+                    "section_name": "Science",
+                    "channels_scanned": 2,
+                    "videos_collected": 250,
+                    "videos_stored": 200,
+                    "errors": [],
+                    "fetched_at": FIXED_NOW.isoformat(),
+                    "latest_items": latest_items,
+                }),
+            )
+
+            snapshot = service.sync_snapshot()
+
+            self.assertEqual(len(snapshot["groups"]["science"]["videos"]), 200)
+            self.assertEqual(snapshot["groups"]["science"]["latest_video_count"], 200)
+            self.assertEqual(snapshot["groups"]["science"]["videos"][0]["video_id"], "v000")
+            self.assertEqual(snapshot["groups"]["science"]["videos"][-1]["video_id"], "v199")
+            self.assertEqual(snapshot["groups"]["science"]["diagnostics"]["videos_collected"], 250)
+            self.assertEqual(snapshot["groups"]["science"]["diagnostics"]["videos_stored"], 200)
+
+    def test_sync_snapshot_dedupes_duplicate_group_videos(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            imported_sections = [
+                {
+                    "section_name": "News",
+                    "section_key": "news",
+                    "group_name": "News",
+                    "group_key": "news",
+                    "channels": [
+                        {"channel_id": "c1", "channel_name": "Desk One"},
+                        {"channel_id": "c2", "channel_name": "Desk Two"},
+                    ],
+                }
+            ]
+            service, _state = self._build_service(
+                temp_dir,
+                imported_sections=imported_sections,
+                refresh_mock=Mock(return_value={
+                    "group_name": "News",
+                    "section_name": "News",
+                    "channels_scanned": 2,
+                    "videos_collected": 3,
+                    "videos_stored": 2,
+                    "latest_items": [
+                        self._group_video("dup-1", channel_id="c1", channel_name="Desk One", hours_ago=3, title="Older copy"),
+                        self._group_video("dup-1", channel_id="c2", channel_name="Desk Two", hours_ago=1, title="Newer copy"),
+                        self._group_video("uniq-1", channel_id="c1", channel_name="Desk One", hours_ago=2),
+                    ],
+                }),
+            )
+
+            snapshot = service.sync_snapshot()
+
+            self.assertEqual(len(snapshot["groups"]["news"]["videos"]), 2)
+            self.assertEqual(snapshot["groups"]["news"]["videos"][0]["video_id"], "dup-1")
+            self.assertEqual(snapshot["groups"]["news"]["videos"][0]["title"], "Newer copy")
+            self.assertEqual(snapshot["groups"]["news"]["latest_video"]["video_id"], "dup-1")
+
+    def test_sync_snapshot_keeps_group_videos_when_under_limit(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            imported_sections = [
+                {
+                    "section_name": "Philosophy",
+                    "section_key": "philosophy",
+                    "group_name": "Philosophy",
+                    "group_key": "philosophy",
+                    "channels": [
+                        {"channel_id": "c1", "channel_name": "Thinker"},
+                    ],
+                }
+            ]
+            service, _state = self._build_service(
+                temp_dir,
+                imported_sections=imported_sections,
+                refresh_mock=Mock(return_value={
+                    "group_name": "Philosophy",
+                    "section_name": "Philosophy",
+                    "channels_scanned": 1,
+                    "videos_collected": 3,
+                    "videos_stored": 3,
+                    "latest_items": [
+                        self._group_video("p1", channel_id="c1", channel_name="Thinker", hours_ago=1),
+                        self._group_video("p2", channel_id="c1", channel_name="Thinker", hours_ago=2),
+                        self._group_video("p3", channel_id="c1", channel_name="Thinker", hours_ago=3),
+                    ],
+                }),
+            )
+
+            snapshot = service.sync_snapshot()
+
+            self.assertEqual(len(snapshot["groups"]["philosophy"]["videos"]), 3)
+            self.assertEqual(snapshot["groups"]["philosophy"]["latest_video_count"], 3)
+
+    def test_build_page_context_uses_group_video_snapshot_shape(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            service, _state = self._build_service(temp_dir)
+            save_json_file(service.snapshot_path, {
+                "version": 1,
+                "generated_at": FIXED_NOW.isoformat(),
+                "synced_at": FIXED_NOW.isoformat(),
+                "group_video_limit": 200,
+                "all_feed_video_limit": 200,
+                "groups": {
+                    "news": {
+                        "group_name": "News",
+                        "group_key": "news",
+                        "section_name": "News",
+                        "section_key": "news",
+                        "source_name": "PocketTube",
+                        "imported_at": FIXED_NOW.isoformat(),
+                        "channel_count": 2,
+                        "latest_video_count": 2,
+                        "latest_video": self._group_video("n1", channel_id="c1", channel_name="Desk One", hours_ago=1),
+                        "channels": [],
+                        "videos": [
+                            self._group_video("n1", channel_id="c1", channel_name="Desk One", hours_ago=1),
+                            self._group_video("n2", channel_id="c2", channel_name="Desk Two", hours_ago=2),
+                        ],
+                        "diagnostics": {
+                            "group_key": "news",
+                            "group_name": "News",
+                            "channels_scanned": 2,
+                            "videos_collected": 2,
+                            "videos_stored": 2,
+                            "errors": [],
+                            "generated_at": FIXED_NOW.isoformat(),
+                            "synced_at": FIXED_NOW.isoformat(),
+                        },
+                    }
+                },
+                "channels": {},
+                "errors": [],
+            })
+
+            context = service.build_page_context_for_filter("news")
+
+            self.assertEqual(context["feed_video_count"], 2)
+            self.assertEqual(context["feed_video_count_total"], 2)
+            self.assertEqual(context["feed_videos"][0]["video_id"], "n1")
+            self.assertEqual(context["selected_filter_key"], "news")
+
+    def test_build_pockettube_coverage_report_marks_group_without_channels(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            service, _state = self._build_service(temp_dir)
+            save_json_file(service.snapshot_path, {
+                "version": 1,
+                "generated_at": FIXED_NOW.isoformat(),
+                "synced_at": FIXED_NOW.isoformat(),
+                "group_video_limit": 200,
+                "all_feed_video_limit": 200,
+                "groups": {
+                    "archive": {
+                        "group_name": "Archive",
+                        "group_key": "archive",
+                        "section_name": "Archive",
+                        "section_key": "archive",
+                        "source_name": "PocketTube",
+                        "imported_at": FIXED_NOW.isoformat(),
+                        "channel_count": 0,
+                        "latest_video_count": 0,
+                        "latest_video": {},
+                        "channels": [],
+                        "videos": [],
+                        "diagnostics": {
+                            "group_key": "archive",
+                            "group_name": "Archive",
+                            "channels_scanned": 0,
+                            "videos_collected": 0,
+                            "videos_stored": 0,
+                            "errors": [],
+                            "generated_at": FIXED_NOW.isoformat(),
+                            "synced_at": FIXED_NOW.isoformat(),
+                        },
+                    }
+                },
+                "channels": {},
+                "errors": [],
+            })
+
+            report = service.build_pockettube_coverage_report()
+
+            self.assertEqual(report["summary"]["group_count"], 1)
+            self.assertEqual(report["groups"][0]["group_key"], "archive")
+            self.assertEqual(report["groups"][0]["reason"], "no_channels_mapped")
+
+    def test_build_pockettube_coverage_report_explains_news_snapshot_gap(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            latest_cache = {
+                "c1": {
+                    "uploads_playlist_id": "UUc1",
+                    "latest_source": "playlist_items",
+                    "latest_video": {
+                        "video_id": "v1",
+                        "title": "News One",
+                        "channel_id": "c1",
+                        "channel_name": "News Channel",
+                        "published_at": FIXED_NOW.isoformat(),
+                        "url": "https://www.youtube.com/watch?v=v1",
+                    },
+                },
+                "c2": {
+                    "uploads_playlist_id": "UUc2",
+                    "latest_source": "playlist_items",
+                    "latest_video": {
+                        "video_id": "v2",
+                        "title": "News Two",
+                        "channel_id": "c2",
+                        "channel_name": "News Desk",
+                        "published_at": FIXED_NOW.isoformat(),
+                        "url": "https://www.youtube.com/watch?v=v2",
+                    },
+                },
+            }
+            imported_sections = [
+                {
+                    "section_name": "News",
+                    "section_key": "news",
+                    "group_name": "News",
+                    "group_key": "news",
+                    "channels": [
+                        {"channel_id": "c1", "channel_name": "News Channel"},
+                        {"channel_id": "c2", "channel_name": "News Desk"},
+                    ],
+                }
+            ]
+            service, _state = self._build_service(
+                temp_dir,
+                imported_sections=imported_sections,
+                latest_cache=latest_cache,
+            )
+            save_json_file(service.snapshot_path, {
+                "version": 1,
+                "generated_at": FIXED_NOW.isoformat(),
+                "synced_at": FIXED_NOW.isoformat(),
+                "group_video_limit": 200,
+                "all_feed_video_limit": 200,
+                "groups": {
+                    "news": {
+                        "group_name": "News",
+                        "group_key": "news",
+                        "section_name": "News",
+                        "section_key": "news",
+                        "source_name": "PocketTube",
+                        "imported_at": FIXED_NOW.isoformat(),
+                        "channel_count": 2,
+                        "latest_video_count": 24,
+                        "latest_video": {
+                            "video_id": "v1",
+                            "title": "News One",
+                            "channel_id": "c1",
+                            "channel_name": "News Channel",
+                            "published_at": FIXED_NOW.isoformat(),
+                            "url": "https://www.youtube.com/watch?v=v1",
+                        },
+                        "channels": [
+                            {
+                                "channel_id": "c1",
+                                "channel_title": "News Channel",
+                                "group_names": ["News"],
+                                "latest_video": {
+                                    "video_id": "v1",
+                                    "title": "News One",
+                                    "channel_id": "c1",
+                                    "channel_name": "News Channel",
+                                    "published_at": FIXED_NOW.isoformat(),
+                                    "url": "https://www.youtube.com/watch?v=v1",
+                                },
+                                "latest_video_id": "v1",
+                                "published_at": FIXED_NOW.isoformat(),
+                                "published_display": "2026-06-02 12:00",
+                                "thumbnail": "https://img.youtube.com/vi/v1/hqdefault.jpg",
+                                "url": "https://www.youtube.com/watch?v=v1",
+                                "reason_tags": ["latest-cached"],
+                            },
+                            {
+                                "channel_id": "c2",
+                                "channel_title": "News Desk",
+                                "group_names": ["News"],
+                                "latest_video": {
+                                    "video_id": "v2",
+                                    "title": "News Two",
+                                    "channel_id": "c2",
+                                    "channel_name": "News Desk",
+                                    "published_at": FIXED_NOW.isoformat(),
+                                    "url": "https://www.youtube.com/watch?v=v2",
+                                },
+                                "latest_video_id": "v2",
+                                "published_at": FIXED_NOW.isoformat(),
+                                "published_display": "2026-06-02 12:00",
+                                "thumbnail": "https://img.youtube.com/vi/v2/hqdefault.jpg",
+                                "url": "https://www.youtube.com/watch?v=v2",
+                                "reason_tags": ["latest-cached"],
+                            },
+                        ],
+                        "videos": [],
+                        "diagnostics": {
+                            "group_key": "news",
+                            "group_name": "News",
+                            "channels_scanned": 2,
+                            "videos_collected": 0,
+                            "videos_stored": 0,
+                            "errors": [],
+                            "generated_at": FIXED_NOW.isoformat(),
+                            "synced_at": FIXED_NOW.isoformat(),
+                        },
+                    }
+                },
+                "channels": {},
+                "errors": [],
+            })
+
+            report = service.build_pockettube_coverage_report()
+
+            news = report["groups"][0]
+            self.assertEqual(news["group_key"], "news")
+            self.assertEqual(news["channels_assigned"], 2)
+            self.assertEqual(news["upload_playlist_ids"], ["UUc1", "UUc2"])
+            self.assertEqual(news["videos_fetched_before_dedupe"], 0)
+            self.assertEqual(news["videos_stored_after_dedupe"], 0)
+            self.assertEqual(news["reason"], "empty_uploads")
+            self.assertTrue(any("group video list" in note for note in news["notes"]))
+
+    def test_build_pockettube_coverage_report_prefers_fetch_error_over_missing_upload_playlist(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            service, _state = self._build_service(temp_dir)
+            save_json_file(service.snapshot_path, {
+                "version": 1,
+                "generated_at": FIXED_NOW.isoformat(),
+                "synced_at": FIXED_NOW.isoformat(),
+                "group_video_limit": 200,
+                "all_feed_video_limit": 200,
+                "groups": {
+                    "news": {
+                        "group_name": "News",
+                        "group_key": "news",
+                        "section_name": "News",
+                        "section_key": "news",
+                        "source_name": "PocketTube",
+                        "imported_at": FIXED_NOW.isoformat(),
+                        "channel_count": 1,
+                        "latest_video_count": 0,
+                        "latest_video": {},
+                        "channels": [
+                            {
+                                "channel_id": "UC1",
+                                "channel_title": "Channel One",
+                                "group_names": ["News"],
+                                "latest_video": {},
+                                "latest_video_id": "",
+                                "published_at": "",
+                                "published_display": "",
+                                "thumbnail": "",
+                                "url": "",
+                                "reason_tags": [],
+                            }
+                        ],
+                        "videos": [],
+                        "diagnostics": {
+                            "group_key": "news",
+                            "group_name": "News",
+                            "channels_scanned": 1,
+                            "channels_with_upload_playlist": 0,
+                            "channels_missing_upload_playlist": 1,
+                            "videos_collected": 0,
+                            "videos_stored": 0,
+                            "upload_playlist_ids": [],
+                            "errors": ["UC1: fetch_error - youtube_service_unavailable"],
+                            "generated_at": FIXED_NOW.isoformat(),
+                            "synced_at": FIXED_NOW.isoformat(),
+                        },
+                    }
+                },
+                "channels": {},
+                "errors": [],
+            })
+
+            report = service.build_pockettube_coverage_report()
+
+            self.assertEqual(report["groups"][0]["reason"], "fetch_error")
+
     def test_finalize_snapshot_populates_top_level_channels_from_groups(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             service, _state = self._build_service(temp_dir)
@@ -2148,6 +2567,323 @@ class YouTubeFreshnessServiceTests(unittest.TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertIn("/pockettube", response.location)
         mock_service.refresh_local_snapshot_from_github.assert_called_once_with()
+
+    def test_refresh_pockettube_section_latest_uploads_keeps_more_than_first_50(self):
+        videos = [
+            {
+                "video_id": f"v{index:03d}",
+                "title": f"Video {index:03d}",
+                "channel_id": "c1",
+                "channel_name": "Channel One",
+                "published_at": (FIXED_NOW - timedelta(minutes=index)).isoformat(),
+                "url": f"https://www.youtube.com/watch?v=v{index:03d}",
+                "thumb": f"https://img.youtube.com/vi/v{index:03d}/hqdefault.jpg",
+            }
+            for index in range(120)
+        ]
+        pockettube_context = {
+            "group_name": "News",
+            "group_key": "news",
+            "channels": [{"channel_id": "c1", "channel_name": "Channel One"}],
+        }
+
+        with patch.object(dragon_app, "_pockettube_section_membership_context", return_value=pockettube_context), \
+             patch.object(dragon_app, "fetch_youtube_channel_group_feed_videos", return_value=videos), \
+             patch.object(dragon_app, "clear_persisted_youtube_section_feed_cache"), \
+             patch.object(dragon_app, "_youtube_trace"), \
+             patch.object(dragon_app, "build_youtube_channel_video_summary", side_effect=lambda video: dict(video)):
+            result = dragon_app.refresh_pockettube_section_latest_uploads("News", admin_data={})
+
+        self.assertEqual(result["videos_stored"], 120)
+        self.assertEqual(len(result["latest_items"]), 120)
+        self.assertEqual(result["latest_items"][0]["video_id"], "v000")
+        self.assertEqual(result["latest_items"][-1]["video_id"], "v119")
+
+    def test_refresh_pockettube_section_latest_uploads_handles_channel_error_without_killing_group(self):
+        pockettube_context = {
+            "group_name": "Tech",
+            "group_key": "tech",
+            "channels": [
+                {"channel_id": "c1", "channel_name": "Channel One"},
+                {"channel_id": "c2", "channel_name": "Channel Two"},
+            ],
+        }
+
+        def fetch_side_effect(channel_id, channel_name="", limit=4, uploads_playlist_id="", **_kwargs):
+            if channel_id == "c2":
+                raise RuntimeError("boom")
+            return [
+                {
+                    "video_id": "ok-1",
+                    "title": "Okay One",
+                    "channel_id": "c1",
+                    "channel_name": "Channel One",
+                    "published_at": FIXED_NOW.isoformat(),
+                    "url": "https://www.youtube.com/watch?v=ok-1",
+                    "thumb": "https://img.youtube.com/vi/ok-1/hqdefault.jpg",
+                }
+            ]
+
+        with patch.object(dragon_app, "_pockettube_section_membership_context", return_value=pockettube_context), \
+             patch.object(dragon_app, "_resolve_youtube_channel_upload_playlist_ids", return_value={
+                 "resolved": {"c1": "UU1", "c2": "UU2"},
+                 "diagnostics": [],
+                 "missing": [],
+                 "channel_count": 2,
+                 "resolved_count": 2,
+                 "missing_count": 0,
+             }), \
+             patch.object(dragon_app, "fetch_youtube_channel_group_feed_videos", side_effect=fetch_side_effect), \
+             patch.object(dragon_app, "clear_persisted_youtube_section_feed_cache"), \
+             patch.object(dragon_app, "_youtube_trace"), \
+             patch.object(dragon_app, "build_youtube_channel_video_summary", side_effect=lambda video: dict(video)):
+            result = dragon_app.refresh_pockettube_section_latest_uploads("Tech", admin_data={})
+
+        self.assertEqual(result["videos_stored"], 1)
+        self.assertEqual(len(result["latest_items"]), 1)
+        self.assertEqual(result["latest_items"][0]["video_id"], "ok-1")
+        self.assertEqual(result["channels_scanned"], 2)
+        self.assertEqual(len(result["errors"]), 1)
+        self.assertIn("c2", result["errors"][0])
+
+    def test_batch_upload_playlist_resolution_resolves_and_persists_cached_ids(self):
+        responses = {
+            ("UC1", "UC2"): {
+                "items": [
+                    {
+                        "id": "UC1",
+                        "snippet": {"title": "Channel One"},
+                        "contentDetails": {"relatedPlaylists": {"uploads": "UU1"}},
+                    },
+                    {
+                        "id": "UC2",
+                        "snippet": {"title": "Channel Two"},
+                        "contentDetails": {"relatedPlaylists": {"uploads": "UU2"}},
+                    },
+                ]
+            }
+        }
+        cache_data = {}
+
+        def fake_get(url, params=None, timeout=15):
+            if "channels" not in url:
+                raise AssertionError(f"unexpected url: {url}")
+            self.assertEqual(params.get("part"), "contentDetails,snippet")
+            self.assertEqual(params.get("key"), "test-key")
+            channel_ids = tuple(sorted((params.get("id") or "").split(",")))
+            payload = responses.get(channel_ids)
+            if payload is None:
+                raise AssertionError(f"unexpected channel batch: {channel_ids}")
+            return Mock(status_code=200, json=Mock(return_value=payload), text=json.dumps(payload))
+
+        with patch.object(dragon_app, "YOUTUBE_API_KEY", "test-key"), \
+             patch.object(dragon_app.requests, "get", side_effect=fake_get):
+            result = dragon_app._resolve_youtube_channel_upload_playlist_ids(["UC1", "UC2"], cache_data=cache_data, force_refresh=True)
+
+        self.assertEqual(result["resolved"], {"UC1": "UU1", "UC2": "UU2"})
+        self.assertEqual(result["resolved_count"], 2)
+        self.assertEqual(result["missing_count"], 0)
+        self.assertEqual(cache_data["youtube_channel_latest_uploads"]["uc1"]["data"]["uploads_playlist_id"], "UU1")
+        self.assertEqual(cache_data["youtube_channel_latest_uploads"]["uc2"]["data"]["uploads_playlist_id"], "UU2")
+
+    def test_batch_upload_playlist_resolution_reuses_cached_ids_without_api(self):
+        with dragon_app.RUNTIME_CACHE_LOCK:
+            dragon_app.YOUTUBE_RUNTIME.latest_uploads_index.pop(dragon_app._youtube_channel_latest_video_cache_key("UC1"), None)
+        with patch.object(dragon_app, "get_persisted_youtube_channel_latest_entry", return_value=(
+            {
+                "channel_id": "UC1",
+                "uploads_playlist_id": "UUcached1",
+                "latest_video": {},
+            },
+            False,
+        )), patch.object(dragon_app.requests, "get") as mock_get:
+            result = dragon_app._resolve_youtube_channel_upload_playlist_ids(["UC1"], cache_data={})
+
+        self.assertEqual(result["resolved"], {"UC1": "UUcached1"})
+        mock_get.assert_not_called()
+
+    def test_batch_upload_playlist_resolution_records_missing_playlist(self):
+        def fake_get(url, params=None, timeout=15):
+            payload = {
+                "items": [
+                    {
+                        "id": "UC1",
+                        "snippet": {"title": "Channel One"},
+                        "contentDetails": {"relatedPlaylists": {}},
+                    }
+                ]
+            }
+            return Mock(status_code=200, json=Mock(return_value=payload), text=json.dumps(payload))
+
+        with patch.object(dragon_app, "YOUTUBE_API_KEY", "test-key"), \
+             patch.object(dragon_app.requests, "get", side_effect=fake_get):
+            result = dragon_app._resolve_youtube_channel_upload_playlist_ids(["UC1"], cache_data={}, force_refresh=True)
+
+        self.assertEqual(result["resolved_count"], 0)
+        self.assertEqual(result["missing_count"], 1)
+        self.assertEqual(result["diagnostics"][0]["error"], "no_upload_playlist")
+
+    def test_batch_upload_playlist_resolution_survives_batch_failure(self):
+        call_count = {"value": 0}
+
+        def fake_get(url, params=None, timeout=15):
+            call_count["value"] += 1
+            if call_count["value"] == 1:
+                raise RuntimeError("boom")
+            payload = {
+                "items": [
+                    {
+                        "id": "UC51",
+                        "snippet": {"title": "Channel Fifty One"},
+                        "contentDetails": {"relatedPlaylists": {"uploads": "UU51"}},
+                    }
+                ]
+            }
+            return Mock(status_code=200, json=Mock(return_value=payload), text=json.dumps(payload))
+
+        channel_ids = [f"UC{i}" for i in range(1, 52)]
+        with patch.object(dragon_app, "YOUTUBE_API_KEY", "test-key"), \
+             patch.object(dragon_app.requests, "get", side_effect=fake_get):
+            result = dragon_app._resolve_youtube_channel_upload_playlist_ids(channel_ids, cache_data={}, force_refresh=True)
+
+        self.assertEqual(result["resolved"].get("UC51"), "UU51")
+        self.assertGreaterEqual(result["missing_count"], 50)
+        self.assertGreaterEqual(len(result["diagnostics"]), 50)
+
+    def test_refresh_pockettube_section_latest_uploads_uses_resolved_upload_playlists(self):
+        pockettube_context = {
+            "group_name": "News",
+            "group_key": "news",
+            "channels": [
+                {"channel_id": "UC1", "channel_name": "Channel One"},
+            ],
+        }
+
+        def fake_get(url, params=None, timeout=15):
+            if "channels" in url:
+                payload = {
+                    "items": [
+                        {
+                            "id": "UC1",
+                            "snippet": {"title": "Channel One"},
+                            "contentDetails": {"relatedPlaylists": {"uploads": "UU1"}},
+                        }
+                    ]
+                }
+                return Mock(status_code=200, json=Mock(return_value=payload), text=json.dumps(payload))
+            if "playlistItems" in url:
+                payload = {
+                    "items": [
+                        {
+                            "id": "PLI1",
+                            "snippet": {
+                                "title": "News Item 1",
+                                "publishedAt": FIXED_NOW.isoformat(),
+                                "resourceId": {"videoId": "v1"},
+                                "videoOwnerChannelTitle": "Channel One",
+                                "videoOwnerChannelId": "UC1",
+                                "channelTitle": "Channel One",
+                                "channelId": "UC1",
+                            },
+                        }
+                    ]
+                }
+                return Mock(status_code=200, json=Mock(return_value=payload), text=json.dumps(payload))
+            raise AssertionError(f"unexpected url: {url}")
+
+        with patch.object(dragon_app, "_pockettube_section_membership_context", return_value=pockettube_context), \
+             patch.object(dragon_app, "_resolve_youtube_channel_upload_playlist_ids", return_value={
+                 "resolved": {"UC1": "UU1"},
+                 "diagnostics": [],
+                 "missing": [],
+                 "channel_count": 1,
+                 "resolved_count": 1,
+                 "missing_count": 0,
+             }), \
+             patch.object(dragon_app, "YOUTUBE_API_KEY", "test-key"), \
+             patch.object(dragon_app.requests, "get", side_effect=fake_get), \
+             patch.object(dragon_app, "clear_persisted_youtube_section_feed_cache"), \
+             patch.object(dragon_app, "_youtube_trace"), \
+             patch.object(dragon_app, "get_youtube_duration", return_value={"display": "0:00"}), \
+             patch.object(dragon_app, "build_youtube_channel_video_summary", side_effect=lambda video: dict(video)):
+            result = dragon_app.refresh_pockettube_section_latest_uploads("News", admin_data={})
+
+        self.assertEqual(result["channels_with_upload_playlist"], 1)
+        self.assertEqual(result["channels_missing_upload_playlist"], 0)
+        self.assertEqual(result["upload_playlist_ids"], ["UU1"])
+        self.assertEqual(result["videos_stored"], 1)
+        self.assertEqual(result["latest_items"][0]["video_id"], "v1")
+
+    def test_coverage_report_changes_reason_when_upload_playlists_exist(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            service, _state = self._build_service(temp_dir)
+            save_json_file(service.snapshot_path, {
+                "version": 1,
+                "generated_at": FIXED_NOW.isoformat(),
+                "synced_at": FIXED_NOW.isoformat(),
+                "group_video_limit": 200,
+                "all_feed_video_limit": 200,
+                "groups": {
+                    "news": {
+                        "group_name": "News",
+                        "group_key": "news",
+                        "section_name": "News",
+                        "section_key": "news",
+                        "source_name": "PocketTube",
+                        "imported_at": FIXED_NOW.isoformat(),
+                        "channel_count": 1,
+                        "latest_video_count": 0,
+                        "latest_video": {},
+                        "channels": [
+                            {
+                                "channel_id": "UC1",
+                                "channel_title": "Channel One",
+                                "group_names": ["News"],
+                                "latest_video": {},
+                                "latest_video_id": "",
+                                "published_at": "",
+                                "published_display": "",
+                                "thumbnail": "",
+                                "url": "",
+                                "reason_tags": [],
+                            }
+                        ],
+                        "videos": [],
+                        "diagnostics": {
+                            "group_key": "news",
+                            "group_name": "News",
+                            "channels_scanned": 1,
+                            "channels_with_upload_playlist": 1,
+                            "channels_missing_upload_playlist": 0,
+                            "videos_collected": 0,
+                            "videos_stored": 0,
+                            "upload_playlist_ids": ["UU1"],
+                            "errors": [],
+                            "generated_at": FIXED_NOW.isoformat(),
+                            "synced_at": FIXED_NOW.isoformat(),
+                        },
+                    }
+                },
+                "channels": {},
+                "errors": [],
+            })
+            cache_data = {
+                "youtube_channel_latest_uploads": {
+                    "uc1": {
+                        "updated_at": FIXED_NOW.isoformat(),
+                        "data": {
+                            "channel_id": "UC1",
+                            "uploads_playlist_id": "UU1",
+                            "latest_video": {},
+                        },
+                    }
+                }
+            }
+
+            report = service.build_pockettube_coverage_report(cache_data=cache_data)
+
+            self.assertEqual(report["groups"][0]["upload_playlist_ids"], ["UU1"])
+            self.assertNotEqual(report["groups"][0]["reason"], "no_upload_playlist")
 
     def test_github_snapshot_callback_updates_status_without_blocking(self):
         dragon_app.app.config["TESTING"] = True

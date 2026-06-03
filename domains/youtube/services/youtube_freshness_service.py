@@ -6,6 +6,9 @@ from pathlib import Path
 import re
 import tempfile
 
+POCKETTUBE_GROUP_VIDEO_LIMIT = 200
+POCKETTUBE_ALL_FEED_VIDEO_LIMIT = 200
+
 
 class YouTubeFreshnessService:
     def __init__(
@@ -58,6 +61,8 @@ class YouTubeFreshnessService:
             "version": 1,
             "generated_at": "",
             "synced_at": "",
+            "group_video_limit": POCKETTUBE_GROUP_VIDEO_LIMIT,
+            "all_feed_video_limit": POCKETTUBE_ALL_FEED_VIDEO_LIMIT,
             "groups": {},
             "channels": {},
             "errors": [],
@@ -186,6 +191,29 @@ class YouTubeFreshnessService:
                     continue
                 group_name = str(group.get("group_name", "") or group.get("section_name", "") or group_key or "").strip()
                 group_key_text = str(group.get("group_key", "") or group_key or "").strip()
+                group_videos = [video for video in (group.get("videos", []) or []) if isinstance(video, dict)]
+                for video in group_videos:
+                    normalized_video = self._normalize_group_video(video, group_name, group_key_text)
+                    if not normalized_video:
+                        continue
+                    yield {
+                        "source": "group_video",
+                        "group_key": group_key_text,
+                        "group_name": group_name,
+                        "group_names": list(dict.fromkeys([
+                            str(name or "").strip()
+                            for name in list(normalized_video.get("group_names", []) or []) + ([group_name] if group_name else [])
+                            if str(name or "").strip()
+                        ])),
+                        "group_keys": list(dict.fromkeys([
+                            str(key or "").strip()
+                            for key in list(normalized_video.get("group_keys", []) or []) + ([group_key_text] if group_key_text else [])
+                            if str(key or "").strip()
+                        ])),
+                        "channel_id": str(normalized_video.get("channel_id", "") or "").strip(),
+                        "channel_title": str(normalized_video.get("channel_title", "") or normalized_video.get("channel_name", "") or "").strip(),
+                        "latest_video": dict(normalized_video),
+                    }
                 channels = [channel for channel in (group.get("channels", []) or []) if isinstance(channel, dict)]
                 for channel in channels:
                     latest_video = channel.get("latest_video", {})
@@ -659,58 +687,43 @@ class YouTubeFreshnessService:
         for group_key, latest_result in (latest_results_by_group or {}).items():
             if not isinstance(latest_result, dict):
                 continue
-            latest_items = [item for item in (latest_result.get("latest_items", []) or []) if isinstance(item, dict)]
-            if not latest_items:
-                continue
             normalized_group_key = self.normalize_pockettube_group_key(group_key)
-            normalized_latest_results[normalized_group_key] = latest_items
+            normalized_latest_results[normalized_group_key] = dict(latest_result)
             result_group_name = str(latest_result.get("group_name", "") or latest_result.get("section_name", "") or "").strip()
             if result_group_name:
-                normalized_latest_results[self.normalize_pockettube_group_key(result_group_name)] = latest_items
+                normalized_latest_results[self.normalize_pockettube_group_key(result_group_name)] = dict(latest_result)
 
         for group_key, group in groups.items():
             if not isinstance(group, dict):
                 continue
             group_name = str(group.get("group_name", "") or group.get("section_name", "") or group_key or "").strip() or str(group_key or "").strip()
-            latest_items = (
+            latest_result = (
                 normalized_latest_results.get(self.normalize_pockettube_group_key(group_key))
                 or normalized_latest_results.get(self.normalize_pockettube_group_key(group_name))
-                or []
+                or {}
             )
+            if not latest_result:
+                continue
+            latest_items = [item for item in (latest_result.get("latest_items", []) or []) if isinstance(item, dict)]
+            group_videos = self._normalize_group_videos(latest_items, group_name, group_key)
+            diagnostics = self._build_group_sync_diagnostics(group_key, group_name, latest_result, len(group_videos))
+            group["videos"] = group_videos
+            group["diagnostics"] = diagnostics
+            group["latest_video_count"] = len(group_videos)
+            if group_videos:
+                group["latest_video"] = dict(group_videos[0])
             if not latest_items:
                 continue
 
             latest_by_channel = {}
-            for item in latest_items:
-                latest_summary = self.build_youtube_channel_video_summary(item)
-                if not isinstance(latest_summary, dict):
-                    continue
-                channel_id = str(latest_summary.get("channel_id", "") or item.get("channel_id", "") or "").strip()
+            for latest_summary in group_videos:
+                channel_id = str(latest_summary.get("channel_id", "") or "").strip()
                 if not channel_id:
-                    channel_id, inferred_title = self._pockettube_channel_identity(item)
-                    if inferred_title and not str(latest_summary.get("channel_name", "") or latest_summary.get("channel_title", "") or "").strip():
-                        latest_summary["channel_name"] = inferred_title
-                if not channel_id or not str(latest_summary.get("video_id", "") or "").strip():
                     continue
-                latest_summary["channel_id"] = channel_id
-                latest_summary["channel_name"] = str(
-                    latest_summary.get("channel_name", "")
-                    or latest_summary.get("channel_title", "")
-                    or item.get("channel_name", "")
-                    or item.get("channel_title", "")
-                    or channel_id
-                ).strip() or channel_id
-                latest_summary["thumbnail"] = str(
-                    latest_summary.get("thumbnail", "")
-                    or latest_summary.get("thumbnail_url", "")
-                    or latest_summary.get("thumb", "")
-                    or item.get("thumbnail", "")
-                    or item.get("thumbnail_url", "")
-                    or item.get("thumb", "")
-                    or ""
-                ).strip()
-                latest_summary["url"] = str(latest_summary.get("url", "") or item.get("url", "") or "").strip()
-                latest_by_channel[channel_id] = latest_summary
+                existing_summary = latest_by_channel.get(channel_id)
+                if existing_summary and self._published_sort_key(existing_summary.get("published_at", "")) > self._published_sort_key(latest_summary.get("published_at", "")):
+                    continue
+                latest_by_channel[channel_id] = dict(latest_summary)
 
             if not latest_by_channel:
                 continue
@@ -775,12 +788,8 @@ class YouTubeFreshnessService:
                         group_latest_video = dict(latest_summary)
 
             group["channel_count"] = len(group_channels)
-            group["latest_video_count"] = sum(
-                1
-                for item in group_channels
-                if isinstance(item, dict) and isinstance(item.get("latest_video"), dict) and item["latest_video"].get("video_id")
-            )
-            group["latest_video"] = group_latest_video if isinstance(group_latest_video, dict) else {}
+            group["latest_video_count"] = len(group_videos)
+            group["latest_video"] = group_latest_video if isinstance(group_latest_video, dict) and group_latest_video else (dict(group_videos[0]) if group_videos else {})
 
         return snapshot
 
@@ -1289,6 +1298,8 @@ class YouTubeFreshnessService:
             "selected_filter_key": selected_filter_key,
             "selected_filter_label": selected_filter_label,
             "selected_filter_count": int(selected_filter_record.get("video_count", feed_video_count) or 0),
+            "group_video_limit": int(snapshot.get("group_video_limit", POCKETTUBE_GROUP_VIDEO_LIMIT) or POCKETTUBE_GROUP_VIDEO_LIMIT),
+            "all_feed_video_limit": int(snapshot.get("all_feed_video_limit", POCKETTUBE_ALL_FEED_VIDEO_LIMIT) or POCKETTUBE_ALL_FEED_VIDEO_LIMIT),
             "has_latest": has_latest,
             "generated_at": snapshot.get("generated_at", ""),
             "synced_at": snapshot.get("synced_at", ""),
@@ -1304,6 +1315,7 @@ class YouTubeFreshnessService:
         groups = snapshot.get("groups", {})
         if not isinstance(groups, dict):
             groups = {}
+        all_feed_limit = int(snapshot.get("all_feed_video_limit", POCKETTUBE_ALL_FEED_VIDEO_LIMIT) or POCKETTUBE_ALL_FEED_VIDEO_LIMIT)
         feed_by_video_id = {}
         feed_groups = []
         empty_channels = []
@@ -1319,6 +1331,31 @@ class YouTubeFreshnessService:
             group_video_ids = set()
             group_empty_channels = 0
             group_latest_video = group.get("latest_video", {}) if isinstance(group.get("latest_video", {}), dict) else {}
+            group_videos = [video for video in (group.get("videos", []) or []) if isinstance(video, dict)]
+            if group_videos:
+                for video in group_videos:
+                    normalized_video = self._normalize_group_video(video, group_name, group_key)
+                    video_id = str(normalized_video.get("video_id", "") or "").strip()
+                    if not video_id:
+                        continue
+                    group_video_ids.add(video_id)
+                    existing = feed_by_video_id.get(video_id)
+                    if not isinstance(existing, dict):
+                        feed_by_video_id[video_id] = dict(normalized_video)
+                        continue
+                    existing["group_names"] = sorted(dict.fromkeys(list(existing.get("group_names", []) or []) + list(normalized_video.get("group_names", []) or [])), key=lambda value: str(value or "").lower())
+                    existing["group_keys"] = sorted(dict.fromkeys(list(existing.get("group_keys", []) or []) + list(normalized_video.get("group_keys", []) or [])), key=lambda value: str(value or "").lower())
+                    existing["reason_tags"] = sorted(dict.fromkeys(list(existing.get("reason_tags", []) or []) + list(normalized_video.get("reason_tags", []) or [])), key=lambda value: str(value or "").lower())
+                    if self._published_sort_key(normalized_video.get("published_at", "")) > self._published_sort_key(existing.get("published_at", "")):
+                        feed_by_video_id[video_id] = {**existing, **dict(normalized_video)}
+                feed_groups.append({
+                    "group_key": group_key,
+                    "group_name": group_name,
+                    "video_count": len(group_video_ids),
+                    "channel_count": len(group_channels),
+                    "empty_channel_count": 0,
+                })
+                continue
             for channel in group_channels:
                 latest_video = channel.get("latest_video", {}) if isinstance(channel.get("latest_video", {}), dict) else {}
                 latest_video_id = str(channel.get("latest_video_id", "") or latest_video.get("video_id", "") or "").strip()
@@ -1475,6 +1512,8 @@ class YouTubeFreshnessService:
             str(item.get("channel_title", "") or "").lower(),
             str(item.get("video_id", "") or "").lower(),
         ))
+        if all_feed_limit > 0:
+            feed_videos = feed_videos[:all_feed_limit]
         feed_groups.sort(key=lambda item: (str(item.get("group_name", "") or item.get("group_key", "")).lower(), str(item.get("group_key", "") or "").lower()))
         empty_channels.sort(key=lambda item: (
             str(item.get("group_name", "") or "").lower(),
@@ -1632,6 +1671,249 @@ class YouTubeFreshnessService:
         status["message"] = "Feed is using the latest cached PocketTube snapshot."
         return status
 
+    def _cached_channel_latest_entry(self, channel_id, cache_data=None):
+        channel_id = str(channel_id or "").strip()
+        if not channel_id:
+            return {}, False, ""
+        candidate_keys = []
+        normalized_key = self.normalize_pockettube_group_key(channel_id)
+        for candidate in (normalized_key, channel_id):
+            key = str(candidate or "").strip()
+            if key and key not in candidate_keys:
+                candidate_keys.append(key)
+        if isinstance(cache_data, dict):
+            bucket = cache_data.get("youtube_channel_latest_uploads", {})
+            if isinstance(bucket, dict):
+                for key in candidate_keys:
+                    entry = bucket.get(key)
+                    if isinstance(entry, dict):
+                        data = entry.get("data", {})
+                        if isinstance(data, dict):
+                            return data, False, key
+                return {}, False, candidate_keys[0] if candidate_keys else ""
+        for key in candidate_keys:
+            payload, stale = self.get_persisted_youtube_channel_latest_entry(key, allow_stale=True)
+            if isinstance(payload, dict):
+                return payload, bool(stale), key
+        return {}, False, candidate_keys[0] if candidate_keys else ""
+
+    def _pockettube_coverage_reason(self, *, group, channels, group_videos, diagnostics, resolved_channels):
+        group = group if isinstance(group, dict) else {}
+        diagnostics = diagnostics if isinstance(diagnostics, dict) else {}
+        channels = [channel for channel in (channels or []) if isinstance(channel, dict)]
+        group_videos = [video for video in (group_videos or []) if isinstance(video, dict)]
+        resolved_channels = [channel for channel in (resolved_channels or []) if isinstance(channel, dict)]
+
+        if not channels:
+            return "no_channels_mapped"
+        if group_videos:
+            return "covered"
+
+        errors = [str(error or "").strip().lower() for error in list(diagnostics.get("errors", []) or []) if str(error or "").strip()]
+        if errors:
+            return "fetch_error"
+
+        upload_playlist_ids = [str(channel.get("uploads_playlist_id", "") or "").strip() for channel in resolved_channels if str(channel.get("uploads_playlist_id", "") or "").strip()]
+        if not upload_playlist_ids:
+            return "no_upload_playlist"
+
+        videos_collected = int(diagnostics.get("videos_collected", 0) or 0)
+        videos_stored = int(diagnostics.get("videos_stored", 0) or 0)
+        if videos_collected > 0 and videos_stored == 0:
+            return "all_duplicates_removed"
+
+        if int(diagnostics.get("channels_missing_upload_playlist", 0) or 0) > 0 and not upload_playlist_ids:
+            return "no_upload_playlist"
+
+        if any(not str(video.get("published_at", "") or "").strip() for video in (group.get("videos", []) or []) if isinstance(video, dict)):
+            return "missing_published_at"
+
+        if videos_collected == 0 and videos_stored == 0:
+            return "empty_uploads"
+
+        return "unknown"
+
+    def build_pockettube_coverage_report(self, scope="", cache_data=None):
+        snapshot = self.load_snapshot()
+        sync_status = self.load_sync_status()
+        admin_data = self.load_admin_data()
+        latest_import, imported_sections = self.pockettube_latest_import_snapshot(admin_data=admin_data)
+        scope_value = str(scope or "").strip()
+        scope_key = self.normalize_pockettube_group_key(scope_value) if scope_value else ""
+
+        snapshot_groups = snapshot.get("groups", {}) if isinstance(snapshot.get("groups", {}), dict) else {}
+        report_groups = {}
+
+        def ensure_group(group_key, *, source="snapshot"):
+            normalized_key = self.normalize_pockettube_group_key(group_key)
+            if not normalized_key:
+                return None
+            group = report_groups.setdefault(normalized_key, {
+                "group_key": normalized_key,
+                "display_label": "",
+                "source": source,
+                "aliases_matched": [],
+                "aliases_available": [],
+                "channels_assigned": 0,
+                "channels": [],
+                "upload_playlist_ids": [],
+                "videos_fetched_before_dedupe": 0,
+                "videos_stored_after_dedupe": 0,
+                "errors_per_channel": [],
+                "reason": "unknown",
+                "notes": [],
+                "diagnostics": {},
+                "snapshot_present": False,
+                "source_present": False,
+            })
+            if source == "import" and group.get("source") != "snapshot":
+                group["source"] = source
+            return group
+
+        for group_key, group in snapshot_groups.items():
+            if not isinstance(group, dict):
+                continue
+            normalized_key = self.normalize_pockettube_group_key(group_key or group.get("group_key", "") or group.get("section_key", "") or group.get("group_name", "") or group.get("section_name", ""))
+            if not normalized_key:
+                continue
+            group_report = ensure_group(normalized_key, source="snapshot")
+            if group_report is None:
+                continue
+            group_report["snapshot_present"] = True
+            group_report["display_label"] = self.canonical_section_name(
+                group.get("group_name", "") or group.get("section_name", "") or normalized_key
+            ) or normalized_key
+            group_report["videos_fetched_before_dedupe"] = int(
+                (group.get("diagnostics", {}) or {}).get("videos_collected", group.get("latest_video_count", 0))
+                or 0
+            )
+            group_report["videos_stored_after_dedupe"] = len([video for video in (group.get("videos", []) or []) if isinstance(video, dict)])
+            group_report["diagnostics"] = self._normalize_group_diagnostics(group.get("diagnostics", {}), normalized_key, group_report["display_label"])
+            group_report["source_present"] = True
+            aliases = [
+                str(group.get("group_name", "") or "").strip(),
+                str(group.get("section_name", "") or "").strip(),
+                str(group.get("group_key", "") or "").strip(),
+                str(group.get("section_key", "") or "").strip(),
+                normalized_key,
+            ]
+            group_report["aliases_available"].extend([alias for alias in aliases if alias])
+
+            channels = [channel for channel in (group.get("channels", []) or []) if isinstance(channel, dict)]
+            resolved_channels = []
+            for channel in channels:
+                channel_id = str(channel.get("channel_id", "") or "").strip()
+                channel_title = str(channel.get("channel_title", "") or "").strip() or "Unknown Channel"
+                cached_entry, stale, cache_key = self._cached_channel_latest_entry(channel_id, cache_data=cache_data)
+                uploads_playlist_id = str(cached_entry.get("uploads_playlist_id", "") or "").strip()
+                latest_video = cached_entry.get("latest_video", {}) if isinstance(cached_entry.get("latest_video", {}), dict) else {}
+                channel_report = {
+                    "channel_id": channel_id,
+                    "channel_title": channel_title,
+                    "cache_key": cache_key,
+                    "uploads_playlist_id": uploads_playlist_id,
+                    "latest_video_id": str(latest_video.get("video_id", "") or "").strip(),
+                    "latest_published_at": str(latest_video.get("published_at", "") or "").strip(),
+                    "latest_source": str(cached_entry.get("latest_source", "") or "").strip(),
+                    "cache_stale": bool(stale),
+                }
+                resolved_channels.append(channel_report)
+                if uploads_playlist_id and uploads_playlist_id not in group_report["upload_playlist_ids"]:
+                    group_report["upload_playlist_ids"].append(uploads_playlist_id)
+                if channel_report["latest_video_id"] and not str(channel_report["latest_published_at"] or "").strip():
+                    group_report["errors_per_channel"].append({
+                        "channel_id": channel_id,
+                        "channel_title": channel_title,
+                        "error": "missing_published_at",
+                    })
+
+            group_report["channels"] = resolved_channels
+            group_report["channels_assigned"] = len(resolved_channels)
+            group_report["channels_with_upload_playlist"] = sum(1 for channel in resolved_channels if str(channel.get("uploads_playlist_id", "") or "").strip())
+            group_report["channels_missing_upload_playlist"] = max(group_report["channels_assigned"] - group_report["channels_with_upload_playlist"], 0)
+            group_report["aliases_matched"] = list(dict.fromkeys([
+                alias
+                for alias in group_report["aliases_available"]
+                if alias and self.normalize_pockettube_group_key(alias) == normalized_key
+            ]))
+            if not group_report["aliases_matched"] and normalized_key:
+                group_report["aliases_matched"] = [normalized_key]
+            group_report["reason"] = self._pockettube_coverage_reason(
+                group=group,
+                channels=channels,
+                group_videos=group.get("videos", []) or [],
+                diagnostics=group_report["diagnostics"],
+                resolved_channels=resolved_channels,
+            )
+            if not group.get("videos", []) and group_report["channels_assigned"] > 0:
+                group_report["notes"].append(
+                    "snapshot currently has channel-level latest entries but no group video list"
+                )
+            if group_report["reason"] == "unknown" and group_report["channels_assigned"] > 0 and not group.get("videos", []):
+                group_report["notes"].append("coverage is currently limited by the local snapshot shape")
+
+        for section in imported_sections or []:
+            if not isinstance(section, dict):
+                continue
+            section_group_name = self.canonical_section_name(section.get("group_name", "") or section.get("section_name", "") or "")
+            section_section_name = self.canonical_section_name(section.get("section_name", "") or section_group_name or "")
+            section_group_key = self.normalize_pockettube_group_key(section.get("group_key", "") or section_group_name)
+            section_section_key = self.normalize_pockettube_group_key(section.get("section_key", "") or section_section_name)
+            normalized_key = next((key for key in (section_group_key, section_section_key, self.normalize_pockettube_group_key(section_group_name), self.normalize_pockettube_group_key(section_section_name)) if key), "")
+            if not normalized_key:
+                continue
+            group_report = ensure_group(normalized_key, source="import")
+            if group_report is None:
+                continue
+            group_report["source_present"] = True
+            group_report["display_label"] = group_report["display_label"] or self.canonical_section_name(section_group_name or section_section_name or normalized_key) or normalized_key
+            aliases = [
+                section_group_name,
+                section_section_name,
+                str(section.get("group_key", "") or "").strip(),
+                str(section.get("section_key", "") or "").strip(),
+                normalized_key,
+            ]
+            group_report["aliases_available"].extend([alias for alias in aliases if alias])
+            if group_report["group_key"] == scope_key or normalized_key == scope_key:
+                group_report["aliases_matched"] = list(dict.fromkeys(group_report["aliases_matched"] + [alias for alias in aliases if alias and self.normalize_pockettube_group_key(alias) == normalized_key]))
+
+        groups = []
+        for group_key, group_report in sorted(report_groups.items(), key=lambda item: (item[1].get("display_label", "") or item[0]).lower()):
+            group_report["aliases_available"] = sorted(dict.fromkeys(group_report["aliases_available"]), key=lambda value: str(value or "").lower())
+            group_report["aliases_matched"] = sorted(dict.fromkeys(group_report["aliases_matched"]), key=lambda value: str(value or "").lower())
+            group_report["upload_playlist_ids"] = sorted(dict.fromkeys(group_report["upload_playlist_ids"]), key=lambda value: str(value or "").lower())
+            group_report["errors_per_channel"] = list(group_report["errors_per_channel"])
+            if group_report["channels_assigned"] == 0:
+                group_report["reason"] = "no_channels_mapped"
+            elif group_report["videos_stored_after_dedupe"] == 0 and group_report["reason"] == "covered":
+                group_report["reason"] = "unknown"
+            groups.append(group_report)
+
+        if scope_key:
+            groups = [group for group in groups if self.normalize_pockettube_group_key(group.get("group_key", "")) == scope_key]
+
+        summary = {
+            "group_count": len(groups),
+            "channel_count": sum(int(group.get("channels_assigned", 0) or 0) for group in groups),
+            "groups_without_channels": sum(1 for group in groups if int(group.get("channels_assigned", 0) or 0) == 0),
+            "groups_without_videos": sum(1 for group in groups if int(group.get("videos_stored_after_dedupe", 0) or 0) == 0 and int(group.get("channels_assigned", 0) or 0) > 0),
+            "upload_playlist_ids_count": sum(len(group.get("upload_playlist_ids", []) or []) for group in groups),
+            "channels_with_upload_playlist_count": sum(int(group.get("channels_with_upload_playlist", 0) or 0) for group in groups),
+            "channels_missing_upload_playlist_count": sum(int(group.get("channels_missing_upload_playlist", 0) or 0) for group in groups),
+            "generated_at": str(snapshot.get("generated_at", "") or "").strip(),
+            "synced_at": str(snapshot.get("synced_at", "") or "").strip(),
+            "snapshot_path": str(self.snapshot_path),
+            "sync_status_path": str(self.sync_status_path),
+        }
+
+        return {
+            "ok": True,
+            "scope": scope_value,
+            "summary": summary,
+            "groups": groups,
+        }
+
     def _timestamp_age_hours(self, value):
         text = str(value or "").strip()
         if not text:
@@ -1758,6 +2040,141 @@ class YouTubeFreshnessService:
         latest_video = payload.get("latest_video", {})
         return latest_video if isinstance(latest_video, dict) else {}
 
+    def _normalize_group_videos(self, videos, group_name, group_key, limit=POCKETTUBE_GROUP_VIDEO_LIMIT):
+        deduped = {}
+        for video in videos or []:
+            normalized_video = self._normalize_group_video(video, group_name, group_key)
+            video_id = str(normalized_video.get("video_id", "") or "").strip()
+            if not video_id:
+                continue
+            existing = deduped.get(video_id)
+            if existing and self._published_sort_key(existing.get("published_at", "")) > self._published_sort_key(normalized_video.get("published_at", "")):
+                continue
+            deduped[video_id] = normalized_video
+        ordered = list(deduped.values())
+        ordered.sort(key=lambda item: (
+            -self._published_sort_key(str(item.get("published_at", "") or "")),
+            str(item.get("title", "") or "").lower(),
+            str(item.get("channel_title", "") or "").lower(),
+            str(item.get("video_id", "") or "").lower(),
+        ))
+        if limit and limit > 0:
+            ordered = ordered[:limit]
+        return ordered
+
+    def _normalize_group_video(self, video, group_name, group_key):
+        if not isinstance(video, dict):
+            return {}
+        summary = self.build_youtube_channel_video_summary(video)
+        if not isinstance(summary, dict):
+            summary = {}
+        merged = dict(video)
+        merged.update(summary)
+        video_id = str(merged.get("video_id", "") or "").strip()
+        if not video_id:
+            return {}
+        channel_id = str(merged.get("channel_id", "") or video.get("channel_id", "") or "").strip()
+        channel_title = str(
+            merged.get("channel_title", "")
+            or merged.get("channel_name", "")
+            or video.get("channel_title", "")
+            or video.get("channel_name", "")
+            or channel_id
+        ).strip() or channel_id or "Unknown Channel"
+        published_at = str(merged.get("published_at", "") or video.get("published_at", "") or "").strip()
+        thumbnail = str(
+            merged.get("thumbnail", "")
+            or merged.get("thumbnail_url", "")
+            or merged.get("image_url", "")
+            or merged.get("thumb", "")
+            or video.get("thumbnail", "")
+            or video.get("thumbnail_url", "")
+            or video.get("image_url", "")
+            or video.get("thumb", "")
+            or ""
+        ).strip()
+        group_names = list(dict.fromkeys([
+            str(name or "").strip()
+            for name in list(merged.get("group_names", []) or [])
+            + list(video.get("group_names", []) or [])
+            + ([group_name] if group_name else [])
+            if str(name or "").strip()
+        ]))
+        group_keys = list(dict.fromkeys([
+            str(key or "").strip()
+            for key in list(merged.get("group_keys", []) or [])
+            + list(video.get("group_keys", []) or [])
+            + ([group_key] if group_key else [])
+            if str(key or "").strip()
+        ]))
+        watch_key = str(merged.get("watch_key", "") or video.get("watch_key", "") or video_id).strip() or video_id
+        return {
+            "title": str(merged.get("title", "") or merged.get("name", "") or "Untitled video").strip() or "Untitled video",
+            "entry_id": str(merged.get("entry_id", "") or video.get("entry_id", "") or f"yt-{video_id}").strip() or f"yt-{video_id}",
+            "video_id": video_id,
+            "watch_key": watch_key,
+            "state_key": str(merged.get("state_key", "") or video.get("state_key", "") or watch_key).strip() or watch_key,
+            "channel_id": channel_id,
+            "channel_name": channel_title,
+            "channel_title": channel_title,
+            "published_at": published_at,
+            "published_display": str(merged.get("published_display", "") or video.get("published_display", "") or "").strip() or (self.format_timestamp_label(published_at, default="") if published_at else ""),
+            "thumbnail": thumbnail,
+            "thumbnail_url": str(merged.get("thumbnail_url", "") or video.get("thumbnail_url", "") or thumbnail).strip(),
+            "image_url": str(merged.get("image_url", "") or video.get("image_url", "") or thumbnail).strip(),
+            "thumb": str(merged.get("thumb", "") or video.get("thumb", "") or thumbnail).strip(),
+            "detail_url": str(merged.get("detail_url", "") or video.get("detail_url", "") or f"/video/yt-{video_id}").strip() or f"/video/yt-{video_id}",
+            "url": str(merged.get("url", "") or video.get("url", "") or f"https://www.youtube.com/watch?v={video_id}").strip() or f"https://www.youtube.com/watch?v={video_id}",
+            "group_name": str(group_name or "").strip(),
+            "group_key": str(group_key or "").strip(),
+            "group_names": group_names,
+            "group_keys": group_keys,
+            "reason_tags": list(dict.fromkeys([
+                str(tag or "").strip()
+                for tag in list(merged.get("reason_tags", []) or []) + list(video.get("reason_tags", []) or []) + ["cached-latest"]
+                if str(tag or "").strip()
+            ])),
+        }
+
+    def _normalize_group_diagnostics(self, diagnostics, group_key, group_name):
+        diagnostics = diagnostics if isinstance(diagnostics, dict) else {}
+        return {
+            "group_key": str(diagnostics.get("group_key", "") or group_key or "").strip(),
+            "group_name": str(diagnostics.get("group_name", "") or group_name or "").strip(),
+            "channels_scanned": int(diagnostics.get("channels_scanned", 0) or 0),
+            "channels_with_upload_playlist": int(diagnostics.get("channels_with_upload_playlist", 0) or 0),
+            "channels_missing_upload_playlist": int(diagnostics.get("channels_missing_upload_playlist", 0) or 0),
+            "videos_collected": int(diagnostics.get("videos_collected", 0) or 0),
+            "videos_stored": int(diagnostics.get("videos_stored", 0) or 0),
+            "upload_playlist_ids": list(dict.fromkeys([str(item or "").strip() for item in diagnostics.get("upload_playlist_ids", []) or [] if str(item or "").strip()])),
+            "errors": list(diagnostics.get("errors", []) or []),
+            "generated_at": str(diagnostics.get("generated_at", "") or "").strip(),
+            "synced_at": str(diagnostics.get("synced_at", "") or "").strip(),
+        }
+
+    def _build_group_sync_diagnostics(self, group_key, group_name, latest_result, videos_stored):
+        latest_result = latest_result if isinstance(latest_result, dict) else {}
+        diagnostics = self._normalize_group_diagnostics(latest_result.get("diagnostics", {}), group_key, group_name)
+        diagnostics["channels_scanned"] = int(
+            latest_result.get("channels_scanned", latest_result.get("channels_fetched", diagnostics.get("channels_scanned", 0)))
+            or 0
+        )
+        diagnostics["videos_collected"] = int(
+            latest_result.get("videos_collected", latest_result.get("latest_videos_found", diagnostics.get("videos_collected", 0)))
+            or 0
+        )
+        diagnostics["videos_stored"] = int(videos_stored or latest_result.get("videos_stored", diagnostics.get("videos_stored", 0)) or 0)
+        diagnostics["errors"] = list(dict.fromkeys([
+            str(error or "").strip()
+            for error in list(diagnostics.get("errors", []) or []) + list(latest_result.get("errors", []) or [])
+            if str(error or "").strip()
+        ]))
+        generated_at = str(latest_result.get("generated_at", "") or latest_result.get("fetched_at", "") or diagnostics.get("generated_at", "") or "").strip()
+        synced_at = str(latest_result.get("synced_at", "") or latest_result.get("fetched_at", "") or diagnostics.get("synced_at", "") or generated_at).strip()
+        diagnostics["generated_at"] = generated_at
+        diagnostics["synced_at"] = synced_at
+        return diagnostics
+
     def _normalize_snapshot(self, payload):
         snapshot = self.empty_snapshot()
         if not isinstance(payload, dict):
@@ -1765,6 +2182,8 @@ class YouTubeFreshnessService:
         snapshot["version"] = int(payload.get("version", 1) or 1)
         snapshot["generated_at"] = str(payload.get("generated_at", "") or "").strip()
         snapshot["synced_at"] = str(payload.get("synced_at", "") or "").strip()
+        snapshot["group_video_limit"] = int(payload.get("group_video_limit", POCKETTUBE_GROUP_VIDEO_LIMIT) or POCKETTUBE_GROUP_VIDEO_LIMIT)
+        snapshot["all_feed_video_limit"] = int(payload.get("all_feed_video_limit", POCKETTUBE_ALL_FEED_VIDEO_LIMIT) or POCKETTUBE_ALL_FEED_VIDEO_LIMIT)
         snapshot["errors"] = list(payload.get("errors", []) or [])
         snapshot["groups"] = {}
         for group_key, group in (payload.get("groups", {}) or {}).items():
@@ -1776,6 +2195,9 @@ class YouTubeFreshnessService:
             for channel in group.get("channels", []) or []:
                 if isinstance(channel, dict):
                     channels.append(self._normalize_channel_payload(channel, group_name, normalized_group_key))
+            videos = self._normalize_group_videos(group.get("videos", []) or [], group_name, normalized_group_key)
+            latest_video = group.get("latest_video", {}) if isinstance(group.get("latest_video", {}), dict) else {}
+            normalized_latest_video = self._normalize_group_video(latest_video, group_name, normalized_group_key) if latest_video else {}
             snapshot["groups"][normalized_group_key] = {
                 "group_name": group_name,
                 "group_key": normalized_group_key,
@@ -1784,9 +2206,11 @@ class YouTubeFreshnessService:
                 "source_name": str(group.get("source_name", "") or "PocketTube").strip() or "PocketTube",
                 "imported_at": str(group.get("imported_at", "") or "").strip(),
                 "channel_count": int(group.get("channel_count", len(channels)) or 0),
-                "latest_video_count": int(group.get("latest_video_count", 0) or 0),
-                "latest_video": group.get("latest_video", {}) if isinstance(group.get("latest_video", {}), dict) else {},
+                "latest_video_count": int(group.get("latest_video_count", len(videos)) or 0),
+                "latest_video": normalized_latest_video or (dict(videos[0]) if videos else {}),
                 "channels": channels,
+                "videos": videos,
+                "diagnostics": self._normalize_group_diagnostics(group.get("diagnostics", {}), normalized_group_key, group_name),
             }
         snapshot["channels"] = {}
         for channel_id, channel in (payload.get("channels", {}) or {}).items():
