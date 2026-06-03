@@ -1569,7 +1569,7 @@ class YouTubeFreshnessService:
 
         canonical_filters = [
             {"key": "all", "label": "All", "aliases": []},
-            {"key": "favorites", "label": "Favorites", "aliases": ["favorites", "favorite", "favourites", "my favorite", "myfavorite"]},
+            {"key": "favorites", "label": "Favorites", "aliases": ["favorites", "favorite", "favourites", "my favorite", "myfavorite", "my favoret", "myfavoret"]},
             {"key": "news", "label": "News", "aliases": ["news"]},
             {"key": "tech", "label": "Tech", "aliases": ["tech", "technology"]},
             {"key": "philosophy", "label": "Philosophy", "aliases": ["philosophy", "philo"]},
@@ -1578,19 +1578,32 @@ class YouTubeFreshnessService:
 
         filters = []
         seen_filter_keys = set()
+        canonical_family_map = {}
         for item in canonical_filters:
             filter_key = item["key"]
             aliases = [self._normalize_snapshot_filter_key(alias) for alias in item.get("aliases", []) if self._normalize_snapshot_filter_key(alias)]
             if filter_key == "all":
                 count = len(feed_videos)
                 match_keys = ["all"]
+                canonical_family_map[filter_key] = {"match_keys": match_keys, "count": count, "matched_groups": []}
             else:
                 match_keys = list(dict.fromkeys([filter_key] + aliases))
+                matched_groups = [
+                    dict(group)
+                    for group_key, group in available_group_map.items()
+                    if group_key in match_keys
+                ]
+                canonical_family_map[filter_key] = {
+                    "match_keys": match_keys,
+                    "count": 0,
+                    "matched_groups": matched_groups,
+                }
                 count = len([
                     video
                     for video in feed_videos
                     if self._video_matches_snapshot_filter(video, match_keys)
                 ])
+                canonical_family_map[filter_key]["count"] = count
             filters.append({
                 "key": filter_key,
                 "label": item["label"],
@@ -1602,6 +1615,22 @@ class YouTubeFreshnessService:
 
         for group_key, group in sorted(available_group_map.items(), key=lambda item: item[1]["group_name"].lower()):
             if group_key in seen_filter_keys:
+                continue
+            hide_as_empty_duplicate = False
+            for family in canonical_family_map.values():
+                family_match_keys = set(family.get("match_keys", []) or [])
+                family_groups = list(family.get("matched_groups", []) or [])
+                if group_key not in family_match_keys:
+                    continue
+                if int(group.get("video_count", 0) or 0) > 0:
+                    continue
+                if int(family.get("count", 0) or 0) <= 0:
+                    continue
+                if not any(int(candidate.get("video_count", 0) or 0) > 0 for candidate in family_groups):
+                    continue
+                hide_as_empty_duplicate = True
+                break
+            if hide_as_empty_duplicate:
                 continue
             filters.append({
                 "key": group_key,

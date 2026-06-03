@@ -1491,6 +1491,106 @@ class YouTubeFreshnessServiceTests(unittest.TestCase):
             self.assertEqual(context["feed_video_count"], 3)
             self.assertEqual([video["video_id"] for video in context["feed_videos"]], ["fav-000", "fav-001", "fav-002"])
 
+    def test_build_page_context_canonical_favorites_prefers_myfavoret_with_videos_over_empty_myfavorite(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            service, _state = self._build_service(temp_dir)
+            favorite_videos = [self._group_video(f"favr-{index:03d}", channel_id="c-fav", channel_name="Favorite Desk", hours_ago=index) for index in range(200)]
+            save_json_file(service.snapshot_path, {
+                "version": 2,
+                "generated_at": FIXED_NOW.isoformat(),
+                "synced_at": FIXED_NOW.isoformat(),
+                "groups": {
+                    "myfavorite": {
+                        "group_name": "My Favorite",
+                        "group_key": "myfavorite",
+                        "section_name": "My Favorite",
+                        "section_key": "myfavorite",
+                        "source_name": "PocketTube",
+                        "imported_at": FIXED_NOW.isoformat(),
+                        "channel_count": 1,
+                        "latest_video_count": 0,
+                        "latest_video": {},
+                        "channels": [],
+                        "videos": [],
+                        "diagnostics": {"group_key": "myfavorite", "group_name": "My Favorite", "videos_collected": 0, "videos_stored": 0, "errors": []},
+                    },
+                    "myfavoret": {
+                        "group_name": "my favoret",
+                        "group_key": "myfavoret",
+                        "section_name": "my favoret",
+                        "section_key": "myfavoret",
+                        "source_name": "PocketTube",
+                        "imported_at": FIXED_NOW.isoformat(),
+                        "channel_count": 188,
+                        "latest_video_count": 200,
+                        "latest_video": favorite_videos[0],
+                        "channels": [],
+                        "videos": favorite_videos,
+                        "diagnostics": {"group_key": "myfavoret", "group_name": "my favoret", "videos_collected": 200, "videos_stored": 200, "errors": []},
+                    },
+                },
+                "channels": {},
+                "errors": [],
+            })
+
+            context = service.build_page_context_for_filter("favorites", display_limit=100)
+
+            self.assertEqual(context["selected_filter_key"], "favorites")
+            self.assertEqual(context["selected_filter_count"], 200)
+            self.assertEqual(context["feed_video_count"], 100)
+            self.assertEqual(context["selected_filter_display_count"], 100)
+            self.assertEqual([video["video_id"] for video in context["feed_videos"][:3]], ["favr-000", "favr-001", "favr-002"])
+            self.assertTrue(any(item["key"] == "favorites" and item["video_count"] == 200 for item in context["feed_filters"]))
+            self.assertFalse(any(item["key"] == "myfavorite" for item in context["feed_filters"]))
+
+    def test_build_page_context_canonical_favorites_hides_empty_duplicate_group_when_family_is_covered(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            service, _state = self._build_service(temp_dir)
+            favorite_videos = [self._group_video("favx-001", channel_id="c-fav", channel_name="Favorite Desk", hours_ago=1)]
+            save_json_file(service.snapshot_path, {
+                "version": 2,
+                "generated_at": FIXED_NOW.isoformat(),
+                "synced_at": FIXED_NOW.isoformat(),
+                "groups": {
+                    "myfavorite": {
+                        "group_name": "My Favorite",
+                        "group_key": "myfavorite",
+                        "section_name": "My Favorite",
+                        "section_key": "myfavorite",
+                        "source_name": "PocketTube",
+                        "imported_at": FIXED_NOW.isoformat(),
+                        "channel_count": 1,
+                        "latest_video_count": 0,
+                        "latest_video": {},
+                        "channels": [],
+                        "videos": [],
+                        "diagnostics": {"group_key": "myfavorite", "group_name": "My Favorite", "videos_collected": 0, "videos_stored": 0, "errors": []},
+                    },
+                    "myfavoret": {
+                        "group_name": "my favoret",
+                        "group_key": "myfavoret",
+                        "section_name": "my favoret",
+                        "section_key": "myfavoret",
+                        "source_name": "PocketTube",
+                        "imported_at": FIXED_NOW.isoformat(),
+                        "channel_count": 192,
+                        "latest_video_count": 1,
+                        "latest_video": favorite_videos[0],
+                        "channels": [],
+                        "videos": favorite_videos,
+                        "diagnostics": {"group_key": "myfavoret", "group_name": "my favoret", "videos_collected": 1, "videos_stored": 1, "errors": []},
+                    },
+                },
+                "channels": {},
+                "errors": [],
+            })
+
+            context = service.build_page_context_for_filter("all")
+
+            self.assertTrue(any(item["key"] == "favorites" and item["video_count"] == 1 for item in context["feed_filters"]))
+            self.assertFalse(any(item["key"] == "myfavorite" for item in context["feed_filters"]))
+            self.assertTrue(any(item["key"] == "myfavoret" and item["video_count"] == 1 for item in context["feed_filters"]))
+
     def test_build_page_context_canonical_cinema_maps_movise_group(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             service, _state = self._build_service(temp_dir)
