@@ -2907,13 +2907,151 @@ class YouTubeFreshnessServiceTests(unittest.TestCase):
 
             snapshot = service.sync_snapshot(scope="")
 
-            self.assertEqual(snapshot["version"], 1)
+            self.assertEqual(snapshot["version"], 2)
             self.assertTrue(snapshot["generated_at"])
             self.assertTrue(snapshot["synced_at"])
             self.assertEqual(snapshot["groups"], {})
             self.assertEqual(snapshot["channels"], {})
             self.assertTrue(service.snapshot_path.exists())
             self.assertEqual(load_json_file(service.snapshot_path, {}), snapshot)
+
+    def test_sync_snapshot_writes_group_videos_and_diagnostics(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            imported_sections = [
+                {
+                    "section_name": "News",
+                    "section_key": "news",
+                    "group_name": "News",
+                    "group_key": "news",
+                    "channels": [
+                        {"channel_id": "UC1", "channel_name": "Channel One"},
+                    ],
+                }
+            ]
+            latest_result = {
+                "group_name": "News",
+                "section_name": "News",
+                "group_key": "news",
+                "channels_scanned": 1,
+                "channels_with_upload_playlist": 1,
+                "channels_missing_upload_playlist": 0,
+                "videos_collected": 1,
+                "videos_stored": 1,
+                "upload_playlist_ids": ["UU1"],
+                "latest_videos_found": 1,
+                "latest_items": [
+                    self._group_video("v1", channel_id="UC1", channel_name="Channel One", hours_ago=1)
+                ],
+                "diagnostics": {
+                    "group_key": "news",
+                    "group_name": "News",
+                    "channels_scanned": 1,
+                    "channels_with_upload_playlist": 1,
+                    "channels_missing_upload_playlist": 0,
+                    "videos_collected": 1,
+                    "videos_stored": 1,
+                    "upload_playlist_ids": ["UU1"],
+                    "errors": [],
+                    "generated_at": FIXED_NOW.isoformat(),
+                    "synced_at": FIXED_NOW.isoformat(),
+                },
+                "errors": [],
+                "generated_at": FIXED_NOW.isoformat(),
+                "synced_at": FIXED_NOW.isoformat(),
+            }
+            service, _state = self._build_service(
+                temp_dir,
+                imported_sections=imported_sections,
+                refresh_mock=Mock(return_value=latest_result),
+            )
+
+            saved_payloads = {}
+
+            def capture_save(path, payload):
+                key = str(path)
+                if key.endswith("youtube_latest_snapshot.json"):
+                    saved_payloads["snapshot"] = payload
+                elif key.endswith("youtube_latest_sync_status.json"):
+                    saved_payloads["status"] = payload
+
+            service.save_json_file = Mock(side_effect=capture_save)
+            snapshot = service.sync_snapshot(scope="news")
+
+            news = snapshot["groups"]["news"]
+            self.assertEqual(snapshot["version"], 2)
+            self.assertEqual(news["videos"][0]["video_id"], "v1")
+            self.assertEqual(news["diagnostics"]["videos_stored"], 1)
+            self.assertEqual(news["latest_video"]["video_id"], "v1")
+            self.assertEqual(news["channels"][0]["latest_video"]["video_id"], "v1")
+            self.assertIn("snapshot", saved_payloads)
+            self.assertIn("videos", saved_payloads["snapshot"]["groups"]["news"])
+            self.assertIn("diagnostics", saved_payloads["snapshot"]["groups"]["news"])
+            self.assertEqual(saved_payloads["snapshot"]["groups"]["news"]["videos"][0]["video_id"], "v1")
+
+    def test_sync_snapshot_records_warnings_for_empty_group_videos(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            imported_sections = [
+                {
+                    "section_name": "News",
+                    "section_key": "news",
+                    "group_name": "News",
+                    "group_key": "news",
+                    "channels": [
+                        {"channel_id": "UC1", "channel_name": "Channel One"},
+                    ],
+                }
+            ]
+            latest_result = {
+                "group_name": "News",
+                "section_name": "News",
+                "group_key": "news",
+                "channels_scanned": 1,
+                "channels_with_upload_playlist": 1,
+                "channels_missing_upload_playlist": 0,
+                "videos_collected": 0,
+                "videos_stored": 0,
+                "upload_playlist_ids": ["UU1"],
+                "latest_videos_found": 0,
+                "latest_items": [],
+                "diagnostics": {
+                    "group_key": "news",
+                    "group_name": "News",
+                    "channels_scanned": 1,
+                    "channels_with_upload_playlist": 1,
+                    "channels_missing_upload_playlist": 0,
+                    "videos_collected": 0,
+                    "videos_stored": 0,
+                    "upload_playlist_ids": ["UU1"],
+                    "errors": [],
+                    "generated_at": FIXED_NOW.isoformat(),
+                    "synced_at": FIXED_NOW.isoformat(),
+                },
+                "errors": [],
+                "generated_at": FIXED_NOW.isoformat(),
+                "synced_at": FIXED_NOW.isoformat(),
+            }
+            service, _state = self._build_service(
+                temp_dir,
+                imported_sections=imported_sections,
+                refresh_mock=Mock(return_value=latest_result),
+            )
+
+            saved_payloads = {}
+
+            def capture_save(path, payload):
+                key = str(path)
+                if key.endswith("youtube_latest_snapshot.json"):
+                    saved_payloads["snapshot"] = payload
+                elif key.endswith("youtube_latest_sync_status.json"):
+                    saved_payloads["status"] = payload
+
+            service.save_json_file = Mock(side_effect=capture_save)
+            snapshot = service.sync_snapshot(scope="news")
+
+            self.assertEqual(snapshot["groups"]["news"]["videos"], [])
+            self.assertTrue(snapshot["warnings"])
+            self.assertTrue(saved_payloads["status"]["warnings"])
+            self.assertIn("news", saved_payloads["status"]["warnings"][0].lower())
 
     def test_sync_snapshot_finalizes_before_save(self):
         with tempfile.TemporaryDirectory() as temp_dir:

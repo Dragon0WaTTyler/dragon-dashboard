@@ -25,10 +25,12 @@ def main():
             "ok": True,
             "status": "completed",
             "scope": scope,
+            "snapshot_version": snapshot.get("version", ""),
             "generated_at": snapshot.get("generated_at", ""),
             "synced_at": snapshot.get("synced_at", ""),
             "group_count": len(snapshot.get("groups", {}) or {}),
             "channel_count": len(snapshot.get("channels", {}) or {}),
+            "warnings": list(snapshot.get("warnings", []) or []),
             "errors": list(snapshot.get("errors", []) or []),
         }
         print(json.dumps(report, indent=2, ensure_ascii=False))

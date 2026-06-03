@@ -58,11 +58,12 @@ class YouTubeFreshnessService:
 
     def empty_snapshot(self):
         return {
-            "version": 1,
+            "version": 2,
             "generated_at": "",
             "synced_at": "",
             "group_video_limit": POCKETTUBE_GROUP_VIDEO_LIMIT,
             "all_feed_video_limit": POCKETTUBE_ALL_FEED_VIDEO_LIMIT,
+            "warnings": [],
             "groups": {},
             "channels": {},
             "errors": [],
@@ -75,6 +76,7 @@ class YouTubeFreshnessService:
             "started_at": "",
             "completed_at": "",
             "last_error": "",
+            "warnings": [],
             "scope": "",
             "run_id": "",
             "run_url": "",
@@ -901,6 +903,19 @@ class YouTubeFreshnessService:
         snapshot["errors"] = errors
         snapshot = self._apply_latest_results_to_snapshot(snapshot, latest_results_by_group)
         snapshot = self.finalize_snapshot(snapshot)
+        warnings = []
+        for group_key, group in (snapshot.get("groups", {}) or {}).items():
+            if not isinstance(group, dict):
+                continue
+            channels_assigned = int(group.get("channels_assigned", len(group.get("channels", []) or [])) or 0)
+            videos_stored = int(group.get("videos_stored_after_dedupe", len(group.get("videos", []) or [])) or 0)
+            if channels_assigned > 0 and videos_stored == 0:
+                diagnostics_errors = [str(error or "").strip() for error in list((group.get("diagnostics", {}) or {}).get("errors", []) or []) if str(error or "").strip()]
+                warning_text = f"{group.get('group_key', group_key)}: {channels_assigned} channels, 0 stored videos"
+                if diagnostics_errors:
+                    warning_text = f"{warning_text} ({diagnostics_errors[0]})"
+                warnings.append(warning_text)
+        snapshot["warnings"] = warnings
         group_channels_total = sum(len(group.get("channels", []) or []) for group in snapshot.get("groups", {}).values() if isinstance(group, dict))
         latest_videos_total = sum(
             1
@@ -910,20 +925,23 @@ class YouTubeFreshnessService:
             if isinstance(channel, dict) and isinstance(channel.get("latest_video", {}), dict) and channel["latest_video"].get("video_id")
         )
         self.app_logger.info(
-            "youtube_freshness_snapshot_finalized groups=%s group_channels=%s channels=%s latest_videos=%s errors=%s",
+            "youtube_freshness_snapshot_finalized groups=%s group_channels=%s channels=%s latest_videos=%s warnings=%s errors=%s",
             len(snapshot.get("groups", {}) or {}),
             group_channels_total,
             len(snapshot.get("channels", {}) or {}),
             latest_videos_total,
+            len(warnings or []),
             len(errors or []),
         )
         self.save_snapshot(snapshot)
+        sync_warnings = list(snapshot.get("warnings", []) or [])
         self.save_sync_status({
             "status": "completed",
             "requested_at": self.load_sync_status().get("requested_at", ""),
             "started_at": self.load_sync_status().get("started_at", ""),
             "completed_at": self.current_timestamp(),
             "last_error": "",
+            "warnings": sync_warnings,
             "scope": str(scope or "").strip(),
             "run_id": self.load_sync_status().get("run_id", ""),
             "run_url": self.load_sync_status().get("run_url", ""),
@@ -2179,11 +2197,12 @@ class YouTubeFreshnessService:
         snapshot = self.empty_snapshot()
         if not isinstance(payload, dict):
             return snapshot
-        snapshot["version"] = int(payload.get("version", 1) or 1)
+        snapshot["version"] = max(int(payload.get("version", 2) or 2), 2)
         snapshot["generated_at"] = str(payload.get("generated_at", "") or "").strip()
         snapshot["synced_at"] = str(payload.get("synced_at", "") or "").strip()
         snapshot["group_video_limit"] = int(payload.get("group_video_limit", POCKETTUBE_GROUP_VIDEO_LIMIT) or POCKETTUBE_GROUP_VIDEO_LIMIT)
         snapshot["all_feed_video_limit"] = int(payload.get("all_feed_video_limit", POCKETTUBE_ALL_FEED_VIDEO_LIMIT) or POCKETTUBE_ALL_FEED_VIDEO_LIMIT)
+        snapshot["warnings"] = list(payload.get("warnings", []) or [])
         snapshot["errors"] = list(payload.get("errors", []) or [])
         snapshot["groups"] = {}
         for group_key, group in (payload.get("groups", {}) or {}).items():
@@ -2323,6 +2342,7 @@ class YouTubeFreshnessService:
             "started_at": str(payload.get("started_at", "") or "").strip(),
             "completed_at": str(payload.get("completed_at", "") or "").strip(),
             "last_error": str(payload.get("last_error", "") or "").strip(),
+            "warnings": list(payload.get("warnings", []) or []),
             "scope": str(payload.get("scope", "") or "").strip(),
             "run_id": str(payload.get("run_id", "") or "").strip(),
             "run_url": str(payload.get("run_url", "") or "").strip(),
