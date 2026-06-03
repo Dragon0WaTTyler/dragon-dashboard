@@ -8630,6 +8630,45 @@ def normalize_reading_dedupe_url(value):
     ))
 
 
+def normalize_reading_dedupe_title(value):
+    text = normalize_reading_space(value)
+    if not text:
+        return ""
+    text = text.casefold()
+    text = re.sub(r"[\"'`’“”‘]+", "", text)
+    text = re.sub(r"[\W_]+", " ", text, flags=re.UNICODE)
+    return normalize_reading_space(text)
+
+
+def reading_entry_dedupe_scope(entry):
+    entry = entry if isinstance(entry, dict) else {}
+    source_id = str(entry.get("source_id", "") or "").strip()
+    if source_id:
+        return source_id.lower()
+    source_name = normalize_reading_space(entry.get("source", ""))
+    if source_name:
+        return source_name.casefold()
+    for field in ("url", "original_url", "canonical_url"):
+        normalized_url = normalize_reading_dedupe_url(entry.get(field, ""))
+        if not normalized_url:
+            continue
+        host = urllib.parse.urlsplit(normalized_url).netloc.lower()
+        if host:
+            return host
+    return ""
+
+
+def reading_entry_dedupe_published_day(entry):
+    entry = entry if isinstance(entry, dict) else {}
+    timestamp = parse_timestamp(entry.get("published_at", "")) or parse_timestamp(entry.get("added_at", "")) or parse_timestamp(entry.get("imported_at", ""))
+    if not timestamp:
+        return ""
+    try:
+        return timestamp.date().isoformat()
+    except Exception:
+        return ""
+
+
 def reading_entry_dedupe_keys(entry):
     entry = entry if isinstance(entry, dict) else {}
     keys = set()
@@ -8642,6 +8681,13 @@ def reading_entry_dedupe_keys(entry):
         value = str(entry.get(field, "") or "").strip()
         if value:
             keys.add(f"id:{source_id}:{value.lower()}" if source_id else f"id:{value.lower()}")
+    title_key = normalize_reading_dedupe_title(entry.get("title", ""))
+    dedupe_scope = reading_entry_dedupe_scope(entry)
+    published_day = reading_entry_dedupe_published_day(entry)
+    if title_key and dedupe_scope and published_day:
+        keys.add(f"title_day:{dedupe_scope}:{published_day}:{title_key}")
+    if title_key and dedupe_scope and not keys:
+        keys.add(f"title:{dedupe_scope}:{title_key}")
     return keys
 
 
@@ -9362,9 +9408,11 @@ def normalize_reading_entry(entry, index=0, source_lookup=None, source_category_
     if not entry_id:
         entry_id = f"reading-{reading_hash_key(entry_seed or str(index))}"
     topic = str(item.get("topic", "") or "").strip()
-    excerpt = normalize_reading_space(item.get("excerpt", "")) if include_content else ""
+    excerpt = normalize_reading_space(item.get("excerpt", "") or item.get("summary", "")) if include_content else ""
     content_text = str(item.get("content_text", "") or "").strip() if include_content else ""
     content_html = str(item.get("content_html", "") or "").strip() if include_content else ""
+    if include_content and not excerpt and content_text:
+        excerpt = normalize_reading_space(content_text)[:420].strip()
     content_score = int(item.get("content_score", 0) or 0)
     if include_content and not content_score:
         content_score = reading_entry_content_score({
@@ -9428,6 +9476,10 @@ def normalize_reading_entry(entry, index=0, source_lookup=None, source_category_
     raw_category = str(source_category or item.get("category", "") or "").strip()
     category = normalize_reading_category(raw_category)
     topic_display = reading_visible_topic_label(topic, category)
+    normalized_status = normalize_reading_status(item.get("status", ""))
+    saved_state = normalize_reading_bool(item.get("saved", None), default=False) or bool(item.get("starred", False))
+    for saved_key in ("important", "bookmarked", "bookmark", "pinned"):
+        saved_state = saved_state or normalize_reading_bool(item.get(saved_key, False), default=False)
     extraction_status = str(item.get("extraction_status", "") or "").strip()
     if extraction_status and extraction_status not in READING_CONTENT_CACHE_STATUSES:
         extraction_status = ""
@@ -9446,7 +9498,9 @@ def normalize_reading_entry(entry, index=0, source_lookup=None, source_category_
         "added_at": added_at,
         "added_display": str(item.get("added_display", "") or "").strip() or format_timestamp_label(added_at, default=""),
         "imported_at": str(item.get("imported_at", "") or added_at).strip(),
-        "status": normalize_reading_status(item.get("status", "")),
+        "status": normalized_status,
+        "read": normalized_status != "unread",
+        "saved": saved_state,
         "starred": bool(item.get("starred", False)),
         "topic": topic,
         "topic_display": topic_display,
@@ -9457,6 +9511,7 @@ def normalize_reading_entry(entry, index=0, source_lookup=None, source_category_
         "lead_image_kind": lead_image_kind if lead_image_kind in {"explicit", "feed_cover"} else "",
         "author": author_name,
         "author_image_url": author_image_url,
+        "summary": excerpt,
         "excerpt": excerpt,
         "content_html": content_html,
         "content_text": content_text,
@@ -14516,7 +14571,7 @@ def get_navigation_items():
         {"href": url_for("home"), "label": "Home", "short_label": "Home", "icon": "fa-solid fa-house", "active_paths": [url_for("home")]},
         {"href": url_for("library"), "label": "Movies", "short_label": "Movies", "icon": "fa-solid fa-film", "active_paths": [url_for("library")]},
         {"href": url_for("books_archive"), "label": "Books", "short_label": "Books", "icon": "fa-solid fa-book", "active_paths": [url_for("books_archive")]},
-        {"href": url_for("reading"), "label": "Reading", "short_label": "Reading", "icon": "fa-solid fa-book-open-reader", "active_paths": [url_for("reading")]},
+        {"href": url_for("reading"), "label": "Articles", "short_label": "Articles", "icon": "fa-solid fa-book-open-reader", "active_paths": [url_for("reading")]},
     ]
     pockettube_item = {
         "href": url_for("pockettube"),
@@ -27745,7 +27800,7 @@ def reading():
     reading_view["error_message"] = str(request.args.get("error", "") or "").strip()
     rendered = render_template(
         "reading.html",
-        title="Reading",
+        title="Articles",
         build_query_url=build_query_url,
         ai_default_mode="cinematic",
         ai_page_context="general",
@@ -28213,7 +28268,7 @@ def reading_article(entry_id):
         bool(entry.get("content_text") or entry.get("excerpt")) if entry else False,
     )
     if not entry:
-        return Response("Reading entry not found.", status=404)
+        return Response("Article not found.", status=404)
     current_index_value = (article_context or {}).get("current_index", -1)
     current_index = int(current_index_value if current_index_value is not None else -1)
     if entry.get("status") == "unread":
@@ -28261,9 +28316,9 @@ def reading_article(entry_id):
     article_cache_fallback_message = ""
     if article_cache_fallback:
         if entry.get("content_text") or entry.get("excerpt"):
-            article_cache_fallback_message = "Full article content is not cached yet. Open original source."
+            article_cache_fallback_message = "Full article content is not cached locally yet. Open original source."
         else:
-            article_cache_fallback_message = "Full article content is not cached yet. Open original source."
+            article_cache_fallback_message = "Full article content is not cached locally yet. Open original source."
         app.logger.info(
             "reading_article fallback entry_id=%s status=%s has_text=%s has_excerpt=%s",
             entry_id,
@@ -28342,7 +28397,7 @@ def reading_article(entry_id):
     )
     rendered = render_template(
         "reading_article.html",
-        title=entry.get("title") or "Reading Article",
+        title=entry.get("title") or "Article",
         entry=entry,
         article_html=Markup(article_html) if article_html else "",
         article_paragraphs=article_paragraphs,

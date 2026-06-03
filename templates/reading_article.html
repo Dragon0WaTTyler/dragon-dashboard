@@ -113,7 +113,7 @@
     <section class="page-hero">
         <div class="reading-article-top">
             <div class="reading-article-actions">
-                <a class="btn" href="{{ reading_return_url }}"><i data-lucide="arrow-left"></i>{{ 'Back to recipe' if reading_recipe_flow else 'Back to inbox' }}</a>
+                <a class="btn" href="{{ reading_return_url }}"><i data-lucide="arrow-left"></i>{{ 'Back to recipe' if reading_recipe_flow else 'Back to articles' }}</a>
                 {% if entry.url %}
                 <a class="btn" href="{{ entry.url }}" target="_blank" rel="noopener"><i data-lucide="external-link"></i>Open original</a>
                 {% endif %}
@@ -266,9 +266,9 @@
                 <div class="reading-prose" dir="{{ article_dir }}" lang="{{ article_lang }}">
                     <p dir="auto">{{ entry.excerpt }}</p>
                 </div>
-                <div class="reading-extraction-note">{{ article_cache_fallback_message or 'Full article content is not cached yet. Open original source.' }}</div>
+                <div class="reading-extraction-note">{{ article_cache_fallback_message or 'Full article content is not cached locally yet. Open original source.' }}</div>
                 {% else %}
-                <div class="reading-extraction-note">{{ article_cache_fallback_message or 'Full article content is not cached yet. Open original source.' }}</div>
+                <div class="reading-extraction-note">{{ article_cache_fallback_message or 'Full article content is not cached locally yet. Open original source.' }}</div>
                 {% endif %}
 
                 {% if entry.extraction_status or entry.extraction_error %}

@@ -47,7 +47,7 @@
         </div>
         <div class="recipe-controls">
             <a class="btn" href="{{ recipe_start_url }}"><i data-lucide="play"></i>Start recipe</a>
-            <a class="btn" href="{{ reading_return_url }}"><i data-lucide="arrow-left"></i>Back to Reading</a>
+            <a class="btn" href="{{ reading_return_url }}"><i data-lucide="arrow-left"></i>Back to Articles</a>
             <form method="post" action="{{ url_for('reading_recipe_of_day_regenerate') }}">
                 <button type="submit" class="btn"><i data-lucide="refresh-cw"></i>Rebuild today&apos;s recipe</button>
             </form>

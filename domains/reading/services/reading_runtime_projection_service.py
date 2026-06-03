@@ -103,6 +103,9 @@ class ReadingRuntimeProjectionService:
             or ""
         ).strip()
         category = self.normalize_reading_category(raw_category)
+        excerpt = str(item.get("excerpt", "") or item.get("summary", "") or "").strip()
+        status = self.normalize_reading_status(item.get("status", ""))
+        saved = bool(item.get("saved", False) or item.get("starred", False))
         return {
             "id": entry_id,
             "source_id": source_id,
@@ -117,12 +120,16 @@ class ReadingRuntimeProjectionService:
             "added_at": added_at,
             "added_display": str(item.get("added_display", "") or "").strip() or self.format_timestamp_label(added_at, default=""),
             "imported_at": str(item.get("imported_at", "") or added_at).strip(),
-            "status": self.normalize_reading_status(item.get("status", "")),
+            "status": status,
+            "read": status != "unread",
+            "saved": saved,
             "starred": bool(item.get("starred", False)),
             "topic": topic,
             "topic_display": self.reading_visible_topic_label(topic, category),
             "category": category,
             "image_url": self.absolutize_reading_url(item.get("image_url", ""), original_url or url),
+            "summary": excerpt,
+            "excerpt": excerpt,
         }
 
     def build_lightweight_entries(self, data, source_lookup=None, source_category_lookup=None, context_label="runtime"):

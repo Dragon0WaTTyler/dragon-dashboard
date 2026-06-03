@@ -45,6 +45,13 @@
     .reading-freshness-banner strong{color:var(--heading);font-weight:700}
     .reading-freshness-banner.is-stale{border-color:rgba(255,176,0,.28);background:rgba(255,176,0,.055)}
     .reading-freshness-banner.is-missing{border-color:rgba(255,0,0,.28);background:rgba(255,0,0,.045)}
+    .reading-source-status{display:grid;gap:10px;margin-top:12px;padding:12px;border-radius:14px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.02)}
+    .reading-source-status-summary{display:flex;align-items:center;gap:8px 12px;flex-wrap:wrap;color:var(--text-2);font-size:.78rem;line-height:1.35}
+    .reading-source-status-summary strong{color:var(--heading)}
+    .reading-source-status-list{display:grid;gap:8px}
+    .reading-source-status-item{display:flex;align-items:flex-start;justify-content:space-between;gap:10px 14px;flex-wrap:wrap;color:var(--text-2);font-size:.76rem;line-height:1.4}
+    .reading-source-status-item strong{color:var(--heading)}
+    .reading-source-status-item span{overflow-wrap:anywhere}
     .reading-card-badges{display:flex;align-items:center;gap:7px 8px;flex-wrap:wrap;margin-top:-1px}
     .reading-entry-meta{display:flex;align-items:center;gap:8px 10px;flex-wrap:wrap;font-size:.76rem;line-height:1.35}
     .reading-entry-footer{display:grid;gap:8px;margin-top:auto;padding-top:2px;min-width:0;max-width:100%}
@@ -94,6 +101,7 @@
         .reading-sync-row form,.reading-sync-row .btn{width:100%}
         .reading-sync-meta{width:100%;flex-direction:column;align-items:flex-start}
         .reading-freshness-banner{align-items:flex-start;flex-direction:column}
+        .reading-source-status-item{flex-direction:column}
         .reading-results-note{font-size:.76rem;align-items:flex-start}
         .reading-results-note .btn{width:100%}
         .filter-form{grid-template-columns:1fr;gap:10px}
@@ -103,13 +111,13 @@
 <div class="reading-page">
 <section class="page-hero">
     <div class="hero-meta">
-        <span class="hero-badge">Reading</span>
+        <span class="hero-badge">Articles</span>
         <span>{{ source_count }} sources</span>
         <span>{{ summary.unread }} unread</span>
-        <span>{{ last_sync_at_display }}</span>
+        <span>{{ last_refreshed_at_display }}</span>
     </div>
     <h2>{{ title }}</h2>
-    <p class="subhead">A quiet incoming layer for RSS and saved articles. Cards open inside Dragon first, with the original source one click away.</p>
+    <p class="subhead">A quiet incoming layer for RSS and saved articles. The page loads from the local snapshot first, with the original source one click away.</p>
     <div class="reading-sync-row">
         <div class="reading-sync-meta">
             <span>{{ fresh_count }} new since last sync</span>
@@ -125,9 +133,30 @@
         </div>
     </div>
     <div class="reading-freshness-banner is-{{ snapshot_freshness_state }}">
-        <span><strong>{{ snapshot_freshness_label }}</strong>: showing reading_data.json updated {{ snapshot_updated_display }}.</span>
+        <span><strong>{{ snapshot_freshness_label }}</strong>: showing local snapshot reading_data.json refreshed {{ last_refreshed_at_display }}.</span>
         <span>Last feed sync: {{ last_sync_at_display }}</span>
     </div>
+    {% if source_status_summary.total %}
+    <div class="reading-source-status">
+        <div class="reading-source-status-summary">
+            <span><strong>Source status</strong></span>
+            <span>{{ source_status_summary.ok }} ok</span>
+            <span>{{ source_status_summary.blocked }} blocked</span>
+            <span>{{ source_status_summary.error }} errors</span>
+            <span>{{ source_status_summary.never }} not synced yet</span>
+        </div>
+        {% if source_status_summary.problem_items %}
+        <div class="reading-source-status-list">
+            {% for item in source_status_summary.problem_items %}
+            <div class="reading-source-status-item">
+                <span><strong>{{ item.name }}</strong> · {{ item.status_label }}</span>
+                <span>{{ item.message or ('Last synced ' ~ item.last_synced_at_display) }}</span>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
 </section>
 
 {% if success_message or error_message %}
@@ -380,7 +409,7 @@
                 return;
             }
             if (payload.status === 'started') {
-                message.textContent = 'Reading sync started';
+                message.textContent = 'Articles sync started';
                 setButtonState(false);
                 schedulePoll();
                 return;

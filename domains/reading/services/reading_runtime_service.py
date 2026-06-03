@@ -143,6 +143,47 @@ class ReadingRuntimeService:
             or self.parse_timestamp(entry.get("published_at", ""))
         )
 
+    def _build_source_status_summary(self, sources):
+        summary = {
+            "total": len(sources),
+            "ok": 0,
+            "blocked": 0,
+            "error": 0,
+            "never": 0,
+            "items": [],
+        }
+        for source in sources:
+            status = str(source.get("last_sync_status", "") or "").strip().lower()
+            last_synced_at = str(source.get("last_synced_at", "") or "").strip()
+            if status == "ok":
+                summary["ok"] += 1
+                status_label = "OK"
+            elif status == "blocked_source":
+                summary["blocked"] += 1
+                status_label = "Blocked"
+            elif status:
+                summary["error"] += 1
+                status_label = "Error"
+            else:
+                summary["never"] += 1
+                status_label = "Not synced yet"
+            summary["items"].append({
+                "name": str(source.get("name", "Unknown Source") or "Unknown Source").strip(),
+                "status": status or "never",
+                "status_label": status_label,
+                "last_synced_at": last_synced_at,
+                "last_synced_at_display": self.format_timestamp_label(last_synced_at, default="Never"),
+                "message": str(source.get("last_sync_message", "") or "").strip(),
+            })
+        summary["items"].sort(
+            key=lambda item: (
+                {"blocked_source": 0, "error": 1, "never": 2, "ok": 3}.get(item.get("status", ""), 4),
+                item.get("name", "").lower(),
+            )
+        )
+        summary["problem_items"] = [item for item in summary["items"] if item.get("status") in {"blocked_source", "error", "never"}][:3]
+        return summary
+
     def _mark_fresh_import_entries(self, entries, last_sync_timestamp=None, context_label="list"):
         started_at = self.monotonic()
         fresh_count = 0
@@ -330,9 +371,12 @@ class ReadingRuntimeService:
             "fresh_label": "New since last sync" if fresh_count else "Up to date",
             "last_sync_at": last_sync_at,
             "last_sync_at_display": self.format_timestamp_label(last_sync_at, default="Never"),
+            "last_refreshed_at": snapshot_freshness.get("snapshot_updated_at", ""),
+            "last_refreshed_at_display": snapshot_freshness.get("snapshot_updated_display", "Unknown"),
             "last_sync_count": int(data.get("last_sync_count", 0) or 0),
             "last_sync_sources": int(data.get("last_sync_sources", 0) or 0),
             "last_sync_message": str(data.get("last_sync_message", "") or "").strip(),
+            "source_status_summary": self._build_source_status_summary(sources),
         }
         view.update(snapshot_freshness)
         return view
