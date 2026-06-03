@@ -1,10 +1,24 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
+
+from .env import load_local_env
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DOTENV_PATH = BASE_DIR / ".env"
+LOCAL_ENV = load_local_env(DOTENV_PATH)
+
+
+def _resolve_path_from_env(env_var_name: str, default_path: Path) -> Path:
+    raw_value = str(os.getenv(env_var_name, "") or LOCAL_ENV.get(env_var_name, "") or "").strip()
+    if not raw_value:
+        return default_path
+    configured_path = Path(raw_value).expanduser()
+    if not configured_path.is_absolute():
+        configured_path = BASE_DIR / configured_path
+    return configured_path.resolve()
 
 CACHE_DIR = BASE_DIR / "cache"
 BACKUPS_DIR = BASE_DIR / "backups"
@@ -21,7 +35,7 @@ DURATION_CACHE_PATH = BASE_DIR / "youtube_duration_cache.json"
 PLAYLISTS_PATH = BASE_DIR / "playlists.json"
 ADMIN_DATA_PATH = BASE_DIR / "admin_data.json"
 DELETED_HISTORY_PATH = BASE_DIR / "deleted_history.json"
-READING_DATA_PATH = BASE_DIR / "reading_data.json"
+READING_DATA_PATH = _resolve_path_from_env("DRAGON_READING_DATA_PATH", BASE_DIR / "reading_data.json")
 CHESS_DATA_PATH = BASE_DIR / "chess_data.json"
 CHESS_COURSES_PATH = BASE_DIR / "chess_courses.json"
 LICHESS_PUZZLE_SAMPLE_PATH = BASE_DIR / "lichess_puzzles_sample.csv"

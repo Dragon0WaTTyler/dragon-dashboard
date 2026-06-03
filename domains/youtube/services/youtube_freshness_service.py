@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 from pathlib import Path
 import re
+import tempfile
 
 
 class YouTubeFreshnessService:
@@ -24,6 +26,9 @@ class YouTubeFreshnessService:
         save_json_file,
         snapshot_path,
         sync_status_path,
+        snapshot_raw_url="",
+        sync_status_raw_url="",
+        requests_module=None,
         registry_path=None,
         app_logger,
     ):
@@ -42,6 +47,9 @@ class YouTubeFreshnessService:
         self.save_json_file = save_json_file
         self.snapshot_path = Path(snapshot_path)
         self.sync_status_path = Path(sync_status_path)
+        self.snapshot_raw_url = str(snapshot_raw_url or "").strip()
+        self.sync_status_raw_url = str(sync_status_raw_url or "").strip()
+        self.requests_module = requests_module
         self.registry_path = Path(registry_path) if registry_path else Path(__file__).resolve().parents[1] / "data" / "pockettube_registry.json"
         self.app_logger = app_logger
 
@@ -86,6 +94,88 @@ class YouTubeFreshnessService:
         payload = self._normalize_sync_status(status)
         self.save_json_file(self.sync_status_path, payload)
         return payload
+
+    def _load_remote_json_object(self, url, label):
+        if not url:
+            raise RuntimeError(f"GitHub raw URL missing for {label}.")
+        if self.requests_module is None:
+            raise RuntimeError(f"HTTP client unavailable for {label}.")
+
+        try:
+            response = self.requests_module.get(url, timeout=15)
+        except self.requests_module.RequestException as exc:
+            raise RuntimeError(f"Download failed for {label}: {exc}") from exc
+
+        status_code = getattr(response, "status_code", None)
+        if status_code != 200:
+            raise RuntimeError(f"Download failed for {label}: GitHub returned status {status_code}")
+
+        raw_text = response.text
+        if not isinstance(raw_text, str) or not raw_text.strip():
+            raise RuntimeError(f"Download failed for {label}: response was empty")
+
+        try:
+            payload = json.loads(raw_text)
+        except Exception as exc:
+            raise RuntimeError(f"Download failed for {label}: invalid JSON ({exc})") from exc
+
+        if not isinstance(payload, dict) or not payload:
+            raise RuntimeError(f"Download failed for {label}: payload must be a non-empty object")
+        return payload
+
+    def _stage_json_atomic_payload(self, destination_path, payload, *, normalizer):
+        destination_path = Path(destination_path)
+        normalized_payload = normalizer(payload)
+        if not isinstance(normalized_payload, dict) or not normalized_payload:
+            raise RuntimeError(f"Refusing to replace {destination_path.name}: normalized payload was invalid")
+
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            delete=False,
+            dir=str(destination_path.parent),
+            prefix=f"{destination_path.stem}.",
+            suffix=".tmp",
+        ) as temp_file:
+            temp_path = Path(temp_file.name)
+            json.dump(normalized_payload, temp_file, indent=2, ensure_ascii=False)
+            temp_file.flush()
+        return normalized_payload, temp_path
+
+    def refresh_local_snapshot_from_github(self):
+        snapshot_payload = self._load_remote_json_object(self.snapshot_raw_url, "youtube_latest_snapshot.json")
+        sync_status_payload = self._load_remote_json_object(self.sync_status_raw_url, "youtube_latest_sync_status.json")
+        snapshot_temp_path = None
+        sync_status_temp_path = None
+        try:
+            saved_snapshot, snapshot_temp_path = self._stage_json_atomic_payload(
+                self.snapshot_path,
+                snapshot_payload,
+                normalizer=self.finalize_snapshot,
+            )
+            saved_sync_status, sync_status_temp_path = self._stage_json_atomic_payload(
+                self.sync_status_path,
+                sync_status_payload,
+                normalizer=self._normalize_sync_status,
+            )
+            snapshot_temp_path.replace(self.snapshot_path)
+            sync_status_temp_path.replace(self.sync_status_path)
+        finally:
+            for temp_path in (snapshot_temp_path, sync_status_temp_path):
+                if temp_path is not None and temp_path.exists():
+                    try:
+                        temp_path.unlink()
+                    except Exception:
+                        pass
+        return {
+            "ok": True,
+            "status": "updated",
+            "snapshot_path": str(self.snapshot_path),
+            "sync_status_path": str(self.sync_status_path),
+            "group_count": len(saved_snapshot.get("groups", {}) or {}),
+            "channel_count": len(saved_snapshot.get("channels", {}) or {}),
+            "sync_state": str(saved_sync_status.get("status", "") or "").strip(),
+        }
 
     def _iter_snapshot_latest_videos(self, snapshot):
         snapshot = snapshot if isinstance(snapshot, dict) else self.empty_snapshot()
@@ -899,7 +989,12 @@ class YouTubeFreshnessService:
             return {"ok": True, "status": "failed", "sync_status": status}
 
         try:
-            snapshot = self.refresh_snapshot_from_github()
+            if self.snapshot_raw_url and self.sync_status_raw_url and self.requests_module is not None:
+                snapshot_result = self.refresh_local_snapshot_from_github()
+                snapshot = self.load_snapshot()
+            else:
+                snapshot = self.refresh_snapshot_from_github()
+                snapshot_result = {"ok": True, "status": "updated"}
         except Exception as exc:
             error_message = self._github_snapshot_download_error_message(exc)
             status.update({
@@ -934,6 +1029,7 @@ class YouTubeFreshnessService:
             "status": "completed",
             "sync_status": status,
             "snapshot": snapshot,
+            "snapshot_refresh": snapshot_result,
         }
 
     def _resolve_pockettube_import_source(self, admin_data=None, latest_import=None, sections=None):

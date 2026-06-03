@@ -18,6 +18,28 @@ class _FixedDateTimeModule:
         return FIXED_NOW.astimezone(tz or timezone.utc)
 
 
+class _FakeResponse:
+    def __init__(self, *, status_code=200, text="{}"):
+        self.status_code = status_code
+        self.text = text
+
+
+class _FakeRequestsModule:
+    class RequestException(Exception):
+        pass
+
+    def __init__(self, responses=None):
+        self._responses = dict(responses or {})
+
+    def get(self, url, timeout=15):
+        response = self._responses.get(url)
+        if isinstance(response, Exception):
+            raise response
+        if response is None:
+            raise self.RequestException(f"unexpected url: {url}")
+        return response
+
+
 class YouTubeFreshnessServiceTests(unittest.TestCase):
     def _timestamp(self, hours_ago):
         return (FIXED_NOW - timedelta(hours=hours_ago)).isoformat()
@@ -32,6 +54,7 @@ class YouTubeFreshnessServiceTests(unittest.TestCase):
         refresh_mock=None,
         trigger_mock=None,
         github_refresh_mock=None,
+        requests_module=None,
     ):
         imported_sections = list(imported_sections or [])
         latest_cache = dict(latest_cache or {})
@@ -93,6 +116,9 @@ class YouTubeFreshnessServiceTests(unittest.TestCase):
             save_json_file=save_json_file,
             snapshot_path=Path(temp_dir) / "youtube_latest_snapshot.json",
             sync_status_path=Path(temp_dir) / "youtube_latest_sync_status.json",
+            snapshot_raw_url="https://example.com/youtube_latest_snapshot.json",
+            sync_status_raw_url="https://example.com/youtube_latest_sync_status.json",
+            requests_module=requests_module,
             registry_path=registry_path,
             app_logger=Mock(),
         ), state
@@ -1954,6 +1980,121 @@ class YouTubeFreshnessServiceTests(unittest.TestCase):
             snapshot_mock.assert_called_once_with("yt-watch-1")
             collect_mock.assert_called_once()
 
+    def test_refresh_local_snapshot_from_github_replaces_local_files_when_valid(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            requests_module = _FakeRequestsModule({
+                "https://example.com/youtube_latest_snapshot.json": _FakeResponse(text="""{
+                    "version": 1,
+                    "generated_at": "2026-06-02T12:00:00+00:00",
+                    "synced_at": "2026-06-02T12:00:00+00:00",
+                    "groups": {
+                        "science": {
+                            "group_name": "Science",
+                            "group_key": "science",
+                            "section_name": "Science",
+                            "section_key": "science",
+                            "source_name": "PocketTube",
+                            "imported_at": "2026-06-02T12:00:00+00:00",
+                            "channel_count": 1,
+                            "latest_video_count": 1,
+                            "latest_video": {},
+                            "channels": [
+                                {
+                                    "channel_id": "c1",
+                                    "channel_title": "Science One",
+                                    "group_names": ["Science"],
+                                    "group_keys": ["science"],
+                                    "latest_video": {
+                                        "entry_id": "yt-v1",
+                                        "video_id": "v1",
+                                        "watch_key": "v1",
+                                        "title": "Fresh Cache Video",
+                                        "channel_id": "c1",
+                                        "channel_name": "Science One",
+                                        "published_at": "2026-06-02T11:00:00+00:00",
+                                        "url": "https://www.youtube.com/watch?v=v1"
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "channels": {},
+                    "errors": []
+                }"""),
+                "https://example.com/youtube_latest_sync_status.json": _FakeResponse(text="""{
+                    "status": "completed",
+                    "requested_at": "2026-06-02T11:59:00+00:00",
+                    "started_at": "2026-06-02T11:59:10+00:00",
+                    "completed_at": "2026-06-02T12:00:00+00:00",
+                    "last_error": "",
+                    "scope": "",
+                    "run_id": "123",
+                    "run_url": "https://github.com/example/actions/runs/123",
+                    "source": "github_actions",
+                    "updated_at": "2026-06-02T12:00:00+00:00"
+                }"""),
+            })
+            service, _state = self._build_service(temp_dir, requests_module=requests_module)
+            save_json_file(service.snapshot_path, {"version": 1, "generated_at": "", "synced_at": "", "groups": {}, "channels": {}, "errors": []})
+            save_json_file(service.sync_status_path, service.empty_sync_status())
+
+            result = service.refresh_local_snapshot_from_github()
+
+            self.assertTrue(result["ok"])
+            saved_snapshot = load_json_file(service.snapshot_path, {})
+            saved_sync_status = load_json_file(service.sync_status_path, {})
+            self.assertIn("science", saved_snapshot.get("groups", {}))
+            self.assertEqual(saved_snapshot["groups"]["science"]["channels"][0]["latest_video"]["video_id"], "v1")
+            self.assertEqual(saved_sync_status.get("status"), "completed")
+            self.assertEqual(saved_sync_status.get("run_id"), "123")
+
+    def test_refresh_local_snapshot_from_github_does_not_replace_local_files_when_invalid(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            requests_module = _FakeRequestsModule({
+                "https://example.com/youtube_latest_snapshot.json": _FakeResponse(text="[]"),
+                "https://example.com/youtube_latest_sync_status.json": _FakeResponse(text="""{
+                    "status": "completed",
+                    "requested_at": "",
+                    "started_at": "",
+                    "completed_at": "",
+                    "last_error": "",
+                    "scope": "",
+                    "run_id": "",
+                    "run_url": "",
+                    "source": "github_actions",
+                    "updated_at": ""
+                }"""),
+            })
+            service, _state = self._build_service(temp_dir, requests_module=requests_module)
+            original_snapshot = {
+                "version": 1,
+                "generated_at": "2026-06-01T12:00:00+00:00",
+                "synced_at": "2026-06-01T12:00:00+00:00",
+                "groups": {},
+                "channels": {},
+                "errors": [],
+            }
+            original_sync_status = {
+                "status": "idle",
+                "requested_at": "",
+                "started_at": "",
+                "completed_at": "",
+                "last_error": "",
+                "scope": "",
+                "run_id": "",
+                "run_url": "",
+                "source": "",
+                "updated_at": "",
+            }
+            save_json_file(service.snapshot_path, original_snapshot)
+            save_json_file(service.sync_status_path, original_sync_status)
+
+            with self.assertRaises(RuntimeError):
+                service.refresh_local_snapshot_from_github()
+
+            self.assertEqual(load_json_file(service.snapshot_path, {}), original_snapshot)
+            self.assertEqual(load_json_file(service.sync_status_path, {}), original_sync_status)
+
     def test_freshness_route_redirects_to_main_pockettube(self):
         dragon_app.app.config["TESTING"] = True
         client = dragon_app.app.test_client()
@@ -1976,6 +2117,37 @@ class YouTubeFreshnessServiceTests(unittest.TestCase):
         self.assertEqual(response.status_code, 302)
         self.assertIn("/pockettube", response.location)
         mock_service.request_sync.assert_called_once()
+
+    def test_refresh_snapshot_route_redirects_with_success_message(self):
+        dragon_app.app.config["TESTING"] = True
+        client = dragon_app.app.test_client()
+        mock_service = Mock()
+        mock_service.refresh_local_snapshot_from_github.return_value = {
+            "ok": True,
+            "status": "updated",
+            "group_count": 3,
+            "channel_count": 12,
+        }
+
+        with patch.object(dragon_app, "YOUTUBE_FRESHNESS_SERVICE", mock_service):
+            response = client.post("/pockettube/refresh-snapshot", follow_redirects=False)
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/pockettube", response.location)
+        mock_service.refresh_local_snapshot_from_github.assert_called_once_with()
+
+    def test_refresh_snapshot_route_redirects_safely_on_failure(self):
+        dragon_app.app.config["TESTING"] = True
+        client = dragon_app.app.test_client()
+        mock_service = Mock()
+        mock_service.refresh_local_snapshot_from_github.side_effect = RuntimeError("bad payload")
+
+        with patch.object(dragon_app, "YOUTUBE_FRESHNESS_SERVICE", mock_service):
+            response = client.post("/pockettube/refresh-snapshot", follow_redirects=False)
+
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/pockettube", response.location)
+        mock_service.refresh_local_snapshot_from_github.assert_called_once_with()
 
     def test_github_snapshot_callback_updates_status_without_blocking(self):
         dragon_app.app.config["TESTING"] = True

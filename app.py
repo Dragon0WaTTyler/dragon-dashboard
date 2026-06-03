@@ -283,6 +283,7 @@ YOUTUBE_SYNC_GITHUB_WORKFLOW = "youtube-freshness-dispatch.yml"
 YOUTUBE_SYNC_GITHUB_BRANCH = "main"
 YOUTUBE_SYNC_GITHUB_API_BASE = "https://api.github.com"
 YOUTUBE_SYNC_GITHUB_RAW_SNAPSHOT_URL = "https://raw.githubusercontent.com/Dragon0WaTTyler/dragon-dashboard/main/cache/youtube_latest_snapshot.json"
+YOUTUBE_SYNC_GITHUB_RAW_SYNC_STATUS_URL = "https://raw.githubusercontent.com/Dragon0WaTTyler/dragon-dashboard/main/cache/youtube_latest_sync_status.json"
 MOVIE_WANT_TO_UNION_FETCH_FLAG_NAME = "MOVIE_WANT_TO_UNION_FETCH_ENABLED"
 DEFAULT_MOVIE_FETCH_EXPERIMENT_UI_COUNT = 506
 MOVIE_FETCH_EXPERIMENT_ANCHOR_TITLES = (
@@ -26035,6 +26036,9 @@ YOUTUBE_FRESHNESS_SERVICE = YouTubeFreshnessService(
     save_json_file=save_json_file,
     snapshot_path=YOUTUBE_LATEST_SNAPSHOT_PATH,
     sync_status_path=YOUTUBE_LATEST_SYNC_STATUS_PATH,
+    snapshot_raw_url=YOUTUBE_SYNC_GITHUB_RAW_SNAPSHOT_URL,
+    sync_status_raw_url=YOUTUBE_SYNC_GITHUB_RAW_SYNC_STATUS_URL,
+    requests_module=requests,
     app_logger=app.logger,
 )
 
@@ -31309,6 +31313,23 @@ def pockettube_freshness_sync():
     if status_code >= 400 or not payload.get("ok", True):
         return redirect(url_for("pockettube", sync_error=1))
     return redirect(url_for("pockettube", sync_requested=1))
+
+
+@app.route("/pockettube/refresh-snapshot", methods=["POST"])
+def pockettube_refresh_snapshot():
+    try:
+        result = YOUTUBE_FRESHNESS_SERVICE.refresh_local_snapshot_from_github()
+    except Exception as exc:
+        app.logger.warning("pockettube_refresh_snapshot failed error=%s", exc)
+        flash(f"PocketTube snapshot refresh failed: {exc}", "error")
+        return redirect(url_for("pockettube"))
+
+    flash(
+        "PocketTube snapshot refreshed from GitHub raw cache "
+        f"({int(result.get('group_count', 0) or 0)} groups, {int(result.get('channel_count', 0) or 0)} channels).",
+        "success",
+    )
+    return redirect(url_for("pockettube"))
 
 
 @app.route("/pockettube/freshness/sync-status", methods=["GET"])

@@ -114,8 +114,46 @@ Set these in the PythonAnywhere Web tab or in a server-side `.env` file that is 
 - `NOTION_GENRES_DATABASE_ID`
 - `MOVIE_WANT_TO_UNION_FETCH_ENABLED`
 - `NOTEBOOKLM_URL`
+- `DRAGON_READING_DATA_PATH=/home/<your-username>/dragon-live-data/reading_data.json`
 
 The app will refuse to start in production if `FLASK_SECRET_KEY` or the Dragon admin credentials are missing.
+
+## Reading data isolation
+
+To keep `git pull` safe on PythonAnywhere, move the live Reading snapshot outside the repo and point Dragon at it with `DRAGON_READING_DATA_PATH`.
+
+Recommended live path:
+
+- `/home/<your-username>/dragon-live-data/reading_data.json`
+
+Why this helps:
+
+- the app keeps reading and writing the same live Reading data
+- the file stops living inside the git checkout
+- normal `git pull` no longer collides with a large, constantly changing runtime snapshot
+
+One-time migration:
+
+```bash
+mkdir -p /home/<your-username>/dragon-live-data
+cp -p /home/<your-username>/Dragon/reading_data.json /home/<your-username>/dragon-live-data/reading_data.json
+```
+
+Then set:
+
+```bash
+DRAGON_READING_DATA_PATH=/home/<your-username>/dragon-live-data/reading_data.json
+```
+
+After the env var is in place and the web app is reloaded, you can make the repo copy clean again:
+
+```bash
+cd /home/<your-username>/Dragon
+git checkout -- reading_data.json
+git pull
+```
+
+Do not delete `/home/<your-username>/dragon-live-data/reading_data.json`. That is now the live production file.
 
 ## Static files setup
 

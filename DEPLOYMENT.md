@@ -54,6 +54,7 @@ Add the service keys your dashboard actually uses:
 - `NOTION_GENRES_DATABASE_ID`
 - `MOVIE_WANT_TO_UNION_FETCH_ENABLED`
 - `NOTEBOOKLM_URL`
+- `DRAGON_READING_DATA_PATH=/absolute/path/to/live/reading_data.json` if Reading data should live outside the repo checkout
 
 Optional local-only files still expected by some features:
 
@@ -110,6 +111,8 @@ Dragon currently stores state in local JSON and cache files. On a stateless host
 - SQLite and JSON-backed data should be treated as single-instance local storage only
 
 For V1, that is acceptable if you understand the reset risk. If the hosted copy needs to preserve state, use a Render persistent disk and keep the file paths on that mounted volume.
+
+For Reading specifically, prefer putting the live `reading_data.json` on that mounted volume and setting `DRAGON_READING_DATA_PATH` to that external file so deploys do not touch the runtime snapshot inside the git checkout.
 
 ## Current access model
 
