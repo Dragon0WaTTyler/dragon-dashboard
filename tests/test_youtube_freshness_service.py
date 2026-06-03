@@ -2842,6 +2842,14 @@ class YouTubeFreshnessServiceTests(unittest.TestCase):
         }
 
         with patch.object(dragon_app, "_pockettube_section_membership_context", return_value=pockettube_context), \
+             patch.object(dragon_app, "_resolve_youtube_channel_upload_playlist_ids", return_value={
+                 "resolved": {"c1": "UU1"},
+                 "diagnostics": [],
+                 "missing": [],
+                 "channel_count": 1,
+                 "resolved_count": 1,
+                 "missing_count": 0,
+             }), \
              patch.object(dragon_app, "fetch_youtube_channel_group_feed_videos", return_value=videos), \
              patch.object(dragon_app, "clear_persisted_youtube_section_feed_cache"), \
              patch.object(dragon_app, "_youtube_trace"), \
@@ -2899,6 +2907,222 @@ class YouTubeFreshnessServiceTests(unittest.TestCase):
         self.assertEqual(result["channels_scanned"], 2)
         self.assertEqual(len(result["errors"]), 1)
         self.assertIn("c2", result["errors"][0])
+
+    def test_refresh_pockettube_section_latest_uploads_merges_recent_videos_fairly_across_channels(self):
+        pockettube_context = {
+            "group_name": "News",
+            "group_key": "news",
+            "channels": [
+                {"channel_id": "a", "channel_name": "Channel A"},
+                {"channel_id": "b", "channel_name": "Channel B"},
+                {"channel_id": "c", "channel_name": "Channel C"},
+            ],
+        }
+        channel_videos = {
+            "a": [
+                {
+                    "video_id": f"a{index:03d}",
+                    "title": f"Old A {index:03d}",
+                    "channel_id": "a",
+                    "channel_name": "Channel A",
+                    "published_at": (FIXED_NOW - timedelta(days=30, minutes=index)).isoformat(),
+                    "url": f"https://www.youtube.com/watch?v=a{index:03d}",
+                    "thumb": f"https://img.youtube.com/vi/a{index:03d}/hqdefault.jpg",
+                }
+                for index in range(200)
+            ],
+            "b": [
+                {
+                    "video_id": "b-new-1",
+                    "title": "Breaking B1",
+                    "channel_id": "b",
+                    "channel_name": "Channel B",
+                    "published_at": (FIXED_NOW - timedelta(minutes=1)).isoformat(),
+                    "url": "https://www.youtube.com/watch?v=b-new-1",
+                    "thumb": "https://img.youtube.com/vi/b-new-1/hqdefault.jpg",
+                },
+                {
+                    "video_id": "b-new-2",
+                    "title": "Breaking B2",
+                    "channel_id": "b",
+                    "channel_name": "Channel B",
+                    "published_at": (FIXED_NOW - timedelta(minutes=2)).isoformat(),
+                    "url": "https://www.youtube.com/watch?v=b-new-2",
+                    "thumb": "https://img.youtube.com/vi/b-new-2/hqdefault.jpg",
+                },
+            ],
+            "c": [
+                {
+                    "video_id": "c-new-1",
+                    "title": "Update C1",
+                    "channel_id": "c",
+                    "channel_name": "Channel C",
+                    "published_at": (FIXED_NOW - timedelta(minutes=3)).isoformat(),
+                    "url": "https://www.youtube.com/watch?v=c-new-1",
+                    "thumb": "https://img.youtube.com/vi/c-new-1/hqdefault.jpg",
+                }
+            ],
+        }
+
+        def fetch_side_effect(channel_id, channel_name="", limit=4, uploads_playlist_id="", **_kwargs):
+            return list(channel_videos.get(channel_id, []))[:limit]
+
+        with patch.object(dragon_app, "_pockettube_section_membership_context", return_value=pockettube_context), \
+             patch.object(dragon_app, "_resolve_youtube_channel_upload_playlist_ids", return_value={
+                 "resolved": {"a": "UUa", "b": "UUb", "c": "UUc"},
+                 "diagnostics": [],
+                 "missing": [],
+                 "channel_count": 3,
+                 "resolved_count": 3,
+                 "missing_count": 0,
+             }), \
+             patch.object(dragon_app, "fetch_youtube_channel_group_feed_videos", side_effect=fetch_side_effect), \
+             patch.object(dragon_app, "clear_persisted_youtube_section_feed_cache"), \
+             patch.object(dragon_app, "_youtube_trace"), \
+             patch.object(dragon_app, "build_youtube_channel_video_summary", side_effect=lambda video: dict(video)):
+            result = dragon_app.refresh_pockettube_section_latest_uploads("News", admin_data={})
+
+        self.assertEqual(result["latest_items"][0]["video_id"], "b-new-1")
+        self.assertEqual(result["latest_items"][1]["video_id"], "b-new-2")
+        self.assertEqual(result["latest_items"][2]["video_id"], "c-new-1")
+        self.assertEqual(result["channels_fetched"], 3)
+        self.assertEqual(result["diagnostics"]["channels_fetched"], 3)
+        self.assertGreaterEqual(result["total_candidates_before_dedupe"], 3)
+        self.assertEqual(result["diagnostics"]["total_candidates_before_dedupe"], result["total_candidates_before_dedupe"])
+
+    def test_refresh_pockettube_section_latest_uploads_does_not_stop_after_first_channel_reaches_cap(self):
+        pockettube_context = {
+            "group_name": "Cinema",
+            "group_key": "movise",
+            "channels": [
+                {"channel_id": "a", "channel_name": "Channel A"},
+                {"channel_id": "b", "channel_name": "Channel B"},
+            ],
+        }
+        channel_videos = {
+            "a": [
+                {
+                    "video_id": f"a{index:03d}",
+                    "title": f"A {index:03d}",
+                    "channel_id": "a",
+                    "channel_name": "Channel A",
+                    "published_at": (FIXED_NOW - timedelta(days=7, minutes=index)).isoformat(),
+                    "url": f"https://www.youtube.com/watch?v=a{index:03d}",
+                    "thumb": f"https://img.youtube.com/vi/a{index:03d}/hqdefault.jpg",
+                }
+                for index in range(200)
+            ],
+            "b": [
+                {
+                    "video_id": "b-top",
+                    "title": "Newest B",
+                    "channel_id": "b",
+                    "channel_name": "Channel B",
+                    "published_at": FIXED_NOW.isoformat(),
+                    "url": "https://www.youtube.com/watch?v=b-top",
+                    "thumb": "https://img.youtube.com/vi/b-top/hqdefault.jpg",
+                }
+            ],
+        }
+
+        def fetch_side_effect(channel_id, channel_name="", limit=4, uploads_playlist_id="", **_kwargs):
+            return list(channel_videos.get(channel_id, []))[:limit]
+
+        with patch.object(dragon_app, "_pockettube_section_membership_context", return_value=pockettube_context), \
+             patch.object(dragon_app, "_resolve_youtube_channel_upload_playlist_ids", return_value={
+                 "resolved": {"a": "UUa", "b": "UUb"},
+                 "diagnostics": [],
+                 "missing": [],
+                 "channel_count": 2,
+                 "resolved_count": 2,
+                 "missing_count": 0,
+             }), \
+             patch.object(dragon_app, "fetch_youtube_channel_group_feed_videos", side_effect=fetch_side_effect), \
+             patch.object(dragon_app, "clear_persisted_youtube_section_feed_cache"), \
+             patch.object(dragon_app, "_youtube_trace"), \
+             patch.object(dragon_app, "build_youtube_channel_video_summary", side_effect=lambda video: dict(video)):
+            result = dragon_app.refresh_pockettube_section_latest_uploads("Cinema", admin_data={})
+
+        self.assertEqual(result["videos_stored"], 200)
+        self.assertEqual(result["latest_items"][0]["video_id"], "b-top")
+        self.assertIn("b-top", [item["video_id"] for item in result["latest_items"]])
+        self.assertEqual(result["channels_fetched"], 2)
+        self.assertGreaterEqual(result["per_channel_candidate_limit"], 10)
+
+    def test_refresh_pockettube_section_latest_uploads_dedupes_after_merge_and_keeps_newest_copy(self):
+        pockettube_context = {
+            "group_name": "Favorites",
+            "group_key": "myfavorite",
+            "channels": [
+                {"channel_id": "a", "channel_name": "Channel A"},
+                {"channel_id": "b", "channel_name": "Channel B"},
+            ],
+        }
+        channel_videos = {
+            "a": [
+                {
+                    "video_id": "dup-1",
+                    "title": "Older Duplicate",
+                    "channel_id": "a",
+                    "channel_name": "Channel A",
+                    "published_at": (FIXED_NOW - timedelta(hours=5)).isoformat(),
+                    "url": "https://www.youtube.com/watch?v=dup-1",
+                    "thumb": "https://img.youtube.com/vi/dup-1/hqdefault.jpg",
+                },
+                {
+                    "video_id": "a-only",
+                    "title": "A Only",
+                    "channel_id": "a",
+                    "channel_name": "Channel A",
+                    "published_at": (FIXED_NOW - timedelta(hours=3)).isoformat(),
+                    "url": "https://www.youtube.com/watch?v=a-only",
+                    "thumb": "https://img.youtube.com/vi/a-only/hqdefault.jpg",
+                },
+            ],
+            "b": [
+                {
+                    "video_id": "dup-1",
+                    "title": "Newer Duplicate",
+                    "channel_id": "b",
+                    "channel_name": "Channel B",
+                    "published_at": (FIXED_NOW - timedelta(hours=1)).isoformat(),
+                    "url": "https://www.youtube.com/watch?v=dup-1",
+                    "thumb": "https://img.youtube.com/vi/dup-1/hqdefault.jpg",
+                },
+                {
+                    "video_id": "b-only",
+                    "title": "B Only",
+                    "channel_id": "b",
+                    "channel_name": "Channel B",
+                    "published_at": (FIXED_NOW - timedelta(hours=2)).isoformat(),
+                    "url": "https://www.youtube.com/watch?v=b-only",
+                    "thumb": "https://img.youtube.com/vi/b-only/hqdefault.jpg",
+                },
+            ],
+        }
+
+        def fetch_side_effect(channel_id, channel_name="", limit=4, uploads_playlist_id="", **_kwargs):
+            return list(channel_videos.get(channel_id, []))[:limit]
+
+        with patch.object(dragon_app, "_pockettube_section_membership_context", return_value=pockettube_context), \
+             patch.object(dragon_app, "_resolve_youtube_channel_upload_playlist_ids", return_value={
+                 "resolved": {"a": "UUa", "b": "UUb"},
+                 "diagnostics": [],
+                 "missing": [],
+                 "channel_count": 2,
+                 "resolved_count": 2,
+                 "missing_count": 0,
+             }), \
+             patch.object(dragon_app, "fetch_youtube_channel_group_feed_videos", side_effect=fetch_side_effect), \
+             patch.object(dragon_app, "clear_persisted_youtube_section_feed_cache"), \
+             patch.object(dragon_app, "_youtube_trace"), \
+             patch.object(dragon_app, "build_youtube_channel_video_summary", side_effect=lambda video: dict(video)):
+            result = dragon_app.refresh_pockettube_section_latest_uploads("Favorites", admin_data={})
+
+        self.assertEqual([item["video_id"] for item in result["latest_items"]], ["dup-1", "b-only", "a-only"])
+        self.assertEqual(result["latest_items"][0]["title"], "Newer Duplicate")
+        self.assertEqual(result["videos_collected"], 4)
+        self.assertEqual(result["videos_stored"], 3)
 
     def test_batch_upload_playlist_resolution_resolves_and_persists_cached_ids(self):
         responses = {

@@ -2177,10 +2177,15 @@ class YouTubeFreshnessService:
             "group_key": str(diagnostics.get("group_key", "") or group_key or "").strip(),
             "group_name": str(diagnostics.get("group_name", "") or group_name or "").strip(),
             "channels_scanned": int(diagnostics.get("channels_scanned", 0) or 0),
+            "channels_fetched": int(diagnostics.get("channels_fetched", 0) or 0),
             "channels_with_upload_playlist": int(diagnostics.get("channels_with_upload_playlist", 0) or 0),
             "channels_missing_upload_playlist": int(diagnostics.get("channels_missing_upload_playlist", 0) or 0),
             "videos_collected": int(diagnostics.get("videos_collected", 0) or 0),
             "videos_stored": int(diagnostics.get("videos_stored", 0) or 0),
+            "per_channel_candidate_limit": int(diagnostics.get("per_channel_candidate_limit", 0) or 0),
+            "initial_per_channel_candidate_limit": int(diagnostics.get("initial_per_channel_candidate_limit", 0) or 0),
+            "candidate_limit_schedule": [int(item) for item in list(diagnostics.get("candidate_limit_schedule", []) or []) if int(item or 0) > 0],
+            "total_candidates_before_dedupe": int(diagnostics.get("total_candidates_before_dedupe", diagnostics.get("videos_collected", 0)) or 0),
             "upload_playlist_ids": list(dict.fromkeys([str(item or "").strip() for item in diagnostics.get("upload_playlist_ids", []) or [] if str(item or "").strip()])),
             "errors": list(diagnostics.get("errors", []) or []),
             "generated_at": str(diagnostics.get("generated_at", "") or "").strip(),
@@ -2194,11 +2199,32 @@ class YouTubeFreshnessService:
             latest_result.get("channels_scanned", latest_result.get("channels_fetched", diagnostics.get("channels_scanned", 0)))
             or 0
         )
+        diagnostics["channels_fetched"] = int(
+            latest_result.get("channels_fetched", diagnostics.get("channels_fetched", 0))
+            or 0
+        )
         diagnostics["videos_collected"] = int(
             latest_result.get("videos_collected", latest_result.get("latest_videos_found", diagnostics.get("videos_collected", 0)))
             or 0
         )
         diagnostics["videos_stored"] = int(videos_stored or latest_result.get("videos_stored", diagnostics.get("videos_stored", 0)) or 0)
+        diagnostics["per_channel_candidate_limit"] = int(
+            latest_result.get("per_channel_candidate_limit", diagnostics.get("per_channel_candidate_limit", 0))
+            or 0
+        )
+        diagnostics["initial_per_channel_candidate_limit"] = int(
+            latest_result.get("initial_per_channel_candidate_limit", diagnostics.get("initial_per_channel_candidate_limit", 0))
+            or 0
+        )
+        diagnostics["candidate_limit_schedule"] = [
+            int(item)
+            for item in list(latest_result.get("candidate_limit_schedule", diagnostics.get("candidate_limit_schedule", [])) or [])
+            if int(item or 0) > 0
+        ]
+        diagnostics["total_candidates_before_dedupe"] = int(
+            latest_result.get("total_candidates_before_dedupe", diagnostics.get("total_candidates_before_dedupe", diagnostics.get("videos_collected", 0)))
+            or 0
+        )
         diagnostics["errors"] = list(dict.fromkeys([
             str(error or "").strip()
             for error in list(diagnostics.get("errors", []) or []) + list(latest_result.get("errors", []) or [])

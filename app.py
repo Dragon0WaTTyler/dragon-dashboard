@@ -13058,6 +13058,8 @@ def _youtube_channel_group_feed_cache_key(section_name, channel_id, limit):
 
 
 POCKETTUBE_FEED_PAGE_SIZES = (10, 12, 50, 100, 200, 400)
+POCKETTUBE_GROUP_INITIAL_CHANNEL_CANDIDATE_LIMIT = 10
+POCKETTUBE_GROUP_CHANNEL_CANDIDATE_LIMIT_SCHEDULE = (10, 25, 50, 100, 150, 200)
 
 
 def _resolve_pockettube_feed_page(value, default=1):
@@ -13246,6 +13248,32 @@ def refresh_pockettube_section_latest_uploads(section_name, admin_data=None, max
             parsed = parsed.replace(tzinfo=timezone.utc)
         return int(parsed.timestamp())
 
+    def _merge_latest_candidates(candidate_buckets):
+        latest_by_video_id = {}
+        total_candidates = 0
+        for channel_candidates in candidate_buckets.values():
+            if not isinstance(channel_candidates, list):
+                continue
+            total_candidates += len(channel_candidates)
+            for item in channel_candidates:
+                if not isinstance(item, dict):
+                    continue
+                video_id = str(item.get("video_id", "") or "").strip()
+                if not video_id:
+                    continue
+                existing_item = latest_by_video_id.get(video_id)
+                if existing_item and _published_sort_value(existing_item.get("published_at", "")) > _published_sort_value(item.get("published_at", "")):
+                    continue
+                latest_by_video_id[video_id] = item
+        merged_items = list(latest_by_video_id.values())
+        merged_items.sort(key=lambda item: (
+            -_published_sort_value(item.get("published_at", "")),
+            str(item.get("title", "") or item.get("name", "") or "").lower(),
+            str(item.get("channel_name", "") or "").lower(),
+            str(item.get("video_id", "") or "").lower(),
+        ))
+        return merged_items, latest_by_video_id, total_candidates
+
     admin_data = admin_data if isinstance(admin_data, dict) else load_admin_data()
     pockettube_context = _pockettube_section_membership_context(section_name, admin_data=admin_data)
     group_video_limit = 200
@@ -13255,11 +13283,24 @@ def refresh_pockettube_section_latest_uploads(section_name, admin_data=None, max
     playlist_resolution = _resolve_youtube_channel_upload_playlist_ids(channel_ids, cache_data=load_cache_data())
     uploads_by_channel_id = dict(playlist_resolution.get("resolved", {}) or {})
     scanned = 0
-    found = 0
     latest_items = []
     latest_by_video_id = {}
     cache_keys = []
     errors = []
+    failed_channels = set()
+    candidate_buckets = {}
+    channels_fetched = set()
+    total_candidates_before_dedupe = 0
+    candidate_limit_schedule = [
+        int(limit)
+        for limit in POCKETTUBE_GROUP_CHANNEL_CANDIDATE_LIMIT_SCHEDULE
+        if int(limit or 0) > 0 and int(limit or 0) <= group_video_limit
+    ]
+    if not candidate_limit_schedule:
+        candidate_limit_schedule = [group_video_limit]
+    elif candidate_limit_schedule[-1] != group_video_limit:
+        candidate_limit_schedule.append(group_video_limit)
+    target_fetch_records = []
     for diagnostic in list(playlist_resolution.get("diagnostics", []) or []):
         if isinstance(diagnostic, dict):
             channel_id = str(diagnostic.get("channel_id", "") or "").strip() or "-"
@@ -13271,58 +13312,73 @@ def refresh_pockettube_section_latest_uploads(section_name, admin_data=None, max
     missing_upload_playlist_count = int(playlist_resolution.get("missing_count", 0) or 0)
     channels_with_upload_playlist = int(playlist_resolution.get("resolved_count", 0) or 0)
     for record in target_channels:
-        if len(latest_by_video_id) >= group_video_limit:
-            break
         channel_id = str(record.get("channel_id", "") or "").strip()
         if not channel_id:
             continue
         scanned += 1
         cache_key = _youtube_channel_latest_video_cache_key(channel_id)
         cache_keys.append(cache_key)
-        remaining_needed = max(group_video_limit - len(latest_by_video_id), 0)
-        per_channel_limit = min(group_video_limit, max(50, remaining_needed or 50))
         uploads_playlist_id = str(uploads_by_channel_id.get(channel_id, "") or "").strip()
-        try:
-            channel_videos = fetch_youtube_channel_group_feed_videos(
-                channel_id,
-                channel_name=record.get("channel_name", ""),
-                limit=per_channel_limit,
-                uploads_playlist_id=uploads_playlist_id,
-            )
-        except Exception as exc:
-            errors.append(f"{channel_id}: {type(exc).__name__}: {exc}")
+        if not uploads_playlist_id:
             continue
-        for item in channel_videos or []:
-            if not isinstance(item, dict):
+        target_fetch_records.append({
+            "channel_id": channel_id,
+            "channel_name": str(record.get("channel_name", "") or "").strip(),
+            "uploads_playlist_id": uploads_playlist_id,
+        })
+
+    previous_unique_count = -1
+    max_used_per_channel_limit = 0
+    for per_channel_limit in candidate_limit_schedule:
+        max_used_per_channel_limit = max(max_used_per_channel_limit, per_channel_limit)
+        pass_grew = False
+        for record in target_fetch_records:
+            channel_id = record["channel_id"]
+            if channel_id in failed_channels:
                 continue
-            video_id = str(item.get("video_id", "") or "").strip()
-            if not video_id:
+            previous_count = len(candidate_buckets.get(channel_id, []) or [])
+            try:
+                channel_videos = fetch_youtube_channel_group_feed_videos(
+                    channel_id,
+                    channel_name=record.get("channel_name", ""),
+                    limit=per_channel_limit,
+                    uploads_playlist_id=record.get("uploads_playlist_id", ""),
+                )
+            except Exception as exc:
+                errors.append(f"{channel_id}: {type(exc).__name__}: {exc}")
+                failed_channels.add(channel_id)
                 continue
-            normalized_item = build_youtube_channel_video_summary(item)
-            if not isinstance(normalized_item, dict):
-                normalized_item = dict(item)
-            else:
-                normalized_item = {**dict(item), **normalized_item}
-            normalized_item["channel_id"] = str(normalized_item.get("channel_id", "") or channel_id).strip()
-            normalized_item["channel_name"] = str(
-                normalized_item.get("channel_name", "")
-                or normalized_item.get("channel_title", "")
-                or record.get("channel_name", "")
-                or normalized_item["channel_id"]
-            ).strip() or normalized_item["channel_id"]
-            existing_item = latest_by_video_id.get(video_id)
-            if existing_item and _published_sort_value(existing_item.get("published_at", "")) > _published_sort_value(normalized_item.get("published_at", "")):
-                continue
-            latest_by_video_id[video_id] = normalized_item
-        if channel_videos:
-            found += 1
-    latest_items = list(latest_by_video_id.values())
-    latest_items.sort(key=lambda item: (
-        -_published_sort_value(item.get("published_at", "")),
-        str(item.get("title", "") or item.get("name", "") or "").lower(),
-        str(item.get("channel_name", "") or "").lower(),
-        str(item.get("video_id", "") or "").lower(),
-    ))
+            channels_fetched.add(channel_id)
+            normalized_channel_videos = []
+            for item in channel_videos or []:
+                if not isinstance(item, dict):
+                    continue
+                video_id = str(item.get("video_id", "") or "").strip()
+                if not video_id:
+                    continue
+                normalized_item = build_youtube_channel_video_summary(item)
+                if not isinstance(normalized_item, dict):
+                    normalized_item = dict(item)
+                else:
+                    normalized_item = {**dict(item), **normalized_item}
+                normalized_item["channel_id"] = str(normalized_item.get("channel_id", "") or channel_id).strip()
+                normalized_item["channel_name"] = str(
+                    normalized_item.get("channel_name", "")
+                    or normalized_item.get("channel_title", "")
+                    or record.get("channel_name", "")
+                    or normalized_item["channel_id"]
+                ).strip() or normalized_item["channel_id"]
+                normalized_channel_videos.append(normalized_item)
+            candidate_buckets[channel_id] = normalized_channel_videos
+            if len(normalized_channel_videos) > previous_count:
+                pass_grew = True
+        latest_items, latest_by_video_id, total_candidates_before_dedupe = _merge_latest_candidates(candidate_buckets)
+        if len(latest_by_video_id) >= group_video_limit:
+            break
+        if not pass_grew or len(latest_by_video_id) == previous_unique_count:
+            break
+        previous_unique_count = len(latest_by_video_id)
+
     latest_items = latest_items[:group_video_limit]
     preferred_source = "playlist_items"
     latest_stats = _youtube_trace_video_stats(latest_items)
@@ -13336,7 +13392,7 @@ def refresh_pockettube_section_latest_uploads(section_name, admin_data=None, max
         section_name=canonical_section_name(section_name),
         channels_total=len(channels),
         channels_requested=len(target_channels),
-        channels_fetched=scanned,
+        channels_fetched=len(channels_fetched),
         latest_videos_found=len(latest_items),
         latest_source=preferred_source or "none",
         latest_errors=len(errors),
@@ -13352,13 +13408,17 @@ def refresh_pockettube_section_latest_uploads(section_name, admin_data=None, max
         "group_name": pockettube_context.get("group_name", "") or canonical_section_name(section_name),
         "channel_count": len(channels),
         "channels_requested": len(target_channels),
-        "channels_fetched": scanned,
+        "channels_fetched": len(channels_fetched),
         "channels_scanned": scanned,
         "latest_videos_found": len(latest_items),
-        "videos_collected": len(latest_by_video_id),
+        "videos_collected": total_candidates_before_dedupe,
         "videos_stored": len(latest_items),
         "channels_with_upload_playlist": channels_with_upload_playlist,
         "channels_missing_upload_playlist": missing_upload_playlist_count,
+        "per_channel_candidate_limit": max_used_per_channel_limit or candidate_limit_schedule[0],
+        "initial_per_channel_candidate_limit": POCKETTUBE_GROUP_INITIAL_CHANNEL_CANDIDATE_LIMIT,
+        "candidate_limit_schedule": list(candidate_limit_schedule),
+        "total_candidates_before_dedupe": total_candidates_before_dedupe,
         "upload_playlist_ids": sorted(dict.fromkeys([str(value or "").strip() for value in uploads_by_channel_id.values() if str(value or "").strip()])),
         "source_used": preferred_source,
         "fallback_reason": "" if latest_items else "no_latest_items_found",
@@ -13371,10 +13431,15 @@ def refresh_pockettube_section_latest_uploads(section_name, admin_data=None, max
             "group_key": pockettube_context.get("group_key", "") or normalize_pockettube_group_key(section_name),
             "group_name": pockettube_context.get("group_name", "") or canonical_section_name(section_name),
             "channels_scanned": scanned,
-            "videos_collected": len(latest_by_video_id),
+            "channels_fetched": len(channels_fetched),
+            "videos_collected": total_candidates_before_dedupe,
             "videos_stored": len(latest_items),
             "channels_with_upload_playlist": channels_with_upload_playlist,
             "channels_missing_upload_playlist": missing_upload_playlist_count,
+            "per_channel_candidate_limit": max_used_per_channel_limit or candidate_limit_schedule[0],
+            "initial_per_channel_candidate_limit": POCKETTUBE_GROUP_INITIAL_CHANNEL_CANDIDATE_LIMIT,
+            "candidate_limit_schedule": list(candidate_limit_schedule),
+            "total_candidates_before_dedupe": total_candidates_before_dedupe,
             "upload_playlist_ids": sorted(dict.fromkeys([str(value or "").strip() for value in uploads_by_channel_id.values() if str(value or "").strip()])),
             "errors": list(errors),
             "generated_at": fetched_at,
