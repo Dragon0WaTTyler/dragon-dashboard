@@ -53,6 +53,55 @@ jobs:
             echo "YOUTUBE_API_KEY present: no"
           fi
 
+      - name: Smoke test YouTube API key
+        shell: bash
+        run: |
+          if [ -z "${YOUTUBE_API_KEY:-}" ]; then
+            echo "Skipping YouTube API smoke test: missing key"
+            exit 0
+          fi
+
+          response_file="$(mktemp)"
+          status_code="$(
+            curl -sS -o "$response_file" -w "%{http_code}" \
+              "https://www.googleapis.com/youtube/v3/channels?part=snippet&id=UC_x5XG1OV2P6uZZ5FSM9Ttw&key=${YOUTUBE_API_KEY}"
+          )"
+
+          echo "HTTP status code: ${status_code}"
+          if grep -q '"items"' "$response_file"; then
+            echo "items present: yes"
+          else
+            echo "items present: no"
+          fi
+
+          error_message="$(python - <<'PY' "$response_file"
+import json
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+try:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+except Exception:
+    print("")
+    raise SystemExit(0)
+
+error = payload.get("error", {}) if isinstance(payload, dict) else {}
+message = ""
+if isinstance(error, dict):
+    details = error.get("errors", []) or []
+    if details and isinstance(details, list):
+        first = details[0] if isinstance(details[0], dict) else {}
+        message = str(first.get("message", "") or "").strip()
+    if not message:
+        message = str(error.get("message", "") or "").strip()
+print(message)
+PY
+)"
+          if [ -n "${error_message:-}" ]; then
+            echo "response error message: ${error_message}"
+          fi
+
       - name: Sync YouTube freshness
         id: sync
         shell: bash
