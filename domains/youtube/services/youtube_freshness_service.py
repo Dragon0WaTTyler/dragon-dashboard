@@ -1088,6 +1088,9 @@ class YouTubeFreshnessService:
         return channel_id, channel_title
 
     def build_page_context(self):
+        return self.build_page_context_for_filter()
+
+    def build_page_context_for_filter(self, selected_filter="all"):
         snapshot = self.load_snapshot()
         sync_status = self.load_sync_status()
         groups = []
@@ -1161,10 +1164,16 @@ class YouTubeFreshnessService:
         feed_videos = list(feed_context.get("videos", []) or [])
         feed_groups = list(feed_context.get("groups", []) or [])
         empty_channels = list(feed_context.get("empty_channels", []) or [])
-        feed_video_count = len(feed_videos)
+        filter_context = self._build_snapshot_filter_context(feed_groups, feed_videos, selected_filter=selected_filter)
+        filtered_videos = list(filter_context.get("filtered_videos", []) or [])
+        selected_filter_record = dict(filter_context.get("selected_filter_record", {}) or {})
+        selected_filter_key = str(filter_context.get("selected_filter_key", "all") or "all").strip() or "all"
+        selected_filter_label = str(selected_filter_record.get("label", "All") or "All").strip() or "All"
+        feed_video_count = len(filtered_videos)
         empty_channel_count = len(empty_channels)
         empty_group_count = len([group for group in feed_groups if int(group.get("empty_channel_count", 0) or 0) > 0])
         has_latest = bool(feed_video_count)
+        snapshot_status = self._build_snapshot_status(snapshot, sync_status, has_latest=bool(feed_videos))
         return {
             "title": "PocketTube Freshness",
             "snapshot": snapshot,
@@ -1172,12 +1181,18 @@ class YouTubeFreshnessService:
             "groups": groups,
             "group_count": len(groups),
             "channel_count": sum(len(group.get("channels", [])) for group in groups),
-            "feed_videos": feed_videos,
+            "feed_videos": filtered_videos,
+            "feed_videos_all": feed_videos,
             "feed_groups": feed_groups,
             "feed_video_count": feed_video_count,
+            "feed_video_count_total": len(feed_videos),
             "feed_empty_channels": empty_channels,
             "feed_empty_channel_count": empty_channel_count,
             "feed_empty_group_count": empty_group_count,
+            "feed_filters": list(filter_context.get("filters", []) or []),
+            "selected_filter_key": selected_filter_key,
+            "selected_filter_label": selected_filter_label,
+            "selected_filter_count": int(selected_filter_record.get("video_count", feed_video_count) or 0),
             "has_latest": has_latest,
             "generated_at": snapshot.get("generated_at", ""),
             "synced_at": snapshot.get("synced_at", ""),
@@ -1185,6 +1200,7 @@ class YouTubeFreshnessService:
             "empty_state": not has_latest,
             "empty_reason": "no_snapshot" if not snapshot.get("groups") else "no_cached_latest",
             "sync_notice": self._sync_notice(sync_status),
+            "snapshot_status": snapshot_status,
         }
 
     def _build_freshness_feed_context(self, snapshot):
@@ -1374,6 +1390,174 @@ class YouTubeFreshnessService:
             "groups": feed_groups,
             "empty_channels": empty_channels,
         }
+
+    def _build_snapshot_filter_context(self, feed_groups, feed_videos, selected_filter="all"):
+        feed_groups = [group for group in (feed_groups or []) if isinstance(group, dict)]
+        feed_videos = [video for video in (feed_videos or []) if isinstance(video, dict)]
+        selected_key = self._normalize_snapshot_filter_key(selected_filter)
+        available_group_map = {}
+        for group in feed_groups:
+            group_key = self._normalize_snapshot_filter_key(group.get("group_key", "") or group.get("group_name", ""))
+            if not group_key:
+                continue
+            available_group_map[group_key] = {
+                "group_key": group_key,
+                "group_name": str(group.get("group_name", "") or group_key).strip() or group_key,
+                "video_count": int(group.get("video_count", 0) or 0),
+                "filter_keys": [group_key],
+                "kind": "group",
+            }
+
+        canonical_filters = [
+            {"key": "all", "label": "All", "aliases": []},
+            {"key": "favorites", "label": "Favorites", "aliases": ["favorites", "favorite", "myfavorite", "myfavoret"]},
+            {"key": "news", "label": "News", "aliases": ["news"]},
+            {"key": "tech", "label": "Tech", "aliases": ["tech"]},
+            {"key": "philosophy", "label": "Philosophy", "aliases": ["philosophy"]},
+            {"key": "cinema", "label": "Cinema", "aliases": ["cinema", "movie", "movies", "movise"]},
+        ]
+
+        filters = []
+        seen_filter_keys = set()
+        for item in canonical_filters:
+            filter_key = item["key"]
+            aliases = [self._normalize_snapshot_filter_key(alias) for alias in item.get("aliases", []) if self._normalize_snapshot_filter_key(alias)]
+            if filter_key == "all":
+                count = len(feed_videos)
+                match_keys = ["all"]
+            else:
+                match_keys = list(dict.fromkeys([filter_key] + aliases))
+                count = len([
+                    video
+                    for video in feed_videos
+                    if self._video_matches_snapshot_filter(video, match_keys)
+                ])
+            filters.append({
+                "key": filter_key,
+                "label": item["label"],
+                "video_count": count,
+                "match_keys": match_keys,
+                "kind": "canonical",
+            })
+            seen_filter_keys.add(filter_key)
+
+        for group_key, group in sorted(available_group_map.items(), key=lambda item: item[1]["group_name"].lower()):
+            if group_key in seen_filter_keys:
+                continue
+            filters.append({
+                "key": group_key,
+                "label": group["group_name"],
+                "video_count": int(group.get("video_count", 0) or 0),
+                "match_keys": list(group.get("filter_keys", []) or [group_key]),
+                "kind": "group",
+            })
+
+        selected_record = next((item for item in filters if item.get("key") == selected_key), None)
+        if not selected_record:
+            selected_key = "all"
+            selected_record = next((item for item in filters if item.get("key") == "all"), None)
+        selected_record = dict(selected_record or {"key": "all", "label": "All", "video_count": len(feed_videos), "match_keys": ["all"]})
+        if selected_key == "all":
+            filtered_videos = list(feed_videos)
+        else:
+            filtered_videos = [
+                video
+                for video in feed_videos
+                if self._video_matches_snapshot_filter(video, selected_record.get("match_keys", []) or [selected_key])
+            ]
+        return {
+            "filters": filters,
+            "selected_filter_key": selected_key,
+            "selected_filter_record": selected_record,
+            "filtered_videos": filtered_videos,
+        }
+
+    def _normalize_snapshot_filter_key(self, value):
+        return self.normalize_pockettube_group_key(str(value or "").strip())
+
+    def _video_matches_snapshot_filter(self, video, match_keys):
+        normalized_keys = {
+            self._normalize_snapshot_filter_key(key)
+            for key in (match_keys or [])
+            if self._normalize_snapshot_filter_key(key)
+        }
+        if not normalized_keys or "all" in normalized_keys:
+            return True
+        video_keys = {
+            self._normalize_snapshot_filter_key(video.get("group_key", "")),
+            self._normalize_snapshot_filter_key(video.get("group_name", "")),
+        }
+        for name in list(video.get("group_names", []) or []):
+            normalized = self._normalize_snapshot_filter_key(name)
+            if normalized:
+                video_keys.add(normalized)
+        for key in list(video.get("group_keys", []) or []):
+            normalized = self._normalize_snapshot_filter_key(key)
+            if normalized:
+                video_keys.add(normalized)
+        return bool(video_keys & normalized_keys)
+
+    def _build_snapshot_status(self, snapshot, sync_status, *, has_latest=False):
+        snapshot = snapshot if isinstance(snapshot, dict) else {}
+        sync_status = sync_status if isinstance(sync_status, dict) else {}
+        groups = snapshot.get("groups", {})
+        generated_at = str(snapshot.get("generated_at", "") or "").strip()
+        synced_at = str(snapshot.get("synced_at", "") or "").strip()
+        status = {
+            "state": "ok",
+            "message": "",
+            "is_stale": False,
+            "has_snapshot": bool(isinstance(groups, dict) and groups),
+        }
+        if not status["has_snapshot"]:
+            status["state"] = "missing"
+            status["message"] = "Snapshot missing. Feed is waiting for the latest cached PocketTube snapshot."
+            return status
+        if not has_latest:
+            status["state"] = "empty"
+            status["message"] = "Snapshot loaded, but it has no cached latest videos yet."
+            return status
+
+        freshest = synced_at or generated_at
+        age_hours = self._timestamp_age_hours(freshest)
+        if age_hours is None:
+            status["state"] = "unknown"
+            status["message"] = "Snapshot loaded, but its freshness timestamp is unavailable."
+            return status
+        if age_hours >= 24:
+            status["state"] = "stale"
+            status["is_stale"] = True
+            status["message"] = f"Snapshot is {int(age_hours)}h old. Feed is showing cached results."
+            return status
+        if str(sync_status.get("status", "") or "").strip().lower() in {"requested", "queued", "in_progress"}:
+            status["state"] = "updating"
+            status["message"] = "Snapshot refresh is in progress. Feed is showing cached results."
+            return status
+        status["message"] = "Feed is using the latest cached PocketTube snapshot."
+        return status
+
+    def _timestamp_age_hours(self, value):
+        text = str(value or "").strip()
+        if not text:
+            return None
+        if text.endswith("Z"):
+            text = f"{text[:-1]}+00:00"
+        try:
+            parsed = datetime.fromisoformat(text)
+        except ValueError:
+            return None
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        now_text = str(self.current_timestamp() or "").strip()
+        if now_text.endswith("Z"):
+            now_text = f"{now_text[:-1]}+00:00"
+        try:
+            now_value = datetime.fromisoformat(now_text)
+        except ValueError:
+            now_value = datetime.now(timezone.utc)
+        if now_value.tzinfo is None:
+            now_value = now_value.replace(tzinfo=timezone.utc)
+        return max((now_value - parsed).total_seconds() / 3600.0, 0.0)
 
     def _build_channel_payload(self, channel, group_name, group_key, latest_summary):
         channel_id, channel_title = self._pockettube_channel_identity(channel)

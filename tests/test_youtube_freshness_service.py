@@ -352,6 +352,164 @@ class YouTubeFreshnessServiceTests(unittest.TestCase):
             self.assertEqual(context["group_count"], 1)
             self.assertEqual(context["groups"][0]["group_name"], "Philosophy")
 
+    def test_build_page_context_for_filter_uses_snapshot_groups_only(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            service, _state = self._build_service(temp_dir)
+            payload = {
+                "version": 1,
+                "generated_at": FIXED_NOW.isoformat(),
+                "synced_at": FIXED_NOW.isoformat(),
+                "groups": {
+                    "news": {
+                        "group_name": "News",
+                        "group_key": "news",
+                        "section_name": "News",
+                        "section_key": "news",
+                        "source_name": "PocketTube",
+                        "imported_at": FIXED_NOW.isoformat(),
+                        "channel_count": 1,
+                        "latest_video_count": 1,
+                        "latest_video": {},
+                        "channels": [
+                            {
+                                "channel_id": "c-news",
+                                "channel_title": "News One",
+                                "group_names": ["News"],
+                                "group_keys": ["news"],
+                                "latest_video": {
+                                    "entry_id": "yt-news-1",
+                                    "video_id": "news-1",
+                                    "watch_key": "news-1",
+                                    "title": "Cached News Video",
+                                    "channel_id": "c-news",
+                                    "channel_name": "News One",
+                                    "published_at": FIXED_NOW.isoformat(),
+                                    "published_display": "2026-06-02 12:00",
+                                    "url": "https://www.youtube.com/watch?v=news-1",
+                                    "detail_url": "/video/yt-news-1",
+                                    "thumbnail": "https://img.youtube.com/vi/news-1/hqdefault.jpg",
+                                    "thumbnail_url": "https://img.youtube.com/vi/news-1/hqdefault.jpg",
+                                },
+                                "latest_video_id": "news-1",
+                                "published_at": FIXED_NOW.isoformat(),
+                                "published_display": "2026-06-02 12:00",
+                                "thumbnail": "https://img.youtube.com/vi/news-1/hqdefault.jpg",
+                                "url": "https://www.youtube.com/watch?v=news-1",
+                            }
+                        ],
+                    },
+                    "tech": {
+                        "group_name": "Tech",
+                        "group_key": "tech",
+                        "section_name": "Tech",
+                        "section_key": "tech",
+                        "source_name": "PocketTube",
+                        "imported_at": FIXED_NOW.isoformat(),
+                        "channel_count": 1,
+                        "latest_video_count": 1,
+                        "latest_video": {},
+                        "channels": [
+                            {
+                                "channel_id": "c-tech",
+                                "channel_title": "Tech One",
+                                "group_names": ["Tech"],
+                                "group_keys": ["tech"],
+                                "latest_video": {
+                                    "entry_id": "yt-tech-1",
+                                    "video_id": "tech-1",
+                                    "watch_key": "tech-1",
+                                    "title": "Cached Tech Video",
+                                    "channel_id": "c-tech",
+                                    "channel_name": "Tech One",
+                                    "published_at": FIXED_NOW.isoformat(),
+                                    "published_display": "2026-06-02 12:00",
+                                    "url": "https://www.youtube.com/watch?v=tech-1",
+                                    "detail_url": "/video/yt-tech-1",
+                                    "thumbnail": "https://img.youtube.com/vi/tech-1/hqdefault.jpg",
+                                    "thumbnail_url": "https://img.youtube.com/vi/tech-1/hqdefault.jpg",
+                                },
+                                "latest_video_id": "tech-1",
+                                "published_at": FIXED_NOW.isoformat(),
+                                "published_display": "2026-06-02 12:00",
+                                "thumbnail": "https://img.youtube.com/vi/tech-1/hqdefault.jpg",
+                                "url": "https://www.youtube.com/watch?v=tech-1",
+                            }
+                        ],
+                    },
+                },
+                "channels": {},
+                "errors": [],
+            }
+            save_json_file(service.snapshot_path, payload)
+
+            context = service.build_page_context_for_filter("news")
+
+            self.assertEqual(context["selected_filter_key"], "news")
+            self.assertEqual(context["selected_filter_label"], "News")
+            self.assertEqual(len(context["feed_videos"]), 1)
+            self.assertEqual(context["feed_videos"][0]["video_id"], "news-1")
+            self.assertTrue(any(item["key"] == "favorites" for item in context["feed_filters"]))
+            self.assertTrue(any(item["key"] == "cinema" for item in context["feed_filters"]))
+
+    def test_build_page_context_marks_old_snapshot_as_stale(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            service, _state = self._build_service(temp_dir)
+            old_timestamp = (FIXED_NOW - timedelta(hours=30)).isoformat()
+            payload = {
+                "version": 1,
+                "generated_at": old_timestamp,
+                "synced_at": old_timestamp,
+                "groups": {
+                    "news": {
+                        "group_name": "News",
+                        "group_key": "news",
+                        "section_name": "News",
+                        "section_key": "news",
+                        "source_name": "PocketTube",
+                        "imported_at": old_timestamp,
+                        "channel_count": 1,
+                        "latest_video_count": 1,
+                        "latest_video": {},
+                        "channels": [
+                            {
+                                "channel_id": "c-news",
+                                "channel_title": "News One",
+                                "group_names": ["News"],
+                                "group_keys": ["news"],
+                                "latest_video": {
+                                    "entry_id": "yt-news-1",
+                                    "video_id": "news-1",
+                                    "watch_key": "news-1",
+                                    "title": "Cached News Video",
+                                    "channel_id": "c-news",
+                                    "channel_name": "News One",
+                                    "published_at": old_timestamp,
+                                    "published_display": "2026-06-01 06:00",
+                                    "url": "https://www.youtube.com/watch?v=news-1",
+                                    "detail_url": "/video/yt-news-1",
+                                    "thumbnail": "https://img.youtube.com/vi/news-1/hqdefault.jpg",
+                                    "thumbnail_url": "https://img.youtube.com/vi/news-1/hqdefault.jpg",
+                                },
+                                "latest_video_id": "news-1",
+                                "published_at": old_timestamp,
+                                "published_display": "2026-06-01 06:00",
+                                "thumbnail": "https://img.youtube.com/vi/news-1/hqdefault.jpg",
+                                "url": "https://www.youtube.com/watch?v=news-1",
+                            }
+                        ],
+                    }
+                },
+                "channels": {},
+                "errors": [],
+            }
+            save_json_file(service.snapshot_path, payload)
+
+            context = service.build_page_context_for_filter("all")
+
+            self.assertEqual(context["snapshot_status"]["state"], "stale")
+            self.assertTrue(context["snapshot_status"]["is_stale"])
+            self.assertIn("cached results", context["snapshot_status"]["message"])
+
     def test_snapshot_video_detail_context_matches_entry_id_video_id_and_watch_key(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             service, _state = self._build_service(temp_dir)
@@ -1638,7 +1796,7 @@ class YouTubeFreshnessServiceTests(unittest.TestCase):
         dragon_app.app.config["TESTING"] = True
         client = dragon_app.app.test_client()
         mock_service = Mock()
-        mock_service.build_page_context.return_value = {
+        mock_service.build_page_context_for_filter.return_value = {
             "title": "PocketTube Freshness",
             "snapshot": {"version": 1, "groups": {}, "channels": {}, "errors": []},
             "sync_status": {"status": "idle"},
@@ -1662,9 +1820,17 @@ class YouTubeFreshnessServiceTests(unittest.TestCase):
             ],
             "feed_groups": [{"group_key": "science", "group_name": "Science", "video_count": 1, "channel_count": 1, "empty_channel_count": 0}],
             "feed_video_count": 1,
+            "feed_video_count_total": 1,
             "feed_empty_channels": [],
             "feed_empty_channel_count": 0,
             "feed_empty_group_count": 0,
+            "feed_filters": [
+                {"key": "all", "label": "All", "video_count": 1},
+                {"key": "science", "label": "Science", "video_count": 1},
+            ],
+            "selected_filter_key": "all",
+            "selected_filter_label": "All",
+            "selected_filter_count": 1,
             "has_latest": True,
             "generated_at": "",
             "synced_at": "",
@@ -1672,6 +1838,12 @@ class YouTubeFreshnessServiceTests(unittest.TestCase):
             "empty_state": False,
             "empty_reason": "no_cached_latest",
             "sync_notice": "",
+            "snapshot_status": {
+                "state": "ok",
+                "message": "Feed is using the latest cached PocketTube snapshot.",
+                "is_stale": False,
+                "has_snapshot": True,
+            },
         }
 
         with patch.object(dragon_app, "YOUTUBE_FRESHNESS_SERVICE", mock_service):
@@ -1679,11 +1851,11 @@ class YouTubeFreshnessServiceTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         body = response.get_data(as_text=True)
-        self.assertIn("Group filter", body)
+        self.assertIn("Filters", body)
         self.assertIn("Open on YouTube", body)
         self.assertIn("/video/yt-v1", body)
-        self.assertNotIn("Show empty channels", body)
-        mock_service.build_page_context.assert_called_once()
+        self.assertIn("Snapshot status", body)
+        mock_service.build_page_context_for_filter.assert_called_once_with("all")
         mock_service.request_sync.assert_not_called()
 
     def test_pockettube_groups_route_still_works(self):

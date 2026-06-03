@@ -41,9 +41,17 @@ from domains.magnets.playback import (
     prepare_playback_runtime,
     serialize_playback_runtime,
 )
+from domains.magnets.playback.runtime_handoff import (
+    build_runtime_watch_url,
+    log_runtime_handoff,
+    probe_runtime_reachability,
+    resolve_runtime_base_url,
+)
 from domains.magnets.playback_runtime import PlaybackRuntimeError, PlaybackRuntimeManager, build_stream_response
 from domains.magnets.services import ExperimentalRuntimeService, MovieSourcesService, SessionAnalyticsService, SourceActionService, StreamSessionService
 from domains.magnets.preferences import MagnetPreferenceService
+from domains.magnets.runtime.identifiers import source_fingerprint as magnet_source_fingerprint
+from domains.magnets.runtime.observability import emit_event
 from domains.reading import (
     BooksService,
     QuotesService,
@@ -26158,6 +26166,7 @@ def api_movie_playback_select():
 @app.route("/api/movie-playback/prepare", methods=["POST"])
 def api_movie_playback_prepare():
     request_payload = parse_playback_runtime_request(request.get_json(silent=True) or {}, include_source=True)
+    runtime_base_url = resolve_runtime_base_url(request)
     playback = prepare_playback_runtime(
         movie=request_payload["movie"],
         selected_source=request_payload["source"],
@@ -26184,10 +26193,24 @@ def api_movie_playback_prepare():
         runtime_session = PLAYBACK_RUNTIME_MANAGER.create_session(
             movie=request_payload["movie"],
             source=request_payload["source"],
-            stream_base_url=request.host_url.rstrip("/"),
+            stream_base_url=runtime_base_url,
         )
     except PlaybackRuntimeError as exc:
         return jsonify({"ok": False, "error": exc.message, "code": exc.code}), 400
+
+    watch_url = ""
+    if request_payload["source"]:
+        try:
+            watch_url = build_runtime_watch_url(
+                runtime_base_url,
+                str(request_payload["source"].get("magnet") or ""),
+                title=str(request_payload["movie"].get("title") or request_payload["movie"].get("name") or ""),
+                movie_id=str(request_payload["movie"].get("movie_id") or ""),
+                entry_id=str(request_payload["movie"].get("entry_id") or ""),
+                source_fingerprint=str(request_payload["source"].get("source_fingerprint") or ""),
+            )
+        except ValueError:
+            watch_url = ""
 
     playback_payload = dict(playback or {})
     playback_payload["playback_runtime"] = "browser_runtime"
@@ -26208,9 +26231,379 @@ def api_movie_playback_prepare():
     ]
     playback_payload["runtime_session"] = runtime_session
     playback_payload["runtime_metrics"] = dict(runtime_session.get("runtime_metrics") or {})
+    playback_payload["watch_url"] = watch_url
+    playback_payload["runtime_base_url"] = runtime_base_url
     response = build_playback_response_payload(playback_payload, session=prepared_result.get("session"))
     response["runtime_session"] = runtime_session
+    response["watch_url"] = watch_url
+    response["runtime_base_url"] = runtime_base_url
     return jsonify(response)
+
+
+@app.route("/load")
+def load_magnet_playback():
+    magnet = str(request.args.get("magnet") or "").strip()
+    if not magnet:
+        return jsonify({"ok": False, "error": "magnet is required"}), 400
+    runtime_base_url = resolve_runtime_base_url(request)
+    title = str(request.args.get("title") or request.args.get("name") or "Magnet playback").strip() or "Magnet playback"
+    source = {
+        "magnet": magnet,
+        "title": title,
+        "source": str(request.args.get("source") or "manual").strip() or "manual",
+        "provider": str(request.args.get("provider") or "manual").strip() or "manual",
+        "source_fingerprint": str(request.args.get("source_fingerprint") or "").strip() or magnet_source_fingerprint({"magnet": magnet, "title": title}),
+    }
+    movie = {
+        "movie_id": str(request.args.get("movie_id") or "").strip() or source["source_fingerprint"],
+        "entry_id": str(request.args.get("entry_id") or "").strip() or source["source_fingerprint"],
+        "title": title,
+        "name": title,
+    }
+    try:
+        runtime_session = PLAYBACK_RUNTIME_MANAGER.create_session(
+            movie=movie,
+            source=source,
+            stream_base_url=runtime_base_url,
+        )
+    except PlaybackRuntimeError as exc:
+        return jsonify({"ok": False, "error": exc.message, "code": exc.code}), 400
+
+    watch_url = ""
+    try:
+        watch_url = build_runtime_watch_url(
+            runtime_base_url,
+            magnet,
+            title=title,
+            movie_id=str(movie.get("movie_id") or ""),
+            entry_id=str(movie.get("entry_id") or ""),
+            source_fingerprint=str(source.get("source_fingerprint") or ""),
+        )
+    except ValueError:
+        watch_url = ""
+
+    runtime_reachable = probe_runtime_reachability(runtime_base_url)
+    log_runtime_handoff(
+        runtime_base_url=runtime_base_url,
+        watch_url=watch_url,
+        stream_url=str(runtime_session.get("stream_url") or "").strip(),
+        magnet=magnet,
+        runtime_reachable=runtime_reachable,
+        selected_file=dict(runtime_session.get("selected_file") or {}),
+        session_id=str(runtime_session.get("session_id") or "").strip(),
+    )
+    return jsonify({
+        "ok": True,
+        "session_id": str(runtime_session.get("session_id") or "").strip(),
+        "state": str(runtime_session.get("state") or runtime_session.get("status") or "").strip(),
+        "status_url": str(runtime_session.get("status_url") or f"{runtime_base_url.rstrip('/')}/runtime/{runtime_session.get('session_id') or ''}").strip(),
+        "stream_url": str(runtime_session.get("stream_url") or f"{runtime_base_url.rstrip('/')}/stream/{runtime_session.get('session_id') or ''}").strip(),
+        "watch_url": watch_url,
+        "runtime_base_url": runtime_base_url,
+        "runtime_session": runtime_session,
+    })
+
+
+def _watch_session_elapsed_seconds(session):
+    payload = dict(session or {})
+    details = dict(payload.get("details") or {})
+    raw_started_at = str(details.get("metadata_wait_started_at") or payload.get("created_at") or "").strip()
+    if not raw_started_at:
+        return 0
+    try:
+        started_at = datetime.fromisoformat(raw_started_at.replace("Z", "+00:00"))
+        return max(int((datetime.now(timezone.utc) - started_at).total_seconds()), 0)
+    except Exception:
+        return 0
+
+
+def _watch_runtime_waiting_page(*, session_id, state, stream_url, elapsed_seconds, magnet, title, movie_id, entry_id, source_fingerprint):
+    retry_url = (
+        f"/watch?retry=1&magnet={urllib.parse.quote(magnet, safe='')}"
+        f"&title={urllib.parse.quote(title, safe='')}"
+        f"&movie_id={urllib.parse.quote(movie_id, safe='')}"
+        f"&entry_id={urllib.parse.quote(entry_id, safe='')}"
+        f"&source_fingerprint={urllib.parse.quote(source_fingerprint, safe='')}"
+    )
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="refresh" content="3;url=/watch?session_id={urllib.parse.quote(session_id, safe='')}&magnet={urllib.parse.quote(magnet, safe='')}&title={urllib.parse.quote(title, safe='')}&movie_id={urllib.parse.quote(movie_id, safe='')}&entry_id={urllib.parse.quote(entry_id, safe='')}&source_fingerprint={urllib.parse.quote(source_fingerprint, safe='')}">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Preparing playback</title>
+  <style>
+    body {{
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      font-family: Arial, sans-serif;
+      background: #0b0f14;
+      color: #f5f7fa;
+    }}
+    .card {{
+      max-width: 560px;
+      width: calc(100% - 32px);
+      background: rgba(20, 24, 31, 0.96);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 16px;
+      padding: 24px;
+      box-shadow: 0 16px 40px rgba(0,0,0,0.35);
+    }}
+    .small {{ opacity: 0.72; font-size: 14px; line-height: 1.5; margin-top: 8px; }}
+    .status {{ margin-top: 12px; font-size: 16px; }}
+    .link {{ color: #8bd3ff; word-break: break-all; }}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="small">Dragon runtime is preparing this stream.</div>
+    <div class="status">Session: {escape(session_id)}</div>
+    <div class="small">State: {escape(state)}</div>
+    <div class="small">Elapsed: {int(elapsed_seconds)}s</div>
+    <div class="small">This page refreshes every 3 seconds until the stream is ready.</div>
+    <div class="small">Stream URL: <a class="link" href="{escape(stream_url, quote=True)}">{escape(stream_url)}</a></div>
+  </div>
+</body>
+</html>"""
+
+
+def _watch_runtime_timeout_page(*, session_id, state, elapsed_seconds, magnet, title, movie_id, entry_id, source_fingerprint):
+    retry_url = (
+        f"/watch?retry=1&magnet={urllib.parse.quote(magnet, safe='')}"
+        f"&title={urllib.parse.quote(title, safe='')}"
+        f"&movie_id={urllib.parse.quote(movie_id, safe='')}"
+        f"&entry_id={urllib.parse.quote(entry_id, safe='')}"
+        f"&source_fingerprint={urllib.parse.quote(source_fingerprint, safe='')}"
+    )
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Playback timeout</title>
+  <style>
+    body {{
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      font-family: Arial, sans-serif;
+      background: #0b0f14;
+      color: #f5f7fa;
+    }}
+    .card {{
+      max-width: 560px;
+      width: calc(100% - 32px);
+      background: rgba(20, 24, 31, 0.96);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 16px;
+      padding: 24px;
+      box-shadow: 0 16px 40px rgba(0,0,0,0.35);
+    }}
+    .small {{ opacity: 0.72; font-size: 14px; line-height: 1.5; margin-top: 8px; }}
+    .error {{ margin-top: 12px; font-size: 18px; color: #ffb4b4; }}
+    .link {{ color: #8bd3ff; word-break: break-all; }}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="small">Dragon runtime did not receive torrent metadata in time.</div>
+    <div class="small">Session: {escape(session_id)}</div>
+    <div class="small">State: {escape(state)}</div>
+    <div class="small">Elapsed: {int(elapsed_seconds)}s</div>
+    <div class="error">Torrent metadata was not received.</div>
+    <div class="small"><a class="link" href="{escape(retry_url, quote=True)}">Retry with a fresh session</a></div>
+  </div>
+</body>
+</html>"""
+
+
+@app.route("/watch")
+def watch_runtime_handoff():
+    magnet = str(request.args.get("magnet") or "").strip()
+    if not magnet:
+        return jsonify({"ok": False, "error": "magnet is required"}), 400
+    runtime_base_url = resolve_runtime_base_url(request)
+    title = str(request.args.get("title") or request.args.get("name") or "Dragon runtime playback").strip() or "Dragon runtime playback"
+    session_id = str(request.args.get("session_id") or "").strip()
+    retry_requested = str(request.args.get("retry") or "").strip() == "1"
+    source = {
+        "magnet": magnet,
+        "title": title,
+        "source": str(request.args.get("source") or "manual").strip() or "manual",
+        "provider": str(request.args.get("provider") or "manual").strip() or "manual",
+        "source_fingerprint": str(request.args.get("source_fingerprint") or "").strip() or magnet_source_fingerprint({"magnet": magnet, "title": title}),
+    }
+    movie = {
+        "movie_id": str(request.args.get("movie_id") or "").strip() or source["source_fingerprint"],
+        "entry_id": str(request.args.get("entry_id") or "").strip() or source["source_fingerprint"],
+        "title": title,
+        "name": title,
+    }
+    runtime_session = None
+    session_was_created = False
+    if session_id and not retry_requested:
+        runtime_session = PLAYBACK_RUNTIME_MANAGER.get_session(session_id, refresh=False)
+    if runtime_session is None:
+        try:
+            runtime_session = PLAYBACK_RUNTIME_MANAGER.create_session(
+                movie=movie,
+                source=source,
+                stream_base_url=runtime_base_url,
+            )
+            session_was_created = True
+            session_id = str(runtime_session.get("session_id") or "").strip()
+        except PlaybackRuntimeError as exc:
+            return jsonify({"ok": False, "error": exc.message, "code": exc.code}), 400
+    else:
+        session_was_created = False
+
+    watch_url = ""
+    try:
+        watch_url = build_runtime_watch_url(
+            runtime_base_url,
+            magnet,
+            title=title,
+            movie_id=str(movie.get("movie_id") or ""),
+            entry_id=str(movie.get("entry_id") or ""),
+            source_fingerprint=str(source.get("source_fingerprint") or ""),
+        )
+    except ValueError:
+        watch_url = ""
+
+    runtime_reachable = probe_runtime_reachability(runtime_base_url)
+    log_runtime_handoff(
+        runtime_base_url=runtime_base_url,
+        watch_url=watch_url,
+        stream_url=str(runtime_session.get("stream_url") or "").strip(),
+        magnet=magnet,
+        runtime_reachable=runtime_reachable,
+        selected_file=dict(runtime_session.get("selected_file") or {}),
+        session_id=str(runtime_session.get("session_id") or "").strip(),
+    )
+
+    runtime_state = str(runtime_session.get("state") or runtime_session.get("status") or "").strip()
+    stream_url = str(runtime_session.get("stream_url") or f"{runtime_base_url.rstrip('/')}/stream/{session_id}").strip()
+    elapsed_seconds = _watch_session_elapsed_seconds(runtime_session)
+    if runtime_state in {"ready"}:
+        emit_event(
+            "[playback-runtime-handoff]",
+            event="watch_redirect_to_stream",
+            session_id=session_id,
+            state=runtime_state,
+            stream_url=stream_url,
+        )
+        return redirect(stream_url, code=302)
+
+    if runtime_state == "metadata_timeout":
+        emit_event(
+            "[playback-runtime-handoff]",
+            event="watch_timeout_page_returned",
+            session_id=session_id,
+            state=runtime_state,
+            stream_url=stream_url,
+        )
+        return Response(
+            _watch_runtime_timeout_page(
+                session_id=session_id,
+                state=runtime_state,
+                elapsed_seconds=elapsed_seconds,
+                magnet=magnet,
+                title=title,
+                movie_id=str(movie.get("movie_id") or ""),
+                entry_id=str(movie.get("entry_id") or ""),
+                source_fingerprint=str(source.get("source_fingerprint") or ""),
+            ),
+            status=200,
+            content_type="text/html; charset=utf-8",
+        )
+
+    emit_event(
+        "[playback-runtime-handoff]",
+        event="watch_session_created" if session_was_created else "watch_session_state",
+        session_id=session_id,
+        state=runtime_state or "created",
+    )
+    emit_event(
+        "[playback-runtime-handoff]",
+        event="watch_waiting_page_returned",
+        session_id=session_id,
+        state=runtime_state or "buffering",
+        stream_url=stream_url,
+    )
+
+    if str(request.args.get("format") or "").strip().lower() == "json" or "application/json" in str(request.headers.get("Accept") or ""):
+        return jsonify({
+            "ok": True,
+            "watch_url": watch_url,
+            "stream_url": str(runtime_session.get("stream_url") or "").strip(),
+            "session_id": session_id,
+            "state": runtime_state or "buffering",
+            "elapsed_seconds": elapsed_seconds,
+            "runtime_base_url": runtime_base_url,
+            "runtime_session": runtime_session,
+        })
+    return Response(
+        _watch_runtime_waiting_page(
+            session_id=session_id,
+            state=runtime_state or "buffering",
+            stream_url=stream_url,
+            elapsed_seconds=elapsed_seconds,
+            magnet=magnet,
+            title=title,
+            movie_id=str(movie.get("movie_id") or ""),
+            entry_id=str(movie.get("entry_id") or ""),
+            source_fingerprint=str(source.get("source_fingerprint") or ""),
+        ),
+        status=200,
+        content_type="text/html; charset=utf-8",
+    )
+
+
+@app.route("/healthz")
+def runtime_healthz():
+    return jsonify({"ok": True, "service": "dragon-runtime", "runtime_base_url": resolve_runtime_base_url(request)})
+
+
+@app.route("/runtime/<session_id>")
+def runtime_session_status(session_id):
+    try:
+        runtime_session = PLAYBACK_RUNTIME_MANAGER.get_session(session_id, refresh=False)
+    except PlaybackRuntimeError as exc:
+        status_code = 503 if exc.code in {"torrent_unavailable", "stream_unavailable"} else 404 if exc.code == "unknown_session" else 400
+        return jsonify({"ok": False, "error": exc.message, "code": exc.code}), status_code
+    if runtime_session is None:
+        return jsonify({"ok": False, "error": "Playback session was not found.", "code": "unknown_session"}), 404
+    return jsonify({
+        "ok": True,
+        "session_id": str(runtime_session.get("session_id") or "").strip(),
+        "state": str(runtime_session.get("state") or runtime_session.get("status") or "").strip(),
+        "torrent_name": str(runtime_session.get("torrent_name") or "").strip(),
+        "files_count": int(runtime_session.get("files_count", 0) or 0),
+        "selected_file": dict(runtime_session.get("selected_file") or {}),
+        "playable_files": list(runtime_session.get("playable_files") or []),
+        "telemetry": dict(runtime_session.get("telemetry") or {}),
+        "runtime_metrics": dict(runtime_session.get("runtime_metrics") or {}),
+    })
+
+
+@app.route("/stream/<session_id>")
+def stream_runtime_session(session_id):
+    try:
+        return build_stream_response(PLAYBACK_RUNTIME_MANAGER, session_id, request)
+    except PlaybackRuntimeError as exc:
+        status_code = 503 if exc.code in {"buffering", "metadata_timeout", "torrent_unavailable", "stream_unavailable"} else 404 if exc.code == "unknown_session" else 400
+        return jsonify({"ok": False, "error": exc.message, "code": exc.code}), status_code
+
+
+@app.route("/stream")
+def stream_runtime_session_query():
+    session_id = str(request.args.get("session_id") or "").strip()
+    if not session_id:
+        return jsonify({"ok": False, "error": "session_id is required"}), 400
+    return stream_runtime_session(session_id)
 
 
 @app.route("/api/runtime/stream/<session_id>")
@@ -30885,7 +31278,7 @@ def section_page(section_slug):
 
 @app.route("/pockettube")
 def pockettube():
-    context = YOUTUBE_FRESHNESS_SERVICE.build_page_context()
+    context = YOUTUBE_FRESHNESS_SERVICE.build_page_context_for_filter(request.args.get("group", "all"))
     if request.args.get("synced"):
         context["sync_notice"] = "Freshness snapshot rebuilt."
     if request.args.get("sync_requested"):

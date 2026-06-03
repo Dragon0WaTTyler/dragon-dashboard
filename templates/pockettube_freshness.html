@@ -1,50 +1,49 @@
 {% extends "base.html" %}
 {% block content %}
 <style>
-    .pockettube-freshness-shell{display:grid;gap:18px}
-    .pockettube-feed-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap}
-    .pockettube-feed-filter{position:relative;min-width:220px}
-    .pockettube-feed-filter summary{list-style:none;display:flex;justify-content:space-between;align-items:center;gap:10px;border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:11px 14px;background:rgba(255,255,255,.03);cursor:pointer}
-    .pockettube-feed-filter summary::-webkit-details-marker{display:none}
-    .pockettube-feed-filter[open] summary{border-color:rgba(125,211,252,.35);background:rgba(125,211,252,.10)}
-    .pockettube-feed-filter-panel{position:absolute;right:0;top:calc(100% + 8px);z-index:20;width:min(320px,88vw);display:grid;gap:8px;padding:10px;border-radius:16px;background:rgba(10,14,22,.96);border:1px solid rgba(255,255,255,.08);box-shadow:0 22px 60px rgba(0,0,0,.45)}
-    .pockettube-filter-list{display:grid;gap:8px;max-height:360px;overflow:auto}
-    .pockettube-filter-btn{display:flex;justify-content:space-between;align-items:center;gap:12px;width:100%;text-align:left;border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:10px 12px;background:rgba(255,255,255,.03);color:inherit;cursor:pointer;transition:transform .15s ease,border-color .15s ease,background .15s ease}
-    .pockettube-filter-btn:hover{transform:translateY(-1px);border-color:rgba(255,255,255,.18);background:rgba(255,255,255,.05)}
-    .pockettube-filter-btn.is-active{border-color:var(--accent-color,#7dd3fc);background:rgba(125,211,252,.12);box-shadow:0 0 0 1px rgba(125,211,252,.12) inset}
-    .pockettube-filter-btn .filter-count{font-size:.78rem;opacity:.8;white-space:nowrap}
-    .pockettube-feed-grid{display:grid;gap:16px}
-    .pockettube-feed-toolbar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between}
-    .pockettube-feed-toolbar .hero-meta{margin-top:0}
+    .pockettube-home-shell{display:grid;gap:18px}
+    .pockettube-home-layout{display:grid;grid-template-columns:minmax(210px,260px) minmax(0,1fr);gap:18px;align-items:start}
+    .pockettube-filter-rail{position:sticky;top:86px;display:grid;gap:12px;padding:18px;border-radius:24px}
+    .pockettube-filter-list{display:grid;gap:8px}
+    .pockettube-filter-link{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 13px;border-radius:16px;border:1px solid rgba(255,255,255,.07);background:rgba(255,255,255,.02);color:var(--text-2);text-decoration:none;transition:transform .16s ease,border-color .16s ease,background .16s ease,color .16s ease}
+    .pockettube-filter-link:hover,
+    .pockettube-filter-link:focus-visible{transform:translateY(-1px);border-color:rgba(255,0,0,.32);background:rgba(255,0,0,.08);color:var(--text);outline:none}
+    .pockettube-filter-link.is-active{border-color:rgba(255,0,0,.42);background:rgba(255,0,0,.12);color:var(--text);box-shadow:0 0 0 1px rgba(255,0,0,.18) inset}
+    .pockettube-filter-count{font-size:.76rem;letter-spacing:.08em;color:inherit;opacity:.82;white-space:nowrap}
+    .pockettube-home-main{display:grid;gap:18px}
+    .pockettube-status-line{display:flex;align-items:center;gap:10px;flex-wrap:wrap;color:var(--text-2);font-size:.82rem;line-height:1.5}
+    .pockettube-status-pill{display:inline-flex;align-items:center;gap:8px;padding:7px 10px;border-radius:999px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);color:var(--text)}
+    .pockettube-status-pill.is-stale{border-color:rgba(255,166,0,.32);background:rgba(255,166,0,.1)}
+    .pockettube-status-pill.is-missing,
+    .pockettube-status-pill.is-empty{border-color:rgba(255,90,90,.28);background:rgba(255,90,90,.1)}
+    .pockettube-feed-toolbar{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap}
     .pockettube-feed-cards{display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
     .pockettube-feed-card{display:grid;gap:10px;height:100%}
-    .pockettube-feed-card .video-thumb{aspect-ratio:16/9;object-fit:cover;border-radius:16px;width:100%;background:#0f172a}
-    .pockettube-feed-card .card-title{line-height:1.35;font-size:1rem}
-    .pockettube-feed-card .card-meta{opacity:.82}
-    .pockettube-feed-card .pockettube-tags{display:flex;gap:6px;flex-wrap:wrap}
     .pockettube-feed-card .video-frame{position:relative}
+    .pockettube-feed-card .video-thumb{aspect-ratio:16/9;object-fit:cover;border-radius:16px;width:100%;background:#080808}
+    .pockettube-feed-card .card-title{line-height:1.38;font-size:1rem}
+    .pockettube-feed-card .pockettube-tags{display:flex;gap:6px;flex-wrap:wrap}
     .pockettube-feed-card .pockettube-youtube-btn{position:absolute;right:10px;top:10px;z-index:3}
-    .pockettube-feed-card.hidden{display:none !important}
+    .pockettube-filter-note{font-size:.76rem;line-height:1.55;color:var(--text-2)}
     @media (max-width: 980px){
-        .pockettube-feed-head{align-items:stretch}
-        .pockettube-feed-filter{width:100%}
-        .pockettube-feed-filter-panel{left:0;right:auto;width:100%}
+        .pockettube-home-layout{grid-template-columns:minmax(0,1fr)}
+        .pockettube-filter-rail{position:static}
     }
 </style>
+
 <section class="page-hero">
     <div class="hero-meta">
         <span class="hero-badge">PocketTube</span>
-        <span>Latest from your channels</span>
+        <span>Home feed</span>
     </div>
     <h2>{{ title }}</h2>
-    <p class="subhead">
-        A cache-first, YouTube-home style feed powered only by the latest saved PocketTube snapshot.
-    </p>
+    <p class="subhead">A cache-first YouTube-home style feed built from your saved PocketTube snapshot, with no live YouTube calls during page rendering.</p>
     <div class="detail-controls">
-        <form method="post" action="{{ url_for('pockettube_freshness_sync') }}" style="display:inline-flex;gap:10px;align-items:center;flex-wrap:wrap;">
+        <form method="post" action="{{ url_for('pockettube_freshness_sync') }}" style="display:inline-flex; gap:10px; align-items:center; flex-wrap:wrap;">
             <input type="hidden" name="scope" value="">
             <button type="submit" class="btn section-refresh-btn" data-default-label="Sync" data-loading-label="Syncing..."><i data-lucide="refresh-cw"></i>Sync</button>
         </form>
+        <a class="btn" href="{{ url_for('pockettube_groups') }}"><i data-lucide="layout-grid"></i>Group Hub</a>
     </div>
     <div class="hero-meta" style="margin-top:12px;">
         {% if generated_at %}
@@ -54,169 +53,123 @@
         <span>Synced {{ synced_at }}</span>
         {% endif %}
         <span>{{ group_count }} groups</span>
-        <span>{{ feed_video_count }} videos</span>
+        <span>{{ feed_video_count_total }} cached videos</span>
         <span>{{ channel_count }} channels</span>
-        {% if snapshot.version %}
-        <span>Snapshot v{{ snapshot.version }}</span>
-        {% endif %}
-    </div>
-    <div class="hero-meta" style="margin-top:10px;">
-        <span>Sync status: {{ sync_status.status or 'idle' }}</span>
-        {% if sync_status.requested_at %}
-        <span>Requested {{ sync_status.requested_at }}</span>
-        {% endif %}
-        {% if sync_status.completed_at %}
-        <span>Completed {{ sync_status.completed_at }}</span>
-        {% endif %}
-        {% if sync_status.last_error %}
-        <span>Last error: {{ sync_status.last_error }}</span>
-        {% endif %}
     </div>
     {% if sync_notice %}
     <div class="muted" style="margin-top:10px;">{{ sync_notice }}</div>
     {% endif %}
 </section>
 
-{% if errors %}
-<section class="surface-card section-card" style="margin-bottom:18px;">
-    <div class="detail-header">
-        <div>
-            <div class="hero-meta">
-                <span class="hero-badge">Sync notes</span>
-                <span>{{ errors|length }} issue{% if errors|length != 1 %}s{% endif %}</span>
-            </div>
-            <h3 style="font-size:1.4rem; margin-top:12px;">Snapshot warnings</h3>
+<div class="pockettube-home-shell">
+    {% if errors %}
+    <section class="surface-card section-card">
+        <div class="hero-meta">
+            <span class="hero-badge">Snapshot Notes</span>
+            <span>{{ errors|length }} issue{% if errors|length != 1 %}s{% endif %}</span>
         </div>
-    </div>
-    <div class="muted" style="margin-top:12px; display:grid; gap:6px;">
-        {% for error in errors %}
-        <div>{{ error }}</div>
-        {% endfor %}
-    </div>
-</section>
-{% endif %}
-
-{% if empty_state and not feed_videos %}
-<section class="surface-card section-card">
-    <div class="empty-state">
-        {% if snapshot and snapshot.groups %}
-        No cached latest videos yet. Run Sync Latest Videos to populate the snapshot.
-        {% else %}
-        No freshness snapshot exists yet. Run Sync Latest Videos to build it.
-        {% endif %}
-    </div>
-</section>
-{% else %}
-<div class="pockettube-freshness-shell">
-    <main class="pockettube-feed-grid">
-        <div class="pockettube-feed-head">
-            <div class="hero-meta">
-                <span class="hero-badge">Feed</span>
-                <span>{{ feed_video_count }} latest videos</span>
-                <span>{{ feed_empty_channel_count }} empty channels hidden by default</span>
-            </div>
-            <details class="pockettube-feed-filter" id="pockettube-feed-filter">
-                <summary>
-                    <span>Group filter</span>
-                    <strong id="pockettube-filter-label">All</strong>
-                </summary>
-                <div class="pockettube-feed-filter-panel">
-                    <div class="muted" style="font-size:.82rem;">Select a PocketTube group</div>
-                    <div class="pockettube-filter-list" id="pockettube-filter-list">
-                        <button type="button" class="pockettube-filter-btn is-active" data-filter="all" data-filter-label="All">
-                            <span>All</span>
-                            <span class="filter-count">{{ feed_video_count }}</span>
-                        </button>
-                        {% for group in feed_groups %}
-                        <button type="button" class="pockettube-filter-btn" data-filter="{{ group.group_key }}" data-filter-label="{{ group.group_name }}">
-                            <span>{{ group.group_name }}</span>
-                            <span class="filter-count">{{ group.video_count }}</span>
-                        </button>
-                        {% endfor %}
-                    </div>
-                </div>
-            </details>
-        </div>
-        <div class="pockettube-feed-toolbar">
-            <div class="hero-meta">
-                <span>{{ group_count }} groups in snapshot</span>
-                <span>{{ channel_count }} channels indexed</span>
-                <span>{{ feed_empty_channel_count }} empty channels hidden</span>
-            </div>
-        </div>
-        <div class="pockettube-feed-cards" id="pockettube-feed-cards">
-            {% for video in feed_videos %}
-            <article class="content-card pockettube-feed-card" data-group-keys="{{ (video.group_keys or [])|join(' ') }}" data-group-names="{{ (video.group_names or [])|join(' | ') }}" data-video-id="{{ video.video_id }}">
-                <a href="{{ video.detail_url or ('/video/yt-' ~ video.video_id) }}" class="video-frame video-poster" style="display:block;" data-scroll-top="true">
-                    {% if video.thumbnail %}
-                    <img class="video-thumb" src="{{ video.thumbnail }}" alt="{{ video.title or video.channel_title }}" loading="lazy" decoding="async">
-                    {% else %}
-                    <div class="empty-state" style="min-height:160px; display:flex; align-items:center; justify-content:center;">No thumbnail available.</div>
-                    {% endif %}
-                </a>
-                {% if video.url %}
-                <a class="card-quick-action pockettube-youtube-btn" href="{{ video.url }}" target="_blank" rel="noopener" aria-label="Open video on YouTube" title="Open video on YouTube"><i data-lucide="external-link"></i></a>
-                {% endif %}
-                <a class="card-title" href="{{ video.detail_url or ('/video/yt-' ~ video.video_id) }}" data-scroll-top="true">{{ video.title or 'Untitled video' }}</a>
-                <div class="card-meta channel-meta">{{ video.channel_title or 'Unknown Channel' }}</div>
-                {% if video.published_display %}
-                <div class="card-meta" style="opacity:.75;">Published: {{ video.published_display }}</div>
-                {% elif video.published_at %}
-                <div class="card-meta" style="opacity:.75;">Published: {{ video.published_at }}</div>
-                {% endif %}
-                <div class="pockettube-tags">
-                    {% for group_name in video.group_names %}
-                    <span class="score-pill">{{ group_name }}</span>
-                    {% endfor %}
-                </div>
-                <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;">
-                    <span class="muted" style="font-size:.78rem;">{{ video.channel_title or 'Unknown Channel' }}</span>
-                    {% if video.url %}
-                    <a class="btn" href="{{ video.url }}" target="_blank" rel="noopener" style="padding:.55rem .8rem;">Open on YouTube</a>
-                    {% endif %}
-                </div>
-            </article>
+        <div class="muted" style="margin-top:12px; display:grid; gap:6px;">
+            {% for error in errors %}
+            <div>{{ error }}</div>
             {% endfor %}
         </div>
-    </main>
+    </section>
+    {% endif %}
+
+    <section class="surface-card section-card">
+        <div class="pockettube-status-line">
+            <span class="pockettube-status-pill{% if snapshot_status.is_stale %} is-stale{% elif snapshot_status.state in ['missing', 'empty'] %} is-{{ snapshot_status.state }}{% endif %}">Snapshot status</span>
+            <span>{{ snapshot_status.message }}</span>
+            <span>Sync status: {{ sync_status.status or 'idle' }}</span>
+        </div>
+    </section>
+
+    <div class="pockettube-home-layout">
+        <aside class="surface-card pockettube-filter-rail">
+            <div class="hero-meta">
+                <span class="hero-badge">Filters</span>
+                <span>{{ feed_filters|length }} items</span>
+            </div>
+            <div class="pockettube-filter-list">
+                {% for filter_item in feed_filters %}
+                <a
+                    class="pockettube-filter-link{% if filter_item.key == selected_filter_key %} is-active{% endif %}"
+                    href="{{ url_for('pockettube', group=filter_item.key) }}">
+                    <span>{{ filter_item.label }}</span>
+                    <span class="pockettube-filter-count">{{ filter_item.video_count }}</span>
+                </a>
+                {% endfor %}
+            </div>
+            <div class="pockettube-filter-note">
+                Selecting a filter reloads the feed from the local snapshot only.
+            </div>
+        </aside>
+
+        <main class="pockettube-home-main">
+            <section class="surface-card section-card">
+                <div class="pockettube-feed-toolbar">
+                    <div>
+                        <div class="hero-meta">
+                            <span class="hero-badge">{{ selected_filter_label }}</span>
+                            <span>{{ selected_filter_count }} videos</span>
+                            <span>{{ feed_empty_channel_count }} empty channels hidden</span>
+                        </div>
+                        <h3 style="font-size:2rem; margin-top:12px;">Latest videos from {{ selected_filter_label }}</h3>
+                    </div>
+                    <div class="hero-meta">
+                        <span>{{ group_count }} groups indexed</span>
+                        <span>{{ feed_video_count_total }} total cached latest videos</span>
+                    </div>
+                </div>
+
+                {% if feed_videos %}
+                <div class="pockettube-feed-cards" style="margin-top:18px;">
+                    {% for video in feed_videos %}
+                    <article class="content-card pockettube-feed-card">
+                        <a href="{{ video.detail_url or ('/video/yt-' ~ video.video_id) }}" class="video-frame video-poster" style="display:block;" data-scroll-top="true">
+                            {% if video.thumbnail %}
+                            <img class="video-thumb" src="{{ video.thumbnail }}" alt="{{ video.title or video.channel_title }}" loading="lazy" decoding="async">
+                            {% else %}
+                            <div class="empty-state" style="min-height:160px; display:flex; align-items:center; justify-content:center;">No thumbnail available.</div>
+                            {% endif %}
+                            {% if video.url %}
+                            <span class="card-quick-action pockettube-youtube-btn" aria-hidden="true"><i data-lucide="external-link"></i></span>
+                            {% endif %}
+                        </a>
+                        <a class="card-title" href="{{ video.detail_url or ('/video/yt-' ~ video.video_id) }}" data-scroll-top="true">{{ video.title or 'Untitled video' }}</a>
+                        <div class="card-meta channel-meta">{{ video.channel_title or 'Unknown Channel' }}</div>
+                        {% if video.published_display %}
+                        <div class="card-meta" style="opacity:.78;">Published: {{ video.published_display }}</div>
+                        {% elif video.published_at %}
+                        <div class="card-meta" style="opacity:.78;">Published: {{ video.published_at }}</div>
+                        {% endif %}
+                        <div class="pockettube-tags">
+                            {% for group_name in video.group_names[:3] %}
+                            <span class="score-pill">{{ group_name }}</span>
+                            {% endfor %}
+                        </div>
+                        <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;">
+                            <span class="muted" style="font-size:.78rem;">{{ video.channel_title or 'Unknown Channel' }}</span>
+                            {% if video.url %}
+                            <a class="btn" href="{{ video.url }}" target="_blank" rel="noopener" style="padding:.55rem .8rem;">Open on YouTube</a>
+                            {% endif %}
+                        </div>
+                    </article>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="empty-state" style="margin-top:18px;">
+                    {% if snapshot_status.state == 'missing' %}
+                    Snapshot missing. Run Sync to rebuild the cached PocketTube feed.
+                    {% elif snapshot_status.state == 'empty' %}
+                    Cached snapshot loaded, but it does not contain latest videos yet.
+                    {% else %}
+                    No cached videos matched the {{ selected_filter_label }} filter.
+                    {% endif %}
+                </div>
+                {% endif %}
+            </section>
+        </main>
+    </div>
 </div>
-
-<script>
-(function() {
-    const filterButtons = Array.from(document.querySelectorAll("[data-filter]"));
-    const cards = Array.from(document.querySelectorAll("[data-video-id]"));
-    const filterLabel = document.getElementById("pockettube-filter-label");
-    const filterDetails = document.getElementById("pockettube-feed-filter");
-    if (!filterButtons.length || !cards.length) {
-        return;
-    }
-
-    function setActiveFilter(value) {
-        filterButtons.forEach((button) => {
-            const active = button.dataset.filter === value;
-            button.classList.toggle("is-active", active);
-            if (active && filterLabel) {
-                filterLabel.textContent = button.dataset.filterLabel || "All";
-            }
-        });
-        cards.forEach((card) => {
-            const groupKeys = (card.dataset.groupKeys || "").split(/\s+/).filter(Boolean);
-            const match = value === "all" || groupKeys.includes(value);
-            card.classList.toggle("hidden", !match);
-        });
-    }
-
-    filterButtons.forEach((button) => {
-        button.addEventListener("click", () => {
-            setActiveFilter(button.dataset.filter || "all");
-            if (filterDetails) {
-                filterDetails.open = false;
-            }
-        });
-    });
-
-    setActiveFilter("all");
-})();
-</script>
-{% endif %}
 {% endblock %}
