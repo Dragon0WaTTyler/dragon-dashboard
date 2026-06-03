@@ -195,7 +195,7 @@ class YouTubeFreshnessService:
                 group_key_text = str(group.get("group_key", "") or group_key or "").strip()
                 group_videos = [video for video in (group.get("videos", []) or []) if isinstance(video, dict)]
                 for video in group_videos:
-                    normalized_video = self._normalize_group_video(video, group_name, group_key_text)
+                    normalized_video = self._normalize_group_video(video, group_name, group_key_text, prefer_snapshot_fields=True)
                     if not normalized_video:
                         continue
                     yield {
@@ -1352,7 +1352,7 @@ class YouTubeFreshnessService:
             group_videos = [video for video in (group.get("videos", []) or []) if isinstance(video, dict)]
             if group_videos:
                 for video in group_videos:
-                    normalized_video = self._normalize_group_video(video, group_name, group_key)
+                    normalized_video = self._normalize_group_video(video, group_name, group_key, prefer_snapshot_fields=True)
                     video_id = str(normalized_video.get("video_id", "") or "").strip()
                     if not video_id:
                         continue
@@ -2058,10 +2058,10 @@ class YouTubeFreshnessService:
         latest_video = payload.get("latest_video", {})
         return latest_video if isinstance(latest_video, dict) else {}
 
-    def _normalize_group_videos(self, videos, group_name, group_key, limit=POCKETTUBE_GROUP_VIDEO_LIMIT):
+    def _normalize_group_videos(self, videos, group_name, group_key, limit=POCKETTUBE_GROUP_VIDEO_LIMIT, prefer_snapshot_fields=False):
         deduped = {}
         for video in videos or []:
-            normalized_video = self._normalize_group_video(video, group_name, group_key)
+            normalized_video = self._normalize_group_video(video, group_name, group_key, prefer_snapshot_fields=prefer_snapshot_fields)
             video_id = str(normalized_video.get("video_id", "") or "").strip()
             if not video_id:
                 continue
@@ -2080,15 +2080,17 @@ class YouTubeFreshnessService:
             ordered = ordered[:limit]
         return ordered
 
-    def _normalize_group_video(self, video, group_name, group_key):
+    def _normalize_group_video(self, video, group_name, group_key, prefer_snapshot_fields=False):
         if not isinstance(video, dict):
             return {}
-        summary = self.build_youtube_channel_video_summary(video)
-        if not isinstance(summary, dict):
-            summary = {}
         merged = dict(video)
-        merged.update(summary)
         video_id = str(merged.get("video_id", "") or "").strip()
+        if not video_id or not prefer_snapshot_fields:
+            summary = self.build_youtube_channel_video_summary(video)
+            if not isinstance(summary, dict):
+                summary = {}
+            merged.update(summary)
+            video_id = str(merged.get("video_id", "") or "").strip()
         if not video_id:
             return {}
         channel_id = str(merged.get("channel_id", "") or video.get("channel_id", "") or "").strip()
@@ -2214,7 +2216,12 @@ class YouTubeFreshnessService:
             for channel in group.get("channels", []) or []:
                 if isinstance(channel, dict):
                     channels.append(self._normalize_channel_payload(channel, group_name, normalized_group_key))
-            videos = self._normalize_group_videos(group.get("videos", []) or [], group_name, normalized_group_key)
+            videos = self._normalize_group_videos(
+                group.get("videos", []) or [],
+                group_name,
+                normalized_group_key,
+                prefer_snapshot_fields=int(snapshot.get("version", 2) or 2) >= 2,
+            )
             latest_video = group.get("latest_video", {}) if isinstance(group.get("latest_video", {}), dict) else {}
             normalized_latest_video = self._normalize_group_video(latest_video, group_name, normalized_group_key) if latest_video else {}
             snapshot["groups"][normalized_group_key] = {

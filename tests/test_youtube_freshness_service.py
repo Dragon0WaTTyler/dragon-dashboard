@@ -1271,7 +1271,7 @@ class YouTubeFreshnessServiceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             service, _state = self._build_service(temp_dir)
             save_json_file(service.snapshot_path, {
-                "version": 1,
+                "version": 2,
                 "generated_at": FIXED_NOW.isoformat(),
                 "synced_at": FIXED_NOW.isoformat(),
                 "group_video_limit": 200,
@@ -1307,13 +1307,98 @@ class YouTubeFreshnessServiceTests(unittest.TestCase):
                 "channels": {},
                 "errors": [],
             })
+            service.build_youtube_channel_video_summary = Mock(return_value={"title": "OVERRIDDEN"})
 
             context = service.build_page_context_for_filter("news")
 
             self.assertEqual(context["feed_video_count"], 2)
             self.assertEqual(context["feed_video_count_total"], 2)
             self.assertEqual(context["feed_videos"][0]["video_id"], "n1")
+            self.assertEqual(context["feed_videos"][0]["title"], "Video n1")
+            self.assertEqual(context["feed_filters"][0]["key"], "all")
+            self.assertTrue(any(item["key"] == "news" and item["video_count"] == 2 for item in context["feed_filters"]))
             self.assertEqual(context["selected_filter_key"], "news")
+
+    def test_build_page_context_for_filter_all_dedupes_sorts_and_caps_group_videos(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            service, _state = self._build_service(temp_dir)
+            news_videos = [
+                self._group_video("shared-1", channel_id="c-news-1", channel_name="News One", hours_ago=1, title="Shared News"),
+                self._group_video("news-2", channel_id="c-news-2", channel_name="News Two", hours_ago=2, title="News Two"),
+            ]
+            tech_videos = [
+                self._group_video("shared-1", channel_id="c-tech-1", channel_name="Tech One", hours_ago=3, title="Shared Tech"),
+                self._group_video("tech-2", channel_id="c-tech-2", channel_name="Tech Two", hours_ago=4, title="Tech Two"),
+            ]
+            save_json_file(service.snapshot_path, {
+                "version": 2,
+                "generated_at": FIXED_NOW.isoformat(),
+                "synced_at": FIXED_NOW.isoformat(),
+                "group_video_limit": 200,
+                "all_feed_video_limit": 200,
+                "groups": {
+                    "news": {
+                        "group_name": "News",
+                        "group_key": "news",
+                        "section_name": "News",
+                        "section_key": "news",
+                        "source_name": "PocketTube",
+                        "imported_at": FIXED_NOW.isoformat(),
+                        "channel_count": 2,
+                        "latest_video_count": 2,
+                        "latest_video": news_videos[0],
+                        "channels": [],
+                        "videos": news_videos,
+                        "diagnostics": {
+                            "group_key": "news",
+                            "group_name": "News",
+                            "channels_scanned": 2,
+                            "videos_collected": 2,
+                            "videos_stored": 2,
+                            "upload_playlist_ids": ["UU1"],
+                            "errors": [],
+                            "generated_at": FIXED_NOW.isoformat(),
+                            "synced_at": FIXED_NOW.isoformat(),
+                        },
+                    },
+                    "tech": {
+                        "group_name": "Tech",
+                        "group_key": "tech",
+                        "section_name": "Tech",
+                        "section_key": "tech",
+                        "source_name": "PocketTube",
+                        "imported_at": FIXED_NOW.isoformat(),
+                        "channel_count": 2,
+                        "latest_video_count": 2,
+                        "latest_video": tech_videos[0],
+                        "channels": [],
+                        "videos": tech_videos,
+                        "diagnostics": {
+                            "group_key": "tech",
+                            "group_name": "Tech",
+                            "channels_scanned": 2,
+                            "videos_collected": 2,
+                            "videos_stored": 2,
+                            "upload_playlist_ids": ["UU2"],
+                            "errors": [],
+                            "generated_at": FIXED_NOW.isoformat(),
+                            "synced_at": FIXED_NOW.isoformat(),
+                        },
+                    },
+                },
+                "channels": {},
+                "errors": [],
+            })
+
+            context = service.build_page_context_for_filter("all")
+
+            self.assertEqual(context["selected_filter_key"], "all")
+            self.assertEqual(context["feed_video_count_total"], 3)
+            self.assertEqual(context["feed_video_count"], 3)
+            self.assertEqual([video["video_id"] for video in context["feed_videos"]], ["shared-1", "news-2", "tech-2"])
+            self.assertEqual(context["feed_filters"][0]["video_count"], 3)
+            self.assertTrue(any(item["key"] == "news" and item["video_count"] == 2 for item in context["feed_filters"]))
+            self.assertTrue(any(item["key"] == "tech" and item["video_count"] == 2 for item in context["feed_filters"]))
 
     def test_build_pockettube_coverage_report_marks_group_without_channels(self):
         with tempfile.TemporaryDirectory() as temp_dir:
