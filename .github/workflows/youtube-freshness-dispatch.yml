@@ -62,10 +62,7 @@ jobs:
           fi
 
           response_file="$(mktemp)"
-          status_code="$(
-            curl -sS -o "$response_file" -w "%{http_code}" \
-              "https://www.googleapis.com/youtube/v3/channels?part=snippet&id=UC_x5XG1OV2P6uZZ5FSM9Ttw&key=${YOUTUBE_API_KEY}"
-          )"
+          status_code="$(curl -sS -o "$response_file" -w "%{http_code}" "https://www.googleapis.com/youtube/v3/channels?part=snippet&id=UC_x5XG1OV2P6uZZ5FSM9Ttw&key=${YOUTUBE_API_KEY}")"
 
           echo "HTTP status code: ${status_code}"
           if grep -q '"items"' "$response_file"; then
@@ -74,30 +71,7 @@ jobs:
             echo "items present: no"
           fi
 
-          error_message="$(python - <<'PY' "$response_file"
-import json
-import sys
-from pathlib import Path
-
-path = Path(sys.argv[1])
-try:
-    payload = json.loads(path.read_text(encoding="utf-8"))
-except Exception:
-    print("")
-    raise SystemExit(0)
-
-error = payload.get("error", {}) if isinstance(payload, dict) else {}
-message = ""
-if isinstance(error, dict):
-    details = error.get("errors", []) or []
-    if details and isinstance(details, list):
-        first = details[0] if isinstance(details[0], dict) else {}
-        message = str(first.get("message", "") or "").strip()
-    if not message:
-        message = str(error.get("message", "") or "").strip()
-print(message)
-PY
-)"
+          error_message="$(python -c 'import json,sys; p=json.load(open(sys.argv[1], encoding="utf-8")); e=p.get("error", {}) if isinstance(p, dict) else {}; details=e.get("errors", []) if isinstance(e, dict) else []; msg=""; msg=(details[0].get("message","") if details and isinstance(details[0], dict) else "") or (e.get("message","") if isinstance(e, dict) else ""); print(msg)' "$response_file" 2>/dev/null || true)"
           if [ -n "${error_message:-}" ]; then
             echo "response error message: ${error_message}"
           fi
