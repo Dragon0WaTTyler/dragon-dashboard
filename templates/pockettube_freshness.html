@@ -6,6 +6,10 @@
     .pockettube-home-main{display:grid;gap:18px}
     .pockettube-feed-toolbar{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap}
     .pockettube-filter-compact{display:grid;gap:7px;min-width:180px;justify-items:end}
+    .pockettube-filter-row{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;justify-content:flex-end}
+    .pockettube-filter-block{display:grid;gap:7px}
+    .pockettube-filter-block.section-block{min-width:220px;flex:1 1 220px}
+    .pockettube-filter-block.limit-block{min-width:110px;flex:0 0 110px}
     .pockettube-filter-label{font-size:.76rem;letter-spacing:.08em;text-transform:uppercase;color:var(--text-2)}
     .pockettube-filter-select{width:100%;min-height:38px;padding:9px 34px 9px 11px;border:1px solid rgba(255,255,255,.12);border-radius:10px;background:#090909;color:var(--text);font:inherit;line-height:1.2;-webkit-appearance:menulist;appearance:menulist}
     .pockettube-filter-select:focus{outline:none;border-color:rgba(255,0,0,.34);box-shadow:0 0 0 1px rgba(255,0,0,.18)}
@@ -18,6 +22,9 @@
     .pockettube-feed-card .pockettube-youtube-btn{position:absolute;right:10px;top:10px;z-index:3}
     @media (max-width: 980px){
         .pockettube-filter-compact{width:100%;justify-items:stretch}
+        .pockettube-filter-row{justify-content:stretch}
+        .pockettube-filter-block.section-block,
+        .pockettube-filter-block.limit-block{min-width:0;flex:1 1 100%}
     }
 </style>
 
@@ -89,18 +96,24 @@
                     </div>
                     <div style="display:grid; gap:10px; justify-items:end;">
                         <form method="get" action="{{ url_for('pockettube') }}" class="pockettube-filter-compact">
-                            <label class="pockettube-filter-label" for="pockettube-group-filter">Section</label>
-                            <select id="pockettube-group-filter" name="group" class="pockettube-filter-select" onchange="this.form.submit()">
-                                {% for filter_item in feed_filters %}
-                                <option value="{{ filter_item.key }}"{% if filter_item.key == selected_filter_key %} selected{% endif %}>{{ filter_item.label }}{% if filter_item.video_count is not none %} ({{ filter_item.video_count }}){% endif %}</option>
-                                {% endfor %}
-                            </select>
-                            <label class="pockettube-filter-label" for="pockettube-limit-filter">Limit</label>
-                            <select id="pockettube-limit-filter" name="limit" class="pockettube-filter-select" onchange="this.form.submit()">
-                                {% for limit_option in display_limit_options %}
-                                <option value="{{ limit_option }}"{% if limit_option == display_limit %} selected{% endif %}>{{ limit_option }}</option>
-                                {% endfor %}
-                            </select>
+                            <div class="pockettube-filter-row">
+                                <div class="pockettube-filter-block section-block">
+                                    <label class="pockettube-filter-label" for="pockettube-group-filter">Section</label>
+                                    <select id="pockettube-group-filter" name="group" class="pockettube-filter-select" onchange="this.form.submit()">
+                                        {% for filter_item in feed_filters %}
+                                        <option value="{{ filter_item.key }}"{% if filter_item.key == selected_filter_key %} selected{% endif %}>{{ filter_item.label }}{% if filter_item.video_count is not none %} ({{ filter_item.video_count }}){% endif %}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="pockettube-filter-block limit-block">
+                                    <label class="pockettube-filter-label" for="pockettube-limit-filter">Limit</label>
+                                    <select id="pockettube-limit-filter" name="limit" class="pockettube-filter-select" onchange="this.form.submit()">
+                                        {% for limit_option in display_limit_options %}
+                                        <option value="{{ limit_option }}"{% if limit_option == display_limit %} selected{% endif %}>{{ limit_option }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                            </div>
                             <noscript><button type="submit" class="btn" style="padding:.55rem .8rem;">Apply</button></noscript>
                         </form>
                         <div class="hero-meta">
