@@ -31512,7 +31512,10 @@ def section_page(section_slug):
 
 @app.route("/pockettube")
 def pockettube():
-    context = YOUTUBE_FRESHNESS_SERVICE.build_page_context_for_filter(request.args.get("group", "all"))
+    context = YOUTUBE_FRESHNESS_SERVICE.build_page_context_for_filter(
+        request.args.get("group", "all"),
+        display_limit=request.args.get("limit", "50"),
+    )
     if request.args.get("synced"):
         context["sync_notice"] = "Freshness snapshot rebuilt."
     if request.args.get("sync_requested"):

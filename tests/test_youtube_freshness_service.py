@@ -1400,6 +1400,171 @@ class YouTubeFreshnessServiceTests(unittest.TestCase):
             self.assertTrue(any(item["key"] == "news" and item["video_count"] == 2 for item in context["feed_filters"]))
             self.assertTrue(any(item["key"] == "tech" and item["video_count"] == 2 for item in context["feed_filters"]))
 
+    def test_build_page_context_canonical_filters_use_group_video_counts(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            service, _state = self._build_service(temp_dir)
+            news_videos = [self._group_video(f"news-{index:03d}", channel_id="c-news", channel_name="News Desk", hours_ago=index) for index in range(200)]
+            tech_videos = [self._group_video(f"tech-{index:03d}", channel_id="c-tech", channel_name="Tech Desk", hours_ago=index + 300) for index in range(200)]
+            save_json_file(service.snapshot_path, {
+                "version": 2,
+                "generated_at": FIXED_NOW.isoformat(),
+                "synced_at": FIXED_NOW.isoformat(),
+                "group_video_limit": 200,
+                "all_feed_video_limit": 200,
+                "groups": {
+                    "news": {
+                        "group_name": "News",
+                        "group_key": "news",
+                        "section_name": "News",
+                        "section_key": "news",
+                        "source_name": "PocketTube",
+                        "imported_at": FIXED_NOW.isoformat(),
+                        "channel_count": 1,
+                        "latest_video_count": 200,
+                        "latest_video": news_videos[0],
+                        "channels": [],
+                        "videos": news_videos,
+                        "diagnostics": {"group_key": "news", "group_name": "News", "videos_collected": 200, "videos_stored": 200, "errors": []},
+                    },
+                    "tech": {
+                        "group_name": "Tech",
+                        "group_key": "tech",
+                        "section_name": "Tech",
+                        "section_key": "tech",
+                        "source_name": "PocketTube",
+                        "imported_at": FIXED_NOW.isoformat(),
+                        "channel_count": 1,
+                        "latest_video_count": 200,
+                        "latest_video": tech_videos[0],
+                        "channels": [],
+                        "videos": tech_videos,
+                        "diagnostics": {"group_key": "tech", "group_name": "Tech", "videos_collected": 200, "videos_stored": 200, "errors": []},
+                    },
+                },
+                "channels": {},
+                "errors": [],
+            })
+
+            context = service.build_page_context_for_filter("news")
+
+            self.assertEqual(context["selected_filter_key"], "news")
+            self.assertEqual(context["selected_filter_count"], 200)
+            self.assertEqual(context["feed_video_count_total"], 400)
+            self.assertEqual(context["feed_video_count"], 50)
+            self.assertEqual(context["selected_filter_display_count"], 50)
+            self.assertEqual(context["display_limit"], 50)
+            self.assertTrue(any(item["key"] == "news" and item["video_count"] == 200 for item in context["feed_filters"]))
+            self.assertTrue(any(item["key"] == "tech" and item["video_count"] == 200 for item in context["feed_filters"]))
+
+    def test_build_page_context_canonical_favorites_maps_my_favorite_group(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            service, _state = self._build_service(temp_dir)
+            favorite_videos = [self._group_video(f"fav-{index:03d}", channel_id="c-fav", channel_name="Favorite Desk", hours_ago=index) for index in range(3)]
+            save_json_file(service.snapshot_path, {
+                "version": 2,
+                "generated_at": FIXED_NOW.isoformat(),
+                "synced_at": FIXED_NOW.isoformat(),
+                "groups": {
+                    "myfavorite": {
+                        "group_name": "My Favorite",
+                        "group_key": "myfavorite",
+                        "section_name": "My Favorite",
+                        "section_key": "myfavorite",
+                        "source_name": "PocketTube",
+                        "imported_at": FIXED_NOW.isoformat(),
+                        "channel_count": 1,
+                        "latest_video_count": 3,
+                        "latest_video": favorite_videos[0],
+                        "channels": [],
+                        "videos": favorite_videos,
+                        "diagnostics": {"group_key": "myfavorite", "group_name": "My Favorite", "videos_collected": 3, "videos_stored": 3, "errors": []},
+                    }
+                },
+                "channels": {},
+                "errors": [],
+            })
+
+            context = service.build_page_context_for_filter("favorites", display_limit=100)
+
+            self.assertEqual(context["selected_filter_key"], "favorites")
+            self.assertEqual(context["selected_filter_count"], 3)
+            self.assertEqual(context["feed_video_count"], 3)
+            self.assertEqual([video["video_id"] for video in context["feed_videos"]], ["fav-000", "fav-001", "fav-002"])
+
+    def test_build_page_context_canonical_cinema_maps_movise_group(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            service, _state = self._build_service(temp_dir)
+            cinema_videos = [self._group_video(f"mov-{index:03d}", channel_id="c-mov", channel_name="Movise Desk", hours_ago=index) for index in range(4)]
+            save_json_file(service.snapshot_path, {
+                "version": 2,
+                "generated_at": FIXED_NOW.isoformat(),
+                "synced_at": FIXED_NOW.isoformat(),
+                "groups": {
+                    "movise": {
+                        "group_name": "movise",
+                        "group_key": "movise",
+                        "section_name": "movise",
+                        "section_key": "movise",
+                        "source_name": "PocketTube",
+                        "imported_at": FIXED_NOW.isoformat(),
+                        "channel_count": 1,
+                        "latest_video_count": 4,
+                        "latest_video": cinema_videos[0],
+                        "channels": [],
+                        "videos": cinema_videos,
+                        "diagnostics": {"group_key": "movise", "group_name": "movise", "videos_collected": 4, "videos_stored": 4, "errors": []},
+                    }
+                },
+                "channels": {},
+                "errors": [],
+            })
+
+            context = service.build_page_context_for_filter("cinema", display_limit=100)
+
+            self.assertEqual(context["selected_filter_key"], "cinema")
+            self.assertEqual(context["selected_filter_count"], 4)
+            self.assertEqual(context["feed_video_count"], 4)
+            self.assertTrue(any(item["key"] == "cinema" and item["video_count"] == 4 for item in context["feed_filters"]))
+
+    def test_build_page_context_display_limit_options_control_feed_length(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            service, _state = self._build_service(temp_dir)
+            news_videos = [self._group_video(f"news-{index:03d}", channel_id="c-news", channel_name="News Desk", hours_ago=index) for index in range(180)]
+            save_json_file(service.snapshot_path, {
+                "version": 2,
+                "generated_at": FIXED_NOW.isoformat(),
+                "synced_at": FIXED_NOW.isoformat(),
+                "groups": {
+                    "news": {
+                        "group_name": "News",
+                        "group_key": "news",
+                        "section_name": "News",
+                        "section_key": "news",
+                        "source_name": "PocketTube",
+                        "imported_at": FIXED_NOW.isoformat(),
+                        "channel_count": 1,
+                        "latest_video_count": 180,
+                        "latest_video": news_videos[0],
+                        "channels": [],
+                        "videos": news_videos,
+                        "diagnostics": {"group_key": "news", "group_name": "News", "videos_collected": 180, "videos_stored": 180, "errors": []},
+                    }
+                },
+                "channels": {},
+                "errors": [],
+            })
+
+            default_context = service.build_page_context_for_filter("news")
+            limit_100_context = service.build_page_context_for_filter("news", display_limit=100)
+            limit_150_context = service.build_page_context_for_filter("news", display_limit=150)
+            limit_200_context = service.build_page_context_for_filter("news", display_limit=200)
+
+            self.assertEqual(default_context["display_limit"], 50)
+            self.assertEqual(default_context["feed_video_count"], 50)
+            self.assertEqual(limit_100_context["feed_video_count"], 100)
+            self.assertEqual(limit_150_context["feed_video_count"], 150)
+            self.assertEqual(limit_200_context["feed_video_count"], 180)
+
     def test_build_pockettube_coverage_report_marks_group_without_channels(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             service, _state = self._build_service(temp_dir)
@@ -2381,11 +2546,15 @@ class YouTubeFreshnessServiceTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         body = response.get_data(as_text=True)
-        self.assertIn("Filters", body)
+        self.assertIn("Section", body)
+        self.assertIn("Limit", body)
         self.assertIn("Open on YouTube", body)
         self.assertIn("/video/yt-v1", body)
         self.assertIn("Snapshot status", body)
-        mock_service.build_page_context_for_filter.assert_called_once_with("all")
+        mock_service.build_page_context_for_filter.assert_called_once_with(
+            "all",
+            display_limit="50",
+        )
         mock_service.request_sync.assert_not_called()
 
     def test_pockettube_groups_route_still_works(self):

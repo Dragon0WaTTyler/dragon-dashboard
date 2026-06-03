@@ -8,6 +8,8 @@ import tempfile
 
 POCKETTUBE_GROUP_VIDEO_LIMIT = 200
 POCKETTUBE_ALL_FEED_VIDEO_LIMIT = 200
+POCKETTUBE_DISPLAY_LIMIT_OPTIONS = (50, 100, 150, 200)
+POCKETTUBE_DEFAULT_DISPLAY_LIMIT = 50
 
 
 class YouTubeFreshnessService:
@@ -1213,9 +1215,10 @@ class YouTubeFreshnessService:
     def build_page_context(self):
         return self.build_page_context_for_filter()
 
-    def build_page_context_for_filter(self, selected_filter="all"):
+    def build_page_context_for_filter(self, selected_filter="all", display_limit=None):
         snapshot = self.load_snapshot()
         sync_status = self.load_sync_status()
+        resolved_display_limit = self._normalize_display_limit(display_limit)
         groups = []
         has_latest = False
         for group_key, group in snapshot.get("groups", {}).items():
@@ -1288,11 +1291,13 @@ class YouTubeFreshnessService:
         feed_groups = list(feed_context.get("groups", []) or [])
         empty_channels = list(feed_context.get("empty_channels", []) or [])
         filter_context = self._build_snapshot_filter_context(feed_groups, feed_videos, selected_filter=selected_filter)
-        filtered_videos = list(filter_context.get("filtered_videos", []) or [])
+        filtered_videos_all = list(filter_context.get("filtered_videos", []) or [])
+        filtered_videos = filtered_videos_all[:resolved_display_limit] if resolved_display_limit > 0 else list(filtered_videos_all)
         selected_filter_record = dict(filter_context.get("selected_filter_record", {}) or {})
         selected_filter_key = str(filter_context.get("selected_filter_key", "all") or "all").strip() or "all"
         selected_filter_label = str(selected_filter_record.get("label", "All") or "All").strip() or "All"
         feed_video_count = len(filtered_videos)
+        selected_filter_available_count = len(filtered_videos_all)
         empty_channel_count = len(empty_channels)
         empty_group_count = len([group for group in feed_groups if int(group.get("empty_channel_count", 0) or 0) > 0])
         has_latest = bool(feed_video_count)
@@ -1309,13 +1314,17 @@ class YouTubeFreshnessService:
             "feed_groups": feed_groups,
             "feed_video_count": feed_video_count,
             "feed_video_count_total": len(feed_videos),
+            "selected_filter_available_count": selected_filter_available_count,
+            "selected_filter_display_count": feed_video_count,
             "feed_empty_channels": empty_channels,
             "feed_empty_channel_count": empty_channel_count,
             "feed_empty_group_count": empty_group_count,
             "feed_filters": list(filter_context.get("filters", []) or []),
             "selected_filter_key": selected_filter_key,
             "selected_filter_label": selected_filter_label,
-            "selected_filter_count": int(selected_filter_record.get("video_count", feed_video_count) or 0),
+            "selected_filter_count": int(selected_filter_record.get("video_count", selected_filter_available_count) or 0),
+            "display_limit": resolved_display_limit,
+            "display_limit_options": list(POCKETTUBE_DISPLAY_LIMIT_OPTIONS),
             "group_video_limit": int(snapshot.get("group_video_limit", POCKETTUBE_GROUP_VIDEO_LIMIT) or POCKETTUBE_GROUP_VIDEO_LIMIT),
             "all_feed_video_limit": int(snapshot.get("all_feed_video_limit", POCKETTUBE_ALL_FEED_VIDEO_LIMIT) or POCKETTUBE_ALL_FEED_VIDEO_LIMIT),
             "has_latest": has_latest,
@@ -1333,7 +1342,6 @@ class YouTubeFreshnessService:
         groups = snapshot.get("groups", {})
         if not isinstance(groups, dict):
             groups = {}
-        all_feed_limit = int(snapshot.get("all_feed_video_limit", POCKETTUBE_ALL_FEED_VIDEO_LIMIT) or POCKETTUBE_ALL_FEED_VIDEO_LIMIT)
         feed_by_video_id = {}
         feed_groups = []
         empty_channels = []
@@ -1530,8 +1538,6 @@ class YouTubeFreshnessService:
             str(item.get("channel_title", "") or "").lower(),
             str(item.get("video_id", "") or "").lower(),
         ))
-        if all_feed_limit > 0:
-            feed_videos = feed_videos[:all_feed_limit]
         feed_groups.sort(key=lambda item: (str(item.get("group_name", "") or item.get("group_key", "")).lower(), str(item.get("group_key", "") or "").lower()))
         empty_channels.sort(key=lambda item: (
             str(item.get("group_name", "") or "").lower(),
@@ -1563,11 +1569,11 @@ class YouTubeFreshnessService:
 
         canonical_filters = [
             {"key": "all", "label": "All", "aliases": []},
-            {"key": "favorites", "label": "Favorites", "aliases": ["favorites", "favorite", "myfavorite", "myfavoret"]},
+            {"key": "favorites", "label": "Favorites", "aliases": ["favorites", "favorite", "favourites", "my favorite", "myfavorite"]},
             {"key": "news", "label": "News", "aliases": ["news"]},
-            {"key": "tech", "label": "Tech", "aliases": ["tech"]},
-            {"key": "philosophy", "label": "Philosophy", "aliases": ["philosophy"]},
-            {"key": "cinema", "label": "Cinema", "aliases": ["cinema", "movie", "movies", "movise"]},
+            {"key": "tech", "label": "Tech", "aliases": ["tech", "technology"]},
+            {"key": "philosophy", "label": "Philosophy", "aliases": ["philosophy", "philo"]},
+            {"key": "cinema", "label": "Cinema", "aliases": ["cinema", "movies", "movie", "movise"]},
         ]
 
         filters = []
@@ -1627,6 +1633,15 @@ class YouTubeFreshnessService:
 
     def _normalize_snapshot_filter_key(self, value):
         return self.normalize_pockettube_group_key(str(value or "").strip())
+
+    def _normalize_display_limit(self, value):
+        try:
+            parsed = int(value or 0)
+        except (TypeError, ValueError):
+            parsed = POCKETTUBE_DEFAULT_DISPLAY_LIMIT
+        if parsed not in POCKETTUBE_DISPLAY_LIMIT_OPTIONS:
+            return POCKETTUBE_DEFAULT_DISPLAY_LIMIT
+        return parsed
 
     def _video_matches_snapshot_filter(self, video, match_keys):
         normalized_keys = {

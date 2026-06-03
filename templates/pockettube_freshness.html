@@ -46,7 +46,7 @@
         <span>Synced {{ synced_at }}</span>
         {% endif %}
         <span>{{ group_count }} groups</span>
-        <span>{{ feed_video_count_total }} cached videos</span>
+        <span>{{ feed_video_count_total }} cached videos available</span>
         <span>{{ channel_count }} channels</span>
     </div>
     {% if sync_notice %}
@@ -82,24 +82,30 @@
                     <div>
                         <div class="hero-meta">
                             <span class="hero-badge">{{ selected_filter_label }}</span>
-                            <span>{{ selected_filter_count }} videos</span>
+                            <span>Showing {{ selected_filter_display_count }} of {{ selected_filter_count }} videos</span>
                             <span>{{ feed_empty_channel_count }} empty channels hidden</span>
                         </div>
                         <h3 style="font-size:2rem; margin-top:12px;">Latest videos from {{ selected_filter_label }}</h3>
                     </div>
                     <div style="display:grid; gap:10px; justify-items:end;">
                         <form method="get" action="{{ url_for('pockettube') }}" class="pockettube-filter-compact">
-                            <label class="pockettube-filter-label" for="pockettube-group-filter">Filters</label>
+                            <label class="pockettube-filter-label" for="pockettube-group-filter">Section</label>
                             <select id="pockettube-group-filter" name="group" class="pockettube-filter-select" onchange="this.form.submit()">
                                 {% for filter_item in feed_filters %}
                                 <option value="{{ filter_item.key }}"{% if filter_item.key == selected_filter_key %} selected{% endif %}>{{ filter_item.label }}{% if filter_item.video_count is not none %} ({{ filter_item.video_count }}){% endif %}</option>
+                                {% endfor %}
+                            </select>
+                            <label class="pockettube-filter-label" for="pockettube-limit-filter">Limit</label>
+                            <select id="pockettube-limit-filter" name="limit" class="pockettube-filter-select" onchange="this.form.submit()">
+                                {% for limit_option in display_limit_options %}
+                                <option value="{{ limit_option }}"{% if limit_option == display_limit %} selected{% endif %}>{{ limit_option }}</option>
                                 {% endfor %}
                             </select>
                             <noscript><button type="submit" class="btn" style="padding:.55rem .8rem;">Apply</button></noscript>
                         </form>
                         <div class="hero-meta">
                             <span>{{ group_count }} groups indexed</span>
-                            <span>{{ feed_video_count_total }} total cached latest videos</span>
+                            <span>{{ feed_video_count_total }} total cached videos</span>
                         </div>
                     </div>
                 </div>
