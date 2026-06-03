@@ -4,13 +4,8 @@
     .pockettube-home-shell{display:grid;gap:18px}
     .pockettube-home-layout{display:block}
     .pockettube-home-main{display:grid;gap:18px}
-    .pockettube-status-line{display:flex;align-items:center;gap:10px;flex-wrap:wrap;color:var(--text-2);font-size:.82rem;line-height:1.5}
-    .pockettube-status-pill{display:inline-flex;align-items:center;gap:8px;padding:7px 10px;border-radius:999px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);color:var(--text)}
-    .pockettube-status-pill.is-stale{border-color:rgba(255,166,0,.32);background:rgba(255,166,0,.1)}
-    .pockettube-status-pill.is-missing,
-    .pockettube-status-pill.is-empty{border-color:rgba(255,90,90,.28);background:rgba(255,90,90,.1)}
     .pockettube-feed-toolbar{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap}
-    .pockettube-filter-compact{display:grid;gap:7px;min-width:180px;padding:12px 14px;border:1px solid rgba(255,0,0,.16);border-radius:14px;background:rgba(255,255,255,.03)}
+    .pockettube-filter-compact{display:grid;gap:7px;min-width:180px;justify-items:end}
     .pockettube-filter-label{font-size:.76rem;letter-spacing:.08em;text-transform:uppercase;color:var(--text-2)}
     .pockettube-filter-select{width:100%;min-height:38px;padding:9px 34px 9px 11px;border:1px solid rgba(255,255,255,.12);border-radius:10px;background:#090909;color:var(--text);font:inherit;line-height:1.2;-webkit-appearance:menulist;appearance:menulist}
     .pockettube-filter-select:focus{outline:none;border-color:rgba(255,0,0,.34);box-shadow:0 0 0 1px rgba(255,0,0,.18)}
@@ -21,9 +16,8 @@
     .pockettube-feed-card .card-title{line-height:1.38;font-size:1rem}
     .pockettube-feed-card .pockettube-tags{display:flex;gap:6px;flex-wrap:wrap}
     .pockettube-feed-card .pockettube-youtube-btn{position:absolute;right:10px;top:10px;z-index:3}
-    .pockettube-filter-note{font-size:.76rem;line-height:1.55;color:var(--text-2)}
     @media (max-width: 980px){
-        .pockettube-filter-compact{width:100%}
+        .pockettube-filter-compact{width:100%;justify-items:stretch}
     }
 </style>
 
@@ -72,14 +66,6 @@
     </section>
     {% endif %}
 
-    <section class="surface-card section-card">
-        <div class="pockettube-status-line">
-            <span class="pockettube-status-pill{% if snapshot_status.is_stale %} is-stale{% elif snapshot_status.state in ['missing', 'empty'] %} is-{{ snapshot_status.state }}{% endif %}">Snapshot status</span>
-            <span>{{ snapshot_status.message }}</span>
-            <span>Sync status: {{ sync_status.status or 'idle' }}</span>
-        </div>
-    </section>
-
     <div class="pockettube-home-layout">
         <main class="pockettube-home-main">
             <section class="surface-card section-card">
@@ -101,7 +87,6 @@
                                 {% endfor %}
                             </select>
                             <noscript><button type="submit" class="btn" style="padding:.55rem .8rem;">Apply</button></noscript>
-                            <div class="pockettube-filter-note">Snapshot-only filter list. Choosing an item reloads this feed.</div>
                         </form>
                         <div class="hero-meta">
                             <span>{{ group_count }} groups indexed</span>
