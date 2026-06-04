@@ -1,0 +1,86 @@
+[
+  {
+    "source_id": "reading-src-1cc01e604f86",
+    "name": "Readwise Reader Import",
+    "url": "",
+    "category": "news",
+    "active": false
+  },
+  {
+    "source_id": "reading-src-c659bc8135d0",
+    "name": "Morocco World News",
+    "url": "https://www.mapnews.ma/en/rss.xml",
+    "category": "news",
+    "active": true
+  },
+  {
+    "source_id": "reading-src-c465bea4c3c4",
+    "name": "Hespress - هسبريس جريدة إلكترونية مغربية",
+    "url": "https://www.hespress.com/feed/index.rss",
+    "category": "news",
+    "active": true
+  },
+  {
+    "source_id": "reading-src-c7234fe0863d",
+    "name": "Aljazeera - أخبار العالم",
+    "url": "https://plink.anyfeeder.com/aljazeera/news",
+    "category": "news",
+    "active": true
+  },
+  {
+    "source_id": "reading-src-8ed1fb8a8ce3",
+    "name": "مجتمع – هوية بريس",
+    "url": "https://howiyapress.com/category/societe/feed",
+    "category": "culture",
+    "active": true
+  },
+  {
+    "source_id": "reading-src-7e535a8ac8d7",
+    "name": "ربورتاج | جريدة الصباح",
+    "url": "https://assabah.ma/category/%D8%B1%D8%A8%D9%88%D8%B1%D8%AA%D8%A7%D8%AC/feed",
+    "category": "culture",
+    "active": true
+  },
+  {
+    "source_id": "reading-src-d5318d63b94b",
+    "name": "BBC Culture",
+    "url": "https://www.bbc.com/culture/feed.rss",
+    "category": "culture",
+    "active": true
+  },
+  {
+    "source_id": "reading-src-a01f342ce68b",
+    "name": "زاوية للرأي – موقع بديل",
+    "url": "https://badil.info/category/opinion/feed",
+    "category": "opinion",
+    "active": true
+  },
+  {
+    "source_id": "reading-src-d5f0fcf4f29a",
+    "name": "كتاب الرأي – هوية بريس",
+    "url": "https://howiyapress.com/category/kotab-alraey/feed",
+    "category": "opinion",
+    "active": true
+  },
+  {
+    "source_id": "reading-src-c03a79b0ac25",
+    "name": "الرأي - الأسبوع الصحفي",
+    "url": "https://www.alousboue.ma/category/%D8%A7%D9%84%D8%B1%D8%A3%D9%8A/feed",
+    "category": "opinion",
+    "active": true
+  },
+  {
+    "source_id": "reading-src-3bd67ea8e6ff",
+    "name": "حوار | جريدة الصباح",
+    "url": "https://assabah.ma/category/%D8%AD%D9%88%D8%A7%D8%B1/feed",
+    "category": "opinion",
+    "active": true
+  },
+  {
+    "source_id": "reading-src-79db77608c28",
+    "name": "AL JAZEERA ENGLISH (Opinion)",
+    "url": "http://www.aljazeera.com/Services/Rss?PostingId=201082874848848938",
+    "category": "opinion",
+    "active": true
+  }
+]

@@ -281,6 +281,9 @@ READING_SYNC_GITHUB_RAW_SNAPSHOT_URL = config_value(
     "READING_SYNC_GITHUB_RAW_SNAPSHOT_URL",
     f"https://raw.githubusercontent.com/{READING_SYNC_GITHUB_OWNER}/{READING_SYNC_GITHUB_REPO}/{READING_RUNTIME_DATA_BRANCH}/reading_data.json",
 )
+READING_SOURCES_REGISTRY_PATH = Path(
+    config_value("DRAGON_READING_SOURCES_REGISTRY_PATH", str(BASE_DIR / "config" / "reading_sources.json"))
+).expanduser()
 ARTICLES_REMOTE_SNAPSHOT_URL = config_value("ARTICLES_REMOTE_SNAPSHOT_URL", "")
 READING_REMOTE_SNAPSHOT_URL = config_value(
     "READING_REMOTE_SNAPSHOT_URL",
@@ -788,6 +791,134 @@ def _rotate_reading_webhook_backup():
 
 def reading_remote_snapshot_pull_enabled():
     return bool(READING_REMOTE_SNAPSHOT_PULL_ENABLED and str(READING_REMOTE_SNAPSHOT_URL or "").strip())
+
+
+READING_SAMPLE_SOURCE_NAMES = {
+    "the marginalian",
+    "quanta magazine",
+    "readwise reader import",
+}
+READING_SAMPLE_SOURCE_URLS = {
+    "https://www.themarginalian.org/feed",
+    "https://www.quantamagazine.org/feed",
+    "",
+}
+
+
+def _resolve_reading_sources_registry_path(registry_path=None):
+    candidate = Path(registry_path).expanduser() if registry_path else READING_SOURCES_REGISTRY_PATH
+    if candidate.is_absolute():
+        return candidate
+    return (BASE_DIR / candidate).resolve()
+
+
+def load_reading_sources_registry(registry_path=None):
+    path = _resolve_reading_sources_registry_path(registry_path=registry_path)
+    try:
+        raw_payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+    if isinstance(raw_payload, dict):
+        raw_sources = raw_payload.get("sources", raw_payload.get("reading_sources", []))
+    elif isinstance(raw_payload, list):
+        raw_sources = raw_payload
+    else:
+        raw_sources = []
+    normalized_sources = []
+    for index, source in enumerate(raw_sources or []):
+        if not isinstance(source, dict):
+            continue
+        source_payload = dict(source)
+        if not source_payload.get("url") and source_payload.get("feed_url"):
+            source_payload["url"] = source_payload.get("feed_url")
+        if not source_payload.get("id") and source_payload.get("source_id"):
+            source_payload["id"] = source_payload.get("source_id")
+        normalized_sources.append(normalize_reading_source(source_payload, index))
+    return normalized_sources
+
+
+def reading_snapshot_has_only_sample_sources(payload):
+    if not isinstance(payload, dict):
+        return True
+    raw_sources = [source for source in (payload.get("sources", []) or []) if isinstance(source, dict)]
+    if not raw_sources:
+        return True
+    if len(raw_sources) > len(READING_SAMPLE_SOURCE_NAMES):
+        return False
+    for source in raw_sources:
+        name = str(source.get("name", "") or "").strip().lower()
+        url = normalize_reading_url(source.get("url", "") or source.get("feed_url", "") or "").lower()
+        if name not in READING_SAMPLE_SOURCE_NAMES and url not in READING_SAMPLE_SOURCE_URLS:
+            return False
+    return True
+
+
+def ensure_reading_sources_registry_seeded(reading_data_path=None, registry_path=None):
+    registry_sources = load_reading_sources_registry(registry_path=registry_path)
+    target_path = Path(reading_data_path).expanduser() if reading_data_path else READING_DATA_PATH
+    if not target_path.is_absolute():
+        target_path = (BASE_DIR / target_path).resolve()
+    result = {
+        "seeded": False,
+        "changed": False,
+        "reason": "",
+        "tracked_sources": 0,
+        "active_sources": 0,
+        "registry_source_count": len(registry_sources),
+        "path": str(target_path),
+    }
+    if not registry_sources:
+        result["reason"] = "registry_empty"
+        return result
+
+    existing_payload = None
+    if target_path.exists():
+        try:
+            existing_payload = json.loads(target_path.read_text(encoding="utf-8"))
+        except Exception:
+            existing_payload = None
+
+    if existing_payload is not None and not reading_snapshot_has_only_sample_sources(existing_payload):
+        tracked_sources = len([source for source in (existing_payload.get("sources", []) or []) if isinstance(source, dict)])
+        active_sources = len([
+            source
+            for source in (existing_payload.get("sources", []) or [])
+            if isinstance(source, dict) and source.get("active", True) and str(source.get("url", "") or source.get("feed_url", "") or "").strip()
+        ])
+        result["reason"] = "existing_sources_preserved"
+        result["tracked_sources"] = tracked_sources
+        result["active_sources"] = active_sources
+        return result
+
+    seeded_payload = copy.deepcopy(existing_payload) if isinstance(existing_payload, dict) else {"version": 1, "entries": []}
+    seeded_payload["version"] = int(seeded_payload.get("version", 1) or 1)
+    seeded_payload["sources"] = copy.deepcopy(registry_sources)
+    if not isinstance(seeded_payload.get("entries"), list):
+        seeded_payload["entries"] = []
+    normalized_payload, _ = normalize_reading_data(seeded_payload)
+
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        mode="w",
+        delete=False,
+        dir=str(target_path.parent),
+        prefix="reading_sources_seed.",
+        suffix=".tmp",
+        encoding="utf-8",
+    ) as temp_file:
+        temp_file.write(json.dumps(normalized_payload, indent=2, ensure_ascii=False))
+        temp_path = Path(temp_file.name)
+    temp_path.replace(target_path)
+
+    result["seeded"] = True
+    result["changed"] = True
+    result["reason"] = "missing_snapshot" if existing_payload is None else "sample_sources_replaced"
+    result["tracked_sources"] = len(normalized_payload.get("sources", []) or [])
+    result["active_sources"] = len([
+        source for source in (normalized_payload.get("sources", []) or [])
+        if isinstance(source, dict) and source.get("active", True) and str(source.get("url", "") or "").strip()
+    ])
+    return result
 
 
 def build_lightweight_articles_snapshot(payload):

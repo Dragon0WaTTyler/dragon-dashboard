@@ -186,6 +186,15 @@ def configure_reading_data_path(data_path: str = "") -> Path | None:
 def run_sync(source_id: str = "", source_name: str = "", data_path: str = "", dry_run: bool = False) -> int:
     started_at = time.monotonic()
     configured_data_path = configure_reading_data_path(data_path)
+    seeded = dragon_app.ensure_reading_sources_registry_seeded(reading_data_path=configured_data_path or dragon_app.READING_DATA_PATH)
+    safe_print(
+        "Reading source registry | "
+        f"seeded={int(bool(seeded.get('seeded')))} | "
+        f"reason={seeded.get('reason', '') or 'none'} | "
+        f"registry_sources={int(seeded.get('registry_source_count', 0) or 0)} | "
+        f"tracked_sources={int(seeded.get('tracked_sources', 0) or 0)} | "
+        f"active_sources={int(seeded.get('active_sources', 0) or 0)}"
+    )
     cleanup_path = None
     if dry_run:
         source_path = configured_data_path or dragon_app.READING_DATA_PATH
@@ -312,6 +321,15 @@ def run_sync(source_id: str = "", source_name: str = "", data_path: str = "", dr
 
 def run_source_probe(source_id: str = "", source_name: str = "", data_path: str = "") -> int:
     configured_data_path = configure_reading_data_path(data_path)
+    seeded = dragon_app.ensure_reading_sources_registry_seeded(reading_data_path=configured_data_path or dragon_app.READING_DATA_PATH)
+    safe_print(
+        "Reading source registry | "
+        f"seeded={int(bool(seeded.get('seeded')))} | "
+        f"reason={seeded.get('reason', '') or 'none'} | "
+        f"registry_sources={int(seeded.get('registry_source_count', 0) or 0)} | "
+        f"tracked_sources={int(seeded.get('tracked_sources', 0) or 0)} | "
+        f"active_sources={int(seeded.get('active_sources', 0) or 0)}"
+    )
     resolved_source_id = resolve_source_id(source_id=source_id, source_name=source_name)
     if source_name and not resolved_source_id:
         safe_print(f"Reading RSS probe aborted: no source matched name={source_name!r}")
