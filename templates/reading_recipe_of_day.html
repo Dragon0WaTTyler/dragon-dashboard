@@ -37,7 +37,7 @@
             <span>{{ candidate_count }} candidates</span>
         </div>
         <h2>Recipe of the Day</h2>
-        <p class="subhead">A tiny deterministic reading bundle built from the local reading snapshot. It reuses today's saved recipe unless you explicitly rebuild it.</p>
+        <p class="subhead">A tiny deterministic article bundle built from the local articles snapshot. It reuses today's saved recipe unless you explicitly rebuild it.</p>
         <div class="recipe-meta-row">
             <span>Generated at {{ generated_at_display or generated_at }}</span>
             <span>From {{ generated_from }}</span>
@@ -69,7 +69,7 @@
                     <span>{{ active_candidate_count }} active candidates</span>
                     <span>{{ recent_active_count }} recent active</span>
                 </div>
-                <h3 style="font-size:2rem; margin-top:12px;">Today&apos;s reading recipe</h3>
+                <h3 style="font-size:2rem; margin-top:12px;">Today&apos;s article recipe</h3>
             </div>
         </div>
 
@@ -109,7 +109,7 @@
             </article>
             {% endfor %}
             {% if not selected_articles %}
-            <div class="recipe-empty">No recipe candidates were available from the current reading snapshot.</div>
+            <div class="recipe-empty">No recipe candidates were available from the current articles snapshot.</div>
             {% endif %}
         </div>
     </section>

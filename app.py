@@ -756,7 +756,7 @@ def _reading_snapshot_payload_is_valid(payload, downloaded_bytes):
     if not isinstance(payload.get("sources"), list):
         return False, "Downloaded JSON must contain a sources list."
     if int(downloaded_bytes or 0) < 1024:
-        return False, "Downloaded file is too small to be a valid Reading snapshot."
+        return False, "Downloaded file is too small to be a valid Articles snapshot."
     return True, ""
 
 
@@ -14543,10 +14543,10 @@ def handle_admin_action(admin_data, form):
             if status == "already_running":
                 return "Sync already running"
             if status == "started":
-                return "GitHub Reading sync started"
+                return "GitHub Articles sync started"
             raise ValueError(READING_GITHUB_SYNC_ONLINE_MESSAGE)
         result = sync_reading_sources()
-        return result.get("last_sync_message", "Synced reading sources.")
+        return result.get("last_sync_message", "Synced article sources.")
 
     raise ValueError("Unknown admin action.")
 
@@ -27218,8 +27218,8 @@ def build_admin_hub_context():
                 },
                 {
                     "key": "reading",
-                    "label": "Reading",
-                    "title": "Reading RSS",
+                    "label": "Articles",
+                    "title": "Articles RSS",
                     "description": "Manage RSS sources and inspect sync diagnostics.",
                     "href": url_for("admin_reading"),
                     "meta": [
@@ -27265,7 +27265,7 @@ def build_admin_hub_context():
                     "key": "io",
                     "label": "Backups",
                     "title": "Imports / Exports / Backups",
-                    "description": "Handle Reading JSON backups and import flows.",
+                    "description": "Handle Articles JSON backups and import flows.",
                     "href": url_for("admin_io"),
                     "meta": [
                         f"{reading_admin['reading_backup_count']} backups",
@@ -27307,7 +27307,7 @@ def build_admin_panel_context(panel_key):
         title = "Playlist Management"
         description = "Edit playlist names, URLs, and category placement from a focused page."
     elif panel_key == "reading":
-        title = "Reading RSS Diagnostics"
+        title = "Articles RSS Diagnostics"
         description = "Manage RSS sources, sync them, and inspect health signals at a glance."
     elif panel_key == "io":
         title = "Imports / Exports / Backups"
@@ -27953,13 +27953,13 @@ def trigger_reading_github_actions_sync():
             _, status_payload = _reading_github_actions_latest_run()
         except requests.RequestException as exc:
             app.logger.warning("reading_trigger_sync lookup_failed: %s", exc)
-            return {"ok": False, "error": "Could not check the latest Reading workflow run."}, 502
+            return {"ok": False, "error": "Could not check the latest Articles workflow run."}, 502
         except ValueError as exc:
             app.logger.warning("reading_trigger_sync invalid_json_on_lookup: %s", exc)
-            return {"ok": False, "error": "Could not check the latest Reading workflow run."}, 502
+            return {"ok": False, "error": "Could not check the latest Articles workflow run."}, 502
         except RuntimeError as exc:
             app.logger.warning("reading_trigger_sync runtime_error_on_lookup: %s", exc)
-            return {"ok": False, "error": "Could not check the latest Reading workflow run."}, 502
+            return {"ok": False, "error": "Could not check the latest Articles workflow run."}, 502
 
         if status_payload.get("status") in {"queued", "in_progress"}:
             return {"status": "already_running"}, 200
@@ -27973,7 +27973,7 @@ def trigger_reading_github_actions_sync():
             )
         except requests.RequestException as exc:
             app.logger.warning("reading_trigger_sync dispatch_failed: %s", exc)
-            return {"ok": False, "error": "Could not trigger the Reading workflow."}, 502
+            return {"ok": False, "error": "Could not trigger the Articles workflow."}, 502
 
         if response.status_code != 204:
             app.logger.warning(
@@ -28450,7 +28450,7 @@ def reading_article_audio(entry_id):
         log_reason="audio_route",
     )
     if not entry:
-        return Response("Reading entry not found.", status=404, mimetype="text/plain")
+        return Response("Article not found.", status=404, mimetype="text/plain")
 
     tts_payload = build_reading_tts_payload(entry)
     if not tts_payload["available"]:
@@ -28474,7 +28474,7 @@ def reading_article_audio(entry_id):
                             cache_path.unlink()
                     except Exception:
                         pass
-                    response = Response(f"Could not generate reading audio: {exc}", status=503, mimetype="text/plain")
+                    response = Response(f"Could not generate article audio: {exc}", status=503, mimetype="text/plain")
                     response.headers["X-Reading-TTS-Error"] = "generation_failed"
                     return response
 
@@ -28506,7 +28506,7 @@ def reading_article_audio_timings(entry_id):
         log_reason="audio_timings_route",
     )
     if not entry:
-        return jsonify({"ok": False, "error": "Reading entry not found."}), 404
+        return jsonify({"ok": False, "error": "Article not found."}), 404
 
     tts_payload = build_reading_tts_payload(entry)
     if not tts_payload["available"]:
@@ -28623,19 +28623,19 @@ def reading_import():
     next_url = str(request.form.get("next", "") or url_for("admin")).strip() or url_for("admin")
     uploaded = request.files.get("reading_data_file")
     if not uploaded or not str(getattr(uploaded, "filename", "") or "").strip():
-        return redirect(append_query_param(next_url, error="Choose a Reading JSON file to import."))
+        return redirect(append_query_param(next_url, error="Choose an Articles JSON file to import."))
     try:
         raw_text = uploaded.read().decode("utf-8-sig")
         payload = json.loads(raw_text)
         if not isinstance(payload, dict):
-            raise ValueError("Reading import file must contain a JSON object.")
+            raise ValueError("Articles import file must contain a JSON object.")
         normalized = save_reading_data(payload, apply_retention=True, retention_reason="import")
         source_count = len(normalized.get("sources", []))
         entry_count = len(normalized.get("entries", []))
-        message = f"Imported Reading data: {source_count} source(s), {entry_count} entries."
+        message = f"Imported Articles data: {source_count} source(s), {entry_count} entries."
         return redirect(append_query_param(next_url, success=message))
     except Exception as exc:
-        return redirect(append_query_param(next_url, error=f"Reading import failed: {exc}"))
+        return redirect(append_query_param(next_url, error=f"Articles import failed: {exc}"))
 
 
 @app.route("/reading/backup/<path:filename>", methods=["GET"])
@@ -28670,9 +28670,9 @@ def reading_entry_action(entry_id):
     elif action == "unstar":
         entry = update_reading_entry(entry_id, {"starred": False})
     else:
-        return redirect(append_query_param(next_url, error="Unknown reading action."))
+        return redirect(append_query_param(next_url, error="Unknown article action."))
     if not entry:
-        return redirect(append_query_param(next_url, error="Reading entry not found."))
+        return redirect(append_query_param(next_url, error="Article not found."))
     if action in READING_STATUSES:
         message = f"Marked {entry.get('title', 'article')} as {action}."
     elif action == "star":
