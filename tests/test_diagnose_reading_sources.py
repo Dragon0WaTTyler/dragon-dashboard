@@ -75,11 +75,14 @@ class DiagnoseReadingSourcesTests(unittest.TestCase):
         self.assertEqual(len(applied_repairs), 1)
         self.assertTrue(bool(updated_sources[0].get("active")))
         self.assertEqual(updated_sources[0].get("url"), "https://example.com/new-feed")
+        self.assertEqual(updated_sources[0].get("feed_url"), "https://example.com/new-feed")
         self.assertEqual(updated_sources[0].get("primary_url"), "https://example.com/new-feed")
         self.assertEqual(updated_sources[0].get("replacement_of"), "https://example.com/old-feed")
         self.assertEqual(updated_sources[0].get("repaired_at"), "2026-06-04T12:00:00+00:00")
+        self.assertEqual(updated_sources[0].get("request_profile"), "rss_accept")
+        self.assertEqual(updated_sources[0].get("disabled_reason"), "")
+        self.assertEqual(updated_sources[0].get("last_repair_status"), "verified")
         self.assertIn("profile=rss_accept", str(updated_sources[0].get("repair_reason", "") or ""))
-        self.assertNotIn("disabled_reason", updated_sources[0])
 
     def test_strip_content_fields_and_flags_remain_disabled(self):
         entries = [

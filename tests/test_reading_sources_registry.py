@@ -111,16 +111,82 @@ class ReadingSourcesRegistryTests(unittest.TestCase):
                 for source in saved_sources
                 if isinstance(source, dict)
             }
-            self.assertFalse(bool(source_by_url["https://www.mapnews.ma/en/rss.xml"].get("active", True)))
-            self.assertFalse(bool(source_by_url["https://howiyapress.com/category/societe/feed"].get("active", True)))
-            self.assertFalse(bool(source_by_url["https://assabah.ma/category/%D8%B1%D8%A8%D9%88%D8%B1%D8%AA%D8%A7%D8%AC/feed"].get("active", True)))
-            self.assertFalse(bool(source_by_url["https://howiyapress.com/category/kotab-alraey/feed"].get("active", True)))
-            self.assertFalse(bool(source_by_url["https://assabah.ma/category/%D8%AD%D9%88%D8%A7%D8%B1/feed"].get("active", True)))
-            self.assertEqual(str(registry_by_url["https://www.mapnews.ma/en/rss.xml"].get("disabled_reason", "") or ""), "HTTP 403 from GitHub Actions")
-            self.assertEqual(str(registry_by_url["https://howiyapress.com/category/societe/feed"].get("disabled_reason", "") or ""), "HTTP 403 from GitHub Actions")
-            self.assertEqual(str(registry_by_url["https://assabah.ma/category/%D8%B1%D8%A8%D9%88%D8%B1%D8%AA%D8%A7%D8%AC/feed"].get("disabled_reason", "") or ""), "HTTP 403 from GitHub Actions")
-            self.assertEqual(str(registry_by_url["https://howiyapress.com/category/kotab-alraey/feed"].get("disabled_reason", "") or ""), "HTTP 403 from GitHub Actions")
-            self.assertEqual(str(registry_by_url["https://assabah.ma/category/%D8%AD%D9%88%D8%A7%D8%B1/feed"].get("disabled_reason", "") or ""), "HTTP 403 from GitHub Actions")
+            for url, registry_source in registry_by_url.items():
+                if url not in source_by_url:
+                    continue
+                self.assertEqual(
+                    bool(source_by_url[url].get("active", True)),
+                    bool(registry_source.get("active", True)),
+                )
+
+    def test_existing_snapshot_reconciles_source_settings_from_registry(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            registry_path = root / "reading_sources.json"
+            reading_data_path = root / "reading_data.json"
+            registry_payload = [
+                {
+                    "source_id": "reading-src-repair",
+                    "name": "Repairable Source",
+                    "url": "https://example.com/new-feed",
+                    "category": "news",
+                    "active": True,
+                    "request_profile": "browser_ua",
+                    "disabled_reason": "",
+                    "repair_reason": "Verified by diagnose_reading_sources.py with profile=browser_ua status=200 count=3",
+                    "repaired_at": "2026-06-04T12:00:00+00:00",
+                    "replacement_of": "https://example.com/old-feed",
+                    "last_repair_status": "verified",
+                }
+            ]
+            reading_payload = {
+                "version": 1,
+                "sources": [
+                    {
+                        "id": "reading-src-repair",
+                        "name": "Repairable Source",
+                        "url": "https://example.com/old-feed",
+                        "category": "news",
+                        "active": False,
+                        "disabled_reason": "HTTP 403 from GitHub Actions",
+                    }
+                ],
+                "entries": [
+                    {
+                        "id": "reading-entry-1",
+                        "source": "Repairable Source",
+                        "source_id": "reading-src-repair",
+                        "title": "Existing article",
+                        "url": "https://example.com/article-1",
+                        "published_at": "2026-06-04T00:00:00+00:00",
+                        "added_at": "2026-06-04T00:00:00+00:00",
+                        "status": "unread",
+                        "topic": "News",
+                    }
+                ],
+            }
+            registry_path.write_text(json.dumps(registry_payload, ensure_ascii=False, indent=2), encoding="utf-8")
+            reading_data_path.write_text(json.dumps(reading_payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+            with patch.object(dragon_app, "READING_SOURCES_REGISTRY_PATH", registry_path):
+                result = dragon_app.ensure_reading_sources_registry_seeded(
+                    reading_data_path=reading_data_path,
+                    registry_path=registry_path,
+                )
+
+            self.assertTrue(result["seeded"])
+            self.assertTrue(result["changed"])
+            self.assertEqual(result["reason"], "existing_sources_reconciled")
+            saved_payload = json.loads(reading_data_path.read_text(encoding="utf-8"))
+            self.assertEqual(len(saved_payload.get("entries", []) or []), 1)
+            saved_source = saved_payload["sources"][0]
+            self.assertTrue(bool(saved_source.get("active")))
+            self.assertEqual(saved_source.get("url"), "https://example.com/new-feed")
+            self.assertEqual(saved_source.get("primary_url"), "https://example.com/new-feed")
+            self.assertEqual(saved_source.get("request_profile"), "browser_ua")
+            self.assertEqual(saved_source.get("disabled_reason"), "")
+            self.assertEqual(saved_source.get("last_repair_status"), "verified")
+            self.assertIn("https://example.com/old-feed", list(saved_source.get("fallback_urls", []) or []))
 
 
 if __name__ == "__main__":

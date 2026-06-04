@@ -286,11 +286,32 @@ def diagnose_source(source: dict, timeout_seconds: int = 8, session=None) -> dic
         for profile_name in REQUEST_PROFILES:
             probes.append(probe_candidate(source, candidate_url, profile_name, timeout_seconds=timeout_seconds, session=session))
     best = choose_best_probe_result(probes) or {}
+    repair_reason = ""
+    repaired_at = ""
+    verified_url = ""
+    verified_request_profile = ""
+    if isinstance(best, dict) and best.get("verified"):
+        verified_url = dragon_app.normalize_reading_url(best.get("candidate_url", "") or source.get("url", "") or "")
+        verified_request_profile = str(best.get("profile", "default") or "default").strip() or "default"
+        repaired_at = dragon_app.current_timestamp()
+        repair_reason = (
+            f"Verified by diagnose_reading_sources.py with profile={verified_request_profile} "
+            f"status={int(best.get('status_code', 0) or 0)} count={int(best.get('normalized_article_count', 0) or 0)}"
+        )
+        best = dict(best)
+        best["verified_url"] = verified_url
+        best["verified_request_profile"] = verified_request_profile
+        best["repaired_at"] = repaired_at
+        best["repair_reason"] = repair_reason
     return {
         "source": source,
         "candidate_count": len(build_candidate_urls(source)),
         "probe_results": probes,
         "best_result": best,
+        "verified_url": verified_url,
+        "verified_request_profile": verified_request_profile,
+        "repaired_at": repaired_at,
+        "repair_reason": repair_reason,
         "recommended_action": str(best.get("recommended_action", "keep_blocked") or "keep_blocked"),
     }
 
@@ -323,20 +344,31 @@ def apply_verified_repairs(registry_sources: list[dict], reports: list[dict], re
             updated_sources.append(dict(source))
             continue
 
-        candidate_url = dragon_app.normalize_reading_url(best.get("candidate_url", "") or "")
+        candidate_url = dragon_app.normalize_reading_url(
+            report.get("verified_url", "") or best.get("verified_url", "") or best.get("candidate_url", "") or ""
+        )
         original_url = dragon_app.normalize_reading_url(normalized.get("url", "") or "")
         action = str(best.get("recommended_action", "keep_blocked") or "keep_blocked")
+        verified_request_profile = str(
+            report.get("verified_request_profile", "") or best.get("verified_request_profile", "") or best.get("profile", "default") or "default"
+        ).strip() or "default"
+        repair_reason = str(report.get("repair_reason", "") or best.get("repair_reason", "") or "").strip()
+        if not repair_reason:
+            repair_reason = (
+                f"Verified by diagnose_reading_sources.py with profile={verified_request_profile} "
+                f"status={int(best.get('status_code', 0) or 0)} count={int(best.get('normalized_article_count', 0) or 0)}"
+            )
         updated = dict(source)
         updated["active"] = True
         updated["repaired_at"] = repaired_at
-        updated["repair_reason"] = (
-            f"Verified by diagnose_reading_sources.py with profile={best.get('profile', 'default')} "
-            f"status={int(best.get('status_code', 0) or 0)} count={int(best.get('normalized_article_count', 0) or 0)}"
-        )
-        updated.pop("disabled_reason", None)
+        updated["repair_reason"] = repair_reason
+        updated["request_profile"] = verified_request_profile
+        updated["disabled_reason"] = ""
+        updated["last_repair_status"] = "verified"
         if action == "replace_url" and candidate_url and candidate_url != original_url:
             updated["replacement_of"] = original_url
             updated["url"] = candidate_url
+            updated["feed_url"] = candidate_url
             updated["primary_url"] = candidate_url
         applied_repairs.append({
             "source_name": str(normalized.get("name", "") or "").strip(),

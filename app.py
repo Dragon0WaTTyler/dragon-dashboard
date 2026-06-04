@@ -879,13 +879,35 @@ def ensure_reading_sources_registry_seeded(reading_data_path=None, registry_path
             existing_payload = None
 
     if existing_payload is not None and not reading_snapshot_has_only_sample_sources(existing_payload):
-        tracked_sources = len([source for source in (existing_payload.get("sources", []) or []) if isinstance(source, dict)])
+        existing_sources = [source for source in (existing_payload.get("sources", []) or []) if isinstance(source, dict)]
+        reconciled_sources, changed = apply_reading_sources_registry_overrides(existing_sources, registry_sources)
+        tracked_sources = len(reconciled_sources)
         active_sources = len([
             source
-            for source in (existing_payload.get("sources", []) or [])
+            for source in reconciled_sources
             if isinstance(source, dict) and source.get("active", True) and str(source.get("url", "") or source.get("feed_url", "") or "").strip()
         ])
-        result["reason"] = "existing_sources_preserved"
+        if changed:
+            seeded_payload = copy.deepcopy(existing_payload)
+            seeded_payload["sources"] = reconciled_sources
+            normalized_payload, _ = normalize_reading_data(seeded_payload)
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                delete=False,
+                dir=str(target_path.parent),
+                prefix="reading_sources_reconcile.",
+                suffix=".tmp",
+                encoding="utf-8",
+            ) as temp_file:
+                temp_file.write(json.dumps(normalized_payload, indent=2, ensure_ascii=False))
+                temp_path = Path(temp_file.name)
+            temp_path.replace(target_path)
+            result["seeded"] = True
+            result["changed"] = True
+            result["reason"] = "existing_sources_reconciled"
+        else:
+            result["reason"] = "existing_sources_preserved"
         result["tracked_sources"] = tracked_sources
         result["active_sources"] = active_sources
         return result
@@ -8432,21 +8454,26 @@ def reading_describe_fetch_timeout(exc, timeout_seconds=0):
 
 def reading_request_headers(purpose="feed", source=None, url=""):
     purpose = str(purpose or "").strip().lower()
+    profile = normalize_reading_request_profile((source or {}).get("request_profile", "default"))
     headers = {
-        "User-Agent": READING_BROWSER_USER_AGENT,
-        "Accept-Language": READING_BROWSER_ACCEPT_LANGUAGE,
         "Cache-Control": "no-cache",
         "Pragma": "no-cache",
     }
     if purpose == "article":
+        headers["User-Agent"] = READING_BROWSER_USER_AGENT
+        headers["Accept-Language"] = READING_BROWSER_ACCEPT_LANGUAGE
         headers["Accept"] = READING_BROWSER_ACCEPT_HTML
     else:
+        if profile in {"default", "browser_ua", "rss_accept"}:
+            headers["User-Agent"] = READING_BROWSER_USER_AGENT
+            headers["Accept-Language"] = READING_BROWSER_ACCEPT_LANGUAGE
         headers["Accept"] = "application/rss+xml, application/atom+xml, application/xml;q=0.9, text/xml;q=0.8, text/html;q=0.7, */*;q=0.6"
-        headers["Upgrade-Insecure-Requests"] = "1"
-        headers["Sec-Fetch-Dest"] = "document"
-        headers["Sec-Fetch-Mode"] = "navigate"
-        headers["Sec-Fetch-Site"] = "none"
-        headers["Sec-Fetch-User"] = "?1"
+        if profile in {"default", "browser_ua"}:
+            headers["Upgrade-Insecure-Requests"] = "1"
+            headers["Sec-Fetch-Dest"] = "document"
+            headers["Sec-Fetch-Mode"] = "navigate"
+            headers["Sec-Fetch-Site"] = "none"
+            headers["Sec-Fetch-User"] = "?1"
         source_url = normalize_reading_url((source or {}).get("url", "") or url)
         if source_url:
             parsed_source = urllib.parse.urlparse(source_url)
@@ -8459,8 +8486,10 @@ def reading_http_get(url, timeout_seconds=20, purpose="feed", retries=1, source=
     request_url = normalize_reading_url(url)
     timeout_seconds = max(int(timeout_seconds or 0), 1)
     retries = max(int(retries or 0), 0)
+    request_profile = normalize_reading_request_profile((source or {}).get("request_profile", "default"))
     diagnostics = {
         "request_url": request_url,
+        "request_profile": request_profile,
         "final_url": "",
         "status_code": 0,
         "content_type": "",
@@ -8487,6 +8516,7 @@ def reading_http_get(url, timeout_seconds=20, purpose="feed", retries=1, source=
                 "final_url": normalize_reading_url(getattr(response, "url", "") or request_url),
                 "content_type": str(getattr(response, "headers", {}).get("Content-Type", "") or "").strip(),
                 "elapsed_ms": elapsed_ms,
+                "request_profile": request_profile,
                 "error": "",
             })
             diagnostics["retry_count"] = attempt - 1
@@ -8505,6 +8535,7 @@ def reading_http_get(url, timeout_seconds=20, purpose="feed", retries=1, source=
                 "final_url": normalize_reading_url(getattr(response, "url", "") or request_url),
                 "content_type": str(getattr(response, "headers", {}).get("Content-Type", "") or "").strip(),
                 "elapsed_ms": elapsed_ms,
+                "request_profile": request_profile,
                 "error": str(exc) or exc.__class__.__name__,
             })
             diagnostics["retry_count"] = attempt - 1
@@ -9113,6 +9144,13 @@ def reading_source_primary_url(source):
     return primary_url or url
 
 
+def normalize_reading_request_profile(value):
+    profile = str(value or "").strip().lower()
+    if profile in {"browser_ua", "rss_accept"}:
+        return profile
+    return "default"
+
+
 def reading_source_extra_fallback_urls(source):
     source = source if isinstance(source, dict) else {}
     name_key = reading_source_name_key(source)
@@ -9196,6 +9234,12 @@ def normalize_reading_source(source, index=0):
     updated_at = str(item.get("updated_at", "") or "").strip() or added_at
     note = str(item.get("note", "") or "").strip()
     status = str(item.get("status", "") or "").strip()
+    request_profile = normalize_reading_request_profile(item.get("request_profile", "default"))
+    disabled_reason = str(item.get("disabled_reason", "") or "").strip()
+    repair_reason = str(item.get("repair_reason", "") or "").strip()
+    repaired_at = str(item.get("repaired_at", "") or "").strip()
+    replacement_of = normalize_reading_url(item.get("replacement_of", "") or "")
+    last_repair_status = str(item.get("last_repair_status", "") or "").strip()
     last_sync_status = str(item.get("last_sync_status", "") or "").strip()
     last_sync_error = str(item.get("last_sync_error", "") or "").strip()
     last_sync_message = str(item.get("last_sync_message", "") or "").strip()
@@ -9242,9 +9286,15 @@ def normalize_reading_source(source, index=0):
         "category": category,
         "note": note,
         "status": status,
+        "request_profile": request_profile,
         "active": normalize_reading_bool(item.get("active", True), default=True),
         "added_at": added_at,
         "updated_at": updated_at,
+        "disabled_reason": disabled_reason,
+        "repair_reason": repair_reason,
+        "repaired_at": repaired_at,
+        "replacement_of": replacement_of,
+        "last_repair_status": last_repair_status,
         "last_synced_at": str(item.get("last_synced_at", "") or "").strip(),
         "last_sync_count": int(item.get("last_sync_count", 0) or 0),
         "last_sync_raw_count": int(item.get("last_sync_raw_count", 0) or 0),
@@ -9274,6 +9324,75 @@ def normalize_reading_source(source, index=0):
         "last_successful_url": str(item.get("last_successful_url", "") or "").strip(),
         "last_sync_final_url": str(item.get("last_sync_final_url", item.get("last_sync_resolved_url", "")) or "").strip(),
     }
+
+
+def apply_reading_sources_registry_overrides(existing_sources, registry_sources):
+    existing_sources = list(existing_sources or [])
+    registry_sources = [
+        normalize_reading_source(source, index)
+        for index, source in enumerate(registry_sources or [])
+        if isinstance(source, dict)
+    ]
+    registry_by_id = {}
+    registry_by_url = {}
+    registry_by_name = {}
+    for source in registry_sources:
+        source_id = str(source.get("id", "") or "").strip()
+        source_url = normalize_reading_url(source.get("url", "") or source.get("feed_url", "") or "")
+        source_name = str(source.get("name", "") or "").strip().lower()
+        if source_id:
+            registry_by_id[source_id] = source
+        if source_url:
+            registry_by_url[source_url] = source
+        if source_name:
+            registry_by_name[source_name] = source
+
+    changed = False
+    merged_sources = []
+    for index, source in enumerate(existing_sources):
+        if not isinstance(source, dict):
+            continue
+        normalized_source = normalize_reading_source(source, index)
+        source_id = str(normalized_source.get("id", "") or "").strip()
+        source_url = normalize_reading_url(normalized_source.get("url", "") or normalized_source.get("feed_url", "") or "")
+        source_name = str(normalized_source.get("name", "") or "").strip().lower()
+        registry_source = (
+            registry_by_id.get(source_id)
+            or registry_by_url.get(source_url)
+            or registry_by_name.get(source_name)
+        )
+        if not registry_source:
+            merged_sources.append(normalized_source)
+            continue
+
+        merged = dict(normalized_source)
+        old_url = normalize_reading_url(merged.get("url", "") or "")
+        new_url = normalize_reading_url(registry_source.get("url", "") or registry_source.get("feed_url", "") or "")
+        if new_url:
+            merged["url"] = new_url
+            merged["primary_url"] = normalize_reading_url(registry_source.get("primary_url", "") or "") or new_url
+        for field_name in (
+            "active",
+            "request_profile",
+            "disabled_reason",
+            "repair_reason",
+            "repaired_at",
+            "replacement_of",
+            "last_repair_status",
+        ):
+            if field_name in registry_source:
+                merged[field_name] = registry_source.get(field_name)
+        merged["request_profile"] = normalize_reading_request_profile(merged.get("request_profile", "default"))
+        if old_url and new_url and old_url != new_url:
+            fallback_urls = reading_parse_reading_url_list(merged.get("fallback_urls", []))
+            if old_url not in fallback_urls:
+                fallback_urls.append(old_url)
+            merged["fallback_urls"] = fallback_urls
+        normalized_merged = normalize_reading_source(merged, index)
+        if normalized_merged != normalized_source:
+            changed = True
+        merged_sources.append(normalized_merged)
+    return merged_sources, changed
 
 
 def reading_source_is_blocked(source):

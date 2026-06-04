@@ -103,6 +103,17 @@ class ReadingSyncService:
             "content_cached_at",
         )
 
+    def _strip_stored_entry_content(self, entries):
+        stripped_entries = []
+        for entry in list(entries or []):
+            if not isinstance(entry, dict):
+                continue
+            cleaned = dict(entry)
+            cleaned.pop("content_html", None)
+            cleaned.pop("content_text", None)
+            stripped_entries.append(cleaned)
+        return stripped_entries
+
     def _normalize_fetch_attempts(self, fetch_result):
         fetch_attempts = []
         for attempt in list(fetch_result.get("attempts", []) or []):
@@ -727,6 +738,7 @@ class ReadingSyncService:
 
         self._run_extraction_phase(entries, extraction_candidate_indexes, extraction_summary)
 
+        entries = self._strip_stored_entry_content(entries)
         entries.sort(key=self.reading_entry_sort_key, reverse=True)
         data["entries"] = entries
         data["last_sync_at"] = now if target_sources else data.get("last_sync_at", "")
