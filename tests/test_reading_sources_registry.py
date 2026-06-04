@@ -55,6 +55,15 @@ class ReadingSourcesRegistryTests(unittest.TestCase):
             registry_path = Path("config/reading_sources.json").resolve()
             registry_payload = json.loads(registry_path.read_text(encoding="utf-8"))
             expected_registry_count = len(registry_payload)
+            expected_active_count = len([
+                item for item in registry_payload
+                if isinstance(item, dict) and item.get("active", True) and str(item.get("url", "") or item.get("feed_url", "") or "").strip()
+            ])
+            registry_by_url = {
+                str(item.get("url", "") or item.get("feed_url", "") or ""): item
+                for item in registry_payload
+                if isinstance(item, dict)
+            }
 
             def fake_sync_reading_sources(source_id=""):
                 payload = json.loads(reading_data_path.read_text(encoding="utf-8"))
@@ -86,9 +95,32 @@ class ReadingSourcesRegistryTests(unittest.TestCase):
             saved_payload = json.loads(reading_data_path.read_text(encoding="utf-8"))
             saved_sources = [source for source in (saved_payload.get("sources", []) or []) if isinstance(source, dict)]
             self.assertEqual(len(saved_sources), expected_registry_count)
+            active_saved_sources = [
+                source for source in saved_sources
+                if source.get("active", True) and str(source.get("url", "") or source.get("feed_url", "") or "").strip()
+            ]
+            self.assertEqual(len(active_saved_sources), expected_active_count)
             saved_names = {str(source.get("name", "") or "") for source in saved_sources}
             self.assertIn("Hespress - هسبريس جريدة إلكترونية مغربية", saved_names)
             self.assertIn("Aljazeera - أخبار العالم", saved_names)
+            active_by_name = {str(source.get("name", "") or ""): bool(source.get("active", True)) for source in saved_sources}
+            self.assertTrue(active_by_name["Hespress - هسبريس جريدة إلكترونية مغربية"])
+            self.assertTrue(active_by_name["Aljazeera - أخبار العالم"])
+            source_by_url = {
+                str(source.get("url", "") or source.get("feed_url", "") or ""): source
+                for source in saved_sources
+                if isinstance(source, dict)
+            }
+            self.assertFalse(bool(source_by_url["https://www.mapnews.ma/en/rss.xml"].get("active", True)))
+            self.assertFalse(bool(source_by_url["https://howiyapress.com/category/societe/feed"].get("active", True)))
+            self.assertFalse(bool(source_by_url["https://assabah.ma/category/%D8%B1%D8%A8%D9%88%D8%B1%D8%AA%D8%A7%D8%AC/feed"].get("active", True)))
+            self.assertFalse(bool(source_by_url["https://howiyapress.com/category/kotab-alraey/feed"].get("active", True)))
+            self.assertFalse(bool(source_by_url["https://assabah.ma/category/%D8%AD%D9%88%D8%A7%D8%B1/feed"].get("active", True)))
+            self.assertEqual(str(registry_by_url["https://www.mapnews.ma/en/rss.xml"].get("disabled_reason", "") or ""), "HTTP 403 from GitHub Actions")
+            self.assertEqual(str(registry_by_url["https://howiyapress.com/category/societe/feed"].get("disabled_reason", "") or ""), "HTTP 403 from GitHub Actions")
+            self.assertEqual(str(registry_by_url["https://assabah.ma/category/%D8%B1%D8%A8%D9%88%D8%B1%D8%AA%D8%A7%D8%AC/feed"].get("disabled_reason", "") or ""), "HTTP 403 from GitHub Actions")
+            self.assertEqual(str(registry_by_url["https://howiyapress.com/category/kotab-alraey/feed"].get("disabled_reason", "") or ""), "HTTP 403 from GitHub Actions")
+            self.assertEqual(str(registry_by_url["https://assabah.ma/category/%D8%AD%D9%88%D8%A7%D8%B1/feed"].get("disabled_reason", "") or ""), "HTTP 403 from GitHub Actions")
 
 
 if __name__ == "__main__":

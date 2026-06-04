@@ -11,7 +11,8 @@
     "name": "Morocco World News",
     "url": "https://www.mapnews.ma/en/rss.xml",
     "category": "news",
-    "active": true
+    "active": false,
+    "disabled_reason": "HTTP 403 from GitHub Actions"
   },
   {
     "source_id": "reading-src-c465bea4c3c4",
@@ -32,14 +33,16 @@
     "name": "مجتمع – هوية بريس",
     "url": "https://howiyapress.com/category/societe/feed",
     "category": "culture",
-    "active": true
+    "active": false,
+    "disabled_reason": "HTTP 403 from GitHub Actions"
   },
   {
     "source_id": "reading-src-7e535a8ac8d7",
     "name": "ربورتاج | جريدة الصباح",
     "url": "https://assabah.ma/category/%D8%B1%D8%A8%D9%88%D8%B1%D8%AA%D8%A7%D8%AC/feed",
     "category": "culture",
-    "active": true
+    "active": false,
+    "disabled_reason": "HTTP 403 from GitHub Actions"
   },
   {
     "source_id": "reading-src-d5318d63b94b",
@@ -60,7 +63,8 @@
     "name": "كتاب الرأي – هوية بريس",
     "url": "https://howiyapress.com/category/kotab-alraey/feed",
     "category": "opinion",
-    "active": true
+    "active": false,
+    "disabled_reason": "HTTP 403 from GitHub Actions"
   },
   {
     "source_id": "reading-src-c03a79b0ac25",
@@ -74,7 +78,8 @@
     "name": "حوار | جريدة الصباح",
     "url": "https://assabah.ma/category/%D8%AD%D9%88%D8%A7%D8%B1/feed",
     "category": "opinion",
-    "active": true
+    "active": false,
+    "disabled_reason": "HTTP 403 from GitHub Actions"
   },
   {
     "source_id": "reading-src-79db77608c28",
