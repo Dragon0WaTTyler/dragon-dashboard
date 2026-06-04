@@ -14665,7 +14665,7 @@ def build_navigation_context():
         normalize_section_name("Home"),
         normalize_section_name("Movies"),
         normalize_section_name("Books"),
-        normalize_section_name("Reading"),
+        normalize_section_name("Articles"),
         normalize_section_name("PocketTube"),
         normalize_section_name("German"),
         normalize_section_name("Chess"),
