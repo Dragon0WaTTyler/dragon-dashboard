@@ -33,6 +33,14 @@ Do not upload secrets or local runtime data files:
 
 These files are already covered by [`.gitignore`](C:/Users/walid/Desktop/FlaskDashboard/.gitignore).
 
+## Runtime data note
+
+Runtime JSON snapshots and generated cache files are local data on PythonAnywhere.
+
+- Do not commit them.
+- Keep them out of the Git working tree when possible.
+- Back them up before destructive deploy actions such as resets, reclones, or manual cleanup.
+
 ## Virtualenv setup
 
 1. Create a Python virtual environment on PythonAnywhere.

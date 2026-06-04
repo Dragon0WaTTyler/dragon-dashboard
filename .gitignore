@@ -14,23 +14,30 @@ reading_data.json
 chess_data.json
 chess_courses.json
 youtube_duration_cache.json
+yts_torrents_cache.json
 playlists.json
 dragon-live-data/
 live-data/
 
 __pycache__/
 *.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 .venv/
 venv/
 node_modules/
 
 backups/
 cache/
+cache/youtube_latest_snapshot.json
+cache/youtube_latest_sync_status.json
 exports/
 correction_reports/
 csv_corrections/
 stockfish-windows-x86-64-avx2/
 tmp_*
+*.tmp
 *.log
 *.out
 *.err
