@@ -347,14 +347,14 @@
     <h3 style="font-size:1.6rem;">Source Diagnostics</h3>
     <div class="reading-admin-source-list" style="margin-top:18px;">
         {% for source in reading_admin.reading_rss_sources %}
-        <div class="reading-admin-source" data-health-group="{{ 'inactive' if not source.active else ('error' if source.health_summary.visual_state == 'failing' else ('warning' if source.health_summary.visual_state == 'warning' else 'healthy')) }}">
+        <div class="reading-admin-source" data-health-group="{{ 'inactive' if not source.is_active else ('error' if source.health_summary.visual_state == 'failing' else ('warning' if source.health_summary.visual_state == 'warning' else 'healthy')) }}">
             <div class="reading-admin-source-top">
                 <div class="reading-admin-source-title">
                     <div class="reading-admin-source-meta">
                         <span class="hero-badge">{{ source.name }}</span>
                         <span class="reading-admin-source-pill">{{ source.category|title }}</span>
                         <span class="reading-admin-source-pill is-{{ source.health_summary.visual_state if source.health_summary else source.health }}">{{ source.health_summary.label if source.health_summary else source.health_label if source.health_label else source.health|title }}</span>
-                        <span class="reading-admin-source-pill {% if source.active %}is-active{% else %}is-paused{% endif %}">{{ 'active' if source.active else 'paused' }}</span>
+                        <span class="reading-admin-source-pill {% if source.is_active %}is-active{% else %}is-paused{% endif %}">{{ source.activity_badge_label }}</span>
                         <span>{{ source.known_entries_count }} known entries</span>
                     </div>
                     <div class="reading-admin-source-summary">
@@ -390,7 +390,7 @@
                         <input type="hidden" name="action" value="reading_source_toggle">
                         <input type="hidden" name="source_id" value="{{ source.id }}">
                         <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
-                        <button type="submit" class="btn"><i data-lucide="{{ 'pause' if source.active else 'play' }}"></i>{{ 'Deactivate' if source.active else 'Activate' }}</button>
+                        <button type="submit" class="btn"><i data-lucide="{{ source.toggle_action_icon }}"></i>{{ source.toggle_action_label }}</button>
                     </form>
                     <form method="post">
                         <input type="hidden" name="action" value="reading_source_remove">

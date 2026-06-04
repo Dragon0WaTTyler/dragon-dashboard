@@ -48,8 +48,7 @@ class AdminReadingRenderTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         html = response.get_data(as_text=True)
         self.assertIn("Blocked Source", html)
-        self.assertIn("Inactive", html)
-        self.assertIn("paused", html)
+        self.assertIn("INACTIVE", html)
         self.assertIn(">Activate<", html)
         self.assertNotIn(">Deactivate<", html)
 

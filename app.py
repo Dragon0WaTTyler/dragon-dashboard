@@ -11179,6 +11179,10 @@ def build_reading_admin_context():
     health_counts = {"healthy": 0, "warning": 0, "failing": 0, "paused": 0}
     for source in sources:
         source["active"] = reading_source_active_flag(source)
+        source["is_active"] = bool(source["active"])
+        source["activity_badge_label"] = "ACTIVE" if source["is_active"] else "INACTIVE"
+        source["toggle_action_label"] = "Deactivate" if source["is_active"] else "Activate"
+        source["toggle_action_icon"] = "pause" if source["is_active"] else "play"
         known_entries = int(source_entry_count.get(source.get("id", ""), 0) or source_entry_count.get(source.get("name", ""), 0) or 0)
         source["known_entries_count"] = known_entries
         source["last_sync_reason"] = source.get("last_sync_reason") or reading_source_sync_reason(source)
