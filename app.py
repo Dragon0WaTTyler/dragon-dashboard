@@ -8788,6 +8788,13 @@ def normalize_reading_bool(value, default=True):
     return bool(default)
 
 
+def reading_source_active_flag(source, default=True):
+    source = source if isinstance(source, dict) else {}
+    if "active" in source:
+        return normalize_reading_bool(source.get("active"), default=False)
+    return normalize_reading_bool(default, default=True)
+
+
 def normalize_reading_url(value):
     raw = str(value or "").strip()
     if not raw:
@@ -9323,7 +9330,7 @@ def reading_source_sync_reason(source):
     zero_import_streak = int(source.get("last_sync_zero_import_streak", 0) or 0)
     if reading_source_is_blocked(source):
         return "This source is blocking automated fetches from the sync environment."
-    if not source.get("active", True):
+    if not reading_source_active_flag(source):
         return "Source paused"
     if not str(source.get("url", "") or "").strip():
         return "Missing feed URL"
@@ -9366,7 +9373,7 @@ def reading_source_health(source, known_entries=0):
         age_days = max((now - last_synced_at.astimezone()).total_seconds() / 86400.0, 0.0)
     else:
         age_days = None
-    if not source.get("active", True):
+    if not reading_source_active_flag(source):
         return "paused"
     if not str(source.get("url", "") or "").strip() or not source.get("last_synced_at"):
         return "warning"
@@ -9422,6 +9429,7 @@ def reading_source_sync_age_days(source):
 
 def reading_source_admin_status(source, known_entries=0):
     source = source if isinstance(source, dict) else {}
+    source_active = reading_source_active_flag(source)
     health_state = reading_source_health(source, known_entries=known_entries)
     status = str(source.get("last_sync_status", "") or "").strip().lower()
     error = str(source.get("last_sync_error", "") or "").strip()
@@ -9440,7 +9448,7 @@ def reading_source_admin_status(source, known_entries=0):
     last_sync_final_url = str(source.get("last_sync_final_url", "") or "").strip() or str(source.get("last_sync_resolved_url", "") or "").strip()
     last_successful_url = str(source.get("last_successful_url", "") or "").strip() or str(source.get("successful_url", "") or "").strip()
 
-    if not source.get("active", True):
+    if not source_active:
         return {
             "state": "paused",
             "visual_state": "paused",
@@ -11170,6 +11178,7 @@ def build_reading_admin_context():
         }
     health_counts = {"healthy": 0, "warning": 0, "failing": 0, "paused": 0}
     for source in sources:
+        source["active"] = reading_source_active_flag(source)
         known_entries = int(source_entry_count.get(source.get("id", ""), 0) or source_entry_count.get(source.get("name", ""), 0) or 0)
         source["known_entries_count"] = known_entries
         source["last_sync_reason"] = source.get("last_sync_reason") or reading_source_sync_reason(source)
@@ -11197,8 +11206,8 @@ def build_reading_admin_context():
         "reading_rss_sources": rss_sources,
         "reading_source_count": len(sources),
         "reading_rss_source_count": len(rss_sources),
-        "reading_active_source_count": len([source for source in sources if source.get("active", True) and source.get("url")]),
-        "reading_rss_active_source_count": len([source for source in rss_sources if source.get("active", True) and source.get("url")]),
+        "reading_active_source_count": len([source for source in sources if reading_source_active_flag(source) and source.get("url")]),
+        "reading_rss_active_source_count": len([source for source in rss_sources if reading_source_active_flag(source) and source.get("url")]),
         "reading_rss_healthy_count": health_counts.get("healthy", 0),
         "reading_rss_warning_count": health_counts.get("warning", 0),
         "reading_rss_failing_count": health_counts.get("failing", 0),
