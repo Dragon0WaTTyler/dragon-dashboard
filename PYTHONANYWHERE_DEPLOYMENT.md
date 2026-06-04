@@ -157,11 +157,17 @@ After the env var is in place and the web app is reloaded, you can make the repo
 
 ```bash
 cd /home/<your-username>/Dragon
-git checkout -- reading_data.json
 git pull
 ```
 
 Do not delete `/home/<your-username>/dragon-live-data/reading_data.json`. That is now the live production file.
+
+To let the Articles page pull the latest GitHub-generated runtime snapshot into that live file, also configure:
+
+```bash
+READING_REMOTE_SNAPSHOT_URL=https://raw.githubusercontent.com/Dragon0WaTTyler/dragon-dashboard/runtime-data/reading_data.json
+READING_REMOTE_SNAPSHOT_PULL_ENABLED=1
+```
 
 ## Static files setup
 

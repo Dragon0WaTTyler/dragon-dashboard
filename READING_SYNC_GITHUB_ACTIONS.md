@@ -4,14 +4,9 @@ Dragon runs on PythonAnywhere free, and free accounts cannot reliably fetch many
 
 ## V1 approach
 
-GitHub Actions performs the RSS sync every 2 hours and writes the updated snapshot into `reading_data.json`.
+GitHub Actions performs the RSS sync every 2 hours, builds a lightweight `reading_data.json` snapshot, and publishes that file to the `runtime-data` branch.
 
-PythonAnywhere then only needs to:
-
-- pull the latest Git changes
-- reload the web app
-
-This keeps `reading_data.json` as the V1 source of truth for Reading online without adding a database.
+PythonAnywhere keeps its own local ignored `reading_data.json` and pulls the latest remote snapshot into that file when needed.
 
 ## Workflow behavior
 
@@ -25,11 +20,12 @@ It:
 - can also be triggered manually with `workflow_dispatch`
 - installs Python dependencies from `requirements.txt`
 - runs `python scripts/sync_reading_feeds.py`
-- commits `reading_data.json` only if it changed
+- runs `python scripts/export_reading_runtime_snapshot.py`
+- publishes the lightweight snapshot to the `runtime-data` branch only if it changed
 
-Commit message:
+Runtime branch commit message:
 
-- `Sync reading feeds`
+- `Sync reading runtime snapshot`
 
 ## Manual trigger in GitHub
 
@@ -42,20 +38,9 @@ Commit message:
 
 After a run, inspect:
 
-- the latest commit history for `Sync reading feeds`
-- the `reading_data.json` diff in GitHub
+- the latest commit history on the `runtime-data` branch
+- the `reading_data.json` diff on that branch
 - the workflow log output from `scripts/sync_reading_feeds.py`
-
-## PythonAnywhere after GitHub Action runs
-
-On PythonAnywhere, update the app with:
-
-```bash
-cd ~/Dragon
-git pull
-```
-
-Then reload the web app from the PythonAnywhere Web tab.
 
 ## Security notes
 
@@ -66,7 +51,7 @@ Do not commit:
 - `client_secret*.json`
 - local cache/token/database files
 
-`reading_data.json` should stay tracked because it is the online Reading snapshot for V1.
+`reading_data.json` should stay ignored on `main`. The runtime snapshot now lives on the separate `runtime-data` branch and is pulled into the live local file on PythonAnywhere.
 
 ## Local test
 

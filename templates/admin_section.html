@@ -293,14 +293,30 @@
                 <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
                 <button type="submit" class="btn" id="reading-admin-sync-button" data-default-label="Run GitHub sync" data-loading-label="Starting GitHub sync..."><i data-lucide="refresh-cw"></i>Run GitHub sync</button>
             </form>
+            {% if reading_admin.reading_remote_pull_enabled %}
+            <form method="post" style="margin:0;">
+                <input type="hidden" name="action" value="reading_pull_latest_snapshot">
+                <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
+                <button type="submit" class="btn"><i data-lucide="download"></i>Pull Latest Articles</button>
+            </form>
+            {% endif %}
             <div class="muted" id="reading-admin-sync-message" style="max-width:280px;text-align:right;">{{ reading_admin.reading_online_sync_note }}</div>
         </div>
         {% else %}
-        <form method="post" style="margin:0;">
-            <input type="hidden" name="action" value="reading_sync_all">
-            <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
-            <button type="submit" class="btn"><i data-lucide="refresh-cw"></i>Sync All</button>
-        </form>
+        <div style="display:grid;gap:8px;">
+            <form method="post" style="margin:0;">
+                <input type="hidden" name="action" value="reading_sync_all">
+                <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
+                <button type="submit" class="btn"><i data-lucide="refresh-cw"></i>Sync All</button>
+            </form>
+            {% if reading_admin.reading_remote_pull_enabled %}
+            <form method="post" style="margin:0;">
+                <input type="hidden" name="action" value="reading_pull_latest_snapshot">
+                <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
+                <button type="submit" class="btn"><i data-lucide="download"></i>Pull Latest Articles</button>
+            </form>
+            {% endif %}
+        </div>
         {% endif %}
     </div>
 

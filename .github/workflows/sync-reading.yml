@@ -8,6 +8,9 @@ on:
 permissions:
   contents: write
 
+env:
+  RUNTIME_DATA_BRANCH: runtime-data
+
 jobs:
   sync-reading:
     runs-on: ubuntu-latest
@@ -17,13 +20,13 @@ jobs:
       cancel-in-progress: false
     env:
       PYTHONUNBUFFERED: "1"
-      DRAGON_READING_SYNC_EXTRACT_FULL_CONTENT: "1"
-      DRAGON_READING_SYNC_EXTRACT_MAX_ARTICLES: "6"
+      DRAGON_READING_SYNC_EXTRACT_FULL_CONTENT: "0"
+      DRAGON_READING_SYNC_EXTRACT_MAX_ARTICLES: "0"
       DRAGON_READING_SYNC_EXTRACT_TIMEOUT_SECONDS: "12"
       DRAGON_READING_SYNC_EXTRACT_FAILURE_RETRY_HOURS: "24"
       DRAGON_READING_SYNC_EXTRACT_SLOW_LOG_LIMIT: "5"
-      DRAGON_READING_SYNC_BACKFILL_BBC: "1"
-      DRAGON_READING_SYNC_BBC_BACKFILL_MAX: "12"
+      DRAGON_READING_SYNC_BACKFILL_BBC: "0"
+      DRAGON_READING_SYNC_BBC_BACKFILL_MAX: "0"
 
     steps:
       - name: Check out repository
@@ -50,36 +53,61 @@ jobs:
           echo "Starting Reading sync at $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
           python -u scripts/sync_reading_feeds.py
 
+      - name: Export lightweight runtime snapshot
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -u scripts/export_reading_runtime_snapshot.py --input "$GITHUB_WORKSPACE/reading_data.json" --output "$GITHUB_WORKSPACE/cache/reading_runtime_snapshot.json"
+
       - name: Reading sync diagnostics
         if: always()
         shell: bash
         run: |
           set -euo pipefail
           echo "Reading sync diagnostics at $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
-          git status --short -- reading_data.json || true
+          ls -lh "$GITHUB_WORKSPACE/cache/reading_runtime_snapshot.json" || true
 
-      - name: Commit updated reading data
-        id: commit_reading_data
+      - name: Publish runtime snapshot branch
+        id: publish_runtime_snapshot
         if: success()
         shell: bash
         run: |
           set -euo pipefail
           echo "pushed=false" >> "$GITHUB_OUTPUT"
-          if [ -z "$(git status --porcelain -- reading_data.json)" ]; then
-            echo "No reading_data.json changes to commit."
-            exit 0
-          fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add reading_data.json
-          git commit -m "Sync reading feeds"
-
-          git pull origin main --rebase
-          git push origin main
+          publish_dir="$(mktemp -d)"
+          if git ls-remote --exit-code --heads origin "${RUNTIME_DATA_BRANCH}" >/dev/null 2>&1; then
+            git fetch origin "${RUNTIME_DATA_BRANCH}"
+            git worktree add "$publish_dir" "origin/${RUNTIME_DATA_BRANCH}"
+            (
+              cd "$publish_dir"
+              git checkout -B "${RUNTIME_DATA_BRANCH}" "origin/${RUNTIME_DATA_BRANCH}"
+            )
+          else
+            git worktree add --detach "$publish_dir"
+            (
+              cd "$publish_dir"
+              git checkout --orphan "${RUNTIME_DATA_BRANCH}"
+              git rm -rf . >/dev/null 2>&1 || true
+            )
+          fi
+          cp "$GITHUB_WORKSPACE/cache/reading_runtime_snapshot.json" "$publish_dir/reading_data.json"
+          (
+            cd "$publish_dir"
+            git add -f reading_data.json
+            if [ -z "$(git status --porcelain -- reading_data.json)" ]; then
+              echo "No runtime reading snapshot changes to publish."
+              exit 0
+            fi
+            git commit -m "Sync reading runtime snapshot"
+            git push origin "${RUNTIME_DATA_BRANCH}"
+          )
           echo "pushed=true" >> "$GITHUB_OUTPUT"
 
       - name: Notify PythonAnywhere reading snapshot refresh
-        if: success() && steps.commit_reading_data.outputs.pushed == 'true'
+        if: success() && steps.publish_runtime_snapshot.outputs.pushed == 'true'
         shell: bash
         env:
           DRAGON_GITHUB_WEBHOOK_SECRET: ${{ secrets.DRAGON_GITHUB_WEBHOOK_SECRET }}

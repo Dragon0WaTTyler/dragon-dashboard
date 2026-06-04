@@ -126,6 +126,12 @@
         <div class="reading-entry-actions">
             <button type="button" class="btn section-refresh-btn" onclick="dragonRefreshSection('articles')" data-default-label="Refresh" data-loading-label="Refreshing..."><i data-lucide="refresh-cw"></i>Refresh</button>
             <button type="button" class="btn section-refresh-btn" onclick="dragonSyncSection('articles')" data-default-label="Sync" data-loading-label="Syncing..."><i data-lucide="refresh-cw"></i>Sync</button>
+            {% if reading_remote_pull_enabled %}
+            <form method="post" action="{{ url_for('reading_pull_latest_snapshot_route') }}">
+                <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
+                <button type="submit" class="btn"><i data-lucide="download"></i>Pull Latest Articles</button>
+            </form>
+            {% endif %}
             <form method="post" action="{{ url_for('reading_trigger_sync') }}" data-reading-sync-form>
                 <button type="submit" class="btn" id="reading-sync-button" data-default-label="Check new" data-loading-label="Starting sync..."><i data-lucide="refresh-cw"></i>Check new</button>
             </form>
@@ -135,6 +141,12 @@
     <div class="reading-freshness-banner is-{{ snapshot_freshness_state }}">
         <span><strong>{{ snapshot_freshness_label }}</strong>: showing local snapshot reading_data.json refreshed {{ last_refreshed_at_display }}.</span>
         <span>Last feed sync: {{ last_sync_at_display }}</span>
+        {% if reading_remote_pull_recommended %}
+        <form method="post" action="{{ url_for('reading_pull_latest_snapshot_route') }}" style="margin:0;">
+            <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
+            <button type="submit" class="btn"><i data-lucide="download"></i>Pull Latest Articles</button>
+        </form>
+        {% endif %}
     </div>
     {% if source_status_summary.total %}
     <div class="reading-source-status">

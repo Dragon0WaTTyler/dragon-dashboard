@@ -276,7 +276,20 @@ READING_SYNC_GITHUB_REPO = "dragon-dashboard"
 READING_SYNC_GITHUB_WORKFLOW = "sync-reading.yml"
 READING_SYNC_GITHUB_BRANCH = "main"
 READING_SYNC_GITHUB_API_BASE = "https://api.github.com"
-READING_SYNC_GITHUB_RAW_SNAPSHOT_URL = "https://raw.githubusercontent.com/Dragon0WaTTyler/dragon-dashboard/main/reading_data.json"
+READING_RUNTIME_DATA_BRANCH = config_value("READING_RUNTIME_DATA_BRANCH", "runtime-data")
+READING_SYNC_GITHUB_RAW_SNAPSHOT_URL = config_value(
+    "READING_SYNC_GITHUB_RAW_SNAPSHOT_URL",
+    f"https://raw.githubusercontent.com/{READING_SYNC_GITHUB_OWNER}/{READING_SYNC_GITHUB_REPO}/{READING_RUNTIME_DATA_BRANCH}/reading_data.json",
+)
+ARTICLES_REMOTE_SNAPSHOT_URL = config_value("ARTICLES_REMOTE_SNAPSHOT_URL", "")
+READING_REMOTE_SNAPSHOT_URL = config_value(
+    "READING_REMOTE_SNAPSHOT_URL",
+    ARTICLES_REMOTE_SNAPSHOT_URL or READING_SYNC_GITHUB_RAW_SNAPSHOT_URL,
+)
+READING_REMOTE_SNAPSHOT_PULL_ENABLED = config_flag("READING_REMOTE_SNAPSHOT_PULL_ENABLED", True)
+READING_REMOTE_SNAPSHOT_MIN_BYTES = config_int("READING_REMOTE_SNAPSHOT_MIN_BYTES", 1024, minimum=256, maximum=50 * 1024 * 1024)
+READING_REMOTE_SNAPSHOT_MIN_ENTRIES = config_int("READING_REMOTE_SNAPSHOT_MIN_ENTRIES", 3, minimum=1, maximum=100000)
+READING_REMOTE_SNAPSHOT_MIN_SOURCES = config_int("READING_REMOTE_SNAPSHOT_MIN_SOURCES", 1, minimum=1, maximum=10000)
 YOUTUBE_SYNC_GITHUB_OWNER = "Dragon0WaTTyler"
 YOUTUBE_SYNC_GITHUB_REPO = "dragon-dashboard"
 YOUTUBE_SYNC_GITHUB_WORKFLOW = "youtube-freshness-dispatch.yml"
@@ -755,7 +768,11 @@ def _reading_snapshot_payload_is_valid(payload, downloaded_bytes):
         return False, "Downloaded JSON must contain an entries list."
     if not isinstance(payload.get("sources"), list):
         return False, "Downloaded JSON must contain a sources list."
-    if int(downloaded_bytes or 0) < 1024:
+    if len(payload.get("entries", []) or []) < READING_REMOTE_SNAPSHOT_MIN_ENTRIES:
+        return False, "Downloaded Articles snapshot does not contain enough entries."
+    if len(payload.get("sources", []) or []) < READING_REMOTE_SNAPSHOT_MIN_SOURCES:
+        return False, "Downloaded Articles snapshot does not contain enough sources."
+    if int(downloaded_bytes or 0) < READING_REMOTE_SNAPSHOT_MIN_BYTES:
         return False, "Downloaded file is too small to be a valid Articles snapshot."
     return True, ""
 
@@ -767,6 +784,46 @@ def _rotate_reading_webhook_backup():
     backup_path = _reading_webhook_backup_path()
     shutil.copy2(READING_DATA_PATH, backup_path)
     return str(backup_path)
+
+
+def reading_remote_snapshot_pull_enabled():
+    return bool(READING_REMOTE_SNAPSHOT_PULL_ENABLED and str(READING_REMOTE_SNAPSHOT_URL or "").strip())
+
+
+def build_lightweight_articles_snapshot(payload):
+    normalized_payload, _ = normalize_reading_data(payload)
+    lightweight_payload = copy.deepcopy(normalized_payload if isinstance(normalized_payload, dict) else default_reading_data())
+    stripped_entries = []
+    entries_with_content_before_strip = 0
+    removed_content_field_count = 0
+
+    for entry in list(lightweight_payload.get("entries", []) or []):
+        if not isinstance(entry, dict):
+            stripped_entries.append(entry)
+            continue
+        cleaned_entry = dict(entry)
+        had_content = False
+        for field_name in ("content_html", "content_text"):
+            if field_name in cleaned_entry:
+                field_value = str(cleaned_entry.get(field_name, "") or "").strip()
+                if field_value:
+                    had_content = True
+                removed_content_field_count += 1
+                cleaned_entry.pop(field_name, None)
+        if had_content:
+            entries_with_content_before_strip += 1
+        stripped_entries.append(cleaned_entry)
+
+    lightweight_payload["entries"] = stripped_entries
+    lightweight_payload["snapshot_updated_at"] = current_timestamp()
+
+    return lightweight_payload, {
+        "entries_count": len(lightweight_payload.get("entries", []) or []),
+        "sources_count": len(lightweight_payload.get("sources", []) or []),
+        "entries_with_content_before_strip": entries_with_content_before_strip,
+        "entries_with_content_after_strip": 0,
+        "removed_content_field_count": removed_content_field_count,
+    }
 
 
 def collect_reading_recovery_trace_hits(limit=50):
@@ -10861,6 +10918,8 @@ def _get_reading_runtime_service():
             reading_list_default_limit=READING_LIST_DEFAULT_LIMIT,
             reading_list_limit_max=READING_LIST_LIMIT_MAX,
             reading_list_limit_step=READING_LIST_LIMIT_STEP,
+            reading_remote_snapshot_url=READING_REMOTE_SNAPSHOT_URL,
+            reading_remote_snapshot_pull_enabled=reading_remote_snapshot_pull_enabled(),
             datetime_module=datetime,
             monotonic=time.monotonic,
         )
@@ -11040,6 +11099,8 @@ def build_reading_admin_context():
         "reading_latest_backup": backup_files[0] if backup_files else {},
         "reading_recovery_hits": recovery_hits,
         "reading_recovery_hit_count": len(recovery_hits),
+        "reading_remote_snapshot_url": READING_REMOTE_SNAPSHOT_URL,
+        "reading_remote_pull_enabled": reading_remote_snapshot_pull_enabled(),
     }
 
 
@@ -14547,6 +14608,13 @@ def handle_admin_action(admin_data, form):
             raise ValueError(READING_GITHUB_SYNC_ONLINE_MESSAGE)
         result = sync_reading_sources()
         return result.get("last_sync_message", "Synced article sources.")
+
+    if action == "reading_pull_latest_snapshot":
+        result = pull_latest_articles_snapshot()
+        return (
+            f"Pulled latest Articles snapshot: {int(result.get('entry_count', 0) or 0)} articles "
+            f"from {int(result.get('source_count', 0) or 0)} sources."
+        )
 
     raise ValueError("Unknown admin action.")
 
@@ -27998,9 +28066,12 @@ def _get_reading_snapshot_access():
             path_class=Path,
             requests_module=requests,
             reading_http_session=READING_HTTP_SESSION,
-            reading_snapshot_url=READING_SYNC_GITHUB_RAW_SNAPSHOT_URL,
+            reading_snapshot_url=READING_REMOTE_SNAPSHOT_URL,
+            reading_snapshot_pull_enabled=reading_remote_snapshot_pull_enabled(),
             validate_snapshot_payload=_reading_snapshot_payload_is_valid,
             normalize_reading_data=_get_reading_cache_access().normalize_reading_data,
+            build_lightweight_snapshot=build_lightweight_articles_snapshot,
+            backup_reading_data_file=backup_reading_data_file,
             rotate_webhook_backup=_rotate_reading_webhook_backup,
             clear_reading_data_cache=_get_reading_cache_access().clear_reading_data_cache,
             reading_data_cache_fingerprint=_reading_data_cache_fingerprint,
@@ -28012,6 +28083,10 @@ def _get_reading_snapshot_access():
 
 def refresh_deployed_reading_snapshot_from_github():
     return _get_reading_snapshot_access().refresh_deployed_reading_snapshot_from_github()
+
+
+def pull_latest_articles_snapshot():
+    return _get_reading_snapshot_access().pull_latest_articles_snapshot()
 
 
 def _reading_refresh_snapshot_worker(trigger_label="github"):
@@ -28062,6 +28137,20 @@ def reading_trigger_sync():
     return jsonify(payload), status_code
 
 
+@app.route("/reading/pull-latest", methods=["POST"])
+def reading_pull_latest_snapshot_route():
+    next_url = str(request.form.get("next", "") or request.referrer or url_for("reading")).strip() or url_for("reading")
+    try:
+        result = pull_latest_articles_snapshot()
+    except Exception as exc:
+        return redirect(append_query_param(next_url, error=f"Could not pull latest Articles snapshot: {exc}"))
+    success_message = (
+        f"Pulled latest Articles snapshot: {int(result.get('entry_count', 0) or 0)} articles "
+        f"from {int(result.get('source_count', 0) or 0)} sources."
+    )
+    return redirect(append_query_param(next_url, success=success_message))
+
+
 @app.route("/reading/github-snapshot-updated", methods=["POST"])
 def reading_github_snapshot_updated():
     configured_secret = str(DRAGON_GITHUB_WEBHOOK_SECRET or "").strip()
@@ -28077,7 +28166,7 @@ def reading_github_snapshot_updated():
         return jsonify({"ok": True, "status": "already_refreshing"}), 202
 
     try:
-        result = refresh_deployed_reading_snapshot_from_github()
+        result = pull_latest_articles_snapshot()
     except requests.RequestException as exc:
         app.logger.warning("reading_github_snapshot_updated download_failed error=%s", exc)
         return jsonify({"ok": False, "status": "download_failed", "error": str(exc)}), 502

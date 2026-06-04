@@ -29,6 +29,8 @@ class ReadingRuntimeService:
         reading_list_default_limit,
         reading_list_limit_max,
         reading_list_limit_step,
+        reading_remote_snapshot_url,
+        reading_remote_snapshot_pull_enabled,
         datetime_module,
         monotonic,
     ):
@@ -57,6 +59,8 @@ class ReadingRuntimeService:
         self.reading_list_default_limit = reading_list_default_limit
         self.reading_list_limit_max = reading_list_limit_max
         self.reading_list_limit_step = reading_list_limit_step
+        self.reading_remote_snapshot_url = str(reading_remote_snapshot_url or "").strip()
+        self.reading_remote_snapshot_pull_enabled = bool(reading_remote_snapshot_pull_enabled)
         self.datetime_module = datetime_module
         self.monotonic = monotonic
 
@@ -377,8 +381,14 @@ class ReadingRuntimeService:
             "last_sync_sources": int(data.get("last_sync_sources", 0) or 0),
             "last_sync_message": str(data.get("last_sync_message", "") or "").strip(),
             "source_status_summary": self._build_source_status_summary(sources),
+            "reading_remote_snapshot_url": self.reading_remote_snapshot_url,
+            "reading_remote_pull_enabled": bool(self.reading_remote_snapshot_pull_enabled and self.reading_remote_snapshot_url),
         }
         view.update(snapshot_freshness)
+        view["reading_remote_pull_recommended"] = bool(
+            view.get("reading_remote_pull_enabled")
+            and view.get("snapshot_freshness_state") in {"stale", "missing"}
+        )
         return view
 
     def build_reading_article_context(self, entry_id, request_args):
