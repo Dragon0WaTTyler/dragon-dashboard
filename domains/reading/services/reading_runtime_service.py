@@ -31,6 +31,7 @@ class ReadingRuntimeService:
         reading_list_limit_step,
         reading_remote_snapshot_url,
         reading_remote_snapshot_pull_enabled,
+        refresh_service,
         datetime_module,
         monotonic,
     ):
@@ -61,6 +62,7 @@ class ReadingRuntimeService:
         self.reading_list_limit_step = reading_list_limit_step
         self.reading_remote_snapshot_url = str(reading_remote_snapshot_url or "").strip()
         self.reading_remote_snapshot_pull_enabled = bool(reading_remote_snapshot_pull_enabled)
+        self.refresh_service = refresh_service
         self.datetime_module = datetime_module
         self.monotonic = monotonic
 
@@ -95,33 +97,37 @@ class ReadingRuntimeService:
         try:
             stat_result = self.reading_data_path.stat()
         except OSError:
+            refresh_state = self.refresh_service.build_state(
+                missing=True,
+                refresh_status="missing",
+                refresh_now_enabled=bool(self.reading_remote_snapshot_pull_enabled and self.reading_remote_snapshot_url),
+            )
             return {
                 "snapshot_path": str(self.reading_data_path),
                 "snapshot_updated_at": "",
                 "snapshot_updated_display": "Missing",
                 "snapshot_age_seconds": None,
-                "snapshot_freshness_state": "missing",
-                "snapshot_freshness_label": "Snapshot missing",
+                "snapshot_freshness_state": refresh_state.stale.state,
+                "snapshot_freshness_label": refresh_state.stale.label,
+                "refresh_state": refresh_state,
             }
         updated_at = self.datetime_module.fromtimestamp(stat_result.st_mtime).astimezone()
         now = self.datetime_module.now().astimezone()
         age_seconds = max(0, int((now - updated_at).total_seconds()))
-        if age_seconds <= 6 * 60 * 60:
-            state = "fresh"
-            label = "Fresh snapshot"
-        elif age_seconds <= 24 * 60 * 60:
-            state = "aging"
-            label = "Snapshot aging"
-        else:
-            state = "stale"
-            label = "Stale snapshot"
+        refresh_state = self.refresh_service.build_state(
+            last_refreshed_at=updated_at.isoformat(),
+            age_seconds=age_seconds,
+            refresh_status="idle",
+            refresh_now_enabled=bool(self.reading_remote_snapshot_pull_enabled and self.reading_remote_snapshot_url),
+        )
         return {
             "snapshot_path": str(self.reading_data_path),
             "snapshot_updated_at": updated_at.isoformat(),
             "snapshot_updated_display": self.format_timestamp_label(updated_at.isoformat(), default="Unknown"),
             "snapshot_age_seconds": age_seconds,
-            "snapshot_freshness_state": state,
-            "snapshot_freshness_label": label,
+            "snapshot_freshness_state": refresh_state.stale.state,
+            "snapshot_freshness_label": refresh_state.stale.label,
+            "refresh_state": refresh_state,
         }
 
     def _load_cached_data_for_get(self):
@@ -317,6 +323,7 @@ class ReadingRuntimeService:
         has_more = total_matching > len(displayed_entries)
         next_limit = min(requested_limit + self.reading_list_limit_step, self.reading_list_limit_max)
         showing_archived = selected_status == "archived"
+        refresh_state = snapshot_freshness.get("refresh_state")
         total_elapsed_ms = (self.monotonic() - started_at) * 1000
         self.app_logger.info(
             "reading_view build elapsed_ms=%.1f entries_total=%s entries_filtered=%s entries_displayed=%s sources=%s fresh_only=%s search=%s snapshot_state=%s lightweight_read_model=1 full_entry_rebuild=0",
@@ -377,6 +384,11 @@ class ReadingRuntimeService:
             "last_sync_at_display": self.format_timestamp_label(last_sync_at, default="Never"),
             "last_refreshed_at": snapshot_freshness.get("snapshot_updated_at", ""),
             "last_refreshed_at_display": snapshot_freshness.get("snapshot_updated_display", "Unknown"),
+            "refresh_status": getattr(refresh_state, "refresh_status", "idle"),
+            "refresh_error": getattr(refresh_state, "refresh_error", ""),
+            "refresh_now": getattr(refresh_state, "refresh_now", None).to_dict() if getattr(refresh_state, "refresh_now", None) else {},
+            "background_revalidate": getattr(refresh_state, "background_revalidate", None).to_dict() if getattr(refresh_state, "background_revalidate", None) else {},
+            "is_stale": bool(getattr(getattr(refresh_state, "stale", None), "is_stale", False)),
             "last_sync_count": int(data.get("last_sync_count", 0) or 0),
             "last_sync_sources": int(data.get("last_sync_sources", 0) or 0),
             "last_sync_message": str(data.get("last_sync_message", "") or "").strip(),
