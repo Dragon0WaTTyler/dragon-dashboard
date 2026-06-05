@@ -126,6 +126,8 @@ class ReadingSyncService:
                 "status_code": int(attempt.get("status_code", 0) or 0),
                 "content_type": str(attempt.get("content_type", "") or "").strip(),
                 "elapsed_ms": int(attempt.get("elapsed_ms", 0) or 0),
+                "request_profile": str(attempt.get("request_profile", "") or "").strip(),
+                "selected_headers_profile": str(attempt.get("selected_headers_profile", "") or "").strip(),
                 "error": str(attempt.get("error", "") or "").strip(),
             }
             if any(normalized_attempt.values()):
@@ -235,6 +237,9 @@ class ReadingSyncService:
         fetch_resolved_url = str(fetch_result.get("resolved_url", "") or "").strip()
         fetch_final_url = str(fetch_result.get("final_url", "") or fetch_resolved_url or "").strip()
         fetch_successful_url = str(fetch_result.get("successful_url", "") or "").strip()
+        fetch_active = bool(fetch_result.get("active", source.get("active", True)))
+        fetch_request_profile = str(fetch_result.get("request_profile", source.get("request_profile", "default")) or "default").strip() or "default"
+        fetch_selected_headers_profile = str(fetch_result.get("selected_headers_profile", "") or "").strip()
         fetch_retry_count = int(fetch_result.get("retry_count", 0) or 0)
         fetch_timeout_reason = str(fetch_result.get("timeout_reason", "") or "").strip()
         fetch_bozo = str(fetch_result.get("feedparser_bozo", "") or "").strip()
@@ -277,6 +282,8 @@ class ReadingSyncService:
         source["last_sync_status_code"] = fetch_status_code
         source["last_sync_content_type"] = fetch_content_type
         source["last_sync_feed_kind"] = fetch_kind
+        source["last_sync_request_profile"] = fetch_request_profile
+        source["last_sync_selected_headers_profile"] = fetch_selected_headers_profile
         source["last_sync_resolved_url"] = fetch_resolved_url
         source["last_sync_final_url"] = fetch_final_url
         source["last_sync_successful_url"] = fetch_successful_url
@@ -324,6 +331,9 @@ class ReadingSyncService:
 
         source_result = {
             "name": source.get("name", "Unknown Source"),
+            "active": fetch_active,
+            "request_profile": fetch_request_profile,
+            "selected_headers_profile": fetch_selected_headers_profile,
             "count": raw_count,
             "normalized": normalized_count,
             "imported": source_imported,
@@ -398,6 +408,9 @@ class ReadingSyncService:
             "count": 0,
             "normalized": 0,
             "imported": 0,
+            "active": bool(source.get("active", True)),
+            "request_profile": str(source.get("request_profile", "default") or "default").strip() or "default",
+            "selected_headers_profile": "",
             "status": "error",
             "reason": source.get("last_sync_reason", ""),
             "status_code": 0,

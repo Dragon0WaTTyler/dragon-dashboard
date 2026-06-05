@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 import app as dragon_app
 import scripts.sync_reading_feeds as sync_reading_feeds
+from domains.reading.services.rss_service import ReadingRssService
 
 
 class _FakeFeedResponse:
@@ -77,6 +78,17 @@ class ReadingRssSyncProfileTests(unittest.TestCase):
                 })
                 return _FakeFeedResponse(url, feed_xml)
 
+            captured_profiles = []
+            original_fetch_reading_feed = ReadingRssService.fetch_reading_feed
+
+            def capture_fetch_reading_feed(self, source):
+                captured_profiles.append({
+                    "name": str((source or {}).get("name", "") or "").strip(),
+                    "active": bool((source or {}).get("active", True)),
+                    "request_profile": str((source or {}).get("request_profile", "") or "").strip() or "default",
+                })
+                return original_fetch_reading_feed(self, source)
+
             with patch.object(sync_reading_feeds.dragon_app, "READING_SOURCES_REGISTRY_PATH", registry_path), patch.object(
                 dragon_app,
                 "READING_SOURCES_REGISTRY_PATH",
@@ -101,10 +113,22 @@ class ReadingRssSyncProfileTests(unittest.TestCase):
                 dragon_app.READING_HTTP_SESSION,
                 "get",
                 side_effect=fake_get,
+            ), patch.object(
+                ReadingRssService,
+                "fetch_reading_feed",
+                new=capture_fetch_reading_feed,
             ):
                 exit_code = sync_reading_feeds.run_sync(data_path=str(reading_data_path))
 
             self.assertEqual(exit_code, 0)
+            self.assertEqual(
+                captured_profiles,
+                [{
+                    "name": "Profiled Source",
+                    "active": True,
+                    "request_profile": "browser_ua",
+                }],
+            )
             self.assertEqual(len(request_log), 1)
             self.assertEqual(request_log[0]["url"], "https://example.com/new-feed")
             self.assertEqual(request_log[0]["headers"].get("User-Agent"), dragon_app.READING_BROWSER_USER_AGENT)

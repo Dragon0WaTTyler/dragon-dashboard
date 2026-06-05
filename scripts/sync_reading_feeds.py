@@ -32,6 +32,9 @@ def safe_print(message: str) -> None:
 
 def format_source_line(result: dict) -> str:
     name = str(result.get("name", "Unknown Source") or "Unknown Source").strip()
+    active = bool(result.get("active", True))
+    request_profile = str(result.get("request_profile", "") or "").strip() or "default"
+    selected_headers_profile = str(result.get("selected_headers_profile", "") or "").strip() or "n/a"
     status = str(result.get("status", "") or "").strip().lower() or "unknown"
     raw_count = int(result.get("count", 0) or 0)
     normalized = int(result.get("normalized", 0) or 0)
@@ -55,6 +58,9 @@ def format_source_line(result: dict) -> str:
     attempts = [item for item in (result.get("attempts", []) or []) if isinstance(item, dict)]
     parts = [
         f"{name}",
+        f"active={int(active)}",
+        f"request_profile={request_profile}",
+        f"headers_profile={selected_headers_profile}",
         f"status={status}",
         f"fetched={raw_count}",
         f"normalized={normalized}",
@@ -86,9 +92,12 @@ def format_source_line(result: dict) -> str:
             attempt_final_url = str(attempt.get("final_url", "") or "").strip()
             attempt_status = int(attempt.get("status_code", 0) or 0)
             attempt_error = str(attempt.get("error", "") or "").strip()
+            attempt_profile = str(attempt.get("request_profile", "") or "").strip() or "default"
+            attempt_headers_profile = str(attempt.get("selected_headers_profile", "") or "").strip() or "n/a"
             segment = attempt_url or "n/a"
             if attempt_final_url and attempt_final_url != attempt_url:
                 segment += f" -> {attempt_final_url}"
+            segment += f" profile={attempt_profile}/{attempt_headers_profile}"
             if attempt_status:
                 segment += f" [{attempt_status}]"
             if attempt_error:
@@ -183,10 +192,16 @@ def configure_reading_data_path(data_path: str = "") -> Path | None:
     return resolved
 
 
+def reconcile_reading_sources_registry(reading_data_path: Path | None = None) -> dict:
+    return dragon_app.ensure_reading_sources_registry_seeded(
+        reading_data_path=reading_data_path or dragon_app.READING_DATA_PATH
+    )
+
+
 def run_sync(source_id: str = "", source_name: str = "", data_path: str = "", dry_run: bool = False) -> int:
     started_at = time.monotonic()
     configured_data_path = configure_reading_data_path(data_path)
-    seeded = dragon_app.ensure_reading_sources_registry_seeded(reading_data_path=configured_data_path or dragon_app.READING_DATA_PATH)
+    seeded = reconcile_reading_sources_registry(configured_data_path)
     safe_print(
         "Reading source registry | "
         f"seeded={int(bool(seeded.get('seeded')))} | "
@@ -202,6 +217,7 @@ def run_sync(source_id: str = "", source_name: str = "", data_path: str = "", dr
             cleanup_path = Path(temp_file.name)
         shutil.copy2(source_path, cleanup_path)
         configured_data_path = configure_reading_data_path(str(cleanup_path))
+        seeded = reconcile_reading_sources_registry(configured_data_path)
     resolved_source_id = resolve_source_id(source_id=source_id, source_name=source_name)
     if source_name and not resolved_source_id:
         safe_print(f"Reading RSS sync aborted: no source matched name={source_name!r}")
@@ -321,7 +337,7 @@ def run_sync(source_id: str = "", source_name: str = "", data_path: str = "", dr
 
 def run_source_probe(source_id: str = "", source_name: str = "", data_path: str = "") -> int:
     configured_data_path = configure_reading_data_path(data_path)
-    seeded = dragon_app.ensure_reading_sources_registry_seeded(reading_data_path=configured_data_path or dragon_app.READING_DATA_PATH)
+    seeded = reconcile_reading_sources_registry(configured_data_path)
     safe_print(
         "Reading source registry | "
         f"seeded={int(bool(seeded.get('seeded')))} | "
@@ -372,6 +388,8 @@ def run_source_probe(source_id: str = "", source_name: str = "", data_path: str 
     safe_print(
         "Probe summary | "
         f"status={str(display_result.get('status', '') or 'unknown').strip().lower()} | "
+        f"request_profile={str(display_result.get('request_profile', '') or 'default').strip() or 'default'} | "
+        f"headers_profile={str(display_result.get('selected_headers_profile', '') or 'n/a').strip() or 'n/a'} | "
         f"fetched={int(display_result.get('count', 0) or 0)} | "
         f"imported={int(display_result.get('imported', 0) or 0)} | "
         f"status_code={int(display_result.get('status_code', 0) or 0)} | "

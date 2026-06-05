@@ -8482,14 +8482,23 @@ def reading_request_headers(purpose="feed", source=None, url=""):
     return headers
 
 
+def reading_request_headers_profile(purpose="feed", source=None):
+    purpose = str(purpose or "").strip().lower()
+    if purpose == "article":
+        return "article_browser"
+    return normalize_reading_request_profile((source or {}).get("request_profile", "default"))
+
+
 def reading_http_get(url, timeout_seconds=20, purpose="feed", retries=1, source=None):
     request_url = normalize_reading_url(url)
     timeout_seconds = max(int(timeout_seconds or 0), 1)
     retries = max(int(retries or 0), 0)
     request_profile = normalize_reading_request_profile((source or {}).get("request_profile", "default"))
+    selected_headers_profile = reading_request_headers_profile(purpose=purpose, source=source)
     diagnostics = {
         "request_url": request_url,
         "request_profile": request_profile,
+        "selected_headers_profile": selected_headers_profile,
         "final_url": "",
         "status_code": 0,
         "content_type": "",
@@ -8517,6 +8526,7 @@ def reading_http_get(url, timeout_seconds=20, purpose="feed", retries=1, source=
                 "content_type": str(getattr(response, "headers", {}).get("Content-Type", "") or "").strip(),
                 "elapsed_ms": elapsed_ms,
                 "request_profile": request_profile,
+                "selected_headers_profile": selected_headers_profile,
                 "error": "",
             })
             diagnostics["retry_count"] = attempt - 1
@@ -8536,6 +8546,7 @@ def reading_http_get(url, timeout_seconds=20, purpose="feed", retries=1, source=
                 "content_type": str(getattr(response, "headers", {}).get("Content-Type", "") or "").strip(),
                 "elapsed_ms": elapsed_ms,
                 "request_profile": request_profile,
+                "selected_headers_profile": selected_headers_profile,
                 "error": str(exc) or exc.__class__.__name__,
             })
             diagnostics["retry_count"] = attempt - 1
@@ -9271,6 +9282,8 @@ def normalize_reading_source(source, index=0):
                 "status_code": int(attempt.get("status_code", 0) or 0),
                 "content_type": str(attempt.get("content_type", "") or "").strip(),
                 "elapsed_ms": int(attempt.get("elapsed_ms", 0) or 0),
+                "request_profile": str(attempt.get("request_profile", "") or "").strip(),
+                "selected_headers_profile": str(attempt.get("selected_headers_profile", "") or "").strip(),
                 "error": str(attempt.get("error", "") or "").strip(),
             }
             if any(normalized_attempt.values()):

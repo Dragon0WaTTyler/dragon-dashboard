@@ -328,12 +328,18 @@ class ReadingRssService:
         started_at = self.monotonic()
         source = self.normalize_reading_source(source)
         attempts = []
+        source_name = str(source.get("name", "Unknown Source") or "Unknown Source").strip()
+        source_active = bool(source.get("active", True))
+        request_profile = str(source.get("request_profile", "default") or "default").strip() or "default"
 
         def _log_result(result):
             self.app_logger.info(
-                "reading_rss fetch elapsed_ms=%.1f source=%s ok=%s feed_kind=%s attempts=%s raw_count=%s normalized_count=%s status_code=%s source_fallback_used=%s",
+                "reading_rss fetch elapsed_ms=%.1f source=%s active=%s request_profile=%s headers_profile=%s ok=%s feed_kind=%s attempts=%s raw_count=%s normalized_count=%s status_code=%s source_fallback_used=%s tried_urls=%s error=%s",
                 (self.monotonic() - started_at) * 1000,
-                str(source.get("name", "Unknown Source") or "Unknown Source").strip(),
+                source_name,
+                source_active,
+                request_profile,
+                str(result.get("selected_headers_profile", "") or "").strip(),
                 bool(result.get("ok")),
                 str(result.get("feed_kind", "") or "").strip(),
                 len(attempts),
@@ -341,6 +347,14 @@ class ReadingRssService:
                 int(result.get("normalized_count", 0) or 0),
                 int(result.get("status_code", 0) or 0),
                 bool(result.get("source_fallback_used", False)),
+                " -> ".join(
+                    [
+                        str(attempt.get("feed_url", "") or "").strip()
+                        for attempt in attempts
+                        if str(attempt.get("feed_url", "") or "").strip()
+                    ]
+                ) or "n/a",
+                str(result.get("error", "") or "").strip() or "none",
             )
             return result
 
@@ -357,6 +371,9 @@ class ReadingRssService:
                 "successful_url": "",
                 "status_code": 0,
                 "content_type": "",
+                "active": source_active,
+                "request_profile": request_profile,
+                "selected_headers_profile": "",
                 "raw_count": 0,
                 "normalized_count": 0,
                 "items": [],
@@ -384,6 +401,8 @@ class ReadingRssService:
             request_diag["feed_url"] = candidate_url
             request_diag["source_url"] = feed_url
             request_diag["fallback_index"] = candidate_index
+            request_diag["active"] = source_active
+            request_diag["request_profile"] = request_profile
             attempts.append(request_diag)
             if response is None:
                 continue
@@ -421,6 +440,9 @@ class ReadingRssService:
                         "successful_url": candidate_url,
                         "status_code": status_code,
                         "content_type": content_type,
+                        "active": source_active,
+                        "request_profile": request_profile,
+                        "selected_headers_profile": str(request_diag.get("selected_headers_profile", "") or "").strip(),
                         "raw_count": len(getattr(parsed, "entries", []) or []),
                         "normalized_count": len(items),
                         "items": items,
@@ -485,6 +507,9 @@ class ReadingRssService:
                 "successful_url": candidate_url,
                 "status_code": status_code,
                 "content_type": content_type,
+                "active": source_active,
+                "request_profile": request_profile,
+                "selected_headers_profile": str(request_diag.get("selected_headers_profile", "") or "").strip(),
                 "raw_count": len(rss_items) + len(atom_items),
                 "normalized_count": len(items),
                 "items": items,
@@ -511,6 +536,9 @@ class ReadingRssService:
             "successful_url": "",
             "status_code": int(last_attempt.get("status_code", 0) or 0),
             "content_type": str(last_attempt.get("content_type", "") or ""),
+            "active": source_active,
+            "request_profile": request_profile,
+            "selected_headers_profile": str(last_attempt.get("selected_headers_profile", "") or "").strip(),
             "raw_count": 0,
             "normalized_count": 0,
             "items": [],
