@@ -39,6 +39,110 @@ class _DummySession:
 
 
 class ReadingSnapshotAccessTests(unittest.TestCase):
+    def _build_access(self, root, reading_data_path, payload_bytes, runtime, **overrides):
+        params = {
+            "app_logger": dragon_app.app.logger,
+            "reading_runtime": runtime,
+            "reading_data_path": reading_data_path,
+            "base_dir": root,
+            "temp_file_factory": tempfile.NamedTemporaryFile,
+            "path_class": Path,
+            "requests_module": dragon_app.requests,
+            "reading_http_session": _DummySession(payload_bytes),
+            "reading_snapshot_url": "https://example.com/reading_data.json",
+            "reading_snapshot_pull_enabled": True,
+            "validate_snapshot_payload": dragon_app._reading_snapshot_payload_is_valid,
+            "normalize_reading_data": dragon_app.normalize_reading_data,
+            "build_lightweight_snapshot": dragon_app.build_lightweight_articles_snapshot,
+            "load_reading_sources_registry": lambda: [],
+            "apply_reading_sources_registry_overrides": dragon_app.apply_reading_sources_registry_overrides,
+            "backup_reading_data_file": lambda reason="save": "",
+            "rotate_webhook_backup": lambda: "",
+            "clear_reading_data_cache": lambda: None,
+            "reading_data_cache_fingerprint": lambda: ("fingerprint", reading_data_path.stat().st_size) if reading_data_path.exists() else None,
+            "reading_format_mtime": lambda path: "mtime",
+            "monotonic": lambda: 0.0,
+        }
+        params.update(overrides)
+        return ReadingSnapshotAccess(**params)
+
+    def test_remote_pull_reconciles_final_sources_against_registry(self):
+        registry_payload = json.loads(Path("config/reading_sources.json").resolve().read_text(encoding="utf-8"))
+        blocked_names = {
+            "MAP News English",
+            "مجتمع – هوية بريس",
+            "كتاب الرأي – هوية بريس",
+            "ربورتاج | جريدة الصباح",
+            "حوار | جريدة الصباح",
+        }
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            reading_data_path = root / "reading_data.json"
+            local_sources = [dict(source) for source in registry_payload if isinstance(source, dict) and source.get("name") != "حوار | جريدة الصباح"]
+            remote_sources = [dict(source) for source in registry_payload if isinstance(source, dict) and source.get("name") != "حوار | جريدة الصباح"]
+            for source in remote_sources:
+                if source.get("name") in blocked_names:
+                    source["active"] = True
+                    source["needs_replacement"] = False
+                    source["last_repair_status"] = ""
+                    source["disabled_reason"] = ""
+            reading_data_path.write_text(json.dumps({"version": 1, "sources": local_sources, "entries": []}, ensure_ascii=False, indent=2), encoding="utf-8")
+            remote_payload = {
+                "version": 1,
+                "last_sync_at": "2026-06-05T00:00:00+00:00",
+                "sources": remote_sources,
+                "entries": [
+                    {
+                        "source": "Hespress - هسبريس جريدة إلكترونية مغربية",
+                        "source_id": "reading-src-c465bea4c3c4",
+                        "title": f"Article {index}",
+                        "url": f"https://example.com/article-{index}",
+                        "published_at": "2026-06-05T00:00:00+00:00",
+                        "added_at": "2026-06-05T00:00:00+00:00",
+                        "status": "unread",
+                        "topic": "News",
+                    }
+                    for index in range(1, 4)
+                ],
+            }
+            remote_bytes = json.dumps(remote_payload).encode("utf-8")
+            if len(remote_bytes) < 2048:
+                remote_payload["padding"] = "x" * (2048 - len(remote_bytes))
+                remote_bytes = json.dumps(remote_payload).encode("utf-8")
+            runtime = type(
+                "Runtime",
+                (),
+                {
+                    "github_refresh_lock": threading.Lock(),
+                    "data_cache_lock": threading.Lock(),
+                    "data_cache": {"fingerprint": None, "data": None},
+                },
+            )()
+            access = self._build_access(
+                root,
+                reading_data_path,
+                remote_bytes,
+                runtime,
+                load_reading_sources_registry=lambda: registry_payload,
+            )
+
+            result = access.pull_latest_articles_snapshot()
+
+            self.assertTrue(result["ok"])
+            saved_payload = json.loads(reading_data_path.read_text(encoding="utf-8"))
+            saved_sources = [source for source in (saved_payload.get("sources", []) or []) if isinstance(source, dict)]
+            self.assertEqual(len(saved_sources), 12)
+            self.assertEqual(sum(1 for source in saved_sources if source.get("active", True) and str(source.get("url", "") or "").strip()), 6)
+            self.assertEqual(sum(1 for source in saved_sources if bool(source.get("needs_replacement"))), 5)
+            repaired_source = next(source for source in saved_sources if source.get("name") == "حوار | جريدة الصباح")
+            self.assertFalse(bool(repaired_source.get("active", True)))
+            self.assertTrue(bool(repaired_source.get("needs_replacement")))
+            self.assertEqual(repaired_source.get("last_repair_status"), "blocked_in_github_actions")
+            self.assertEqual(
+                repaired_source.get("disabled_reason"),
+                "Confirmed HTTP 403 from GitHub Actions even with request profile",
+            )
+
     def test_pull_latest_articles_snapshot_keeps_inactive_needs_replacement_sources_after_remote_pull(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -125,27 +229,7 @@ class ReadingSnapshotAccessTests(unittest.TestCase):
                 },
             )()
 
-            access = ReadingSnapshotAccess(
-                app_logger=dragon_app.app.logger,
-                reading_runtime=runtime,
-                reading_data_path=reading_data_path,
-                base_dir=root,
-                temp_file_factory=tempfile.NamedTemporaryFile,
-                path_class=Path,
-                requests_module=dragon_app.requests,
-                reading_http_session=_DummySession(remote_bytes),
-                reading_snapshot_url="https://example.com/reading_data.json",
-                reading_snapshot_pull_enabled=True,
-                validate_snapshot_payload=dragon_app._reading_snapshot_payload_is_valid,
-                normalize_reading_data=dragon_app.normalize_reading_data,
-                build_lightweight_snapshot=dragon_app.build_lightweight_articles_snapshot,
-                backup_reading_data_file=lambda reason="save": "",
-                rotate_webhook_backup=lambda: "",
-                clear_reading_data_cache=lambda: None,
-                reading_data_cache_fingerprint=lambda: ("fingerprint", reading_data_path.stat().st_size),
-                reading_format_mtime=lambda path: "mtime",
-                monotonic=lambda: 0.0,
-            )
+            access = self._build_access(root, reading_data_path, remote_bytes, runtime)
 
             result = access.pull_latest_articles_snapshot()
 
@@ -243,26 +327,12 @@ class ReadingSnapshotAccessTests(unittest.TestCase):
                 },
             )()
 
-            access = ReadingSnapshotAccess(
-                app_logger=dragon_app.app.logger,
-                reading_runtime=runtime,
-                reading_data_path=reading_data_path,
-                base_dir=root,
-                temp_file_factory=tempfile.NamedTemporaryFile,
-                path_class=Path,
-                requests_module=dragon_app.requests,
-                reading_http_session=_DummySession(remote_bytes),
-                reading_snapshot_url="https://example.com/reading_data.json",
-                reading_snapshot_pull_enabled=True,
-                validate_snapshot_payload=dragon_app._reading_snapshot_payload_is_valid,
-                normalize_reading_data=dragon_app.normalize_reading_data,
-                build_lightweight_snapshot=dragon_app.build_lightweight_articles_snapshot,
+            access = self._build_access(
+                root,
+                reading_data_path,
+                remote_bytes,
+                runtime,
                 backup_reading_data_file=lambda reason="save": (shutil.copy2(reading_data_path, backup_path) or str(backup_path)),
-                rotate_webhook_backup=lambda: "",
-                clear_reading_data_cache=lambda: None,
-                reading_data_cache_fingerprint=lambda: ("fingerprint", reading_data_path.stat().st_size),
-                reading_format_mtime=lambda path: "mtime",
-                monotonic=lambda: 0.0,
             )
 
             result = access.pull_latest_articles_snapshot()
@@ -317,26 +387,12 @@ class ReadingSnapshotAccessTests(unittest.TestCase):
                 },
             )()
 
-            access = ReadingSnapshotAccess(
-                app_logger=dragon_app.app.logger,
-                reading_runtime=runtime,
-                reading_data_path=reading_data_path,
-                base_dir=root,
-                temp_file_factory=tempfile.NamedTemporaryFile,
-                path_class=Path,
-                requests_module=dragon_app.requests,
-                reading_http_session=_DummySession(tiny_payload),
-                reading_snapshot_url="https://example.com/reading_data.json",
-                reading_snapshot_pull_enabled=True,
-                validate_snapshot_payload=dragon_app._reading_snapshot_payload_is_valid,
-                normalize_reading_data=dragon_app.normalize_reading_data,
-                build_lightweight_snapshot=dragon_app.build_lightweight_articles_snapshot,
-                backup_reading_data_file=lambda reason="save": "",
-                rotate_webhook_backup=lambda: "",
-                clear_reading_data_cache=lambda: None,
+            access = self._build_access(
+                root,
+                reading_data_path,
+                tiny_payload,
+                runtime,
                 reading_data_cache_fingerprint=lambda: None,
-                reading_format_mtime=lambda path: "mtime",
-                monotonic=lambda: 0.0,
             )
 
             with self.assertRaises(RuntimeError):

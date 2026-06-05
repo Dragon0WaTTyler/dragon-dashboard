@@ -74,6 +74,10 @@ class ReadingFullArticleCacheTests(unittest.TestCase):
             patches = self._patched_runtime(reading_data_path, cache_dir)
             with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patch.object(
                 dragon_app,
+                "DRAGON_ALLOW_LIVE_ARTICLE_EXTRACTION",
+                True,
+            ), patch.object(
+                dragon_app,
                 "extract_reading_article_page",
                 return_value=extraction,
             ) as extractor:
@@ -125,6 +129,10 @@ class ReadingFullArticleCacheTests(unittest.TestCase):
             patches = self._patched_runtime(reading_data_path, cache_dir)
             with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patch.object(
                 dragon_app,
+                "DRAGON_ALLOW_LIVE_ARTICLE_EXTRACTION",
+                True,
+            ), patch.object(
+                dragon_app,
                 "extract_reading_article_page",
                 return_value=extraction,
             ) as extractor:
@@ -136,6 +144,72 @@ class ReadingFullArticleCacheTests(unittest.TestCase):
             self.assertEqual(extractor.call_count, 1)
             self.assertIn("full_loaded=", second.headers.get("Location", ""))
 
+    def test_disabled_full_article_load_does_not_fetch_network_and_shows_safe_message(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            reading_data_path = root / "reading_data.json"
+            cache_dir = root / "fulltext-cache"
+            reading_data_path.write_text(json.dumps(self._payload(), ensure_ascii=False, indent=2), encoding="utf-8")
+
+            patches = self._patched_runtime(reading_data_path, cache_dir)
+            with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patch.object(
+                dragon_app,
+                "DRAGON_ALLOW_LIVE_ARTICLE_EXTRACTION",
+                False,
+            ), patch.object(
+                dragon_app,
+                "extract_reading_article_page",
+                side_effect=AssertionError("Extractor should not run when full article loading is disabled"),
+            ):
+                response = self.client.post("/reading/article/reading-entry-1/load-full", data={"next": "/reading/article/reading-entry-1"})
+                article_response = self.client.get(response.headers.get("Location", ""))
+
+            self.assertEqual(response.status_code, 302)
+            html = article_response.get_data(as_text=True)
+            self.assertIn("Full article loading is not available on this host. Open original source.", html)
+            self.assertNotIn("ProxyError", html)
+            self.assertNotIn("Tunnel connection failed", html)
+
+    def test_cached_full_article_still_renders_when_live_extraction_is_disabled(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            reading_data_path = root / "reading_data.json"
+            cache_dir = root / "fulltext-cache"
+            reading_data_path.write_text(json.dumps(self._payload(), ensure_ascii=False, indent=2), encoding="utf-8")
+            extraction = {
+                "status": "ok",
+                "content_html": "<p>Cached full body.</p>",
+                "content_text": "Cached full body.",
+                "excerpt": "Cached full body.",
+                "error": "",
+            }
+
+            patches = self._patched_runtime(reading_data_path, cache_dir)
+            with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patch.object(
+                dragon_app,
+                "DRAGON_ALLOW_LIVE_ARTICLE_EXTRACTION",
+                True,
+            ), patch.object(
+                dragon_app,
+                "extract_reading_article_page",
+                return_value=extraction,
+            ):
+                self.client.post("/reading/article/reading-entry-1/load-full", data={"next": "/reading/article/reading-entry-1"})
+
+            with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patch.object(
+                dragon_app,
+                "DRAGON_ALLOW_LIVE_ARTICLE_EXTRACTION",
+                False,
+            ), patch.object(
+                dragon_app,
+                "extract_reading_article_page",
+                side_effect=AssertionError("Extractor should not run when cached full article exists"),
+            ):
+                article_response = self.client.get("/reading/article/reading-entry-1")
+
+            self.assertEqual(article_response.status_code, 200)
+            self.assertIn("Cached full body.", article_response.get_data(as_text=True))
+
     def test_failed_or_unsafe_full_article_load_returns_safe_error(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -145,6 +219,10 @@ class ReadingFullArticleCacheTests(unittest.TestCase):
 
             patches = self._patched_runtime(reading_data_path, cache_dir)
             with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patch.object(
+                dragon_app,
+                "DRAGON_ALLOW_LIVE_ARTICLE_EXTRACTION",
+                True,
+            ), patch.object(
                 dragon_app,
                 "extract_reading_article_page",
                 side_effect=AssertionError("Extractor should not run for unsafe URLs"),
@@ -165,6 +243,10 @@ class ReadingFullArticleCacheTests(unittest.TestCase):
 
             patches = self._patched_runtime(reading_data_path, cache_dir)
             with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patch.object(
+                dragon_app,
+                "DRAGON_ALLOW_LIVE_ARTICLE_EXTRACTION",
+                True,
+            ), patch.object(
                 dragon_app,
                 "extract_reading_article_page",
                 side_effect=AssertionError("Extraction should not run during GET requests"),

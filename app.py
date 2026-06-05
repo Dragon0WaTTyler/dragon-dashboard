@@ -958,13 +958,19 @@ def reading_article_fulltext_fetch(entry, force_refresh=False):
     if not article_urls:
         return {"ok": False, "error": "This article does not have a valid source URL.", "cache_record": None, "cache_hit": False}
     article_url = article_urls[0]
+    cached = reading_article_fulltext_load(article_url)
+    if isinstance(cached, dict) and cached.get("content_text") and not force_refresh:
+        return {"ok": True, "error": "", "cache_record": cached, "cache_hit": True}
+    if not reading_article_live_extraction_allowed(force_refresh=force_refresh):
+        return {
+            "ok": bool(cached and cached.get("content_text")),
+            "error": "" if cached and cached.get("content_text") else "Full article loading is not available on this host. Open original source.",
+            "cache_record": cached,
+            "cache_hit": bool(cached and cached.get("content_text")),
+        }
     safe_url, safe_error = reading_article_url_is_safe_for_fetch(article_url)
     if not safe_url:
         return {"ok": False, "error": safe_error, "cache_record": None, "cache_hit": False}
-    if not force_refresh:
-        cached = reading_article_fulltext_load(article_url)
-        if isinstance(cached, dict) and cached.get("content_text"):
-            return {"ok": True, "error": "", "cache_record": cached, "cache_hit": True}
     extraction = extract_reading_article_page(article_url, timeout_seconds=READING_FULLTEXT_CACHE_TIMEOUT_SECONDS)
     record = reading_article_fulltext_prepare_record(entry, extraction, article_url)
     reading_article_fulltext_save(article_url, record)
@@ -9446,6 +9452,7 @@ def normalize_reading_source(source, index=0):
     repair_reason = str(item.get("repair_reason", "") or "").strip()
     repaired_at = str(item.get("repaired_at", "") or "").strip()
     replacement_of = normalize_reading_url(item.get("replacement_of", "") or "")
+    verified_url = normalize_reading_url(item.get("verified_url", "") or "")
     last_repair_status = str(item.get("last_repair_status", "") or "").strip()
     needs_replacement = normalize_reading_bool(item.get("needs_replacement", False), default=False)
     last_sync_status = str(item.get("last_sync_status", "") or "").strip()
@@ -9504,6 +9511,7 @@ def normalize_reading_source(source, index=0):
         "repair_reason": repair_reason,
         "repaired_at": repaired_at,
         "replacement_of": replacement_of,
+        "verified_url": verified_url,
         "last_repair_status": last_repair_status,
         "needs_replacement": needs_replacement,
         "last_synced_at": str(item.get("last_synced_at", "") or "").strip(),
@@ -9589,6 +9597,7 @@ def apply_reading_sources_registry_overrides(existing_sources, registry_sources)
             "repair_reason",
             "repaired_at",
             "replacement_of",
+            "verified_url",
             "last_repair_status",
             "needs_replacement",
         ):
@@ -9604,6 +9613,40 @@ def apply_reading_sources_registry_overrides(existing_sources, registry_sources)
         if normalized_merged != normalized_source:
             changed = True
         merged_sources.append(normalized_merged)
+
+    merged_source_ids = {
+        str(source.get("id", "") or "").strip()
+        for source in merged_sources
+        if isinstance(source, dict) and str(source.get("id", "") or "").strip()
+    }
+    merged_source_urls = {
+        normalize_reading_url(source.get("url", "") or source.get("feed_url", "") or "")
+        for source in merged_sources
+        if isinstance(source, dict) and normalize_reading_url(source.get("url", "") or source.get("feed_url", "") or "")
+    }
+    merged_source_names = {
+        str(source.get("name", "") or "").strip().lower()
+        for source in merged_sources
+        if isinstance(source, dict) and str(source.get("name", "") or "").strip()
+    }
+    for index, registry_source in enumerate(registry_sources, start=len(merged_sources)):
+        source_id = str(registry_source.get("id", "") or "").strip()
+        source_url = normalize_reading_url(registry_source.get("url", "") or registry_source.get("feed_url", "") or "")
+        source_name = str(registry_source.get("name", "") or "").strip().lower()
+        if (
+            (source_id and source_id in merged_source_ids)
+            or (source_url and source_url in merged_source_urls)
+            or (source_name and source_name in merged_source_names)
+        ):
+            continue
+        merged_sources.append(normalize_reading_source(registry_source, index))
+        if source_id:
+            merged_source_ids.add(source_id)
+        if source_url:
+            merged_source_urls.add(source_url)
+        if source_name:
+            merged_source_names.add(source_name)
+        changed = True
     return merged_sources, changed
 
 
@@ -28563,6 +28606,8 @@ def _get_reading_snapshot_access():
             validate_snapshot_payload=_reading_snapshot_payload_is_valid,
             normalize_reading_data=_get_reading_cache_access().normalize_reading_data,
             build_lightweight_snapshot=build_lightweight_articles_snapshot,
+            load_reading_sources_registry=load_reading_sources_registry,
+            apply_reading_sources_registry_overrides=apply_reading_sources_registry_overrides,
             backup_reading_data_file=backup_reading_data_file,
             rotate_webhook_backup=_rotate_reading_webhook_backup,
             clear_reading_data_cache=_get_reading_cache_access().clear_reading_data_cache,

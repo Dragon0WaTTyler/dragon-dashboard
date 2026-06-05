@@ -18,6 +18,8 @@ class ReadingSnapshotAccess:
         validate_snapshot_payload,
         normalize_reading_data,
         build_lightweight_snapshot,
+        load_reading_sources_registry,
+        apply_reading_sources_registry_overrides,
         backup_reading_data_file,
         rotate_webhook_backup,
         clear_reading_data_cache,
@@ -38,6 +40,8 @@ class ReadingSnapshotAccess:
         self.validate_snapshot_payload = validate_snapshot_payload
         self.normalize_reading_data = normalize_reading_data
         self.build_lightweight_snapshot = build_lightweight_snapshot
+        self.load_reading_sources_registry = load_reading_sources_registry
+        self.apply_reading_sources_registry_overrides = apply_reading_sources_registry_overrides
         self.backup_reading_data_file = backup_reading_data_file
         self.rotate_webhook_backup = rotate_webhook_backup
         self.clear_reading_data_cache = clear_reading_data_cache
@@ -220,6 +224,9 @@ class ReadingSnapshotAccess:
                         remote_sources = list(normalized_payload.get("sources", []) or [])
                         remote_source_count = len(remote_sources)
                         merged_sources, remote_source_match_map = self._merge_sources_keep_local_first(local_sources, remote_sources)
+                        registry_sources = self.load_reading_sources_registry() if callable(self.load_reading_sources_registry) else []
+                        if registry_sources and callable(self.apply_reading_sources_registry_overrides):
+                            merged_sources, _registry_changed = self.apply_reading_sources_registry_overrides(merged_sources, registry_sources)
                         final_payload = dict(normalized_payload)
                         final_payload["sources"] = merged_sources
                         final_payload["entries"] = self._remap_remote_entries_to_merged_sources(
