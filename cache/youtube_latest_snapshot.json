@@ -1,7 +1,7 @@
 {
   "version": 2,
-  "generated_at": "2026-06-05T02:41:39+00:00",
-  "synced_at": "2026-06-05T02:41:39+00:00",
+  "generated_at": "2026-06-05T04:54:44+00:00",
+  "synced_at": "2026-06-05T04:54:44+00:00",
   "group_video_limit": 200,
   "all_feed_video_limit": 200,
   "warnings": [],
@@ -16,22 +16,22 @@
       "channel_count": 5,
       "latest_video_count": 200,
       "latest_video": {
-        "title": "14—السؤال التفاعلي — حدثنا عن تجربتك مع القنوات المرئية أو المقروءة التي تقدم ملخصا كاملا عن الكت...",
-        "entry_id": "yt-VVVwbzJNdkZQbldBT1ZlRUlmM1dsZkdBLkVUNzVBb202QnFR",
-        "video_id": "ET75Aom6BqQ",
-        "watch_key": "ET75Aom6BqQ",
-        "state_key": "ET75Aom6BqQ",
+        "title": "16—أسئلة المشاهدين — لماذا لم يهتم بكتاب أضواء البيان طبعة عالم الفوائد من حيث النص وتخريج الاحاد...",
+        "entry_id": "yt-VVVwbzJNdkZQbldBT1ZlRUlmM1dsZkdBLlN0OGk1WVdnNTJr",
+        "video_id": "St8i5YWg52k",
+        "watch_key": "St8i5YWg52k",
+        "state_key": "St8i5YWg52k",
         "channel_id": "UCpo2MvFPnWAOVeEIf3WlfGA",
         "channel_name": "برنامج الخزانة",
         "channel_title": "برنامج الخزانة",
-        "published_at": "2026-06-05T02:33:07Z",
-        "published_display": "Jun 05, 2026 02:33",
-        "thumbnail": "https://i.ytimg.com/vi/ET75Aom6BqQ/maxresdefault.jpg",
-        "thumbnail_url": "https://i.ytimg.com/vi/ET75Aom6BqQ/maxresdefault.jpg",
-        "image_url": "https://i.ytimg.com/vi/ET75Aom6BqQ/maxresdefault.jpg",
-        "thumb": "https://i.ytimg.com/vi/ET75Aom6BqQ/maxresdefault.jpg",
-        "detail_url": "/video/yt-VVVwbzJNdkZQbldBT1ZlRUlmM1dsZkdBLkVUNzVBb202QnFR",
-        "url": "https://www.youtube.com/watch?v=ET75Aom6BqQ&list=UUpo2MvFPnWAOVeEIf3WlfGA",
+        "published_at": "2026-06-05T03:00:18Z",
+        "published_display": "Jun 05, 2026 03:00",
+        "thumbnail": "https://i.ytimg.com/vi/St8i5YWg52k/maxresdefault.jpg",
+        "thumbnail_url": "https://i.ytimg.com/vi/St8i5YWg52k/maxresdefault.jpg",
+        "image_url": "https://i.ytimg.com/vi/St8i5YWg52k/maxresdefault.jpg",
+        "thumb": "https://i.ytimg.com/vi/St8i5YWg52k/maxresdefault.jpg",
+        "detail_url": "/video/yt-VVVwbzJNdkZQbldBT1ZlRUlmM1dsZkdBLlN0OGk1WVdnNTJr",
+        "url": "https://www.youtube.com/watch?v=St8i5YWg52k&list=UUpo2MvFPnWAOVeEIf3WlfGA",
         "group_name": "archive",
         "group_key": "archive",
         "group_names": [
@@ -101,22 +101,22 @@
           ],
           "group_key": "archive",
           "latest_video": {
-            "title": "14—السؤال التفاعلي — حدثنا عن تجربتك مع القنوات المرئية أو المقروءة التي تقدم ملخصا كاملا عن الكت...",
-            "entry_id": "yt-VVVwbzJNdkZQbldBT1ZlRUlmM1dsZkdBLkVUNzVBb202QnFR",
-            "video_id": "ET75Aom6BqQ",
-            "watch_key": "ET75Aom6BqQ",
-            "state_key": "ET75Aom6BqQ",
+            "title": "16—أسئلة المشاهدين — لماذا لم يهتم بكتاب أضواء البيان طبعة عالم الفوائد من حيث النص وتخريج الاحاد...",
+            "entry_id": "yt-VVVwbzJNdkZQbldBT1ZlRUlmM1dsZkdBLlN0OGk1WVdnNTJr",
+            "video_id": "St8i5YWg52k",
+            "watch_key": "St8i5YWg52k",
+            "state_key": "St8i5YWg52k",
             "channel_id": "UCpo2MvFPnWAOVeEIf3WlfGA",
             "channel_name": "برنامج الخزانة",
             "channel_title": "برنامج الخزانة",
-            "published_at": "2026-06-05T02:33:07Z",
-            "published_display": "Jun 05, 2026 02:33",
-            "thumbnail": "https://i.ytimg.com/vi/ET75Aom6BqQ/maxresdefault.jpg",
-            "thumbnail_url": "https://i.ytimg.com/vi/ET75Aom6BqQ/maxresdefault.jpg",
-            "image_url": "https://i.ytimg.com/vi/ET75Aom6BqQ/maxresdefault.jpg",
-            "thumb": "https://i.ytimg.com/vi/ET75Aom6BqQ/maxresdefault.jpg",
-            "detail_url": "/video/yt-VVVwbzJNdkZQbldBT1ZlRUlmM1dsZkdBLkVUNzVBb202QnFR",
-            "url": "https://www.youtube.com/watch?v=ET75Aom6BqQ&list=UUpo2MvFPnWAOVeEIf3WlfGA",
+            "published_at": "2026-06-05T03:00:18Z",
+            "published_display": "Jun 05, 2026 03:00",
+            "thumbnail": "https://i.ytimg.com/vi/St8i5YWg52k/maxresdefault.jpg",
+            "thumbnail_url": "https://i.ytimg.com/vi/St8i5YWg52k/maxresdefault.jpg",
+            "image_url": "https://i.ytimg.com/vi/St8i5YWg52k/maxresdefault.jpg",
+            "thumb": "https://i.ytimg.com/vi/St8i5YWg52k/maxresdefault.jpg",
+            "detail_url": "/video/yt-VVVwbzJNdkZQbldBT1ZlRUlmM1dsZkdBLlN0OGk1WVdnNTJr",
+            "url": "https://www.youtube.com/watch?v=St8i5YWg52k&list=UUpo2MvFPnWAOVeEIf3WlfGA",
             "group_name": "archive",
             "group_key": "archive",
             "group_names": [
@@ -129,11 +129,11 @@
               "cached-latest"
             ]
           },
-          "latest_video_id": "ET75Aom6BqQ",
-          "published_at": "2026-06-05T02:33:07Z",
-          "published_display": "Jun 05, 2026 02:33",
-          "thumbnail": "https://i.ytimg.com/vi/ET75Aom6BqQ/maxresdefault.jpg",
-          "url": "https://www.youtube.com/watch?v=ET75Aom6BqQ&list=UUpo2MvFPnWAOVeEIf3WlfGA",
+          "latest_video_id": "St8i5YWg52k",
+          "published_at": "2026-06-05T03:00:18Z",
+          "published_display": "Jun 05, 2026 03:00",
+          "thumbnail": "https://i.ytimg.com/vi/St8i5YWg52k/maxresdefault.jpg",
+          "url": "https://www.youtube.com/watch?v=St8i5YWg52k&list=UUpo2MvFPnWAOVeEIf3WlfGA",
           "reason_tags": [
             "source-diverse",
             "cached-empty",
@@ -287,6 +287,470 @@
         }
       ],
       "videos": [
+        {
+          "title": "16—أسئلة المشاهدين — لماذا لم يهتم بكتاب أضواء البيان طبعة عالم الفوائد من حيث النص وتخريج الاحاد...",
+          "entry_id": "yt-VVVwbzJNdkZQbldBT1ZlRUlmM1dsZkdBLlN0OGk1WVdnNTJr",
+          "video_id": "St8i5YWg52k",
+          "watch_key": "St8i5YWg52k",
+          "state_key": "St8i5YWg52k",
+          "channel_id": "UCpo2MvFPnWAOVeEIf3WlfGA",
+          "channel_name": "برنامج الخزانة",
+          "channel_title": "برنامج الخزانة",
+          "published_at": "2026-06-05T03:00:18Z",
+          "published_display": "Jun 05, 2026 03:00",
+          "thumbnail": "https://i.ytimg.com/vi/St8i5YWg52k/maxresdefault.jpg",
+          "thumbnail_url": "https://i.ytimg.com/vi/St8i5YWg52k/maxresdefault.jpg",
+          "image_url": "https://i.ytimg.com/vi/St8i5YWg52k/maxresdefault.jpg",
+          "thumb": "https://i.ytimg.com/vi/St8i5YWg52k/maxresdefault.jpg",
+          "detail_url": "/video/yt-VVVwbzJNdkZQbldBT1ZlRUlmM1dsZkdBLlN0OGk1WVdnNTJr",
+          "url": "https://www.youtube.com/watch?v=St8i5YWg52k&list=UUpo2MvFPnWAOVeEIf3WlfGA",
+          "group_name": "archive",
+          "group_key": "archive",
+          "group_names": [
+            "archive"
+          ],
+          "group_keys": [
+            "archive"
+          ],
+          "reason_tags": [
+            "cached-latest"
+          ]
+        },
+        {
+          "title": "15—مداخلة الحلقة — أ. د إلياس دردور — رئيس قسم الشريعة والقانون بجامعة الزيتونة بتونس—Unknown",
+          "entry_id": "yt-VVVwbzJNdkZQbldBT1ZlRUlmM1dsZkdBLlJBSWpnNmFGandF",
+          "video_id": "RAIjg6aFjwE",
+          "watch_key": "RAIjg6aFjwE",
+          "state_key": "RAIjg6aFjwE",
+          "channel_id": "UCpo2MvFPnWAOVeEIf3WlfGA",
+          "channel_name": "برنامج الخزانة",
+          "channel_title": "برنامج الخزانة",
+          "published_at": "2026-06-05T03:00:17Z",
+          "published_display": "Jun 05, 2026 03:00",
+          "thumbnail": "https://i.ytimg.com/vi/RAIjg6aFjwE/maxresdefault.jpg",
+          "thumbnail_url": "https://i.ytimg.com/vi/RAIjg6aFjwE/maxresdefault.jpg",
+          "image_url": "https://i.ytimg.com/vi/RAIjg6aFjwE/maxresdefault.jpg",
+          "thumb": "https://i.ytimg.com/vi/RAIjg6aFjwE/maxresdefault.jpg",
+          "detail_url": "/video/yt-VVVwbzJNdkZQbldBT1ZlRUlmM1dsZkdBLlJBSWpnNmFGandF",
+          "url": "https://www.youtube.com/watch?v=RAIjg6aFjwE&list=UUpo2MvFPnWAOVeEIf3WlfGA",
+          "group_name": "archive",
+          "group_key": "archive",
+          "group_names": [
+            "archive"
+          ],
+          "group_keys": [
+            "archive"
+          ],
+          "reason_tags": [
+            "cached-latest"
+          ]
+        },
+        {
+          "title": "14—دروس في شرح الآجرومية—حسن السالمي",
+          "entry_id": "yt-VVVwbzJNdkZQbldBT1ZlRUlmM1dsZkdBLnZVYnQ2S3JIczdr",
+          "video_id": "vUbt6KrHs7k",
+          "watch_key": "vUbt6KrHs7k",
+          "state_key": "vUbt6KrHs7k",
+          "channel_id": "UCpo2MvFPnWAOVeEIf3WlfGA",
+          "channel_name": "برنامج الخزانة",
+          "channel_title": "برنامج الخزانة",
+          "published_at": "2026-06-05T02:56:05Z",
+          "published_display": "Jun 05, 2026 02:56",
+          "thumbnail": "https://i.ytimg.com/vi/vUbt6KrHs7k/maxresdefault.jpg",
+          "thumbnail_url": "https://i.ytimg.com/vi/vUbt6KrHs7k/maxresdefault.jpg",
+          "image_url": "https://i.ytimg.com/vi/vUbt6KrHs7k/maxresdefault.jpg",
+          "thumb": "https://i.ytimg.com/vi/vUbt6KrHs7k/maxresdefault.jpg",
+          "detail_url": "/video/yt-VVVwbzJNdkZQbldBT1ZlRUlmM1dsZkdBLnZVYnQ2S3JIczdr",
+          "url": "https://www.youtube.com/watch?v=vUbt6KrHs7k&list=UUpo2MvFPnWAOVeEIf3WlfGA",
+          "group_name": "archive",
+          "group_key": "archive",
+          "group_names": [
+            "archive"
+          ],
+          "group_keys": [
+            "archive"
+          ],
+          "reason_tags": [
+            "cached-latest"
+          ]
+        },
+        {
+          "title": "13—النسوية — الدعاوي والتوجهات—عبدالمجيد الفيلي",
+          "entry_id": "yt-VVVwbzJNdkZQbldBT1ZlRUlmM1dsZkdBLktVWmt3OFdZVkdv",
+          "video_id": "KUZkw8WYVGo",
+          "watch_key": "KUZkw8WYVGo",
+          "state_key": "KUZkw8WYVGo",
+          "channel_id": "UCpo2MvFPnWAOVeEIf3WlfGA",
+          "channel_name": "برنامج الخزانة",
+          "channel_title": "برنامج الخزانة",
+          "published_at": "2026-06-05T02:55:09Z",
+          "published_display": "Jun 05, 2026 02:55",
+          "thumbnail": "https://i.ytimg.com/vi/KUZkw8WYVGo/maxresdefault.jpg",
+          "thumbnail_url": "https://i.ytimg.com/vi/KUZkw8WYVGo/maxresdefault.jpg",
+          "image_url": "https://i.ytimg.com/vi/KUZkw8WYVGo/maxresdefault.jpg",
+          "thumb": "https://i.ytimg.com/vi/KUZkw8WYVGo/maxresdefault.jpg",
+          "detail_url": "/video/yt-VVVwbzJNdkZQbldBT1ZlRUlmM1dsZkdBLktVWmt3OFdZVkdv",
+          "url": "https://www.youtube.com/watch?v=KUZkw8WYVGo&list=UUpo2MvFPnWAOVeEIf3WlfGA",
+          "group_name": "archive",
+          "group_key": "archive",
+          "group_names": [
+            "archive"
+          ],
+          "group_keys": [
+            "archive"
+          ],
+          "reason_tags": [
+            "cached-latest"
+          ]
+        },
+        {
+          "title": "12—قصة آدم بين تفسيري الزمخشري والقرطبي—رضا الجوادي",
+          "entry_id": "yt-VVVwbzJNdkZQbldBT1ZlRUlmM1dsZkdBLmdBX2lieUppbzFR",
+          "video_id": "gA_ibyJio1Q",
+          "watch_key": "gA_ibyJio1Q",
+          "state_key": "gA_ibyJio1Q",
+          "channel_id": "UCpo2MvFPnWAOVeEIf3WlfGA",
+          "channel_name": "برنامج الخزانة",
+          "channel_title": "برنامج الخزانة",
+          "published_at": "2026-06-05T02:53:51Z",
+          "published_display": "Jun 05, 2026 02:53",
+          "thumbnail": "https://i.ytimg.com/vi/gA_ibyJio1Q/maxresdefault.jpg",
+          "thumbnail_url": "https://i.ytimg.com/vi/gA_ibyJio1Q/maxresdefault.jpg",
+          "image_url": "https://i.ytimg.com/vi/gA_ibyJio1Q/maxresdefault.jpg",
+          "thumb": "https://i.ytimg.com/vi/gA_ibyJio1Q/maxresdefault.jpg",
+          "detail_url": "/video/yt-VVVwbzJNdkZQbldBT1ZlRUlmM1dsZkdBLmdBX2lieUppbzFR",
+          "url": "https://www.youtube.com/watch?v=gA_ibyJio1Q&list=UUpo2MvFPnWAOVeEIf3WlfGA",
+          "group_name": "archive",
+          "group_key": "archive",
+          "group_names": [
+            "archive"
+          ],
+          "group_keys": [
+            "archive"
+          ],
+          "reason_tags": [
+            "cached-latest"
+          ]
+        },
+        {
+          "title": "11—منهج الاتباع بين المدرسة الظاهرية والمدرسة المقاصدية—محمد المقداد عرباوي",
+          "entry_id": "yt-VVVwbzJNdkZQbldBT1ZlRUlmM1dsZkdBLjQyNGJGYnhwVlg0",
+          "video_id": "424bFbxpVX4",
+          "watch_key": "424bFbxpVX4",
+          "state_key": "424bFbxpVX4",
+          "channel_id": "UCpo2MvFPnWAOVeEIf3WlfGA",
+          "channel_name": "برنامج الخزانة",
+          "channel_title": "برنامج الخزانة",
+          "published_at": "2026-06-05T02:52:45Z",
+          "published_display": "Jun 05, 2026 02:52",
+          "thumbnail": "https://i.ytimg.com/vi/424bFbxpVX4/maxresdefault.jpg",
+          "thumbnail_url": "https://i.ytimg.com/vi/424bFbxpVX4/maxresdefault.jpg",
+          "image_url": "https://i.ytimg.com/vi/424bFbxpVX4/maxresdefault.jpg",
+          "thumb": "https://i.ytimg.com/vi/424bFbxpVX4/maxresdefault.jpg",
+          "detail_url": "/video/yt-VVVwbzJNdkZQbldBT1ZlRUlmM1dsZkdBLjQyNGJGYnhwVlg0",
+          "url": "https://www.youtube.com/watch?v=424bFbxpVX4&list=UUpo2MvFPnWAOVeEIf3WlfGA",
+          "group_name": "archive",
+          "group_key": "archive",
+          "group_names": [
+            "archive"
+          ],
+          "group_keys": [
+            "archive"
+          ],
+          "reason_tags": [
+            "cached-latest"
+          ]
+        },
+        {
+          "title": "10—مفهوم الإنسان عند طه عبدالرحمن—سوسن العتيبي",
+          "entry_id": "yt-VVVwbzJNdkZQbldBT1ZlRUlmM1dsZkdBLjVybS0tcG1HX2pr",
+          "video_id": "5rm--pmG_jk",
+          "watch_key": "5rm--pmG_jk",
+          "state_key": "5rm--pmG_jk",
+          "channel_id": "UCpo2MvFPnWAOVeEIf3WlfGA",
+          "channel_name": "برنامج الخزانة",
+          "channel_title": "برنامج الخزانة",
+          "published_at": "2026-06-05T02:51:51Z",
+          "published_display": "Jun 05, 2026 02:51",
+          "thumbnail": "https://i.ytimg.com/vi/5rm--pmG_jk/maxresdefault.jpg",
+          "thumbnail_url": "https://i.ytimg.com/vi/5rm--pmG_jk/maxresdefault.jpg",
+          "image_url": "https://i.ytimg.com/vi/5rm--pmG_jk/maxresdefault.jpg",
+          "thumb": "https://i.ytimg.com/vi/5rm--pmG_jk/maxresdefault.jpg",
+          "detail_url": "/video/yt-VVVwbzJNdkZQbldBT1ZlRUlmM1dsZkdBLjVybS0tcG1HX2pr",
+          "url": "https://www.youtube.com/watch?v=5rm--pmG_jk&list=UUpo2MvFPnWAOVeEIf3WlfGA",
+          "group_name": "archive",
+          "group_key": "archive",
+          "group_names": [
+            "archive"
+          ],
+          "group_keys": [
+            "archive"
+          ],
+          "reason_tags": [
+            "cached-latest"
+          ]
+        },
+        {
+          "title": "9—مواقف نضالية للشيخ الإمام محمد الفاضل ابن عاشور—محمد بوزغيبة",
+          "entry_id": "yt-VVVwbzJNdkZQbldBT1ZlRUlmM1dsZkdBLmh0cHZTcjRuTEhn",
+          "video_id": "htpvSr4nLHg",
+          "watch_key": "htpvSr4nLHg",
+          "state_key": "htpvSr4nLHg",
+          "channel_id": "UCpo2MvFPnWAOVeEIf3WlfGA",
+          "channel_name": "برنامج الخزانة",
+          "channel_title": "برنامج الخزانة",
+          "published_at": "2026-06-05T02:49:06Z",
+          "published_display": "Jun 05, 2026 02:49",
+          "thumbnail": "https://i.ytimg.com/vi/htpvSr4nLHg/maxresdefault.jpg",
+          "thumbnail_url": "https://i.ytimg.com/vi/htpvSr4nLHg/maxresdefault.jpg",
+          "image_url": "https://i.ytimg.com/vi/htpvSr4nLHg/maxresdefault.jpg",
+          "thumb": "https://i.ytimg.com/vi/htpvSr4nLHg/maxresdefault.jpg",
+          "detail_url": "/video/yt-VVVwbzJNdkZQbldBT1ZlRUlmM1dsZkdBLmh0cHZTcjRuTEhn",
+          "url": "https://www.youtube.com/watch?v=htpvSr4nLHg&list=UUpo2MvFPnWAOVeEIf3WlfGA",
+          "group_name": "archive",
+          "group_key": "archive",
+          "group_names": [
+            "archive"
+          ],
+          "group_keys": [
+            "archive"
+          ],
+          "reason_tags": [
+            "cached-latest"
+          ]
+        },
+        {
+          "title": "8—الشركة والشركات الحديثة — دراسة مقارنة بين المذاهب الفقهية والقانونية الوضعية—إلياس دردور",
+          "entry_id": "yt-VVVwbzJNdkZQbldBT1ZlRUlmM1dsZkdBLkhRcWw2SnlkdUhZ",
+          "video_id": "HQql6JyduHY",
+          "watch_key": "HQql6JyduHY",
+          "state_key": "HQql6JyduHY",
+          "channel_id": "UCpo2MvFPnWAOVeEIf3WlfGA",
+          "channel_name": "برنامج الخزانة",
+          "channel_title": "برنامج الخزانة",
+          "published_at": "2026-06-05T02:48:44Z",
+          "published_display": "Jun 05, 2026 02:48",
+          "thumbnail": "https://i.ytimg.com/vi/HQql6JyduHY/maxresdefault.jpg",
+          "thumbnail_url": "https://i.ytimg.com/vi/HQql6JyduHY/maxresdefault.jpg",
+          "image_url": "https://i.ytimg.com/vi/HQql6JyduHY/maxresdefault.jpg",
+          "thumb": "https://i.ytimg.com/vi/HQql6JyduHY/maxresdefault.jpg",
+          "detail_url": "/video/yt-VVVwbzJNdkZQbldBT1ZlRUlmM1dsZkdBLkhRcWw2SnlkdUhZ",
+          "url": "https://www.youtube.com/watch?v=HQql6JyduHY&list=UUpo2MvFPnWAOVeEIf3WlfGA",
+          "group_name": "archive",
+          "group_key": "archive",
+          "group_names": [
+            "archive"
+          ],
+          "group_keys": [
+            "archive"
+          ],
+          "reason_tags": [
+            "cached-latest"
+          ]
+        },
+        {
+          "title": "7—تطبيقات القواعد الفقهية على المعاملات المالية المعاصرة—إلياس دردور",
+          "entry_id": "yt-VVVwbzJNdkZQbldBT1ZlRUlmM1dsZkdBLlBlV29kb3ZMaVAw",
+          "video_id": "PeWodovLiP0",
+          "watch_key": "PeWodovLiP0",
+          "state_key": "PeWodovLiP0",
+          "channel_id": "UCpo2MvFPnWAOVeEIf3WlfGA",
+          "channel_name": "برنامج الخزانة",
+          "channel_title": "برنامج الخزانة",
+          "published_at": "2026-06-05T02:47:38Z",
+          "published_display": "Jun 05, 2026 02:47",
+          "thumbnail": "https://i.ytimg.com/vi/PeWodovLiP0/maxresdefault.jpg",
+          "thumbnail_url": "https://i.ytimg.com/vi/PeWodovLiP0/maxresdefault.jpg",
+          "image_url": "https://i.ytimg.com/vi/PeWodovLiP0/maxresdefault.jpg",
+          "thumb": "https://i.ytimg.com/vi/PeWodovLiP0/maxresdefault.jpg",
+          "detail_url": "/video/yt-VVVwbzJNdkZQbldBT1ZlRUlmM1dsZkdBLlBlV29kb3ZMaVAw",
+          "url": "https://www.youtube.com/watch?v=PeWodovLiP0&list=UUpo2MvFPnWAOVeEIf3WlfGA",
+          "group_name": "archive",
+          "group_key": "archive",
+          "group_names": [
+            "archive"
+          ],
+          "group_keys": [
+            "archive"
+          ],
+          "reason_tags": [
+            "cached-latest"
+          ]
+        },
+        {
+          "title": "6—تخريج فروع المعاملات على الأصول والكليات—إلياس دردور",
+          "entry_id": "yt-VVVwbzJNdkZQbldBT1ZlRUlmM1dsZkdBLm1ka2RzQ1BIUk1n",
+          "video_id": "mdkdsCPHRMg",
+          "watch_key": "mdkdsCPHRMg",
+          "state_key": "mdkdsCPHRMg",
+          "channel_id": "UCpo2MvFPnWAOVeEIf3WlfGA",
+          "channel_name": "برنامج الخزانة",
+          "channel_title": "برنامج الخزانة",
+          "published_at": "2026-06-05T02:47:06Z",
+          "published_display": "Jun 05, 2026 02:47",
+          "thumbnail": "https://i.ytimg.com/vi/mdkdsCPHRMg/maxresdefault.jpg",
+          "thumbnail_url": "https://i.ytimg.com/vi/mdkdsCPHRMg/maxresdefault.jpg",
+          "image_url": "https://i.ytimg.com/vi/mdkdsCPHRMg/maxresdefault.jpg",
+          "thumb": "https://i.ytimg.com/vi/mdkdsCPHRMg/maxresdefault.jpg",
+          "detail_url": "/video/yt-VVVwbzJNdkZQbldBT1ZlRUlmM1dsZkdBLm1ka2RzQ1BIUk1n",
+          "url": "https://www.youtube.com/watch?v=mdkdsCPHRMg&list=UUpo2MvFPnWAOVeEIf3WlfGA",
+          "group_name": "archive",
+          "group_key": "archive",
+          "group_names": [
+            "archive"
+          ],
+          "group_keys": [
+            "archive"
+          ],
+          "reason_tags": [
+            "cached-latest"
+          ]
+        },
+        {
+          "title": "5—عقود مستحدثة في الاستثمار والتويل والتأمين—إلياس دردور",
+          "entry_id": "yt-VVVwbzJNdkZQbldBT1ZlRUlmM1dsZkdBLmVKVFRFSXlNREtZ",
+          "video_id": "eJTTEIyMDKY",
+          "watch_key": "eJTTEIyMDKY",
+          "state_key": "eJTTEIyMDKY",
+          "channel_id": "UCpo2MvFPnWAOVeEIf3WlfGA",
+          "channel_name": "برنامج الخزانة",
+          "channel_title": "برنامج الخزانة",
+          "published_at": "2026-06-05T02:46:32Z",
+          "published_display": "Jun 05, 2026 02:46",
+          "thumbnail": "https://i.ytimg.com/vi/eJTTEIyMDKY/maxresdefault.jpg",
+          "thumbnail_url": "https://i.ytimg.com/vi/eJTTEIyMDKY/maxresdefault.jpg",
+          "image_url": "https://i.ytimg.com/vi/eJTTEIyMDKY/maxresdefault.jpg",
+          "thumb": "https://i.ytimg.com/vi/eJTTEIyMDKY/maxresdefault.jpg",
+          "detail_url": "/video/yt-VVVwbzJNdkZQbldBT1ZlRUlmM1dsZkdBLmVKVFRFSXlNREtZ",
+          "url": "https://www.youtube.com/watch?v=eJTTEIyMDKY&list=UUpo2MvFPnWAOVeEIf3WlfGA",
+          "group_name": "archive",
+          "group_key": "archive",
+          "group_names": [
+            "archive"
+          ],
+          "group_keys": [
+            "archive"
+          ],
+          "reason_tags": [
+            "cached-latest"
+          ]
+        },
+        {
+          "title": "4—محاضرات في قضايا فقهية معاصرة—إلياس دردور",
+          "entry_id": "yt-VVVwbzJNdkZQbldBT1ZlRUlmM1dsZkdBLmpBUVJIVm0zZzM4",
+          "video_id": "jAQRHVm3g38",
+          "watch_key": "jAQRHVm3g38",
+          "state_key": "jAQRHVm3g38",
+          "channel_id": "UCpo2MvFPnWAOVeEIf3WlfGA",
+          "channel_name": "برنامج الخزانة",
+          "channel_title": "برنامج الخزانة",
+          "published_at": "2026-06-05T02:43:04Z",
+          "published_display": "Jun 05, 2026 02:43",
+          "thumbnail": "https://i.ytimg.com/vi/jAQRHVm3g38/maxresdefault.jpg",
+          "thumbnail_url": "https://i.ytimg.com/vi/jAQRHVm3g38/maxresdefault.jpg",
+          "image_url": "https://i.ytimg.com/vi/jAQRHVm3g38/maxresdefault.jpg",
+          "thumb": "https://i.ytimg.com/vi/jAQRHVm3g38/maxresdefault.jpg",
+          "detail_url": "/video/yt-VVVwbzJNdkZQbldBT1ZlRUlmM1dsZkdBLmpBUVJIVm0zZzM4",
+          "url": "https://www.youtube.com/watch?v=jAQRHVm3g38&list=UUpo2MvFPnWAOVeEIf3WlfGA",
+          "group_name": "archive",
+          "group_key": "archive",
+          "group_names": [
+            "archive"
+          ],
+          "group_keys": [
+            "archive"
+          ],
+          "reason_tags": [
+            "cached-latest"
+          ]
+        },
+        {
+          "title": "3—المنتخب من مسائل الرجراجي على التنقيح وشرحه للقرافي—إلياس دردور",
+          "entry_id": "yt-VVVwbzJNdkZQbldBT1ZlRUlmM1dsZkdBLk93Y09vTUNpN3VB",
+          "video_id": "OwcOoMCi7uA",
+          "watch_key": "OwcOoMCi7uA",
+          "state_key": "OwcOoMCi7uA",
+          "channel_id": "UCpo2MvFPnWAOVeEIf3WlfGA",
+          "channel_name": "برنامج الخزانة",
+          "channel_title": "برنامج الخزانة",
+          "published_at": "2026-06-05T02:42:01Z",
+          "published_display": "Jun 05, 2026 02:42",
+          "thumbnail": "https://i.ytimg.com/vi/OwcOoMCi7uA/maxresdefault.jpg",
+          "thumbnail_url": "https://i.ytimg.com/vi/OwcOoMCi7uA/maxresdefault.jpg",
+          "image_url": "https://i.ytimg.com/vi/OwcOoMCi7uA/maxresdefault.jpg",
+          "thumb": "https://i.ytimg.com/vi/OwcOoMCi7uA/maxresdefault.jpg",
+          "detail_url": "/video/yt-VVVwbzJNdkZQbldBT1ZlRUlmM1dsZkdBLk93Y09vTUNpN3VB",
+          "url": "https://www.youtube.com/watch?v=OwcOoMCi7uA&list=UUpo2MvFPnWAOVeEIf3WlfGA",
+          "group_name": "archive",
+          "group_key": "archive",
+          "group_names": [
+            "archive"
+          ],
+          "group_keys": [
+            "archive"
+          ],
+          "reason_tags": [
+            "cached-latest"
+          ]
+        },
+        {
+          "title": "2—محاضرات في التأمين والمعاملات المالية الإسلامية—إلياس دردور",
+          "entry_id": "yt-VVVwbzJNdkZQbldBT1ZlRUlmM1dsZkdBLk9Sd1NUaXRfcFdJ",
+          "video_id": "ORwSTit_pWI",
+          "watch_key": "ORwSTit_pWI",
+          "state_key": "ORwSTit_pWI",
+          "channel_id": "UCpo2MvFPnWAOVeEIf3WlfGA",
+          "channel_name": "برنامج الخزانة",
+          "channel_title": "برنامج الخزانة",
+          "published_at": "2026-06-05T02:40:14Z",
+          "published_display": "Jun 05, 2026 02:40",
+          "thumbnail": "https://i.ytimg.com/vi/ORwSTit_pWI/maxresdefault.jpg",
+          "thumbnail_url": "https://i.ytimg.com/vi/ORwSTit_pWI/maxresdefault.jpg",
+          "image_url": "https://i.ytimg.com/vi/ORwSTit_pWI/maxresdefault.jpg",
+          "thumb": "https://i.ytimg.com/vi/ORwSTit_pWI/maxresdefault.jpg",
+          "detail_url": "/video/yt-VVVwbzJNdkZQbldBT1ZlRUlmM1dsZkdBLk9Sd1NUaXRfcFdJ",
+          "url": "https://www.youtube.com/watch?v=ORwSTit_pWI&list=UUpo2MvFPnWAOVeEIf3WlfGA",
+          "group_name": "archive",
+          "group_key": "archive",
+          "group_names": [
+            "archive"
+          ],
+          "group_keys": [
+            "archive"
+          ],
+          "reason_tags": [
+            "cached-latest"
+          ]
+        },
+        {
+          "title": "1—الاحكام المختلف فيها بأدلتها  في عصور الصحابة والتابعين والأئمة المجتهدين—إلياس دردور",
+          "entry_id": "yt-VVVwbzJNdkZQbldBT1ZlRUlmM1dsZkdBLldnQm1rb0NkTE93",
+          "video_id": "WgBmkoCdLOw",
+          "watch_key": "WgBmkoCdLOw",
+          "state_key": "WgBmkoCdLOw",
+          "channel_id": "UCpo2MvFPnWAOVeEIf3WlfGA",
+          "channel_name": "برنامج الخزانة",
+          "channel_title": "برنامج الخزانة",
+          "published_at": "2026-06-05T02:38:53Z",
+          "published_display": "Jun 05, 2026 02:38",
+          "thumbnail": "https://i.ytimg.com/vi/WgBmkoCdLOw/maxresdefault.jpg",
+          "thumbnail_url": "https://i.ytimg.com/vi/WgBmkoCdLOw/maxresdefault.jpg",
+          "image_url": "https://i.ytimg.com/vi/WgBmkoCdLOw/maxresdefault.jpg",
+          "thumb": "https://i.ytimg.com/vi/WgBmkoCdLOw/maxresdefault.jpg",
+          "detail_url": "/video/yt-VVVwbzJNdkZQbldBT1ZlRUlmM1dsZkdBLldnQm1rb0NkTE93",
+          "url": "https://www.youtube.com/watch?v=WgBmkoCdLOw&list=UUpo2MvFPnWAOVeEIf3WlfGA",
+          "group_name": "archive",
+          "group_key": "archive",
+          "group_names": [
+            "archive"
+          ],
+          "group_keys": [
+            "archive"
+          ],
+          "reason_tags": [
+            "cached-latest"
+          ]
+        },
         {
           "title": "14—السؤال التفاعلي — حدثنا عن تجربتك مع القنوات المرئية أو المقروءة التي تقدم ملخصا كاملا عن الكت...",
           "entry_id": "yt-VVVwbzJNdkZQbldBT1ZlRUlmM1dsZkdBLkVUNzVBb202QnFR",
@@ -1261,470 +1725,6 @@
           "thumb": "https://i.ytimg.com/vi/t26j3JjqKEo/maxresdefault.jpg",
           "detail_url": "/video/yt-VVVwbzJNdkZQbldBT1ZlRUlmM1dsZkdBLnQyNmozSmpxS0Vv",
           "url": "https://www.youtube.com/watch?v=t26j3JjqKEo&list=UUpo2MvFPnWAOVeEIf3WlfGA",
-          "group_name": "archive",
-          "group_key": "archive",
-          "group_names": [
-            "archive"
-          ],
-          "group_keys": [
-            "archive"
-          ],
-          "reason_tags": [
-            "cached-latest"
-          ]
-        },
-        {
-          "title": "12—مائة عام من الكدح والكفاح وتجارب النجاح — قصة حياة الشيخ عبدالله بن إبراهيم السبيعي—محمد أبوبك...",
-          "entry_id": "yt-VVVwbzJNdkZQbldBT1ZlRUlmM1dsZkdBLlhDcTMzMzhQVlRJ",
-          "video_id": "XCq3338PVTI",
-          "watch_key": "XCq3338PVTI",
-          "state_key": "XCq3338PVTI",
-          "channel_id": "UCpo2MvFPnWAOVeEIf3WlfGA",
-          "channel_name": "برنامج الخزانة",
-          "channel_title": "برنامج الخزانة",
-          "published_at": "2026-06-04T18:40:23Z",
-          "published_display": "Jun 04, 2026 18:40",
-          "thumbnail": "https://i.ytimg.com/vi/XCq3338PVTI/maxresdefault.jpg",
-          "thumbnail_url": "https://i.ytimg.com/vi/XCq3338PVTI/maxresdefault.jpg",
-          "image_url": "https://i.ytimg.com/vi/XCq3338PVTI/maxresdefault.jpg",
-          "thumb": "https://i.ytimg.com/vi/XCq3338PVTI/maxresdefault.jpg",
-          "detail_url": "/video/yt-VVVwbzJNdkZQbldBT1ZlRUlmM1dsZkdBLlhDcTMzMzhQVlRJ",
-          "url": "https://www.youtube.com/watch?v=XCq3338PVTI&list=UUpo2MvFPnWAOVeEIf3WlfGA",
-          "group_name": "archive",
-          "group_key": "archive",
-          "group_names": [
-            "archive"
-          ],
-          "group_keys": [
-            "archive"
-          ],
-          "reason_tags": [
-            "cached-latest"
-          ]
-        },
-        {
-          "title": "11—محاسن الإسلام في القرآن والإيمان والأحكام—أحمد بن سليمان أيوب",
-          "entry_id": "yt-VVVwbzJNdkZQbldBT1ZlRUlmM1dsZkdBLnZUUUNqLU1pQUcw",
-          "video_id": "vTQCj-MiAG0",
-          "watch_key": "vTQCj-MiAG0",
-          "state_key": "vTQCj-MiAG0",
-          "channel_id": "UCpo2MvFPnWAOVeEIf3WlfGA",
-          "channel_name": "برنامج الخزانة",
-          "channel_title": "برنامج الخزانة",
-          "published_at": "2026-06-04T18:38:36Z",
-          "published_display": "Jun 04, 2026 18:38",
-          "thumbnail": "https://i.ytimg.com/vi/vTQCj-MiAG0/maxresdefault.jpg",
-          "thumbnail_url": "https://i.ytimg.com/vi/vTQCj-MiAG0/maxresdefault.jpg",
-          "image_url": "https://i.ytimg.com/vi/vTQCj-MiAG0/maxresdefault.jpg",
-          "thumb": "https://i.ytimg.com/vi/vTQCj-MiAG0/maxresdefault.jpg",
-          "detail_url": "/video/yt-VVVwbzJNdkZQbldBT1ZlRUlmM1dsZkdBLnZUUUNqLU1pQUcw",
-          "url": "https://www.youtube.com/watch?v=vTQCj-MiAG0&list=UUpo2MvFPnWAOVeEIf3WlfGA",
-          "group_name": "archive",
-          "group_key": "archive",
-          "group_names": [
-            "archive"
-          ],
-          "group_keys": [
-            "archive"
-          ],
-          "reason_tags": [
-            "cached-latest"
-          ]
-        },
-        {
-          "title": "10—معارج العلوم من الأمية إلى الإمامة—محمد بن محمد الأسطل",
-          "entry_id": "yt-VVVwbzJNdkZQbldBT1ZlRUlmM1dsZkdBLndZWWV2bUxrU244",
-          "video_id": "wYYevmLkSn8",
-          "watch_key": "wYYevmLkSn8",
-          "state_key": "wYYevmLkSn8",
-          "channel_id": "UCpo2MvFPnWAOVeEIf3WlfGA",
-          "channel_name": "برنامج الخزانة",
-          "channel_title": "برنامج الخزانة",
-          "published_at": "2026-06-04T18:37:15Z",
-          "published_display": "Jun 04, 2026 18:37",
-          "thumbnail": "https://i.ytimg.com/vi/wYYevmLkSn8/maxresdefault.jpg",
-          "thumbnail_url": "https://i.ytimg.com/vi/wYYevmLkSn8/maxresdefault.jpg",
-          "image_url": "https://i.ytimg.com/vi/wYYevmLkSn8/maxresdefault.jpg",
-          "thumb": "https://i.ytimg.com/vi/wYYevmLkSn8/maxresdefault.jpg",
-          "detail_url": "/video/yt-VVVwbzJNdkZQbldBT1ZlRUlmM1dsZkdBLndZWWV2bUxrU244",
-          "url": "https://www.youtube.com/watch?v=wYYevmLkSn8&list=UUpo2MvFPnWAOVeEIf3WlfGA",
-          "group_name": "archive",
-          "group_key": "archive",
-          "group_names": [
-            "archive"
-          ],
-          "group_keys": [
-            "archive"
-          ],
-          "reason_tags": [
-            "cached-latest"
-          ]
-        },
-        {
-          "title": "9—مذكرة أصول الفقه وملحق في إثبات القياس ومعه الجوهر النقي على مذكرة الشنقيطي—محمد الأمين الشنقيط...",
-          "entry_id": "yt-VVVwbzJNdkZQbldBT1ZlRUlmM1dsZkdBLm5hVVJCM1pJOTZn",
-          "video_id": "naURB3ZI96g",
-          "watch_key": "naURB3ZI96g",
-          "state_key": "naURB3ZI96g",
-          "channel_id": "UCpo2MvFPnWAOVeEIf3WlfGA",
-          "channel_name": "برنامج الخزانة",
-          "channel_title": "برنامج الخزانة",
-          "published_at": "2026-06-04T18:35:49Z",
-          "published_display": "Jun 04, 2026 18:35",
-          "thumbnail": "https://i.ytimg.com/vi/naURB3ZI96g/maxresdefault.jpg",
-          "thumbnail_url": "https://i.ytimg.com/vi/naURB3ZI96g/maxresdefault.jpg",
-          "image_url": "https://i.ytimg.com/vi/naURB3ZI96g/maxresdefault.jpg",
-          "thumb": "https://i.ytimg.com/vi/naURB3ZI96g/maxresdefault.jpg",
-          "detail_url": "/video/yt-VVVwbzJNdkZQbldBT1ZlRUlmM1dsZkdBLm5hVVJCM1pJOTZn",
-          "url": "https://www.youtube.com/watch?v=naURB3ZI96g&list=UUpo2MvFPnWAOVeEIf3WlfGA",
-          "group_name": "archive",
-          "group_key": "archive",
-          "group_names": [
-            "archive"
-          ],
-          "group_keys": [
-            "archive"
-          ],
-          "reason_tags": [
-            "cached-latest"
-          ]
-        },
-        {
-          "title": "8—عبير الياسمين في سيرة الشيخ عبدالله بن عبدالرحمن الجبرين رحمه الله—طارق بن محمد الخويطر",
-          "entry_id": "yt-VVVwbzJNdkZQbldBT1ZlRUlmM1dsZkdBLjBqZU5nRERzRHlV",
-          "video_id": "0jeNgDDsDyU",
-          "watch_key": "0jeNgDDsDyU",
-          "state_key": "0jeNgDDsDyU",
-          "channel_id": "UCpo2MvFPnWAOVeEIf3WlfGA",
-          "channel_name": "برنامج الخزانة",
-          "channel_title": "برنامج الخزانة",
-          "published_at": "2026-06-04T18:33:52Z",
-          "published_display": "Jun 04, 2026 18:33",
-          "thumbnail": "https://i.ytimg.com/vi/0jeNgDDsDyU/maxresdefault.jpg",
-          "thumbnail_url": "https://i.ytimg.com/vi/0jeNgDDsDyU/maxresdefault.jpg",
-          "image_url": "https://i.ytimg.com/vi/0jeNgDDsDyU/maxresdefault.jpg",
-          "thumb": "https://i.ytimg.com/vi/0jeNgDDsDyU/maxresdefault.jpg",
-          "detail_url": "/video/yt-VVVwbzJNdkZQbldBT1ZlRUlmM1dsZkdBLjBqZU5nRERzRHlV",
-          "url": "https://www.youtube.com/watch?v=0jeNgDDsDyU&list=UUpo2MvFPnWAOVeEIf3WlfGA",
-          "group_name": "archive",
-          "group_key": "archive",
-          "group_names": [
-            "archive"
-          ],
-          "group_keys": [
-            "archive"
-          ],
-          "reason_tags": [
-            "cached-latest"
-          ]
-        },
-        {
-          "title": "7—أسماء المؤلفين في ديار مليبار وتواليفهم—أحمد صالح المليباري",
-          "entry_id": "yt-VVVwbzJNdkZQbldBT1ZlRUlmM1dsZkdBLk9CZll3V3BPYkh3",
-          "video_id": "OBfYwWpObHw",
-          "watch_key": "OBfYwWpObHw",
-          "state_key": "OBfYwWpObHw",
-          "channel_id": "UCpo2MvFPnWAOVeEIf3WlfGA",
-          "channel_name": "برنامج الخزانة",
-          "channel_title": "برنامج الخزانة",
-          "published_at": "2026-06-04T18:32:04Z",
-          "published_display": "Jun 04, 2026 18:32",
-          "thumbnail": "https://i.ytimg.com/vi/OBfYwWpObHw/maxresdefault.jpg",
-          "thumbnail_url": "https://i.ytimg.com/vi/OBfYwWpObHw/maxresdefault.jpg",
-          "image_url": "https://i.ytimg.com/vi/OBfYwWpObHw/maxresdefault.jpg",
-          "thumb": "https://i.ytimg.com/vi/OBfYwWpObHw/maxresdefault.jpg",
-          "detail_url": "/video/yt-VVVwbzJNdkZQbldBT1ZlRUlmM1dsZkdBLk9CZll3V3BPYkh3",
-          "url": "https://www.youtube.com/watch?v=OBfYwWpObHw&list=UUpo2MvFPnWAOVeEIf3WlfGA",
-          "group_name": "archive",
-          "group_key": "archive",
-          "group_names": [
-            "archive"
-          ],
-          "group_keys": [
-            "archive"
-          ],
-          "reason_tags": [
-            "cached-latest"
-          ]
-        },
-        {
-          "title": "6—مسائل في اللغة والنحو والصرف—يوسف صيداوي",
-          "entry_id": "yt-VVVwbzJNdkZQbldBT1ZlRUlmM1dsZkdBLjI0MHA1ODBvY19n",
-          "video_id": "240p580oc_g",
-          "watch_key": "240p580oc_g",
-          "state_key": "240p580oc_g",
-          "channel_id": "UCpo2MvFPnWAOVeEIf3WlfGA",
-          "channel_name": "برنامج الخزانة",
-          "channel_title": "برنامج الخزانة",
-          "published_at": "2026-06-04T18:28:42Z",
-          "published_display": "Jun 04, 2026 18:28",
-          "thumbnail": "https://i.ytimg.com/vi/240p580oc_g/maxresdefault.jpg",
-          "thumbnail_url": "https://i.ytimg.com/vi/240p580oc_g/maxresdefault.jpg",
-          "image_url": "https://i.ytimg.com/vi/240p580oc_g/maxresdefault.jpg",
-          "thumb": "https://i.ytimg.com/vi/240p580oc_g/maxresdefault.jpg",
-          "detail_url": "/video/yt-VVVwbzJNdkZQbldBT1ZlRUlmM1dsZkdBLjI0MHA1ODBvY19n",
-          "url": "https://www.youtube.com/watch?v=240p580oc_g&list=UUpo2MvFPnWAOVeEIf3WlfGA",
-          "group_name": "archive",
-          "group_key": "archive",
-          "group_names": [
-            "archive"
-          ],
-          "group_keys": [
-            "archive"
-          ],
-          "reason_tags": [
-            "cached-latest"
-          ]
-        },
-        {
-          "title": "5—المتدارك — مجموعة مقالات ومحاضرات—يوسف صيداوي",
-          "entry_id": "yt-VVVwbzJNdkZQbldBT1ZlRUlmM1dsZkdBLlNjWk1VbEpOenJF",
-          "video_id": "ScZMUlJNzrE",
-          "watch_key": "ScZMUlJNzrE",
-          "state_key": "ScZMUlJNzrE",
-          "channel_id": "UCpo2MvFPnWAOVeEIf3WlfGA",
-          "channel_name": "برنامج الخزانة",
-          "channel_title": "برنامج الخزانة",
-          "published_at": "2026-06-04T18:27:17Z",
-          "published_display": "Jun 04, 2026 18:27",
-          "thumbnail": "https://i.ytimg.com/vi/ScZMUlJNzrE/maxresdefault.jpg",
-          "thumbnail_url": "https://i.ytimg.com/vi/ScZMUlJNzrE/maxresdefault.jpg",
-          "image_url": "https://i.ytimg.com/vi/ScZMUlJNzrE/maxresdefault.jpg",
-          "thumb": "https://i.ytimg.com/vi/ScZMUlJNzrE/maxresdefault.jpg",
-          "detail_url": "/video/yt-VVVwbzJNdkZQbldBT1ZlRUlmM1dsZkdBLlNjWk1VbEpOenJF",
-          "url": "https://www.youtube.com/watch?v=ScZMUlJNzrE&list=UUpo2MvFPnWAOVeEIf3WlfGA",
-          "group_name": "archive",
-          "group_key": "archive",
-          "group_names": [
-            "archive"
-          ],
-          "group_keys": [
-            "archive"
-          ],
-          "reason_tags": [
-            "cached-latest"
-          ]
-        },
-        {
-          "title": "4—تصنيف التعريفات الأصولية — الفكرة والتطبيق—مهدي بن محمد الحرازي",
-          "entry_id": "yt-VVVwbzJNdkZQbldBT1ZlRUlmM1dsZkdBLlcxYnk4UFVRZU1v",
-          "video_id": "W1by8PUQeMo",
-          "watch_key": "W1by8PUQeMo",
-          "state_key": "W1by8PUQeMo",
-          "channel_id": "UCpo2MvFPnWAOVeEIf3WlfGA",
-          "channel_name": "برنامج الخزانة",
-          "channel_title": "برنامج الخزانة",
-          "published_at": "2026-06-04T18:25:46Z",
-          "published_display": "Jun 04, 2026 18:25",
-          "thumbnail": "https://i.ytimg.com/vi/W1by8PUQeMo/maxresdefault.jpg",
-          "thumbnail_url": "https://i.ytimg.com/vi/W1by8PUQeMo/maxresdefault.jpg",
-          "image_url": "https://i.ytimg.com/vi/W1by8PUQeMo/maxresdefault.jpg",
-          "thumb": "https://i.ytimg.com/vi/W1by8PUQeMo/maxresdefault.jpg",
-          "detail_url": "/video/yt-VVVwbzJNdkZQbldBT1ZlRUlmM1dsZkdBLlcxYnk4UFVRZU1v",
-          "url": "https://www.youtube.com/watch?v=W1by8PUQeMo&list=UUpo2MvFPnWAOVeEIf3WlfGA",
-          "group_name": "archive",
-          "group_key": "archive",
-          "group_names": [
-            "archive"
-          ],
-          "group_keys": [
-            "archive"
-          ],
-          "reason_tags": [
-            "cached-latest"
-          ]
-        },
-        {
-          "title": "3—مصحف أشبيلية المخطوط—دراسة وإخراج إياد سالم اليامرائي",
-          "entry_id": "yt-VVVwbzJNdkZQbldBT1ZlRUlmM1dsZkdBLmRWRUs5SkI0QzNF",
-          "video_id": "dVEK9JB4C3E",
-          "watch_key": "dVEK9JB4C3E",
-          "state_key": "dVEK9JB4C3E",
-          "channel_id": "UCpo2MvFPnWAOVeEIf3WlfGA",
-          "channel_name": "برنامج الخزانة",
-          "channel_title": "برنامج الخزانة",
-          "published_at": "2026-06-04T18:23:03Z",
-          "published_display": "Jun 04, 2026 18:23",
-          "thumbnail": "https://i.ytimg.com/vi/dVEK9JB4C3E/maxresdefault.jpg",
-          "thumbnail_url": "https://i.ytimg.com/vi/dVEK9JB4C3E/maxresdefault.jpg",
-          "image_url": "https://i.ytimg.com/vi/dVEK9JB4C3E/maxresdefault.jpg",
-          "thumb": "https://i.ytimg.com/vi/dVEK9JB4C3E/maxresdefault.jpg",
-          "detail_url": "/video/yt-VVVwbzJNdkZQbldBT1ZlRUlmM1dsZkdBLmRWRUs5SkI0QzNF",
-          "url": "https://www.youtube.com/watch?v=dVEK9JB4C3E&list=UUpo2MvFPnWAOVeEIf3WlfGA",
-          "group_name": "archive",
-          "group_key": "archive",
-          "group_names": [
-            "archive"
-          ],
-          "group_keys": [
-            "archive"
-          ],
-          "reason_tags": [
-            "cached-latest"
-          ]
-        },
-        {
-          "title": "2—الدراسات الصوتية عند علماء التجويد—غانم قدوري الحمد",
-          "entry_id": "yt-VVVwbzJNdkZQbldBT1ZlRUlmM1dsZkdBLnNGaGEwdVRoNFpz",
-          "video_id": "sFha0uTh4Zs",
-          "watch_key": "sFha0uTh4Zs",
-          "state_key": "sFha0uTh4Zs",
-          "channel_id": "UCpo2MvFPnWAOVeEIf3WlfGA",
-          "channel_name": "برنامج الخزانة",
-          "channel_title": "برنامج الخزانة",
-          "published_at": "2026-06-04T18:20:35Z",
-          "published_display": "Jun 04, 2026 18:20",
-          "thumbnail": "https://i.ytimg.com/vi/sFha0uTh4Zs/maxresdefault.jpg",
-          "thumbnail_url": "https://i.ytimg.com/vi/sFha0uTh4Zs/maxresdefault.jpg",
-          "image_url": "https://i.ytimg.com/vi/sFha0uTh4Zs/maxresdefault.jpg",
-          "thumb": "https://i.ytimg.com/vi/sFha0uTh4Zs/maxresdefault.jpg",
-          "detail_url": "/video/yt-VVVwbzJNdkZQbldBT1ZlRUlmM1dsZkdBLnNGaGEwdVRoNFpz",
-          "url": "https://www.youtube.com/watch?v=sFha0uTh4Zs&list=UUpo2MvFPnWAOVeEIf3WlfGA",
-          "group_name": "archive",
-          "group_key": "archive",
-          "group_names": [
-            "archive"
-          ],
-          "group_keys": [
-            "archive"
-          ],
-          "reason_tags": [
-            "cached-latest"
-          ]
-        },
-        {
-          "title": "1—الشفاء في علل القراءات—أحمد بن محمد الحريزي البخاري — تحقيق صالح العماري",
-          "entry_id": "yt-VVVwbzJNdkZQbldBT1ZlRUlmM1dsZkdBLlM0Nk9LMFNLOXJr",
-          "video_id": "S46OK0SK9rk",
-          "watch_key": "S46OK0SK9rk",
-          "state_key": "S46OK0SK9rk",
-          "channel_id": "UCpo2MvFPnWAOVeEIf3WlfGA",
-          "channel_name": "برنامج الخزانة",
-          "channel_title": "برنامج الخزانة",
-          "published_at": "2026-06-04T18:15:47Z",
-          "published_display": "Jun 04, 2026 18:15",
-          "thumbnail": "https://i.ytimg.com/vi/S46OK0SK9rk/maxresdefault.jpg",
-          "thumbnail_url": "https://i.ytimg.com/vi/S46OK0SK9rk/maxresdefault.jpg",
-          "image_url": "https://i.ytimg.com/vi/S46OK0SK9rk/maxresdefault.jpg",
-          "thumb": "https://i.ytimg.com/vi/S46OK0SK9rk/maxresdefault.jpg",
-          "detail_url": "/video/yt-VVVwbzJNdkZQbldBT1ZlRUlmM1dsZkdBLlM0Nk9LMFNLOXJr",
-          "url": "https://www.youtube.com/watch?v=S46OK0SK9rk&list=UUpo2MvFPnWAOVeEIf3WlfGA",
-          "group_name": "archive",
-          "group_key": "archive",
-          "group_names": [
-            "archive"
-          ],
-          "group_keys": [
-            "archive"
-          ],
-          "reason_tags": [
-            "cached-latest"
-          ]
-        },
-        {
-          "title": "17—أسئلة المتابعين — ما أفضل طبعة لكتاب الشرح الممتع على زاد المستقنع للعلامة ابن عثيمين رحمه الله—",
-          "entry_id": "yt-VVVwbzJNdkZQbldBT1ZlRUlmM1dsZkdBLlFDUHJCMGN2azlz",
-          "video_id": "QCPrB0cvk9s",
-          "watch_key": "QCPrB0cvk9s",
-          "state_key": "QCPrB0cvk9s",
-          "channel_id": "UCpo2MvFPnWAOVeEIf3WlfGA",
-          "channel_name": "برنامج الخزانة",
-          "channel_title": "برنامج الخزانة",
-          "published_at": "2026-06-04T02:56:24Z",
-          "published_display": "Jun 04, 2026 02:56",
-          "thumbnail": "https://i.ytimg.com/vi/QCPrB0cvk9s/maxresdefault.jpg",
-          "thumbnail_url": "https://i.ytimg.com/vi/QCPrB0cvk9s/maxresdefault.jpg",
-          "image_url": "https://i.ytimg.com/vi/QCPrB0cvk9s/maxresdefault.jpg",
-          "thumb": "https://i.ytimg.com/vi/QCPrB0cvk9s/maxresdefault.jpg",
-          "detail_url": "/video/yt-VVVwbzJNdkZQbldBT1ZlRUlmM1dsZkdBLlFDUHJCMGN2azlz",
-          "url": "https://www.youtube.com/watch?v=QCPrB0cvk9s&list=UUpo2MvFPnWAOVeEIf3WlfGA",
-          "group_name": "archive",
-          "group_key": "archive",
-          "group_names": [
-            "archive"
-          ],
-          "group_keys": [
-            "archive"
-          ],
-          "reason_tags": [
-            "cached-latest"
-          ]
-        },
-        {
-          "title": "16—أيامي بين احسن الناس وأشرف المهن—أحمد بن عبدالعزيز الربيعان",
-          "entry_id": "yt-VVVwbzJNdkZQbldBT1ZlRUlmM1dsZkdBLm9CR01oN1VIZndZ",
-          "video_id": "oBGMh7UHfwY",
-          "watch_key": "oBGMh7UHfwY",
-          "state_key": "oBGMh7UHfwY",
-          "channel_id": "UCpo2MvFPnWAOVeEIf3WlfGA",
-          "channel_name": "برنامج الخزانة",
-          "channel_title": "برنامج الخزانة",
-          "published_at": "2026-06-04T02:55:53Z",
-          "published_display": "Jun 04, 2026 02:55",
-          "thumbnail": "https://i.ytimg.com/vi/oBGMh7UHfwY/maxresdefault.jpg",
-          "thumbnail_url": "https://i.ytimg.com/vi/oBGMh7UHfwY/maxresdefault.jpg",
-          "image_url": "https://i.ytimg.com/vi/oBGMh7UHfwY/maxresdefault.jpg",
-          "thumb": "https://i.ytimg.com/vi/oBGMh7UHfwY/maxresdefault.jpg",
-          "detail_url": "/video/yt-VVVwbzJNdkZQbldBT1ZlRUlmM1dsZkdBLm9CR01oN1VIZndZ",
-          "url": "https://www.youtube.com/watch?v=oBGMh7UHfwY&list=UUpo2MvFPnWAOVeEIf3WlfGA",
-          "group_name": "archive",
-          "group_key": "archive",
-          "group_names": [
-            "archive"
-          ],
-          "group_keys": [
-            "archive"
-          ],
-          "reason_tags": [
-            "cached-latest"
-          ]
-        },
-        {
-          "title": "15—مشاهد ولمحات من كتب الرحلات—عبدالعزيز بن غازي المرشدي",
-          "entry_id": "yt-VVVwbzJNdkZQbldBT1ZlRUlmM1dsZkdBLlhrem51X2pPcVFF",
-          "video_id": "Xkznu_jOqQE",
-          "watch_key": "Xkznu_jOqQE",
-          "state_key": "Xkznu_jOqQE",
-          "channel_id": "UCpo2MvFPnWAOVeEIf3WlfGA",
-          "channel_name": "برنامج الخزانة",
-          "channel_title": "برنامج الخزانة",
-          "published_at": "2026-06-04T02:55:33Z",
-          "published_display": "Jun 04, 2026 02:55",
-          "thumbnail": "https://i.ytimg.com/vi/Xkznu_jOqQE/maxresdefault.jpg",
-          "thumbnail_url": "https://i.ytimg.com/vi/Xkznu_jOqQE/maxresdefault.jpg",
-          "image_url": "https://i.ytimg.com/vi/Xkznu_jOqQE/maxresdefault.jpg",
-          "thumb": "https://i.ytimg.com/vi/Xkznu_jOqQE/maxresdefault.jpg",
-          "detail_url": "/video/yt-VVVwbzJNdkZQbldBT1ZlRUlmM1dsZkdBLlhrem51X2pPcVFF",
-          "url": "https://www.youtube.com/watch?v=Xkznu_jOqQE&list=UUpo2MvFPnWAOVeEIf3WlfGA",
-          "group_name": "archive",
-          "group_key": "archive",
-          "group_names": [
-            "archive"
-          ],
-          "group_keys": [
-            "archive"
-          ],
-          "reason_tags": [
-            "cached-latest"
-          ]
-        },
-        {
-          "title": "14—وجع الكتابة — دراسات ومقالات—عبدالله بن عبدالرحمن الحيدري",
-          "entry_id": "yt-VVVwbzJNdkZQbldBT1ZlRUlmM1dsZkdBLlhNSDAwSnFMckVZ",
-          "video_id": "XMH00JqLrEY",
-          "watch_key": "XMH00JqLrEY",
-          "state_key": "XMH00JqLrEY",
-          "channel_id": "UCpo2MvFPnWAOVeEIf3WlfGA",
-          "channel_name": "برنامج الخزانة",
-          "channel_title": "برنامج الخزانة",
-          "published_at": "2026-06-04T02:54:22Z",
-          "published_display": "Jun 04, 2026 02:54",
-          "thumbnail": "https://i.ytimg.com/vi/XMH00JqLrEY/maxresdefault.jpg",
-          "thumbnail_url": "https://i.ytimg.com/vi/XMH00JqLrEY/maxresdefault.jpg",
-          "image_url": "https://i.ytimg.com/vi/XMH00JqLrEY/maxresdefault.jpg",
-          "thumb": "https://i.ytimg.com/vi/XMH00JqLrEY/maxresdefault.jpg",
-          "detail_url": "/video/yt-VVVwbzJNdkZQbldBT1ZlRUlmM1dsZkdBLlhNSDAwSnFMckVZ",
-          "url": "https://www.youtube.com/watch?v=XMH00JqLrEY&list=UUpo2MvFPnWAOVeEIf3WlfGA",
           "group_name": "archive",
           "group_key": "archive",
           "group_names": [
@@ -6116,8 +6116,8 @@
           "UUznXI4BkOD2eVNe4CqpRY-g"
         ],
         "errors": [],
-        "generated_at": "2026-06-05T02:38:14+00:00",
-        "synced_at": "2026-06-05T02:38:14+00:00"
+        "generated_at": "2026-06-05T04:50:28+00:00",
+        "synced_at": "2026-06-05T04:50:28+00:00"
       }
     },
     "booktube": {
@@ -15129,8 +15129,8 @@
           "UUyxFog2shPTW4R9irohYruQ"
         ],
         "errors": [],
-        "generated_at": "2026-06-05T02:38:31+00:00",
-        "synced_at": "2026-06-05T02:38:31+00:00"
+        "generated_at": "2026-06-05T04:50:49+00:00",
+        "synced_at": "2026-06-05T04:50:49+00:00"
       }
     },
     "entertainment": {
@@ -27228,8 +27228,8 @@
           "UUz7hnf081bf3yqBZjSG-hbA"
         ],
         "errors": [],
-        "generated_at": "2026-06-05T02:39:04+00:00",
-        "synced_at": "2026-06-05T02:39:04+00:00"
+        "generated_at": "2026-06-05T04:51:34+00:00",
+        "synced_at": "2026-06-05T04:51:34+00:00"
       }
     },
     "islamicknowledge": {
@@ -36079,8 +36079,8 @@
         "errors": [
           "UCqF93nkibhEA1Sz8nZuqrVQ: no_upload_playlist - relatedPlaylists.uploads missing from channels.list response"
         ],
-        "generated_at": "2026-06-05T02:39:37+00:00",
-        "synced_at": "2026-06-05T02:39:37+00:00"
+        "generated_at": "2026-06-05T04:52:10+00:00",
+        "synced_at": "2026-06-05T04:52:10+00:00"
       }
     },
     "knowledge": {
@@ -36093,22 +36093,22 @@
       "channel_count": 181,
       "latest_video_count": 200,
       "latest_video": {
-        "title": "The Rigged Economy Strikes Again + Anthropic Tries to Slow AI & Insane Lego Update",
-        "entry_id": "yt-VVVuWU1PYW1OS0xHVmxKZ1JVYmFtdmVBLkJqTVV5V3VscV9j",
-        "video_id": "BjMUyWulq_c",
-        "watch_key": "BjMUyWulq_c",
-        "state_key": "BjMUyWulq_c",
-        "channel_id": "UCnYMOamNKLGVlJgRUbamveA",
-        "channel_name": "Tom Bilyeu",
-        "channel_title": "Tom Bilyeu",
-        "published_at": "2026-06-05T00:55:52Z",
-        "published_display": "Jun 05, 2026 00:55",
-        "thumbnail": "https://i.ytimg.com/vi/BjMUyWulq_c/maxresdefault_live.jpg",
-        "thumbnail_url": "https://i.ytimg.com/vi/BjMUyWulq_c/maxresdefault_live.jpg",
-        "image_url": "https://i.ytimg.com/vi/BjMUyWulq_c/maxresdefault_live.jpg",
-        "thumb": "https://i.ytimg.com/vi/BjMUyWulq_c/maxresdefault_live.jpg",
-        "detail_url": "/video/yt-VVVuWU1PYW1OS0xHVmxKZ1JVYmFtdmVBLkJqTVV5V3VscV9j",
-        "url": "https://www.youtube.com/watch?v=BjMUyWulq_c&list=UUnYMOamNKLGVlJgRUbamveA",
+        "title": "مباشر | جلسة لمجلس الأمن الدولي لمناقشة ملف الأسلحة الكيماوية في سوريا",
+        "entry_id": "yt-VVVxUFA0ZGJncjlVZGRuenp1enI4cVhRLlYzYWl0MU9TUUtN",
+        "video_id": "V3ait1OSQKM",
+        "watch_key": "V3ait1OSQKM",
+        "state_key": "V3ait1OSQKM",
+        "channel_id": "UCqPP4dbgr9Uddnzzuzr8qXQ",
+        "channel_name": "SyriaNow - سوريا الآن",
+        "channel_title": "SyriaNow - سوريا الآن",
+        "published_at": "2026-06-05T03:38:33Z",
+        "published_display": "Jun 05, 2026 03:38",
+        "thumbnail": "https://i.ytimg.com/vi/V3ait1OSQKM/maxresdefault.jpg",
+        "thumbnail_url": "https://i.ytimg.com/vi/V3ait1OSQKM/maxresdefault.jpg",
+        "image_url": "https://i.ytimg.com/vi/V3ait1OSQKM/maxresdefault.jpg",
+        "thumb": "https://i.ytimg.com/vi/V3ait1OSQKM/maxresdefault.jpg",
+        "detail_url": "/video/yt-VVVxUFA0ZGJncjlVZGRuenp1enI4cVhRLlYzYWl0MU9TUUtN",
+        "url": "https://www.youtube.com/watch?v=V3ait1OSQKM&list=UUqPP4dbgr9Uddnzzuzr8qXQ",
         "group_name": "knowledge",
         "group_key": "knowledge",
         "group_names": [
@@ -39532,22 +39532,22 @@
           ],
           "group_key": "knowledge",
           "latest_video": {
-            "title": "مشاهد من افتتاح الرئيس الشرع لجسر الرستن بريف حمص",
-            "entry_id": "yt-VVVxUFA0ZGJncjlVZGRuenp1enI4cVhRLmlGenZxd3hHajVz",
-            "video_id": "iFzvqwxGj5s",
-            "watch_key": "iFzvqwxGj5s",
-            "state_key": "iFzvqwxGj5s",
+            "title": "مباشر | جلسة لمجلس الأمن الدولي لمناقشة ملف الأسلحة الكيماوية في سوريا",
+            "entry_id": "yt-VVVxUFA0ZGJncjlVZGRuenp1enI4cVhRLlYzYWl0MU9TUUtN",
+            "video_id": "V3ait1OSQKM",
+            "watch_key": "V3ait1OSQKM",
+            "state_key": "V3ait1OSQKM",
             "channel_id": "UCqPP4dbgr9Uddnzzuzr8qXQ",
             "channel_name": "SyriaNow - سوريا الآن",
             "channel_title": "SyriaNow - سوريا الآن",
-            "published_at": "2026-06-04T22:03:13Z",
-            "published_display": "Jun 04, 2026 22:03",
-            "thumbnail": "https://i.ytimg.com/vi/iFzvqwxGj5s/maxresdefault.jpg",
-            "thumbnail_url": "https://i.ytimg.com/vi/iFzvqwxGj5s/maxresdefault.jpg",
-            "image_url": "https://i.ytimg.com/vi/iFzvqwxGj5s/maxresdefault.jpg",
-            "thumb": "https://i.ytimg.com/vi/iFzvqwxGj5s/maxresdefault.jpg",
-            "detail_url": "/video/yt-VVVxUFA0ZGJncjlVZGRuenp1enI4cVhRLmlGenZxd3hHajVz",
-            "url": "https://www.youtube.com/watch?v=iFzvqwxGj5s&list=UUqPP4dbgr9Uddnzzuzr8qXQ",
+            "published_at": "2026-06-05T03:38:33Z",
+            "published_display": "Jun 05, 2026 03:38",
+            "thumbnail": "https://i.ytimg.com/vi/V3ait1OSQKM/maxresdefault.jpg",
+            "thumbnail_url": "https://i.ytimg.com/vi/V3ait1OSQKM/maxresdefault.jpg",
+            "image_url": "https://i.ytimg.com/vi/V3ait1OSQKM/maxresdefault.jpg",
+            "thumb": "https://i.ytimg.com/vi/V3ait1OSQKM/maxresdefault.jpg",
+            "detail_url": "/video/yt-VVVxUFA0ZGJncjlVZGRuenp1enI4cVhRLlYzYWl0MU9TUUtN",
+            "url": "https://www.youtube.com/watch?v=V3ait1OSQKM&list=UUqPP4dbgr9Uddnzzuzr8qXQ",
             "group_name": "knowledge",
             "group_key": "knowledge",
             "group_names": [
@@ -39560,11 +39560,11 @@
               "cached-latest"
             ]
           },
-          "latest_video_id": "iFzvqwxGj5s",
-          "published_at": "2026-06-04T22:03:13Z",
-          "published_display": "Jun 04, 2026 22:03",
-          "thumbnail": "https://i.ytimg.com/vi/iFzvqwxGj5s/maxresdefault.jpg",
-          "url": "https://www.youtube.com/watch?v=iFzvqwxGj5s&list=UUqPP4dbgr9Uddnzzuzr8qXQ",
+          "latest_video_id": "V3ait1OSQKM",
+          "published_at": "2026-06-05T03:38:33Z",
+          "published_display": "Jun 05, 2026 03:38",
+          "thumbnail": "https://i.ytimg.com/vi/V3ait1OSQKM/maxresdefault.jpg",
+          "url": "https://www.youtube.com/watch?v=V3ait1OSQKM&list=UUqPP4dbgr9Uddnzzuzr8qXQ",
           "reason_tags": [
             "source-diverse",
             "cached-empty",
@@ -41123,6 +41123,35 @@
       ],
       "videos": [
         {
+          "title": "مباشر | جلسة لمجلس الأمن الدولي لمناقشة ملف الأسلحة الكيماوية في سوريا",
+          "entry_id": "yt-VVVxUFA0ZGJncjlVZGRuenp1enI4cVhRLlYzYWl0MU9TUUtN",
+          "video_id": "V3ait1OSQKM",
+          "watch_key": "V3ait1OSQKM",
+          "state_key": "V3ait1OSQKM",
+          "channel_id": "UCqPP4dbgr9Uddnzzuzr8qXQ",
+          "channel_name": "SyriaNow - سوريا الآن",
+          "channel_title": "SyriaNow - سوريا الآن",
+          "published_at": "2026-06-05T03:38:33Z",
+          "published_display": "Jun 05, 2026 03:38",
+          "thumbnail": "https://i.ytimg.com/vi/V3ait1OSQKM/maxresdefault.jpg",
+          "thumbnail_url": "https://i.ytimg.com/vi/V3ait1OSQKM/maxresdefault.jpg",
+          "image_url": "https://i.ytimg.com/vi/V3ait1OSQKM/maxresdefault.jpg",
+          "thumb": "https://i.ytimg.com/vi/V3ait1OSQKM/maxresdefault.jpg",
+          "detail_url": "/video/yt-VVVxUFA0ZGJncjlVZGRuenp1enI4cVhRLlYzYWl0MU9TUUtN",
+          "url": "https://www.youtube.com/watch?v=V3ait1OSQKM&list=UUqPP4dbgr9Uddnzzuzr8qXQ",
+          "group_name": "knowledge",
+          "group_key": "knowledge",
+          "group_names": [
+            "knowledge"
+          ],
+          "group_keys": [
+            "knowledge"
+          ],
+          "reason_tags": [
+            "cached-latest"
+          ]
+        },
+        {
           "title": "The Rigged Economy Strikes Again + Anthropic Tries to Slow AI & Insane Lego Update",
           "entry_id": "yt-VVVuWU1PYW1OS0xHVmxKZ1JVYmFtdmVBLkJqTVV5V3VscV9j",
           "video_id": "BjMUyWulq_c",
@@ -41806,35 +41835,6 @@
           "thumb": "https://i.ytimg.com/vi/QNvFDgiO2fU/maxresdefault.jpg",
           "detail_url": "/video/yt-VVVxUFA0ZGJncjlVZGRuenp1enI4cVhRLlFOdkZEZ2lPMmZV",
           "url": "https://www.youtube.com/watch?v=QNvFDgiO2fU&list=UUqPP4dbgr9Uddnzzuzr8qXQ",
-          "group_name": "knowledge",
-          "group_key": "knowledge",
-          "group_names": [
-            "knowledge"
-          ],
-          "group_keys": [
-            "knowledge"
-          ],
-          "reason_tags": [
-            "cached-latest"
-          ]
-        },
-        {
-          "title": "كيف يتحوّل العنف إلى أسلوب حياة؟",
-          "entry_id": "yt-VVVxUFA0ZGJncjlVZGRuenp1enI4cVhRLjAxU0pvSmR3dGk4",
-          "video_id": "01SJoJdwti8",
-          "watch_key": "01SJoJdwti8",
-          "state_key": "01SJoJdwti8",
-          "channel_id": "UCqPP4dbgr9Uddnzzuzr8qXQ",
-          "channel_name": "SyriaNow - سوريا الآن",
-          "channel_title": "SyriaNow - سوريا الآن",
-          "published_at": "2026-06-04T18:34:15Z",
-          "published_display": "Jun 04, 2026 18:34",
-          "thumbnail": "https://i.ytimg.com/vi/01SJoJdwti8/maxresdefault.jpg",
-          "thumbnail_url": "https://i.ytimg.com/vi/01SJoJdwti8/maxresdefault.jpg",
-          "image_url": "https://i.ytimg.com/vi/01SJoJdwti8/maxresdefault.jpg",
-          "thumb": "https://i.ytimg.com/vi/01SJoJdwti8/maxresdefault.jpg",
-          "detail_url": "/video/yt-VVVxUFA0ZGJncjlVZGRuenp1enI4cVhRLjAxU0pvSmR3dGk4",
-          "url": "https://www.youtube.com/watch?v=01SJoJdwti8&list=UUqPP4dbgr9Uddnzzuzr8qXQ",
           "group_name": "knowledge",
           "group_key": "knowledge",
           "group_names": [
@@ -47128,8 +47128,8 @@
           "UCzmNyFIqGyVquE93gxRjQdw: no_upload_playlist - relatedPlaylists.uploads missing from channels.list response",
           "UCG7E24xqPnCcKSTKM1NYmWw: no_upload_playlist - relatedPlaylists.uploads missing from channels.list response"
         ],
-        "generated_at": "2026-06-05T02:40:09+00:00",
-        "synced_at": "2026-06-05T02:40:09+00:00"
+        "generated_at": "2026-06-05T04:52:52+00:00",
+        "synced_at": "2026-06-05T04:52:52+00:00"
       }
     },
     "language": {
@@ -53778,8 +53778,8 @@
           "UUwA7Aepp7nRUJNa8roQ-6Bw"
         ],
         "errors": [],
-        "generated_at": "2026-06-05T02:40:18+00:00",
-        "synced_at": "2026-06-05T02:40:18+00:00"
+        "generated_at": "2026-06-05T04:53:03+00:00",
+        "synced_at": "2026-06-05T04:53:03+00:00"
       }
     },
     "movise": {
@@ -60319,8 +60319,8 @@
           "UUyWHNjwSLMNGfaYKoCQd8kg"
         ],
         "errors": [],
-        "generated_at": "2026-06-05T02:40:24+00:00",
-        "synced_at": "2026-06-05T02:40:24+00:00"
+        "generated_at": "2026-06-05T04:53:12+00:00",
+        "synced_at": "2026-06-05T04:53:12+00:00"
       }
     },
     "musics": {
@@ -68615,8 +68615,8 @@
         "errors": [
           "UCUz6CXO5XIYD_7wmlK8mZsA: no_upload_playlist - relatedPlaylists.uploads missing from channels.list response"
         ],
-        "generated_at": "2026-06-05T02:40:34+00:00",
-        "synced_at": "2026-06-05T02:40:34+00:00"
+        "generated_at": "2026-06-05T04:53:27+00:00",
+        "synced_at": "2026-06-05T04:53:27+00:00"
       }
     },
     "myfavoret": {
@@ -80097,8 +80097,8 @@
           "UCp24iCen1UdEJr4ZSMyYfKA: no_upload_playlist - relatedPlaylists.uploads missing from channels.list response",
           "UC8zcPIQGZMZfMh0Bgu7E2oA: no_upload_playlist - relatedPlaylists.uploads missing from channels.list response"
         ],
-        "generated_at": "2026-06-05T02:40:46+00:00",
-        "synced_at": "2026-06-05T02:40:46+00:00"
+        "generated_at": "2026-06-05T04:53:43+00:00",
+        "synced_at": "2026-06-05T04:53:43+00:00"
       }
     },
     "news": {
@@ -80111,22 +80111,22 @@
       "channel_count": 38,
       "latest_video_count": 200,
       "latest_video": {
-        "title": "المتحدث باسم الأمين العام للأمم المتحدة للجزيرة: نرحب بشدة بجهود واشنطن للجمع بين لبنان وإسرائيل",
-        "entry_id": "yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3Lmx0c3psSTByZ1hj",
-        "video_id": "ltszlI0rgXc",
-        "watch_key": "ltszlI0rgXc",
-        "state_key": "ltszlI0rgXc",
+        "title": "خبير بالشؤون الدولية: أمريكا تحسن تأجيج الصراعات لكنها تعجز عن صناعة السلام",
+        "entry_id": "yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3LmthcDk4b2xVSHMw",
+        "video_id": "kap98olUHs0",
+        "watch_key": "kap98olUHs0",
+        "state_key": "kap98olUHs0",
         "channel_id": "UCfiwzLy-8yKzIbsmZTzxDgw",
         "channel_name": "AlJazeera Arabic  قناة الجزيرة",
         "channel_title": "AlJazeera Arabic  قناة الجزيرة",
-        "published_at": "2026-06-05T02:40:05Z",
-        "published_display": "Jun 05, 2026 02:40",
-        "thumbnail": "https://i.ytimg.com/vi/ltszlI0rgXc/maxresdefault.jpg",
-        "thumbnail_url": "https://i.ytimg.com/vi/ltszlI0rgXc/maxresdefault.jpg",
-        "image_url": "https://i.ytimg.com/vi/ltszlI0rgXc/maxresdefault.jpg",
-        "thumb": "https://i.ytimg.com/vi/ltszlI0rgXc/maxresdefault.jpg",
-        "detail_url": "/video/yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3Lmx0c3psSTByZ1hj",
-        "url": "https://www.youtube.com/watch?v=ltszlI0rgXc&list=UUfiwzLy-8yKzIbsmZTzxDgw",
+        "published_at": "2026-06-05T04:40:16Z",
+        "published_display": "Jun 05, 2026 04:40",
+        "thumbnail": "https://i.ytimg.com/vi/kap98olUHs0/maxresdefault.jpg",
+        "thumbnail_url": "https://i.ytimg.com/vi/kap98olUHs0/maxresdefault.jpg",
+        "image_url": "https://i.ytimg.com/vi/kap98olUHs0/maxresdefault.jpg",
+        "thumb": "https://i.ytimg.com/vi/kap98olUHs0/maxresdefault.jpg",
+        "detail_url": "/video/yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3LmthcDk4b2xVSHMw",
+        "url": "https://www.youtube.com/watch?v=kap98olUHs0&list=UUfiwzLy-8yKzIbsmZTzxDgw",
         "group_name": "news",
         "group_key": "news",
         "group_names": [
@@ -80634,22 +80634,22 @@
           ],
           "group_key": "news",
           "latest_video": {
-            "title": "المتحدث باسم الأمين العام للأمم المتحدة للجزيرة: نرحب بشدة بجهود واشنطن للجمع بين لبنان وإسرائيل",
-            "entry_id": "yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3Lmx0c3psSTByZ1hj",
-            "video_id": "ltszlI0rgXc",
-            "watch_key": "ltszlI0rgXc",
-            "state_key": "ltszlI0rgXc",
+            "title": "خبير بالشؤون الدولية: أمريكا تحسن تأجيج الصراعات لكنها تعجز عن صناعة السلام",
+            "entry_id": "yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3LmthcDk4b2xVSHMw",
+            "video_id": "kap98olUHs0",
+            "watch_key": "kap98olUHs0",
+            "state_key": "kap98olUHs0",
             "channel_id": "UCfiwzLy-8yKzIbsmZTzxDgw",
             "channel_name": "AlJazeera Arabic  قناة الجزيرة",
             "channel_title": "AlJazeera Arabic  قناة الجزيرة",
-            "published_at": "2026-06-05T02:40:05Z",
-            "published_display": "Jun 05, 2026 02:40",
-            "thumbnail": "https://i.ytimg.com/vi/ltszlI0rgXc/maxresdefault.jpg",
-            "thumbnail_url": "https://i.ytimg.com/vi/ltszlI0rgXc/maxresdefault.jpg",
-            "image_url": "https://i.ytimg.com/vi/ltszlI0rgXc/maxresdefault.jpg",
-            "thumb": "https://i.ytimg.com/vi/ltszlI0rgXc/maxresdefault.jpg",
-            "detail_url": "/video/yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3Lmx0c3psSTByZ1hj",
-            "url": "https://www.youtube.com/watch?v=ltszlI0rgXc&list=UUfiwzLy-8yKzIbsmZTzxDgw",
+            "published_at": "2026-06-05T04:40:16Z",
+            "published_display": "Jun 05, 2026 04:40",
+            "thumbnail": "https://i.ytimg.com/vi/kap98olUHs0/maxresdefault.jpg",
+            "thumbnail_url": "https://i.ytimg.com/vi/kap98olUHs0/maxresdefault.jpg",
+            "image_url": "https://i.ytimg.com/vi/kap98olUHs0/maxresdefault.jpg",
+            "thumb": "https://i.ytimg.com/vi/kap98olUHs0/maxresdefault.jpg",
+            "detail_url": "/video/yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3LmthcDk4b2xVSHMw",
+            "url": "https://www.youtube.com/watch?v=kap98olUHs0&list=UUfiwzLy-8yKzIbsmZTzxDgw",
             "group_name": "news",
             "group_key": "news",
             "group_names": [
@@ -80662,11 +80662,11 @@
               "cached-latest"
             ]
           },
-          "latest_video_id": "ltszlI0rgXc",
-          "published_at": "2026-06-05T02:40:05Z",
-          "published_display": "Jun 05, 2026 02:40",
-          "thumbnail": "https://i.ytimg.com/vi/ltszlI0rgXc/maxresdefault.jpg",
-          "url": "https://www.youtube.com/watch?v=ltszlI0rgXc&list=UUfiwzLy-8yKzIbsmZTzxDgw",
+          "latest_video_id": "kap98olUHs0",
+          "published_at": "2026-06-05T04:40:16Z",
+          "published_display": "Jun 05, 2026 04:40",
+          "thumbnail": "https://i.ytimg.com/vi/kap98olUHs0/maxresdefault.jpg",
+          "url": "https://www.youtube.com/watch?v=kap98olUHs0&list=UUfiwzLy-8yKzIbsmZTzxDgw",
           "reason_tags": [
             "source-diverse",
             "cached-empty",
@@ -81444,22 +81444,22 @@
           ],
           "group_key": "news",
           "latest_video": {
-            "title": "أغرب حادث في مصر.. \"لودر\" يغرق بالترعة بدلاً من إنقاذ التاكسي!",
-            "entry_id": "yt-VVVXbkJUdXpVVURwS2hKUEd1RFFNeW5BLmRjZ1J1VEYtUW9N",
-            "video_id": "dcgRuTF-QoM",
-            "watch_key": "dcgRuTF-QoM",
-            "state_key": "dcgRuTF-QoM",
+            "title": "تصرف غريب من رجل مع كلاب سائبة",
+            "entry_id": "yt-VVVXbkJUdXpVVURwS2hKUEd1RFFNeW5BLnAwS040Z0tvMGNF",
+            "video_id": "p0KN4gKo0cE",
+            "watch_key": "p0KN4gKo0cE",
+            "state_key": "p0KN4gKo0cE",
             "channel_id": "UCWnBTuzUUDpKhJPGuDQMynA",
             "channel_name": "Al Mashhad المشهد",
             "channel_title": "Al Mashhad المشهد",
-            "published_at": "2026-06-04T22:40:01Z",
-            "published_display": "Jun 04, 2026 22:40",
-            "thumbnail": "https://i.ytimg.com/vi/dcgRuTF-QoM/maxresdefault.jpg",
-            "thumbnail_url": "https://i.ytimg.com/vi/dcgRuTF-QoM/maxresdefault.jpg",
-            "image_url": "https://i.ytimg.com/vi/dcgRuTF-QoM/maxresdefault.jpg",
-            "thumb": "https://i.ytimg.com/vi/dcgRuTF-QoM/maxresdefault.jpg",
-            "detail_url": "/video/yt-VVVXbkJUdXpVVURwS2hKUEd1RFFNeW5BLmRjZ1J1VEYtUW9N",
-            "url": "https://www.youtube.com/watch?v=dcgRuTF-QoM&list=UUWnBTuzUUDpKhJPGuDQMynA",
+            "published_at": "2026-06-05T04:39:03Z",
+            "published_display": "Jun 05, 2026 04:39",
+            "thumbnail": "https://i.ytimg.com/vi/p0KN4gKo0cE/maxresdefault.jpg",
+            "thumbnail_url": "https://i.ytimg.com/vi/p0KN4gKo0cE/maxresdefault.jpg",
+            "image_url": "https://i.ytimg.com/vi/p0KN4gKo0cE/maxresdefault.jpg",
+            "thumb": "https://i.ytimg.com/vi/p0KN4gKo0cE/maxresdefault.jpg",
+            "detail_url": "/video/yt-VVVXbkJUdXpVVURwS2hKUEd1RFFNeW5BLnAwS040Z0tvMGNF",
+            "url": "https://www.youtube.com/watch?v=p0KN4gKo0cE&list=UUWnBTuzUUDpKhJPGuDQMynA",
             "group_name": "news",
             "group_key": "news",
             "group_names": [
@@ -81472,11 +81472,11 @@
               "cached-latest"
             ]
           },
-          "latest_video_id": "dcgRuTF-QoM",
-          "published_at": "2026-06-04T22:40:01Z",
-          "published_display": "Jun 04, 2026 22:40",
-          "thumbnail": "https://i.ytimg.com/vi/dcgRuTF-QoM/maxresdefault.jpg",
-          "url": "https://www.youtube.com/watch?v=dcgRuTF-QoM&list=UUWnBTuzUUDpKhJPGuDQMynA",
+          "latest_video_id": "p0KN4gKo0cE",
+          "published_at": "2026-06-05T04:39:03Z",
+          "published_display": "Jun 05, 2026 04:39",
+          "thumbnail": "https://i.ytimg.com/vi/p0KN4gKo0cE/maxresdefault.jpg",
+          "url": "https://www.youtube.com/watch?v=p0KN4gKo0cE&list=UUWnBTuzUUDpKhJPGuDQMynA",
           "reason_tags": [
             "source-diverse",
             "cached-empty",
@@ -81727,22 +81727,22 @@
       ],
       "videos": [
         {
-          "title": "المتحدث باسم الأمين العام للأمم المتحدة للجزيرة: نرحب بشدة بجهود واشنطن للجمع بين لبنان وإسرائيل",
-          "entry_id": "yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3Lmx0c3psSTByZ1hj",
-          "video_id": "ltszlI0rgXc",
-          "watch_key": "ltszlI0rgXc",
-          "state_key": "ltszlI0rgXc",
+          "title": "خبير بالشؤون الدولية: أمريكا تحسن تأجيج الصراعات لكنها تعجز عن صناعة السلام",
+          "entry_id": "yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3LmthcDk4b2xVSHMw",
+          "video_id": "kap98olUHs0",
+          "watch_key": "kap98olUHs0",
+          "state_key": "kap98olUHs0",
           "channel_id": "UCfiwzLy-8yKzIbsmZTzxDgw",
           "channel_name": "AlJazeera Arabic  قناة الجزيرة",
           "channel_title": "AlJazeera Arabic  قناة الجزيرة",
-          "published_at": "2026-06-05T02:40:05Z",
-          "published_display": "Jun 05, 2026 02:40",
-          "thumbnail": "https://i.ytimg.com/vi/ltszlI0rgXc/maxresdefault.jpg",
-          "thumbnail_url": "https://i.ytimg.com/vi/ltszlI0rgXc/maxresdefault.jpg",
-          "image_url": "https://i.ytimg.com/vi/ltszlI0rgXc/maxresdefault.jpg",
-          "thumb": "https://i.ytimg.com/vi/ltszlI0rgXc/maxresdefault.jpg",
-          "detail_url": "/video/yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3Lmx0c3psSTByZ1hj",
-          "url": "https://www.youtube.com/watch?v=ltszlI0rgXc&list=UUfiwzLy-8yKzIbsmZTzxDgw",
+          "published_at": "2026-06-05T04:40:16Z",
+          "published_display": "Jun 05, 2026 04:40",
+          "thumbnail": "https://i.ytimg.com/vi/kap98olUHs0/maxresdefault.jpg",
+          "thumbnail_url": "https://i.ytimg.com/vi/kap98olUHs0/maxresdefault.jpg",
+          "image_url": "https://i.ytimg.com/vi/kap98olUHs0/maxresdefault.jpg",
+          "thumb": "https://i.ytimg.com/vi/kap98olUHs0/maxresdefault.jpg",
+          "detail_url": "/video/yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3LmthcDk4b2xVSHMw",
+          "url": "https://www.youtube.com/watch?v=kap98olUHs0&list=UUfiwzLy-8yKzIbsmZTzxDgw",
           "group_name": "news",
           "group_key": "news",
           "group_names": [
@@ -81756,22 +81756,22 @@
           ]
         },
         {
-          "title": "رابطة المطارات الأوروبية تعلن انخفاض حركة الركاب في أبريل بسبب تداعيات حرب إيران",
-          "entry_id": "yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3LkJ4TmdLc0tfWVJZ",
-          "video_id": "BxNgKsK_YRY",
-          "watch_key": "BxNgKsK_YRY",
-          "state_key": "BxNgKsK_YRY",
+          "title": "المندوب الصومالي الدائم لدى الاتحاد الإفريقي: المعارضة تحتمي بالقبيلة لتعطيل دستور \"صوت لكل مواطن\"",
+          "entry_id": "yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3LmVNS0VseTFvYTRZ",
+          "video_id": "eMKEly1oa4Y",
+          "watch_key": "eMKEly1oa4Y",
+          "state_key": "eMKEly1oa4Y",
           "channel_id": "UCfiwzLy-8yKzIbsmZTzxDgw",
           "channel_name": "AlJazeera Arabic  قناة الجزيرة",
           "channel_title": "AlJazeera Arabic  قناة الجزيرة",
-          "published_at": "2026-06-05T02:38:21Z",
-          "published_display": "Jun 05, 2026 02:38",
-          "thumbnail": "https://i.ytimg.com/vi/BxNgKsK_YRY/maxresdefault.jpg",
-          "thumbnail_url": "https://i.ytimg.com/vi/BxNgKsK_YRY/maxresdefault.jpg",
-          "image_url": "https://i.ytimg.com/vi/BxNgKsK_YRY/maxresdefault.jpg",
-          "thumb": "https://i.ytimg.com/vi/BxNgKsK_YRY/maxresdefault.jpg",
-          "detail_url": "/video/yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3LkJ4TmdLc0tfWVJZ",
-          "url": "https://www.youtube.com/watch?v=BxNgKsK_YRY&list=UUfiwzLy-8yKzIbsmZTzxDgw",
+          "published_at": "2026-06-05T04:40:10Z",
+          "published_display": "Jun 05, 2026 04:40",
+          "thumbnail": "https://i.ytimg.com/vi/eMKEly1oa4Y/maxresdefault.jpg",
+          "thumbnail_url": "https://i.ytimg.com/vi/eMKEly1oa4Y/maxresdefault.jpg",
+          "image_url": "https://i.ytimg.com/vi/eMKEly1oa4Y/maxresdefault.jpg",
+          "thumb": "https://i.ytimg.com/vi/eMKEly1oa4Y/maxresdefault.jpg",
+          "detail_url": "/video/yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3LmVNS0VseTFvYTRZ",
+          "url": "https://www.youtube.com/watch?v=eMKEly1oa4Y&list=UUfiwzLy-8yKzIbsmZTzxDgw",
           "group_name": "news",
           "group_key": "news",
           "group_names": [
@@ -81785,22 +81785,22 @@
           ]
         },
         {
-          "title": "الحرس الثوري الإيراني: لن يتحقق أي هدوء في المنطقة ما لم ينسحب الصهاينة من الأراضي اللبنانية المحتلة",
-          "entry_id": "yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3LmJUNXdNYTZPeEZ3",
-          "video_id": "bT5wMa6OxFw",
-          "watch_key": "bT5wMa6OxFw",
-          "state_key": "bT5wMa6OxFw",
-          "channel_id": "UCfiwzLy-8yKzIbsmZTzxDgw",
-          "channel_name": "AlJazeera Arabic  قناة الجزيرة",
-          "channel_title": "AlJazeera Arabic  قناة الجزيرة",
-          "published_at": "2026-06-05T02:30:23Z",
-          "published_display": "Jun 05, 2026 02:30",
-          "thumbnail": "https://i.ytimg.com/vi/bT5wMa6OxFw/maxresdefault.jpg",
-          "thumbnail_url": "https://i.ytimg.com/vi/bT5wMa6OxFw/maxresdefault.jpg",
-          "image_url": "https://i.ytimg.com/vi/bT5wMa6OxFw/maxresdefault.jpg",
-          "thumb": "https://i.ytimg.com/vi/bT5wMa6OxFw/maxresdefault.jpg",
-          "detail_url": "/video/yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3LmJUNXdNYTZPeEZ3",
-          "url": "https://www.youtube.com/watch?v=bT5wMa6OxFw&list=UUfiwzLy-8yKzIbsmZTzxDgw",
+          "title": "تصرف غريب من رجل مع كلاب سائبة",
+          "entry_id": "yt-VVVXbkJUdXpVVURwS2hKUEd1RFFNeW5BLnAwS040Z0tvMGNF",
+          "video_id": "p0KN4gKo0cE",
+          "watch_key": "p0KN4gKo0cE",
+          "state_key": "p0KN4gKo0cE",
+          "channel_id": "UCWnBTuzUUDpKhJPGuDQMynA",
+          "channel_name": "Al Mashhad المشهد",
+          "channel_title": "Al Mashhad المشهد",
+          "published_at": "2026-06-05T04:39:03Z",
+          "published_display": "Jun 05, 2026 04:39",
+          "thumbnail": "https://i.ytimg.com/vi/p0KN4gKo0cE/maxresdefault.jpg",
+          "thumbnail_url": "https://i.ytimg.com/vi/p0KN4gKo0cE/maxresdefault.jpg",
+          "image_url": "https://i.ytimg.com/vi/p0KN4gKo0cE/maxresdefault.jpg",
+          "thumb": "https://i.ytimg.com/vi/p0KN4gKo0cE/maxresdefault.jpg",
+          "detail_url": "/video/yt-VVVXbkJUdXpVVURwS2hKUEd1RFFNeW5BLnAwS040Z0tvMGNF",
+          "url": "https://www.youtube.com/watch?v=p0KN4gKo0cE&list=UUWnBTuzUUDpKhJPGuDQMynA",
           "group_name": "news",
           "group_key": "news",
           "group_names": [
@@ -81814,22 +81814,22 @@
           ]
         },
         {
-          "title": "لحظة انهيار العجلات الأمامية لطائرة في مطار فرانكفورت",
-          "entry_id": "yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3Lk1fWHdwa0IwR21n",
-          "video_id": "M_XwpkB0Gmg",
-          "watch_key": "M_XwpkB0Gmg",
-          "state_key": "M_XwpkB0Gmg",
+          "title": "الشيباني: نريد نقل الخبرات الأمنية الجزائرية إلى سوريا",
+          "entry_id": "yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3LlRIbEJFempBem5R",
+          "video_id": "THlBEzjAznQ",
+          "watch_key": "THlBEzjAznQ",
+          "state_key": "THlBEzjAznQ",
           "channel_id": "UCfiwzLy-8yKzIbsmZTzxDgw",
           "channel_name": "AlJazeera Arabic  قناة الجزيرة",
           "channel_title": "AlJazeera Arabic  قناة الجزيرة",
-          "published_at": "2026-06-05T02:30:15Z",
-          "published_display": "Jun 05, 2026 02:30",
-          "thumbnail": "https://i.ytimg.com/vi/M_XwpkB0Gmg/maxresdefault.jpg",
-          "thumbnail_url": "https://i.ytimg.com/vi/M_XwpkB0Gmg/maxresdefault.jpg",
-          "image_url": "https://i.ytimg.com/vi/M_XwpkB0Gmg/maxresdefault.jpg",
-          "thumb": "https://i.ytimg.com/vi/M_XwpkB0Gmg/maxresdefault.jpg",
-          "detail_url": "/video/yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3Lk1fWHdwa0IwR21n",
-          "url": "https://www.youtube.com/watch?v=M_XwpkB0Gmg&list=UUfiwzLy-8yKzIbsmZTzxDgw",
+          "published_at": "2026-06-05T04:30:05Z",
+          "published_display": "Jun 05, 2026 04:30",
+          "thumbnail": "https://i.ytimg.com/vi/THlBEzjAznQ/maxresdefault.jpg",
+          "thumbnail_url": "https://i.ytimg.com/vi/THlBEzjAznQ/maxresdefault.jpg",
+          "image_url": "https://i.ytimg.com/vi/THlBEzjAznQ/maxresdefault.jpg",
+          "thumb": "https://i.ytimg.com/vi/THlBEzjAznQ/maxresdefault.jpg",
+          "detail_url": "/video/yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3LlRIbEJFempBem5R",
+          "url": "https://www.youtube.com/watch?v=THlBEzjAznQ&list=UUfiwzLy-8yKzIbsmZTzxDgw",
           "group_name": "news",
           "group_key": "news",
           "group_names": [
@@ -81843,22 +81843,22 @@
           ]
         },
         {
-          "title": "احتجاجات في طرابلس رفضا لتوطين المهاجرين وإبقائهم في ليبيا",
-          "entry_id": "yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3LkhBQU9QWFdIdmtj",
-          "video_id": "HAAOPXWHvkc",
-          "watch_key": "HAAOPXWHvkc",
-          "state_key": "HAAOPXWHvkc",
+          "title": "مضيق هرمز ولبنان وملف الأموال المجمدة.. شروط تعقد المفاوضات الأمريكية الإيرانية",
+          "entry_id": "yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3Ljh5Y3oxQUNkbnRB",
+          "video_id": "8ycz1ACdntA",
+          "watch_key": "8ycz1ACdntA",
+          "state_key": "8ycz1ACdntA",
           "channel_id": "UCfiwzLy-8yKzIbsmZTzxDgw",
           "channel_name": "AlJazeera Arabic  قناة الجزيرة",
           "channel_title": "AlJazeera Arabic  قناة الجزيرة",
-          "published_at": "2026-06-05T02:20:16Z",
-          "published_display": "Jun 05, 2026 02:20",
-          "thumbnail": "https://i.ytimg.com/vi/HAAOPXWHvkc/maxresdefault.jpg",
-          "thumbnail_url": "https://i.ytimg.com/vi/HAAOPXWHvkc/maxresdefault.jpg",
-          "image_url": "https://i.ytimg.com/vi/HAAOPXWHvkc/maxresdefault.jpg",
-          "thumb": "https://i.ytimg.com/vi/HAAOPXWHvkc/maxresdefault.jpg",
-          "detail_url": "/video/yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3LkhBQU9QWFdIdmtj",
-          "url": "https://www.youtube.com/watch?v=HAAOPXWHvkc&list=UUfiwzLy-8yKzIbsmZTzxDgw",
+          "published_at": "2026-06-05T04:20:08Z",
+          "published_display": "Jun 05, 2026 04:20",
+          "thumbnail": "https://i.ytimg.com/vi/8ycz1ACdntA/maxresdefault.jpg",
+          "thumbnail_url": "https://i.ytimg.com/vi/8ycz1ACdntA/maxresdefault.jpg",
+          "image_url": "https://i.ytimg.com/vi/8ycz1ACdntA/maxresdefault.jpg",
+          "thumb": "https://i.ytimg.com/vi/8ycz1ACdntA/maxresdefault.jpg",
+          "detail_url": "/video/yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3Ljh5Y3oxQUNkbnRB",
+          "url": "https://www.youtube.com/watch?v=8ycz1ACdntA&list=UUfiwzLy-8yKzIbsmZTzxDgw",
           "group_name": "news",
           "group_key": "news",
           "group_names": [
@@ -81872,22 +81872,22 @@
           ]
         },
         {
-          "title": "ترمب: مجلس النواب أجرى أمس تصويتا بلا معنى لتقييد صلاحياتي في خضم مفاوضاتي لإنهاء الحرب مع إيران",
-          "entry_id": "yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3Lk9TVWd5TnhndXdz",
-          "video_id": "OSUgyNxguws",
-          "watch_key": "OSUgyNxguws",
-          "state_key": "OSUgyNxguws",
+          "title": "شهيدة ومصابون جراء قصف الاحتلال على مواصي خان يونس جنوب قطاع غزة",
+          "entry_id": "yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3LndXZUlnWUJwenpF",
+          "video_id": "wWeIgYBpzzE",
+          "watch_key": "wWeIgYBpzzE",
+          "state_key": "wWeIgYBpzzE",
           "channel_id": "UCfiwzLy-8yKzIbsmZTzxDgw",
           "channel_name": "AlJazeera Arabic  قناة الجزيرة",
           "channel_title": "AlJazeera Arabic  قناة الجزيرة",
-          "published_at": "2026-06-05T02:20:12Z",
-          "published_display": "Jun 05, 2026 02:20",
-          "thumbnail": "https://i.ytimg.com/vi/OSUgyNxguws/maxresdefault.jpg",
-          "thumbnail_url": "https://i.ytimg.com/vi/OSUgyNxguws/maxresdefault.jpg",
-          "image_url": "https://i.ytimg.com/vi/OSUgyNxguws/maxresdefault.jpg",
-          "thumb": "https://i.ytimg.com/vi/OSUgyNxguws/maxresdefault.jpg",
-          "detail_url": "/video/yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3Lk9TVWd5TnhndXdz",
-          "url": "https://www.youtube.com/watch?v=OSUgyNxguws&list=UUfiwzLy-8yKzIbsmZTzxDgw",
+          "published_at": "2026-06-05T04:00:13Z",
+          "published_display": "Jun 05, 2026 04:00",
+          "thumbnail": "https://i.ytimg.com/vi/wWeIgYBpzzE/maxresdefault.jpg",
+          "thumbnail_url": "https://i.ytimg.com/vi/wWeIgYBpzzE/maxresdefault.jpg",
+          "image_url": "https://i.ytimg.com/vi/wWeIgYBpzzE/maxresdefault.jpg",
+          "thumb": "https://i.ytimg.com/vi/wWeIgYBpzzE/maxresdefault.jpg",
+          "detail_url": "/video/yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3LndXZUlnWUJwenpF",
+          "url": "https://www.youtube.com/watch?v=wWeIgYBpzzE&list=UUfiwzLy-8yKzIbsmZTzxDgw",
           "group_name": "news",
           "group_key": "news",
           "group_names": [
@@ -81901,22 +81901,22 @@
           ]
         },
         {
-          "title": "شاهد |  صور تظهر لحظة استهداف مسيرة مبنى الركاب في مطار الكويت الدولي",
-          "entry_id": "yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3LlFIR015N3lXYlJ3",
-          "video_id": "QHGMy7yWbRw",
-          "watch_key": "QHGMy7yWbRw",
-          "state_key": "QHGMy7yWbRw",
-          "channel_id": "UCfiwzLy-8yKzIbsmZTzxDgw",
-          "channel_name": "AlJazeera Arabic  قناة الجزيرة",
-          "channel_title": "AlJazeera Arabic  قناة الجزيرة",
-          "published_at": "2026-06-05T02:00:33Z",
-          "published_display": "Jun 05, 2026 02:00",
-          "thumbnail": "https://i.ytimg.com/vi/QHGMy7yWbRw/maxresdefault.jpg",
-          "thumbnail_url": "https://i.ytimg.com/vi/QHGMy7yWbRw/maxresdefault.jpg",
-          "image_url": "https://i.ytimg.com/vi/QHGMy7yWbRw/maxresdefault.jpg",
-          "thumb": "https://i.ytimg.com/vi/QHGMy7yWbRw/maxresdefault.jpg",
-          "detail_url": "/video/yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3LlFIR015N3lXYlJ3",
-          "url": "https://www.youtube.com/watch?v=QHGMy7yWbRw&list=UUfiwzLy-8yKzIbsmZTzxDgw",
+          "title": "أحمد الشرع يفتتح جسرا في حمص",
+          "entry_id": "yt-VVVXbkJUdXpVVURwS2hKUEd1RFFNeW5BLks0YnhnRFFvdlA0",
+          "video_id": "K4bxgDQovP4",
+          "watch_key": "K4bxgDQovP4",
+          "state_key": "K4bxgDQovP4",
+          "channel_id": "UCWnBTuzUUDpKhJPGuDQMynA",
+          "channel_name": "Al Mashhad المشهد",
+          "channel_title": "Al Mashhad المشهد",
+          "published_at": "2026-06-05T03:51:38Z",
+          "published_display": "Jun 05, 2026 03:51",
+          "thumbnail": "https://i.ytimg.com/vi/K4bxgDQovP4/maxresdefault.jpg",
+          "thumbnail_url": "https://i.ytimg.com/vi/K4bxgDQovP4/maxresdefault.jpg",
+          "image_url": "https://i.ytimg.com/vi/K4bxgDQovP4/maxresdefault.jpg",
+          "thumb": "https://i.ytimg.com/vi/K4bxgDQovP4/maxresdefault.jpg",
+          "detail_url": "/video/yt-VVVXbkJUdXpVVURwS2hKUEd1RFFNeW5BLks0YnhnRFFvdlA0",
+          "url": "https://www.youtube.com/watch?v=K4bxgDQovP4&list=UUWnBTuzUUDpKhJPGuDQMynA",
           "group_name": "news",
           "group_key": "news",
           "group_names": [
@@ -81930,22 +81930,22 @@
           ]
         },
         {
-          "title": "المجموعة العربية بالأمم المتحدة تدين التوسع الاستيطاني الإسرائيلي بالضفة الغربية",
-          "entry_id": "yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3LjIxNzBZcTU3S3cw",
-          "video_id": "2170Yq57Kw0",
-          "watch_key": "2170Yq57Kw0",
-          "state_key": "2170Yq57Kw0",
+          "title": "سلاح حزب الله والانتخابات الإسرائيلية.. لماذا تتعثر التسوية بين لبنان وإسرائيل؟",
+          "entry_id": "yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3LmFUX1A0TFNpRzdv",
+          "video_id": "aT_P4LSiG7o",
+          "watch_key": "aT_P4LSiG7o",
+          "state_key": "aT_P4LSiG7o",
           "channel_id": "UCfiwzLy-8yKzIbsmZTzxDgw",
           "channel_name": "AlJazeera Arabic  قناة الجزيرة",
           "channel_title": "AlJazeera Arabic  قناة الجزيرة",
-          "published_at": "2026-06-05T01:54:52Z",
-          "published_display": "Jun 05, 2026 01:54",
-          "thumbnail": "https://i.ytimg.com/vi/2170Yq57Kw0/maxresdefault.jpg",
-          "thumbnail_url": "https://i.ytimg.com/vi/2170Yq57Kw0/maxresdefault.jpg",
-          "image_url": "https://i.ytimg.com/vi/2170Yq57Kw0/maxresdefault.jpg",
-          "thumb": "https://i.ytimg.com/vi/2170Yq57Kw0/maxresdefault.jpg",
-          "detail_url": "/video/yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3LjIxNzBZcTU3S3cw",
-          "url": "https://www.youtube.com/watch?v=2170Yq57Kw0&list=UUfiwzLy-8yKzIbsmZTzxDgw",
+          "published_at": "2026-06-05T03:40:19Z",
+          "published_display": "Jun 05, 2026 03:40",
+          "thumbnail": "https://i.ytimg.com/vi/aT_P4LSiG7o/maxresdefault.jpg",
+          "thumbnail_url": "https://i.ytimg.com/vi/aT_P4LSiG7o/maxresdefault.jpg",
+          "image_url": "https://i.ytimg.com/vi/aT_P4LSiG7o/maxresdefault.jpg",
+          "thumb": "https://i.ytimg.com/vi/aT_P4LSiG7o/maxresdefault.jpg",
+          "detail_url": "/video/yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3LmFUX1A0TFNpRzdv",
+          "url": "https://www.youtube.com/watch?v=aT_P4LSiG7o&list=UUfiwzLy-8yKzIbsmZTzxDgw",
           "group_name": "news",
           "group_key": "news",
           "group_names": [
@@ -81959,22 +81959,22 @@
           ]
         },
         {
-          "title": "الرئيس الأوكراني يوجه دعوة إلى نظيره الروسي لوقف القتال بين البلدين وبوتين يرفض",
-          "entry_id": "yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3LmpzVURtblZJNlFn",
-          "video_id": "jsUDmnVI6Qg",
-          "watch_key": "jsUDmnVI6Qg",
-          "state_key": "jsUDmnVI6Qg",
+          "title": "غارة إسرائيلية على منطقة المساكن بقضاء صور وتصاعد أعمدة الدخان",
+          "entry_id": "yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3LkRDckdNelNZM2xz",
+          "video_id": "DCrGMzSY3ls",
+          "watch_key": "DCrGMzSY3ls",
+          "state_key": "DCrGMzSY3ls",
           "channel_id": "UCfiwzLy-8yKzIbsmZTzxDgw",
           "channel_name": "AlJazeera Arabic  قناة الجزيرة",
           "channel_title": "AlJazeera Arabic  قناة الجزيرة",
-          "published_at": "2026-06-05T01:40:38Z",
-          "published_display": "Jun 05, 2026 01:40",
-          "thumbnail": "https://i.ytimg.com/vi/jsUDmnVI6Qg/maxresdefault.jpg",
-          "thumbnail_url": "https://i.ytimg.com/vi/jsUDmnVI6Qg/maxresdefault.jpg",
-          "image_url": "https://i.ytimg.com/vi/jsUDmnVI6Qg/maxresdefault.jpg",
-          "thumb": "https://i.ytimg.com/vi/jsUDmnVI6Qg/maxresdefault.jpg",
-          "detail_url": "/video/yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3LmpzVURtblZJNlFn",
-          "url": "https://www.youtube.com/watch?v=jsUDmnVI6Qg&list=UUfiwzLy-8yKzIbsmZTzxDgw",
+          "published_at": "2026-06-05T03:30:31Z",
+          "published_display": "Jun 05, 2026 03:30",
+          "thumbnail": "https://i.ytimg.com/vi/DCrGMzSY3ls/maxresdefault.jpg",
+          "thumbnail_url": "https://i.ytimg.com/vi/DCrGMzSY3ls/maxresdefault.jpg",
+          "image_url": "https://i.ytimg.com/vi/DCrGMzSY3ls/maxresdefault.jpg",
+          "thumb": "https://i.ytimg.com/vi/DCrGMzSY3ls/maxresdefault.jpg",
+          "detail_url": "/video/yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3LkRDckdNelNZM2xz",
+          "url": "https://www.youtube.com/watch?v=DCrGMzSY3ls&list=UUfiwzLy-8yKzIbsmZTzxDgw",
           "group_name": "news",
           "group_key": "news",
           "group_names": [
@@ -81988,22 +81988,80 @@
           ]
         },
         {
-          "title": "تحطم طائرة صغيرة يخلف قتلى بالقرب من مدينة ميدولين",
-          "entry_id": "yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3LmtqUndPSE9PUHd3",
-          "video_id": "kjRwOHOOPww",
-          "watch_key": "kjRwOHOOPww",
-          "state_key": "kjRwOHOOPww",
+          "title": "معارضة داخلية أمريكية لحرب إيران وترمب يؤكد إحراز تقدم بالمفاوضات ويلوح بخيار القوة",
+          "entry_id": "yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3LmMtb1I5QklKdGNn",
+          "video_id": "c-oR9BIJtcg",
+          "watch_key": "c-oR9BIJtcg",
+          "state_key": "c-oR9BIJtcg",
           "channel_id": "UCfiwzLy-8yKzIbsmZTzxDgw",
           "channel_name": "AlJazeera Arabic  قناة الجزيرة",
           "channel_title": "AlJazeera Arabic  قناة الجزيرة",
-          "published_at": "2026-06-05T01:30:06Z",
-          "published_display": "Jun 05, 2026 01:30",
-          "thumbnail": "https://i.ytimg.com/vi/kjRwOHOOPww/maxresdefault.jpg",
-          "thumbnail_url": "https://i.ytimg.com/vi/kjRwOHOOPww/maxresdefault.jpg",
-          "image_url": "https://i.ytimg.com/vi/kjRwOHOOPww/maxresdefault.jpg",
-          "thumb": "https://i.ytimg.com/vi/kjRwOHOOPww/maxresdefault.jpg",
-          "detail_url": "/video/yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3LmtqUndPSE9PUHd3",
-          "url": "https://www.youtube.com/watch?v=kjRwOHOOPww&list=UUfiwzLy-8yKzIbsmZTzxDgw",
+          "published_at": "2026-06-05T03:20:13Z",
+          "published_display": "Jun 05, 2026 03:20",
+          "thumbnail": "https://i.ytimg.com/vi/c-oR9BIJtcg/maxresdefault.jpg",
+          "thumbnail_url": "https://i.ytimg.com/vi/c-oR9BIJtcg/maxresdefault.jpg",
+          "image_url": "https://i.ytimg.com/vi/c-oR9BIJtcg/maxresdefault.jpg",
+          "thumb": "https://i.ytimg.com/vi/c-oR9BIJtcg/maxresdefault.jpg",
+          "detail_url": "/video/yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3LmMtb1I5QklKdGNn",
+          "url": "https://www.youtube.com/watch?v=c-oR9BIJtcg&list=UUfiwzLy-8yKzIbsmZTzxDgw",
+          "group_name": "news",
+          "group_key": "news",
+          "group_names": [
+            "news"
+          ],
+          "group_keys": [
+            "news"
+          ],
+          "reason_tags": [
+            "cached-latest"
+          ]
+        },
+        {
+          "title": "المجموعة العربية: التوسع الاستيطاني يقوض حل الدولتين ويقسم الضفة الغربية",
+          "entry_id": "yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3LjRuSG83c0pjampZ",
+          "video_id": "4nHo7sJcjjY",
+          "watch_key": "4nHo7sJcjjY",
+          "state_key": "4nHo7sJcjjY",
+          "channel_id": "UCfiwzLy-8yKzIbsmZTzxDgw",
+          "channel_name": "AlJazeera Arabic  قناة الجزيرة",
+          "channel_title": "AlJazeera Arabic  قناة الجزيرة",
+          "published_at": "2026-06-05T03:00:37Z",
+          "published_display": "Jun 05, 2026 03:00",
+          "thumbnail": "https://i.ytimg.com/vi/4nHo7sJcjjY/maxresdefault.jpg",
+          "thumbnail_url": "https://i.ytimg.com/vi/4nHo7sJcjjY/maxresdefault.jpg",
+          "image_url": "https://i.ytimg.com/vi/4nHo7sJcjjY/maxresdefault.jpg",
+          "thumb": "https://i.ytimg.com/vi/4nHo7sJcjjY/maxresdefault.jpg",
+          "detail_url": "/video/yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3LjRuSG83c0pjampZ",
+          "url": "https://www.youtube.com/watch?v=4nHo7sJcjjY&list=UUfiwzLy-8yKzIbsmZTzxDgw",
+          "group_name": "news",
+          "group_key": "news",
+          "group_names": [
+            "news"
+          ],
+          "group_keys": [
+            "news"
+          ],
+          "reason_tags": [
+            "cached-latest"
+          ]
+        },
+        {
+          "title": "سيرينا ويليامز تعود لملاعب التنس بعمر 44 عاما",
+          "entry_id": "yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3LkNPcXYtamVFb2FJ",
+          "video_id": "COqv-jeEoaI",
+          "watch_key": "COqv-jeEoaI",
+          "state_key": "COqv-jeEoaI",
+          "channel_id": "UCfiwzLy-8yKzIbsmZTzxDgw",
+          "channel_name": "AlJazeera Arabic  قناة الجزيرة",
+          "channel_title": "AlJazeera Arabic  قناة الجزيرة",
+          "published_at": "2026-06-05T03:00:34Z",
+          "published_display": "Jun 05, 2026 03:00",
+          "thumbnail": "https://i.ytimg.com/vi/COqv-jeEoaI/maxresdefault.jpg",
+          "thumbnail_url": "https://i.ytimg.com/vi/COqv-jeEoaI/maxresdefault.jpg",
+          "image_url": "https://i.ytimg.com/vi/COqv-jeEoaI/maxresdefault.jpg",
+          "thumb": "https://i.ytimg.com/vi/COqv-jeEoaI/maxresdefault.jpg",
+          "detail_url": "/video/yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3LkNPcXYtamVFb2FJ",
+          "url": "https://www.youtube.com/watch?v=COqv-jeEoaI&list=UUfiwzLy-8yKzIbsmZTzxDgw",
           "group_name": "news",
           "group_key": "news",
           "group_names": [
@@ -82671,64 +82729,6 @@
           "thumb": "https://i.ytimg.com/vi/zSsGO3eDyms/maxresdefault.jpg",
           "detail_url": "/video/yt-VVVJSlhPdmdnakt0Q2FnTWZ4dmNDekFBLnpTc0dPM2VEeW1z",
           "url": "https://www.youtube.com/watch?v=zSsGO3eDyms&list=UUIJXOvggjKtCagMfxvcCzAA",
-          "group_name": "news",
-          "group_key": "news",
-          "group_names": [
-            "news"
-          ],
-          "group_keys": [
-            "news"
-          ],
-          "reason_tags": [
-            "cached-latest"
-          ]
-        },
-        {
-          "title": "مجدولين القاضي.. سورية اختفت بلا أثر #سوريا #المشهد_ستوريز #ميرا_الشويكي",
-          "entry_id": "yt-VVVXbkJUdXpVVURwS2hKUEd1RFFNeW5BLlEtVDFuQTZUdkdr",
-          "video_id": "Q-T1nA6TvGk",
-          "watch_key": "Q-T1nA6TvGk",
-          "state_key": "Q-T1nA6TvGk",
-          "channel_id": "UCWnBTuzUUDpKhJPGuDQMynA",
-          "channel_name": "Al Mashhad المشهد",
-          "channel_title": "Al Mashhad المشهد",
-          "published_at": "2026-06-04T21:00:01Z",
-          "published_display": "Jun 04, 2026 21:00",
-          "thumbnail": "https://i.ytimg.com/vi/Q-T1nA6TvGk/maxresdefault.jpg",
-          "thumbnail_url": "https://i.ytimg.com/vi/Q-T1nA6TvGk/maxresdefault.jpg",
-          "image_url": "https://i.ytimg.com/vi/Q-T1nA6TvGk/maxresdefault.jpg",
-          "thumb": "https://i.ytimg.com/vi/Q-T1nA6TvGk/maxresdefault.jpg",
-          "detail_url": "/video/yt-VVVXbkJUdXpVVURwS2hKUEd1RFFNeW5BLlEtVDFuQTZUdkdr",
-          "url": "https://www.youtube.com/watch?v=Q-T1nA6TvGk&list=UUWnBTuzUUDpKhJPGuDQMynA",
-          "group_name": "news",
-          "group_key": "news",
-          "group_names": [
-            "news"
-          ],
-          "group_keys": [
-            "news"
-          ],
-          "reason_tags": [
-            "cached-latest"
-          ]
-        },
-        {
-          "title": "في تركيا.. أطلق أب متقاعد من الشرطة النار على ابنه في الشارع إثر خلاف عائلي",
-          "entry_id": "yt-VVVXbkJUdXpVVURwS2hKUEd1RFFNeW5BLkVqME1aYUY1NnhB",
-          "video_id": "Ej0MZaF56xA",
-          "watch_key": "Ej0MZaF56xA",
-          "state_key": "Ej0MZaF56xA",
-          "channel_id": "UCWnBTuzUUDpKhJPGuDQMynA",
-          "channel_name": "Al Mashhad المشهد",
-          "channel_title": "Al Mashhad المشهد",
-          "published_at": "2026-06-04T20:49:51Z",
-          "published_display": "Jun 04, 2026 20:49",
-          "thumbnail": "https://i.ytimg.com/vi/Ej0MZaF56xA/maxresdefault.jpg",
-          "thumbnail_url": "https://i.ytimg.com/vi/Ej0MZaF56xA/maxresdefault.jpg",
-          "image_url": "https://i.ytimg.com/vi/Ej0MZaF56xA/maxresdefault.jpg",
-          "thumb": "https://i.ytimg.com/vi/Ej0MZaF56xA/maxresdefault.jpg",
-          "detail_url": "/video/yt-VVVXbkJUdXpVVURwS2hKUEd1RFFNeW5BLkVqME1aYUY1NnhB",
-          "url": "https://www.youtube.com/watch?v=Ej0MZaF56xA&list=UUWnBTuzUUDpKhJPGuDQMynA",
           "group_name": "news",
           "group_key": "news",
           "group_names": [
@@ -87588,8 +87588,8 @@
           "UUzXHxl02PLrMi_qnz-rq10w"
         ],
         "errors": [],
-        "generated_at": "2026-06-05T02:41:10+00:00",
-        "synced_at": "2026-06-05T02:41:10+00:00"
+        "generated_at": "2026-06-05T04:54:06+00:00",
+        "synced_at": "2026-06-05T04:54:06+00:00"
       }
     },
     "podcasts": {
@@ -95220,8 +95220,8 @@
           "UUymWuP1OfcUkj5pS1mCUFYQ"
         ],
         "errors": [],
-        "generated_at": "2026-06-05T02:41:10+00:00",
-        "synced_at": "2026-06-05T02:41:10+00:00"
+        "generated_at": "2026-06-05T04:54:07+00:00",
+        "synced_at": "2026-06-05T04:54:07+00:00"
       }
     },
     "poetry": {
@@ -101530,8 +101530,8 @@
           "UUzkMOtR7pTpa9K1VK6QG9Vw"
         ],
         "errors": [],
-        "generated_at": "2026-06-05T02:41:13+00:00",
-        "synced_at": "2026-06-05T02:41:13+00:00"
+        "generated_at": "2026-06-05T04:54:10+00:00",
+        "synced_at": "2026-06-05T04:54:10+00:00"
       }
     },
     "school": {
@@ -107595,8 +107595,8 @@
           "UUm13TDUuCw8DMRgYh_f2Akw"
         ],
         "errors": [],
-        "generated_at": "2026-06-05T02:41:16+00:00",
-        "synced_at": "2026-06-05T02:41:16+00:00"
+        "generated_at": "2026-06-05T04:54:14+00:00",
+        "synced_at": "2026-06-05T04:54:14+00:00"
       }
     },
     "sports": {
@@ -107609,22 +107609,22 @@
       "channel_count": 32,
       "latest_video_count": 200,
       "latest_video": {
-        "title": "Which 3 Fighters Skills Would You Absorb?",
-        "entry_id": "yt-VVVsS2dPX1lQM3BjSVZlYXYyZ19rNmh3LnZ4MHk1R0xnYXV3",
-        "video_id": "vx0y5GLgauw",
-        "watch_key": "vx0y5GLgauw",
-        "state_key": "vx0y5GLgauw",
-        "channel_id": "UClKgO_YP3pcIVeav2g_k6hw",
-        "channel_name": "fightTIPS",
-        "channel_title": "fightTIPS",
-        "published_at": "2026-06-05T02:35:43Z",
-        "published_display": "Jun 05, 2026 02:35",
-        "thumbnail": "https://i.ytimg.com/vi/vx0y5GLgauw/maxresdefault.jpg",
-        "thumbnail_url": "https://i.ytimg.com/vi/vx0y5GLgauw/maxresdefault.jpg",
-        "image_url": "https://i.ytimg.com/vi/vx0y5GLgauw/maxresdefault.jpg",
-        "thumb": "https://i.ytimg.com/vi/vx0y5GLgauw/maxresdefault.jpg",
-        "detail_url": "/video/yt-VVVsS2dPX1lQM3BjSVZlYXYyZ19rNmh3LnZ4MHk1R0xnYXV3",
-        "url": "https://www.youtube.com/watch?v=vx0y5GLgauw&list=UUlKgO_YP3pcIVeav2g_k6hw",
+        "title": "Perfekter Heimabschluss oder KELLER-Erfolg?! | Gesamte Crunchtime @hamburg_handball 🆚 @HSGWetzlarTV",
+        "entry_id": "yt-VVV4M2x6UlRtb05XQ3p5UmFJb29NejRnLmtucDZLTXdHd0M4",
+        "video_id": "knp6KMwGwC8",
+        "watch_key": "knp6KMwGwC8",
+        "state_key": "knp6KMwGwC8",
+        "channel_id": "UCx3lzRTmoNWCzyRaIooMz4g",
+        "channel_name": "DAIKIN HBL",
+        "channel_title": "DAIKIN HBL",
+        "published_at": "2026-06-05T04:00:28Z",
+        "published_display": "Jun 05, 2026 04:00",
+        "thumbnail": "https://i.ytimg.com/vi/knp6KMwGwC8/maxresdefault.jpg",
+        "thumbnail_url": "https://i.ytimg.com/vi/knp6KMwGwC8/maxresdefault.jpg",
+        "image_url": "https://i.ytimg.com/vi/knp6KMwGwC8/maxresdefault.jpg",
+        "thumb": "https://i.ytimg.com/vi/knp6KMwGwC8/maxresdefault.jpg",
+        "detail_url": "/video/yt-VVV4M2x6UlRtb05XQ3p5UmFJb29NejRnLmtucDZLTXdHd0M4",
+        "url": "https://www.youtube.com/watch?v=knp6KMwGwC8&list=UUx3lzRTmoNWCzyRaIooMz4g",
         "group_name": "sports",
         "group_key": "sports",
         "group_names": [
@@ -108708,22 +108708,22 @@
           ],
           "group_key": "sports",
           "latest_video": {
-            "title": "The perfect way to say goodbye to your home fans? 🥹🏆 #handball #daikinhbl",
-            "entry_id": "yt-VVV4M2x6UlRtb05XQ3p5UmFJb29NejRnLnM1NUtNUVpxVG1J",
-            "video_id": "s55KMQZqTmI",
-            "watch_key": "s55KMQZqTmI",
-            "state_key": "s55KMQZqTmI",
+            "title": "Perfekter Heimabschluss oder KELLER-Erfolg?! | Gesamte Crunchtime @hamburg_handball 🆚 @HSGWetzlarTV",
+            "entry_id": "yt-VVV4M2x6UlRtb05XQ3p5UmFJb29NejRnLmtucDZLTXdHd0M4",
+            "video_id": "knp6KMwGwC8",
+            "watch_key": "knp6KMwGwC8",
+            "state_key": "knp6KMwGwC8",
             "channel_id": "UCx3lzRTmoNWCzyRaIooMz4g",
             "channel_name": "DAIKIN HBL",
             "channel_title": "DAIKIN HBL",
-            "published_at": "2026-06-04T21:20:19Z",
-            "published_display": "Jun 04, 2026 21:20",
-            "thumbnail": "https://i.ytimg.com/vi/s55KMQZqTmI/maxresdefault.jpg",
-            "thumbnail_url": "https://i.ytimg.com/vi/s55KMQZqTmI/maxresdefault.jpg",
-            "image_url": "https://i.ytimg.com/vi/s55KMQZqTmI/maxresdefault.jpg",
-            "thumb": "https://i.ytimg.com/vi/s55KMQZqTmI/maxresdefault.jpg",
-            "detail_url": "/video/yt-VVV4M2x6UlRtb05XQ3p5UmFJb29NejRnLnM1NUtNUVpxVG1J",
-            "url": "https://www.youtube.com/watch?v=s55KMQZqTmI&list=UUx3lzRTmoNWCzyRaIooMz4g",
+            "published_at": "2026-06-05T04:00:28Z",
+            "published_display": "Jun 05, 2026 04:00",
+            "thumbnail": "https://i.ytimg.com/vi/knp6KMwGwC8/maxresdefault.jpg",
+            "thumbnail_url": "https://i.ytimg.com/vi/knp6KMwGwC8/maxresdefault.jpg",
+            "image_url": "https://i.ytimg.com/vi/knp6KMwGwC8/maxresdefault.jpg",
+            "thumb": "https://i.ytimg.com/vi/knp6KMwGwC8/maxresdefault.jpg",
+            "detail_url": "/video/yt-VVV4M2x6UlRtb05XQ3p5UmFJb29NejRnLmtucDZLTXdHd0M4",
+            "url": "https://www.youtube.com/watch?v=knp6KMwGwC8&list=UUx3lzRTmoNWCzyRaIooMz4g",
             "group_name": "sports",
             "group_key": "sports",
             "group_names": [
@@ -108736,11 +108736,11 @@
               "cached-latest"
             ]
           },
-          "latest_video_id": "s55KMQZqTmI",
-          "published_at": "2026-06-04T21:20:19Z",
-          "published_display": "Jun 04, 2026 21:20",
-          "thumbnail": "https://i.ytimg.com/vi/s55KMQZqTmI/maxresdefault.jpg",
-          "url": "https://www.youtube.com/watch?v=s55KMQZqTmI&list=UUx3lzRTmoNWCzyRaIooMz4g",
+          "latest_video_id": "knp6KMwGwC8",
+          "published_at": "2026-06-05T04:00:28Z",
+          "published_display": "Jun 05, 2026 04:00",
+          "thumbnail": "https://i.ytimg.com/vi/knp6KMwGwC8/maxresdefault.jpg",
+          "url": "https://www.youtube.com/watch?v=knp6KMwGwC8&list=UUx3lzRTmoNWCzyRaIooMz4g",
           "reason_tags": [
             "source-diverse",
             "cached-empty",
@@ -108996,6 +108996,35 @@
         }
       ],
       "videos": [
+        {
+          "title": "Perfekter Heimabschluss oder KELLER-Erfolg?! | Gesamte Crunchtime @hamburg_handball 🆚 @HSGWetzlarTV",
+          "entry_id": "yt-VVV4M2x6UlRtb05XQ3p5UmFJb29NejRnLmtucDZLTXdHd0M4",
+          "video_id": "knp6KMwGwC8",
+          "watch_key": "knp6KMwGwC8",
+          "state_key": "knp6KMwGwC8",
+          "channel_id": "UCx3lzRTmoNWCzyRaIooMz4g",
+          "channel_name": "DAIKIN HBL",
+          "channel_title": "DAIKIN HBL",
+          "published_at": "2026-06-05T04:00:28Z",
+          "published_display": "Jun 05, 2026 04:00",
+          "thumbnail": "https://i.ytimg.com/vi/knp6KMwGwC8/maxresdefault.jpg",
+          "thumbnail_url": "https://i.ytimg.com/vi/knp6KMwGwC8/maxresdefault.jpg",
+          "image_url": "https://i.ytimg.com/vi/knp6KMwGwC8/maxresdefault.jpg",
+          "thumb": "https://i.ytimg.com/vi/knp6KMwGwC8/maxresdefault.jpg",
+          "detail_url": "/video/yt-VVV4M2x6UlRtb05XQ3p5UmFJb29NejRnLmtucDZLTXdHd0M4",
+          "url": "https://www.youtube.com/watch?v=knp6KMwGwC8&list=UUx3lzRTmoNWCzyRaIooMz4g",
+          "group_name": "sports",
+          "group_key": "sports",
+          "group_names": [
+            "sports"
+          ],
+          "group_keys": [
+            "sports"
+          ],
+          "reason_tags": [
+            "cached-latest"
+          ]
+        },
         {
           "title": "Which 3 Fighters Skills Would You Absorb?",
           "entry_id": "yt-VVVsS2dPX1lQM3BjSVZlYXYyZ19rNmh3LnZ4MHk1R0xnYXV3",
@@ -109432,7 +109461,7 @@
           ]
         },
         {
-          "title": "Why I deleted my Instagram (424k followers)",
+          "title": "I deleted my Instagram for one reason (424k followers)",
           "entry_id": "yt-VVVsS2dPX1lQM3BjSVZlYXYyZ19rNmh3LmxLeEt5MTlXV3kw",
           "video_id": "lKxKy19WWy0",
           "watch_key": "lKxKy19WWy0",
@@ -111130,35 +111159,6 @@
           "thumb": "https://i.ytimg.com/vi/LHyS1jIgviE/maxresdefault.jpg",
           "detail_url": "/video/yt-VVV4M2x6UlRtb05XQ3p5UmFJb29NejRnLkxIeVMxaklndmlF",
           "url": "https://www.youtube.com/watch?v=LHyS1jIgviE&list=UUx3lzRTmoNWCzyRaIooMz4g",
-          "group_name": "sports",
-          "group_key": "sports",
-          "group_names": [
-            "sports"
-          ],
-          "group_keys": [
-            "sports"
-          ],
-          "reason_tags": [
-            "cached-latest"
-          ]
-        },
-        {
-          "title": "Left them looking silly 😮‍💨 Which nutmeg from Elias Newel is your favorite? 🤭",
-          "entry_id": "yt-VVV4M2x6UlRtb05XQ3p5UmFJb29NejRnLm5NWkpRYWZlTmhz",
-          "video_id": "nMZJQafeNhs",
-          "watch_key": "nMZJQafeNhs",
-          "state_key": "nMZJQafeNhs",
-          "channel_id": "UCx3lzRTmoNWCzyRaIooMz4g",
-          "channel_name": "DAIKIN HBL",
-          "channel_title": "DAIKIN HBL",
-          "published_at": "2026-06-02T09:07:54Z",
-          "published_display": "Jun 02, 2026 09:07",
-          "thumbnail": "https://i.ytimg.com/vi/nMZJQafeNhs/maxresdefault.jpg",
-          "thumbnail_url": "https://i.ytimg.com/vi/nMZJQafeNhs/maxresdefault.jpg",
-          "image_url": "https://i.ytimg.com/vi/nMZJQafeNhs/maxresdefault.jpg",
-          "thumb": "https://i.ytimg.com/vi/nMZJQafeNhs/maxresdefault.jpg",
-          "detail_url": "/video/yt-VVV4M2x6UlRtb05XQ3p5UmFJb29NejRnLm5NWkpRYWZlTmhz",
-          "url": "https://www.youtube.com/watch?v=nMZJQafeNhs&list=UUx3lzRTmoNWCzyRaIooMz4g",
           "group_name": "sports",
           "group_key": "sports",
           "group_names": [
@@ -114852,8 +114852,8 @@
           "UUyUFNfWWyfJgnG6j0rWbxMQ"
         ],
         "errors": [],
-        "generated_at": "2026-06-05T02:41:24+00:00",
-        "synced_at": "2026-06-05T02:41:24+00:00"
+        "generated_at": "2026-06-05T04:54:24+00:00",
+        "synced_at": "2026-06-05T04:54:24+00:00"
       }
     },
     "tech": {
@@ -114866,22 +114866,22 @@
       "channel_count": 88,
       "latest_video_count": 200,
       "latest_video": {
-        "title": "Hermes + Minimax: NEW AI Voice Agent is INSANE!",
-        "entry_id": "yt-VVVHcHNnTmJ6ZEY3QkVDQ1ZiQjFDT0h3LlJicVlxdnpnSmxB",
-        "video_id": "RbqYqvzgJlA",
-        "watch_key": "RbqYqvzgJlA",
-        "state_key": "RbqYqvzgJlA",
+        "title": "Claude Code: How to Build Your First POWERFUL AI Agent!",
+        "entry_id": "yt-VVVHcHNnTmJ6ZEY3QkVDQ1ZiQjFDT0h3LnFlMUxXYU4zbjE0",
+        "video_id": "qe1LWaN3n14",
+        "watch_key": "qe1LWaN3n14",
+        "state_key": "qe1LWaN3n14",
         "channel_id": "UCGpsgNbzdF7BECCVbB1COHw",
         "channel_name": "Julian Goldie SEO",
         "channel_title": "Julian Goldie SEO",
-        "published_at": "2026-06-05T02:00:06Z",
-        "published_display": "Jun 05, 2026 02:00",
-        "thumbnail": "https://i.ytimg.com/vi/RbqYqvzgJlA/maxresdefault.jpg",
-        "thumbnail_url": "https://i.ytimg.com/vi/RbqYqvzgJlA/maxresdefault.jpg",
-        "image_url": "https://i.ytimg.com/vi/RbqYqvzgJlA/maxresdefault.jpg",
-        "thumb": "https://i.ytimg.com/vi/RbqYqvzgJlA/maxresdefault.jpg",
-        "detail_url": "/video/yt-VVVHcHNnTmJ6ZEY3QkVDQ1ZiQjFDT0h3LlJicVlxdnpnSmxB",
-        "url": "https://www.youtube.com/watch?v=RbqYqvzgJlA&list=UUGpsgNbzdF7BECCVbB1COHw",
+        "published_at": "2026-06-05T03:00:30Z",
+        "published_display": "Jun 05, 2026 03:00",
+        "thumbnail": "https://i.ytimg.com/vi/qe1LWaN3n14/maxresdefault.jpg",
+        "thumbnail_url": "https://i.ytimg.com/vi/qe1LWaN3n14/maxresdefault.jpg",
+        "image_url": "https://i.ytimg.com/vi/qe1LWaN3n14/maxresdefault.jpg",
+        "thumb": "https://i.ytimg.com/vi/qe1LWaN3n14/maxresdefault.jpg",
+        "detail_url": "/video/yt-VVVHcHNnTmJ6ZEY3QkVDQ1ZiQjFDT0h3LnFlMUxXYU4zbjE0",
+        "url": "https://www.youtube.com/watch?v=qe1LWaN3n14&list=UUGpsgNbzdF7BECCVbB1COHw",
         "group_name": "tech",
         "group_key": "tech",
         "group_names": [
@@ -115785,22 +115785,22 @@
           ],
           "group_key": "tech",
           "latest_video": {
-            "title": "Hermes + Minimax: NEW AI Voice Agent is INSANE!",
-            "entry_id": "yt-VVVHcHNnTmJ6ZEY3QkVDQ1ZiQjFDT0h3LlJicVlxdnpnSmxB",
-            "video_id": "RbqYqvzgJlA",
-            "watch_key": "RbqYqvzgJlA",
-            "state_key": "RbqYqvzgJlA",
+            "title": "Claude Code: How to Build Your First POWERFUL AI Agent!",
+            "entry_id": "yt-VVVHcHNnTmJ6ZEY3QkVDQ1ZiQjFDT0h3LnFlMUxXYU4zbjE0",
+            "video_id": "qe1LWaN3n14",
+            "watch_key": "qe1LWaN3n14",
+            "state_key": "qe1LWaN3n14",
             "channel_id": "UCGpsgNbzdF7BECCVbB1COHw",
             "channel_name": "Julian Goldie SEO",
             "channel_title": "Julian Goldie SEO",
-            "published_at": "2026-06-05T02:00:06Z",
-            "published_display": "Jun 05, 2026 02:00",
-            "thumbnail": "https://i.ytimg.com/vi/RbqYqvzgJlA/maxresdefault.jpg",
-            "thumbnail_url": "https://i.ytimg.com/vi/RbqYqvzgJlA/maxresdefault.jpg",
-            "image_url": "https://i.ytimg.com/vi/RbqYqvzgJlA/maxresdefault.jpg",
-            "thumb": "https://i.ytimg.com/vi/RbqYqvzgJlA/maxresdefault.jpg",
-            "detail_url": "/video/yt-VVVHcHNnTmJ6ZEY3QkVDQ1ZiQjFDT0h3LlJicVlxdnpnSmxB",
-            "url": "https://www.youtube.com/watch?v=RbqYqvzgJlA&list=UUGpsgNbzdF7BECCVbB1COHw",
+            "published_at": "2026-06-05T03:00:30Z",
+            "published_display": "Jun 05, 2026 03:00",
+            "thumbnail": "https://i.ytimg.com/vi/qe1LWaN3n14/maxresdefault.jpg",
+            "thumbnail_url": "https://i.ytimg.com/vi/qe1LWaN3n14/maxresdefault.jpg",
+            "image_url": "https://i.ytimg.com/vi/qe1LWaN3n14/maxresdefault.jpg",
+            "thumb": "https://i.ytimg.com/vi/qe1LWaN3n14/maxresdefault.jpg",
+            "detail_url": "/video/yt-VVVHcHNnTmJ6ZEY3QkVDQ1ZiQjFDT0h3LnFlMUxXYU4zbjE0",
+            "url": "https://www.youtube.com/watch?v=qe1LWaN3n14&list=UUGpsgNbzdF7BECCVbB1COHw",
             "group_name": "tech",
             "group_key": "tech",
             "group_names": [
@@ -115813,11 +115813,11 @@
               "cached-latest"
             ]
           },
-          "latest_video_id": "RbqYqvzgJlA",
-          "published_at": "2026-06-05T02:00:06Z",
-          "published_display": "Jun 05, 2026 02:00",
-          "thumbnail": "https://i.ytimg.com/vi/RbqYqvzgJlA/maxresdefault.jpg",
-          "url": "https://www.youtube.com/watch?v=RbqYqvzgJlA&list=UUGpsgNbzdF7BECCVbB1COHw",
+          "latest_video_id": "qe1LWaN3n14",
+          "published_at": "2026-06-05T03:00:30Z",
+          "published_display": "Jun 05, 2026 03:00",
+          "thumbnail": "https://i.ytimg.com/vi/qe1LWaN3n14/maxresdefault.jpg",
+          "url": "https://www.youtube.com/watch?v=qe1LWaN3n14&list=UUGpsgNbzdF7BECCVbB1COHw",
           "reason_tags": [
             "source-diverse",
             "cached-empty",
@@ -117832,6 +117832,35 @@
       ],
       "videos": [
         {
+          "title": "Claude Code: How to Build Your First POWERFUL AI Agent!",
+          "entry_id": "yt-VVVHcHNnTmJ6ZEY3QkVDQ1ZiQjFDT0h3LnFlMUxXYU4zbjE0",
+          "video_id": "qe1LWaN3n14",
+          "watch_key": "qe1LWaN3n14",
+          "state_key": "qe1LWaN3n14",
+          "channel_id": "UCGpsgNbzdF7BECCVbB1COHw",
+          "channel_name": "Julian Goldie SEO",
+          "channel_title": "Julian Goldie SEO",
+          "published_at": "2026-06-05T03:00:30Z",
+          "published_display": "Jun 05, 2026 03:00",
+          "thumbnail": "https://i.ytimg.com/vi/qe1LWaN3n14/maxresdefault.jpg",
+          "thumbnail_url": "https://i.ytimg.com/vi/qe1LWaN3n14/maxresdefault.jpg",
+          "image_url": "https://i.ytimg.com/vi/qe1LWaN3n14/maxresdefault.jpg",
+          "thumb": "https://i.ytimg.com/vi/qe1LWaN3n14/maxresdefault.jpg",
+          "detail_url": "/video/yt-VVVHcHNnTmJ6ZEY3QkVDQ1ZiQjFDT0h3LnFlMUxXYU4zbjE0",
+          "url": "https://www.youtube.com/watch?v=qe1LWaN3n14&list=UUGpsgNbzdF7BECCVbB1COHw",
+          "group_name": "tech",
+          "group_key": "tech",
+          "group_names": [
+            "tech"
+          ],
+          "group_keys": [
+            "tech"
+          ],
+          "reason_tags": [
+            "cached-latest"
+          ]
+        },
+        {
           "title": "Hermes + Minimax: NEW AI Voice Agent is INSANE!",
           "entry_id": "yt-VVVHcHNnTmJ6ZEY3QkVDQ1ZiQjFDT0h3LlJicVlxdnpnSmxB",
           "video_id": "RbqYqvzgJlA",
@@ -118399,35 +118428,6 @@
           "thumb": "https://i.ytimg.com/vi/enEYD3PAXFA/maxresdefault.jpg",
           "detail_url": "/video/yt-VVVHcHNnTmJ6ZEY3QkVDQ1ZiQjFDT0h3LmVuRVlEM1BBWEZB",
           "url": "https://www.youtube.com/watch?v=enEYD3PAXFA&list=UUGpsgNbzdF7BECCVbB1COHw",
-          "group_name": "tech",
-          "group_key": "tech",
-          "group_names": [
-            "tech"
-          ],
-          "group_keys": [
-            "tech"
-          ],
-          "reason_tags": [
-            "cached-latest"
-          ]
-        },
-        {
-          "title": "New Perplexity Computer Update Is INSANE!",
-          "entry_id": "yt-VVVHcHNnTmJ6ZEY3QkVDQ1ZiQjFDT0h3LmdXVzNDQnR3YTYw",
-          "video_id": "gWW3CBtwa60",
-          "watch_key": "gWW3CBtwa60",
-          "state_key": "gWW3CBtwa60",
-          "channel_id": "UCGpsgNbzdF7BECCVbB1COHw",
-          "channel_name": "Julian Goldie SEO",
-          "channel_title": "Julian Goldie SEO",
-          "published_at": "2026-06-04T12:00:27Z",
-          "published_display": "Jun 04, 2026 12:00",
-          "thumbnail": "https://i.ytimg.com/vi/gWW3CBtwa60/maxresdefault.jpg",
-          "thumbnail_url": "https://i.ytimg.com/vi/gWW3CBtwa60/maxresdefault.jpg",
-          "image_url": "https://i.ytimg.com/vi/gWW3CBtwa60/maxresdefault.jpg",
-          "thumb": "https://i.ytimg.com/vi/gWW3CBtwa60/maxresdefault.jpg",
-          "detail_url": "/video/yt-VVVHcHNnTmJ6ZEY3QkVDQ1ZiQjFDT0h3LmdXVzNDQnR3YTYw",
-          "url": "https://www.youtube.com/watch?v=gWW3CBtwa60&list=UUGpsgNbzdF7BECCVbB1COHw",
           "group_name": "tech",
           "group_key": "tech",
           "group_names": [
@@ -123743,8 +123743,8 @@
           "UUyUFqqpJskoLfILYzyeIkWA"
         ],
         "errors": [],
-        "generated_at": "2026-06-05T02:41:37+00:00",
-        "synced_at": "2026-06-05T02:41:37+00:00"
+        "generated_at": "2026-06-05T04:54:42+00:00",
+        "synced_at": "2026-06-05T04:54:42+00:00"
       }
     }
   },
@@ -132794,22 +132794,22 @@
       "channel_id": "UCfiwzLy-8yKzIbsmZTzxDgw",
       "channel_title": "UCfiwzLy-8yKzIbsmZTzxDgw",
       "latest_video": {
-        "title": "المتحدث باسم الأمين العام للأمم المتحدة للجزيرة: نرحب بشدة بجهود واشنطن للجمع بين لبنان وإسرائيل",
-        "entry_id": "yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3Lmx0c3psSTByZ1hj",
-        "video_id": "ltszlI0rgXc",
-        "watch_key": "ltszlI0rgXc",
-        "state_key": "ltszlI0rgXc",
+        "title": "خبير بالشؤون الدولية: أمريكا تحسن تأجيج الصراعات لكنها تعجز عن صناعة السلام",
+        "entry_id": "yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3LmthcDk4b2xVSHMw",
+        "video_id": "kap98olUHs0",
+        "watch_key": "kap98olUHs0",
+        "state_key": "kap98olUHs0",
         "channel_id": "UCfiwzLy-8yKzIbsmZTzxDgw",
         "channel_name": "AlJazeera Arabic  قناة الجزيرة",
         "channel_title": "AlJazeera Arabic  قناة الجزيرة",
-        "published_at": "2026-06-05T02:40:05Z",
-        "published_display": "Jun 05, 2026 02:40",
-        "thumbnail": "https://i.ytimg.com/vi/ltszlI0rgXc/maxresdefault.jpg",
-        "thumbnail_url": "https://i.ytimg.com/vi/ltszlI0rgXc/maxresdefault.jpg",
-        "image_url": "https://i.ytimg.com/vi/ltszlI0rgXc/maxresdefault.jpg",
-        "thumb": "https://i.ytimg.com/vi/ltszlI0rgXc/maxresdefault.jpg",
-        "detail_url": "/video/yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3Lmx0c3psSTByZ1hj",
-        "url": "https://www.youtube.com/watch?v=ltszlI0rgXc&list=UUfiwzLy-8yKzIbsmZTzxDgw",
+        "published_at": "2026-06-05T04:40:16Z",
+        "published_display": "Jun 05, 2026 04:40",
+        "thumbnail": "https://i.ytimg.com/vi/kap98olUHs0/maxresdefault.jpg",
+        "thumbnail_url": "https://i.ytimg.com/vi/kap98olUHs0/maxresdefault.jpg",
+        "image_url": "https://i.ytimg.com/vi/kap98olUHs0/maxresdefault.jpg",
+        "thumb": "https://i.ytimg.com/vi/kap98olUHs0/maxresdefault.jpg",
+        "detail_url": "/video/yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3LmthcDk4b2xVSHMw",
+        "url": "https://www.youtube.com/watch?v=kap98olUHs0&list=UUfiwzLy-8yKzIbsmZTzxDgw",
         "group_name": "news",
         "group_key": "news",
         "group_names": [
@@ -132825,11 +132825,11 @@
       "group_names": [
         "news"
       ],
-      "latest_video_id": "ltszlI0rgXc",
-      "published_at": "2026-06-05T02:40:05Z",
-      "published_display": "Jun 05, 2026 02:40",
-      "thumbnail": "https://i.ytimg.com/vi/ltszlI0rgXc/maxresdefault.jpg",
-      "url": "https://www.youtube.com/watch?v=ltszlI0rgXc&list=UUfiwzLy-8yKzIbsmZTzxDgw",
+      "latest_video_id": "kap98olUHs0",
+      "published_at": "2026-06-05T04:40:16Z",
+      "published_display": "Jun 05, 2026 04:40",
+      "thumbnail": "https://i.ytimg.com/vi/kap98olUHs0/maxresdefault.jpg",
+      "url": "https://www.youtube.com/watch?v=kap98olUHs0&list=UUfiwzLy-8yKzIbsmZTzxDgw",
       "reason_tags": [
         "source-diverse",
         "cached-empty",
@@ -133891,22 +133891,22 @@
       "channel_id": "UCGpsgNbzdF7BECCVbB1COHw",
       "channel_title": "UCGpsgNbzdF7BECCVbB1COHw",
       "latest_video": {
-        "title": "Hermes + Minimax: NEW AI Voice Agent is INSANE!",
-        "entry_id": "yt-VVVHcHNnTmJ6ZEY3QkVDQ1ZiQjFDT0h3LlJicVlxdnpnSmxB",
-        "video_id": "RbqYqvzgJlA",
-        "watch_key": "RbqYqvzgJlA",
-        "state_key": "RbqYqvzgJlA",
+        "title": "Claude Code: How to Build Your First POWERFUL AI Agent!",
+        "entry_id": "yt-VVVHcHNnTmJ6ZEY3QkVDQ1ZiQjFDT0h3LnFlMUxXYU4zbjE0",
+        "video_id": "qe1LWaN3n14",
+        "watch_key": "qe1LWaN3n14",
+        "state_key": "qe1LWaN3n14",
         "channel_id": "UCGpsgNbzdF7BECCVbB1COHw",
         "channel_name": "Julian Goldie SEO",
         "channel_title": "Julian Goldie SEO",
-        "published_at": "2026-06-05T02:00:06Z",
-        "published_display": "Jun 05, 2026 02:00",
-        "thumbnail": "https://i.ytimg.com/vi/RbqYqvzgJlA/maxresdefault.jpg",
-        "thumbnail_url": "https://i.ytimg.com/vi/RbqYqvzgJlA/maxresdefault.jpg",
-        "image_url": "https://i.ytimg.com/vi/RbqYqvzgJlA/maxresdefault.jpg",
-        "thumb": "https://i.ytimg.com/vi/RbqYqvzgJlA/maxresdefault.jpg",
-        "detail_url": "/video/yt-VVVHcHNnTmJ6ZEY3QkVDQ1ZiQjFDT0h3LlJicVlxdnpnSmxB",
-        "url": "https://www.youtube.com/watch?v=RbqYqvzgJlA&list=UUGpsgNbzdF7BECCVbB1COHw",
+        "published_at": "2026-06-05T03:00:30Z",
+        "published_display": "Jun 05, 2026 03:00",
+        "thumbnail": "https://i.ytimg.com/vi/qe1LWaN3n14/maxresdefault.jpg",
+        "thumbnail_url": "https://i.ytimg.com/vi/qe1LWaN3n14/maxresdefault.jpg",
+        "image_url": "https://i.ytimg.com/vi/qe1LWaN3n14/maxresdefault.jpg",
+        "thumb": "https://i.ytimg.com/vi/qe1LWaN3n14/maxresdefault.jpg",
+        "detail_url": "/video/yt-VVVHcHNnTmJ6ZEY3QkVDQ1ZiQjFDT0h3LnFlMUxXYU4zbjE0",
+        "url": "https://www.youtube.com/watch?v=qe1LWaN3n14&list=UUGpsgNbzdF7BECCVbB1COHw",
         "group_name": "tech",
         "group_key": "tech",
         "group_names": [
@@ -133922,11 +133922,11 @@
       "group_names": [
         "tech"
       ],
-      "latest_video_id": "RbqYqvzgJlA",
-      "published_at": "2026-06-05T02:00:06Z",
-      "published_display": "Jun 05, 2026 02:00",
-      "thumbnail": "https://i.ytimg.com/vi/RbqYqvzgJlA/maxresdefault.jpg",
-      "url": "https://www.youtube.com/watch?v=RbqYqvzgJlA&list=UUGpsgNbzdF7BECCVbB1COHw",
+      "latest_video_id": "qe1LWaN3n14",
+      "published_at": "2026-06-05T03:00:30Z",
+      "published_display": "Jun 05, 2026 03:00",
+      "thumbnail": "https://i.ytimg.com/vi/qe1LWaN3n14/maxresdefault.jpg",
+      "url": "https://www.youtube.com/watch?v=qe1LWaN3n14&list=UUGpsgNbzdF7BECCVbB1COHw",
       "reason_tags": [
         "source-diverse",
         "cached-empty",
@@ -142158,22 +142158,22 @@
       "channel_id": "UCpo2MvFPnWAOVeEIf3WlfGA",
       "channel_title": "UCpo2MvFPnWAOVeEIf3WlfGA",
       "latest_video": {
-        "title": "14—السؤال التفاعلي — حدثنا عن تجربتك مع القنوات المرئية أو المقروءة التي تقدم ملخصا كاملا عن الكت...",
-        "entry_id": "yt-VVVwbzJNdkZQbldBT1ZlRUlmM1dsZkdBLkVUNzVBb202QnFR",
-        "video_id": "ET75Aom6BqQ",
-        "watch_key": "ET75Aom6BqQ",
-        "state_key": "ET75Aom6BqQ",
+        "title": "16—أسئلة المشاهدين — لماذا لم يهتم بكتاب أضواء البيان طبعة عالم الفوائد من حيث النص وتخريج الاحاد...",
+        "entry_id": "yt-VVVwbzJNdkZQbldBT1ZlRUlmM1dsZkdBLlN0OGk1WVdnNTJr",
+        "video_id": "St8i5YWg52k",
+        "watch_key": "St8i5YWg52k",
+        "state_key": "St8i5YWg52k",
         "channel_id": "UCpo2MvFPnWAOVeEIf3WlfGA",
         "channel_name": "برنامج الخزانة",
         "channel_title": "برنامج الخزانة",
-        "published_at": "2026-06-05T02:33:07Z",
-        "published_display": "Jun 05, 2026 02:33",
-        "thumbnail": "https://i.ytimg.com/vi/ET75Aom6BqQ/maxresdefault.jpg",
-        "thumbnail_url": "https://i.ytimg.com/vi/ET75Aom6BqQ/maxresdefault.jpg",
-        "image_url": "https://i.ytimg.com/vi/ET75Aom6BqQ/maxresdefault.jpg",
-        "thumb": "https://i.ytimg.com/vi/ET75Aom6BqQ/maxresdefault.jpg",
-        "detail_url": "/video/yt-VVVwbzJNdkZQbldBT1ZlRUlmM1dsZkdBLkVUNzVBb202QnFR",
-        "url": "https://www.youtube.com/watch?v=ET75Aom6BqQ&list=UUpo2MvFPnWAOVeEIf3WlfGA",
+        "published_at": "2026-06-05T03:00:18Z",
+        "published_display": "Jun 05, 2026 03:00",
+        "thumbnail": "https://i.ytimg.com/vi/St8i5YWg52k/maxresdefault.jpg",
+        "thumbnail_url": "https://i.ytimg.com/vi/St8i5YWg52k/maxresdefault.jpg",
+        "image_url": "https://i.ytimg.com/vi/St8i5YWg52k/maxresdefault.jpg",
+        "thumb": "https://i.ytimg.com/vi/St8i5YWg52k/maxresdefault.jpg",
+        "detail_url": "/video/yt-VVVwbzJNdkZQbldBT1ZlRUlmM1dsZkdBLlN0OGk1WVdnNTJr",
+        "url": "https://www.youtube.com/watch?v=St8i5YWg52k&list=UUpo2MvFPnWAOVeEIf3WlfGA",
         "group_name": "archive",
         "group_key": "archive",
         "group_names": [
@@ -142189,11 +142189,11 @@
       "group_names": [
         "archive"
       ],
-      "latest_video_id": "ET75Aom6BqQ",
-      "published_at": "2026-06-05T02:33:07Z",
-      "published_display": "Jun 05, 2026 02:33",
-      "thumbnail": "https://i.ytimg.com/vi/ET75Aom6BqQ/maxresdefault.jpg",
-      "url": "https://www.youtube.com/watch?v=ET75Aom6BqQ&list=UUpo2MvFPnWAOVeEIf3WlfGA",
+      "latest_video_id": "St8i5YWg52k",
+      "published_at": "2026-06-05T03:00:18Z",
+      "published_display": "Jun 05, 2026 03:00",
+      "thumbnail": "https://i.ytimg.com/vi/St8i5YWg52k/maxresdefault.jpg",
+      "url": "https://www.youtube.com/watch?v=St8i5YWg52k&list=UUpo2MvFPnWAOVeEIf3WlfGA",
       "reason_tags": [
         "source-diverse",
         "cached-empty",
@@ -143204,22 +143204,22 @@
       "channel_id": "UCqPP4dbgr9Uddnzzuzr8qXQ",
       "channel_title": "UCqPP4dbgr9Uddnzzuzr8qXQ",
       "latest_video": {
-        "title": "مشاهد من افتتاح الرئيس الشرع لجسر الرستن بريف حمص",
-        "entry_id": "yt-VVVxUFA0ZGJncjlVZGRuenp1enI4cVhRLmlGenZxd3hHajVz",
-        "video_id": "iFzvqwxGj5s",
-        "watch_key": "iFzvqwxGj5s",
-        "state_key": "iFzvqwxGj5s",
+        "title": "مباشر | جلسة لمجلس الأمن الدولي لمناقشة ملف الأسلحة الكيماوية في سوريا",
+        "entry_id": "yt-VVVxUFA0ZGJncjlVZGRuenp1enI4cVhRLlYzYWl0MU9TUUtN",
+        "video_id": "V3ait1OSQKM",
+        "watch_key": "V3ait1OSQKM",
+        "state_key": "V3ait1OSQKM",
         "channel_id": "UCqPP4dbgr9Uddnzzuzr8qXQ",
         "channel_name": "SyriaNow - سوريا الآن",
         "channel_title": "SyriaNow - سوريا الآن",
-        "published_at": "2026-06-04T22:03:13Z",
-        "published_display": "Jun 04, 2026 22:03",
-        "thumbnail": "https://i.ytimg.com/vi/iFzvqwxGj5s/maxresdefault.jpg",
-        "thumbnail_url": "https://i.ytimg.com/vi/iFzvqwxGj5s/maxresdefault.jpg",
-        "image_url": "https://i.ytimg.com/vi/iFzvqwxGj5s/maxresdefault.jpg",
-        "thumb": "https://i.ytimg.com/vi/iFzvqwxGj5s/maxresdefault.jpg",
-        "detail_url": "/video/yt-VVVxUFA0ZGJncjlVZGRuenp1enI4cVhRLmlGenZxd3hHajVz",
-        "url": "https://www.youtube.com/watch?v=iFzvqwxGj5s&list=UUqPP4dbgr9Uddnzzuzr8qXQ",
+        "published_at": "2026-06-05T03:38:33Z",
+        "published_display": "Jun 05, 2026 03:38",
+        "thumbnail": "https://i.ytimg.com/vi/V3ait1OSQKM/maxresdefault.jpg",
+        "thumbnail_url": "https://i.ytimg.com/vi/V3ait1OSQKM/maxresdefault.jpg",
+        "image_url": "https://i.ytimg.com/vi/V3ait1OSQKM/maxresdefault.jpg",
+        "thumb": "https://i.ytimg.com/vi/V3ait1OSQKM/maxresdefault.jpg",
+        "detail_url": "/video/yt-VVVxUFA0ZGJncjlVZGRuenp1enI4cVhRLlYzYWl0MU9TUUtN",
+        "url": "https://www.youtube.com/watch?v=V3ait1OSQKM&list=UUqPP4dbgr9Uddnzzuzr8qXQ",
         "group_name": "knowledge",
         "group_key": "knowledge",
         "group_names": [
@@ -143235,11 +143235,11 @@
       "group_names": [
         "knowledge"
       ],
-      "latest_video_id": "iFzvqwxGj5s",
-      "published_at": "2026-06-04T22:03:13Z",
-      "published_display": "Jun 04, 2026 22:03",
-      "thumbnail": "https://i.ytimg.com/vi/iFzvqwxGj5s/maxresdefault.jpg",
-      "url": "https://www.youtube.com/watch?v=iFzvqwxGj5s&list=UUqPP4dbgr9Uddnzzuzr8qXQ",
+      "latest_video_id": "V3ait1OSQKM",
+      "published_at": "2026-06-05T03:38:33Z",
+      "published_display": "Jun 05, 2026 03:38",
+      "thumbnail": "https://i.ytimg.com/vi/V3ait1OSQKM/maxresdefault.jpg",
+      "url": "https://www.youtube.com/watch?v=V3ait1OSQKM&list=UUqPP4dbgr9Uddnzzuzr8qXQ",
       "reason_tags": [
         "source-diverse",
         "cached-empty",
@@ -148111,22 +148111,22 @@
       "channel_id": "UCWnBTuzUUDpKhJPGuDQMynA",
       "channel_title": "UCWnBTuzUUDpKhJPGuDQMynA",
       "latest_video": {
-        "title": "أغرب حادث في مصر.. \"لودر\" يغرق بالترعة بدلاً من إنقاذ التاكسي!",
-        "entry_id": "yt-VVVXbkJUdXpVVURwS2hKUEd1RFFNeW5BLmRjZ1J1VEYtUW9N",
-        "video_id": "dcgRuTF-QoM",
-        "watch_key": "dcgRuTF-QoM",
-        "state_key": "dcgRuTF-QoM",
+        "title": "تصرف غريب من رجل مع كلاب سائبة",
+        "entry_id": "yt-VVVXbkJUdXpVVURwS2hKUEd1RFFNeW5BLnAwS040Z0tvMGNF",
+        "video_id": "p0KN4gKo0cE",
+        "watch_key": "p0KN4gKo0cE",
+        "state_key": "p0KN4gKo0cE",
         "channel_id": "UCWnBTuzUUDpKhJPGuDQMynA",
         "channel_name": "Al Mashhad المشهد",
         "channel_title": "Al Mashhad المشهد",
-        "published_at": "2026-06-04T22:40:01Z",
-        "published_display": "Jun 04, 2026 22:40",
-        "thumbnail": "https://i.ytimg.com/vi/dcgRuTF-QoM/maxresdefault.jpg",
-        "thumbnail_url": "https://i.ytimg.com/vi/dcgRuTF-QoM/maxresdefault.jpg",
-        "image_url": "https://i.ytimg.com/vi/dcgRuTF-QoM/maxresdefault.jpg",
-        "thumb": "https://i.ytimg.com/vi/dcgRuTF-QoM/maxresdefault.jpg",
-        "detail_url": "/video/yt-VVVXbkJUdXpVVURwS2hKUEd1RFFNeW5BLmRjZ1J1VEYtUW9N",
-        "url": "https://www.youtube.com/watch?v=dcgRuTF-QoM&list=UUWnBTuzUUDpKhJPGuDQMynA",
+        "published_at": "2026-06-05T04:39:03Z",
+        "published_display": "Jun 05, 2026 04:39",
+        "thumbnail": "https://i.ytimg.com/vi/p0KN4gKo0cE/maxresdefault.jpg",
+        "thumbnail_url": "https://i.ytimg.com/vi/p0KN4gKo0cE/maxresdefault.jpg",
+        "image_url": "https://i.ytimg.com/vi/p0KN4gKo0cE/maxresdefault.jpg",
+        "thumb": "https://i.ytimg.com/vi/p0KN4gKo0cE/maxresdefault.jpg",
+        "detail_url": "/video/yt-VVVXbkJUdXpVVURwS2hKUEd1RFFNeW5BLnAwS040Z0tvMGNF",
+        "url": "https://www.youtube.com/watch?v=p0KN4gKo0cE&list=UUWnBTuzUUDpKhJPGuDQMynA",
         "group_name": "news",
         "group_key": "news",
         "group_names": [
@@ -148142,11 +148142,11 @@
       "group_names": [
         "news"
       ],
-      "latest_video_id": "dcgRuTF-QoM",
-      "published_at": "2026-06-04T22:40:01Z",
-      "published_display": "Jun 04, 2026 22:40",
-      "thumbnail": "https://i.ytimg.com/vi/dcgRuTF-QoM/maxresdefault.jpg",
-      "url": "https://www.youtube.com/watch?v=dcgRuTF-QoM&list=UUWnBTuzUUDpKhJPGuDQMynA",
+      "latest_video_id": "p0KN4gKo0cE",
+      "published_at": "2026-06-05T04:39:03Z",
+      "published_display": "Jun 05, 2026 04:39",
+      "thumbnail": "https://i.ytimg.com/vi/p0KN4gKo0cE/maxresdefault.jpg",
+      "url": "https://www.youtube.com/watch?v=p0KN4gKo0cE&list=UUWnBTuzUUDpKhJPGuDQMynA",
       "reason_tags": [
         "source-diverse",
         "cached-empty",
@@ -148537,22 +148537,22 @@
       "channel_id": "UCx3lzRTmoNWCzyRaIooMz4g",
       "channel_title": "UCx3lzRTmoNWCzyRaIooMz4g",
       "latest_video": {
-        "title": "The perfect way to say goodbye to your home fans? 🥹🏆 #handball #daikinhbl",
-        "entry_id": "yt-VVV4M2x6UlRtb05XQ3p5UmFJb29NejRnLnM1NUtNUVpxVG1J",
-        "video_id": "s55KMQZqTmI",
-        "watch_key": "s55KMQZqTmI",
-        "state_key": "s55KMQZqTmI",
+        "title": "Perfekter Heimabschluss oder KELLER-Erfolg?! | Gesamte Crunchtime @hamburg_handball 🆚 @HSGWetzlarTV",
+        "entry_id": "yt-VVV4M2x6UlRtb05XQ3p5UmFJb29NejRnLmtucDZLTXdHd0M4",
+        "video_id": "knp6KMwGwC8",
+        "watch_key": "knp6KMwGwC8",
+        "state_key": "knp6KMwGwC8",
         "channel_id": "UCx3lzRTmoNWCzyRaIooMz4g",
         "channel_name": "DAIKIN HBL",
         "channel_title": "DAIKIN HBL",
-        "published_at": "2026-06-04T21:20:19Z",
-        "published_display": "Jun 04, 2026 21:20",
-        "thumbnail": "https://i.ytimg.com/vi/s55KMQZqTmI/maxresdefault.jpg",
-        "thumbnail_url": "https://i.ytimg.com/vi/s55KMQZqTmI/maxresdefault.jpg",
-        "image_url": "https://i.ytimg.com/vi/s55KMQZqTmI/maxresdefault.jpg",
-        "thumb": "https://i.ytimg.com/vi/s55KMQZqTmI/maxresdefault.jpg",
-        "detail_url": "/video/yt-VVV4M2x6UlRtb05XQ3p5UmFJb29NejRnLnM1NUtNUVpxVG1J",
-        "url": "https://www.youtube.com/watch?v=s55KMQZqTmI&list=UUx3lzRTmoNWCzyRaIooMz4g",
+        "published_at": "2026-06-05T04:00:28Z",
+        "published_display": "Jun 05, 2026 04:00",
+        "thumbnail": "https://i.ytimg.com/vi/knp6KMwGwC8/maxresdefault.jpg",
+        "thumbnail_url": "https://i.ytimg.com/vi/knp6KMwGwC8/maxresdefault.jpg",
+        "image_url": "https://i.ytimg.com/vi/knp6KMwGwC8/maxresdefault.jpg",
+        "thumb": "https://i.ytimg.com/vi/knp6KMwGwC8/maxresdefault.jpg",
+        "detail_url": "/video/yt-VVV4M2x6UlRtb05XQ3p5UmFJb29NejRnLmtucDZLTXdHd0M4",
+        "url": "https://www.youtube.com/watch?v=knp6KMwGwC8&list=UUx3lzRTmoNWCzyRaIooMz4g",
         "group_name": "sports",
         "group_key": "sports",
         "group_names": [
@@ -148568,11 +148568,11 @@
       "group_names": [
         "sports"
       ],
-      "latest_video_id": "s55KMQZqTmI",
-      "published_at": "2026-06-04T21:20:19Z",
-      "published_display": "Jun 04, 2026 21:20",
-      "thumbnail": "https://i.ytimg.com/vi/s55KMQZqTmI/maxresdefault.jpg",
-      "url": "https://www.youtube.com/watch?v=s55KMQZqTmI&list=UUx3lzRTmoNWCzyRaIooMz4g",
+      "latest_video_id": "knp6KMwGwC8",
+      "published_at": "2026-06-05T04:00:28Z",
+      "published_display": "Jun 05, 2026 04:00",
+      "thumbnail": "https://i.ytimg.com/vi/knp6KMwGwC8/maxresdefault.jpg",
+      "url": "https://www.youtube.com/watch?v=knp6KMwGwC8&list=UUx3lzRTmoNWCzyRaIooMz4g",
       "reason_tags": [
         "source-diverse",
         "cached-empty",
