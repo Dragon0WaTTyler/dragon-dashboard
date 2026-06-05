@@ -234,6 +234,48 @@ class ReadingFullArticleCacheTests(unittest.TestCase):
             self.assertIn("full_error=", unsafe.headers.get("Location", ""))
             self.assertEqual(missing.status_code, 404)
 
+    def test_cached_failed_status_does_not_render_raw_error_details(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            reading_data_path = root / "reading_data.json"
+            cache_dir = root / "fulltext-cache"
+            reading_data_path.write_text(json.dumps(self._payload(), ensure_ascii=False, indent=2), encoding="utf-8")
+
+            cache_path = dragon_app.reading_article_fulltext_cache_path("https://example.com/articles/1")
+            self.assertIsNotNone(cache_path)
+
+            patches = self._patched_runtime(reading_data_path, cache_dir)
+            with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5]:
+                cache_path = dragon_app.reading_article_fulltext_cache_path("https://example.com/articles/1")
+                cache_path.parent.mkdir(parents=True, exist_ok=True)
+                cache_path.write_text(
+                    json.dumps(
+                        {
+                            "url": "https://example.com/articles/1",
+                            "title": "Example Article",
+                            "source": "Example Source",
+                            "fetched_at": "2026-06-05T00:00:00+00:00",
+                            "status": "failed",
+                            "content_text": "",
+                            "content_html": "",
+                            "excerpt": "",
+                            "word_count": 0,
+                            "error": "ProxyError: Tunnel connection failed: 403 Forbidden",
+                        },
+                        ensure_ascii=False,
+                        indent=2,
+                    ),
+                    encoding="utf-8",
+                )
+                article_response = self.client.get("/reading/article/reading-entry-1")
+
+            self.assertEqual(article_response.status_code, 200)
+            html = article_response.get_data(as_text=True)
+            self.assertNotIn("ProxyError", html)
+            self.assertNotIn("Tunnel connection failed", html)
+            self.assertNotIn("Full article cache: failed", html)
+            self.assertNotIn("Reader cache:", html)
+
     def test_reading_and_article_get_do_not_trigger_extraction(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

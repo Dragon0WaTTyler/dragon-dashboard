@@ -290,14 +290,9 @@
                 <div class="reading-extraction-note">{{ article_cache_fallback_message or 'Full article content is not cached locally yet. Open original source.' }}</div>
                 {% endif %}
 
-                {% if full_article_cached or full_article_cache_error %}
+                {% if full_article_cached %}
                 <div class="reading-extraction-note">
-                    Full article cache: {{ full_article_cache_status or 'cached' }}{% if full_article_cached_at %} at {{ full_article_cached_at }}{% endif %}{% if full_article_word_count %} · {{ full_article_word_count }} words{% endif %}{% if full_article_cache_error %}. {{ full_article_cache_error }}{% endif %}
-                </div>
-                {% endif %}
-                {% if entry.extraction_status or entry.extraction_error %}
-                <div class="reading-extraction-note">
-                    Reader cache: {{ entry.extraction_status or 'not cached' }}{% if entry.content_cached_at %} at {{ entry.content_cached_at }}{% endif %}{% if entry.extraction_error %}. {{ entry.extraction_error }}{% endif %}
+                    Full article cached{% if full_article_cached_at %} at {{ full_article_cached_at }}{% endif %}{% if full_article_word_count %} · {{ full_article_word_count }} words{% endif %}.
                 </div>
                 {% endif %}
             </div>
