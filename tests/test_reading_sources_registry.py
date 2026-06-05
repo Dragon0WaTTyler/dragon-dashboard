@@ -9,6 +9,32 @@ import scripts.sync_reading_feeds as sync_reading_feeds
 
 
 class ReadingSourcesRegistryTests(unittest.TestCase):
+    def test_registry_marks_confirmed_github_403_sources_inactive(self):
+        registry_path = Path("config/reading_sources.json").resolve()
+        registry_payload = json.loads(registry_path.read_text(encoding="utf-8"))
+        expected_names = {
+            "MAP News English",
+            "مجتمع – هوية بريس",
+            "كتاب الرأي – هوية بريس",
+            "ربورتاج | جريدة الصباح",
+            "حوار | جريدة الصباح",
+        }
+        by_name = {
+            str(item.get("name", "") or ""): item
+            for item in registry_payload
+            if isinstance(item, dict)
+        }
+
+        for name in expected_names:
+            self.assertIn(name, by_name)
+            self.assertFalse(bool(by_name[name].get("active", True)))
+            self.assertEqual(
+                by_name[name].get("disabled_reason"),
+                "Confirmed HTTP 403 from GitHub Actions even with request profile",
+            )
+            self.assertEqual(by_name[name].get("last_repair_status"), "blocked_in_github_actions")
+            self.assertTrue(bool(by_name[name].get("needs_replacement")))
+
     def test_registry_seed_creates_snapshot_when_reading_data_is_missing(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -130,13 +156,14 @@ class ReadingSourcesRegistryTests(unittest.TestCase):
                     "name": "Repairable Source",
                     "url": "https://example.com/new-feed",
                     "category": "news",
-                    "active": True,
+                    "active": False,
                     "request_profile": "browser_ua",
-                    "disabled_reason": "",
+                    "disabled_reason": "Confirmed HTTP 403 from GitHub Actions even with request profile",
                     "repair_reason": "Verified by diagnose_reading_sources.py with profile=browser_ua status=200 count=3",
                     "repaired_at": "2026-06-04T12:00:00+00:00",
                     "replacement_of": "https://example.com/old-feed",
-                    "last_repair_status": "verified",
+                    "last_repair_status": "blocked_in_github_actions",
+                    "needs_replacement": True,
                 }
             ]
             reading_payload = {
@@ -180,12 +207,16 @@ class ReadingSourcesRegistryTests(unittest.TestCase):
             saved_payload = json.loads(reading_data_path.read_text(encoding="utf-8"))
             self.assertEqual(len(saved_payload.get("entries", []) or []), 1)
             saved_source = saved_payload["sources"][0]
-            self.assertTrue(bool(saved_source.get("active")))
+            self.assertFalse(bool(saved_source.get("active")))
             self.assertEqual(saved_source.get("url"), "https://example.com/new-feed")
             self.assertEqual(saved_source.get("primary_url"), "https://example.com/new-feed")
             self.assertEqual(saved_source.get("request_profile"), "browser_ua")
-            self.assertEqual(saved_source.get("disabled_reason"), "")
-            self.assertEqual(saved_source.get("last_repair_status"), "verified")
+            self.assertEqual(
+                saved_source.get("disabled_reason"),
+                "Confirmed HTTP 403 from GitHub Actions even with request profile",
+            )
+            self.assertEqual(saved_source.get("last_repair_status"), "blocked_in_github_actions")
+            self.assertTrue(bool(saved_source.get("needs_replacement")))
             self.assertIn("https://example.com/old-feed", list(saved_source.get("fallback_urls", []) or []))
 
 

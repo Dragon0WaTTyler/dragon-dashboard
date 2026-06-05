@@ -9251,6 +9251,7 @@ def normalize_reading_source(source, index=0):
     repaired_at = str(item.get("repaired_at", "") or "").strip()
     replacement_of = normalize_reading_url(item.get("replacement_of", "") or "")
     last_repair_status = str(item.get("last_repair_status", "") or "").strip()
+    needs_replacement = normalize_reading_bool(item.get("needs_replacement", False), default=False)
     last_sync_status = str(item.get("last_sync_status", "") or "").strip()
     last_sync_error = str(item.get("last_sync_error", "") or "").strip()
     last_sync_message = str(item.get("last_sync_message", "") or "").strip()
@@ -9308,6 +9309,7 @@ def normalize_reading_source(source, index=0):
         "repaired_at": repaired_at,
         "replacement_of": replacement_of,
         "last_repair_status": last_repair_status,
+        "needs_replacement": needs_replacement,
         "last_synced_at": str(item.get("last_synced_at", "") or "").strip(),
         "last_sync_count": int(item.get("last_sync_count", 0) or 0),
         "last_sync_raw_count": int(item.get("last_sync_raw_count", 0) or 0),
@@ -9392,6 +9394,7 @@ def apply_reading_sources_registry_overrides(existing_sources, registry_sources)
             "repaired_at",
             "replacement_of",
             "last_repair_status",
+            "needs_replacement",
         ):
             if field_name in registry_source:
                 merged[field_name] = registry_source.get(field_name)
