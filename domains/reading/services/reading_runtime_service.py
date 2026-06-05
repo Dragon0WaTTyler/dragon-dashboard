@@ -31,9 +31,9 @@ class ReadingRuntimeService:
         reading_list_limit_step,
         reading_remote_snapshot_url,
         reading_remote_snapshot_pull_enabled,
-        refresh_service,
         datetime_module,
         monotonic,
+        refresh_service=None,
     ):
         self.app_logger = app_logger
         self.load_reading_data_cached = load_reading_data_cached
@@ -65,6 +65,10 @@ class ReadingRuntimeService:
         self.refresh_service = refresh_service
         self.datetime_module = datetime_module
         self.monotonic = monotonic
+        if self.refresh_service is None:
+            from domains.shared.refresh import RefreshService
+
+            self.refresh_service = RefreshService(format_timestamp_label=self.format_timestamp_label)
 
     def reading_filter_query_params(self, filters=None):
         filters = filters if isinstance(filters, dict) else {}
