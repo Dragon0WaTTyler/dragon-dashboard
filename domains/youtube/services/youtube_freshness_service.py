@@ -1309,6 +1309,7 @@ class YouTubeFreshnessService:
         has_latest = bool(feed_video_count)
         snapshot_status = self._build_snapshot_status(snapshot, sync_status, has_latest=bool(feed_videos))
         refresh_state = self._build_refresh_state(snapshot, sync_status)
+        freshness_note = self._build_freshness_note(snapshot_status, refresh_state, sync_status)
         return {
             "title": "PocketTube Freshness",
             "snapshot": snapshot,
@@ -1338,6 +1339,7 @@ class YouTubeFreshnessService:
             "generated_at": snapshot.get("generated_at", ""),
             "synced_at": snapshot.get("synced_at", ""),
             "last_refreshed_at": refresh_state.last_refreshed_at,
+            "last_refreshed_at_display": refresh_state.last_refreshed_at_display,
             "refresh_status": refresh_state.refresh_status,
             "refresh_error": refresh_state.refresh_error,
             "is_stale": bool(getattr(getattr(refresh_state, "stale", None), "is_stale", False)),
@@ -1346,6 +1348,7 @@ class YouTubeFreshnessService:
             "empty_reason": "no_snapshot" if not snapshot.get("groups") else "no_cached_latest",
             "sync_notice": self._sync_notice(sync_status),
             "snapshot_status": snapshot_status,
+            "freshness_note": freshness_note,
         }
 
     def _build_freshness_feed_context(self, snapshot):
@@ -2438,8 +2441,60 @@ class YouTubeFreshnessService:
         if status == "completed":
             return "Last sync completed."
         if status == "failed":
-            return str((sync_status or {}).get("last_error", "") or "Last sync failed.") or "Last sync failed."
+            return "Last sync failed. Run YouTube freshness sync again if needed."
         return ""
+
+    def _build_freshness_note(self, snapshot_status, refresh_state, sync_status):
+        snapshot_status = snapshot_status if isinstance(snapshot_status, dict) else {}
+        sync_status = sync_status if isinstance(sync_status, dict) else {}
+        refresh_status = str(getattr(refresh_state, "refresh_status", "") or "").strip().lower()
+        stale_state = str((getattr(getattr(refresh_state, "stale", None), "state", "") or "")).strip().lower()
+        is_stale = bool(getattr(getattr(refresh_state, "stale", None), "is_stale", False) or snapshot_status.get("is_stale"))
+        has_snapshot = bool(snapshot_status.get("has_snapshot"))
+        last_refreshed_at = str(getattr(refresh_state, "last_refreshed_at", "") or "").strip()
+        last_refreshed_at_display = str(getattr(refresh_state, "last_refreshed_at_display", "") or "").strip()
+
+        if not has_snapshot or refresh_status == "missing" or stale_state == "missing":
+            return {
+                "state": "missing",
+                "title": "No local YouTube freshness snapshot yet",
+                "message": "No local YouTube freshness snapshot yet. Run YouTube freshness sync, then reload this page.",
+                "last_refreshed_at": "",
+                "last_refreshed_at_display": "",
+                "secondary_message": "",
+            }
+
+        if refresh_status == "failed":
+            return {
+                "state": "error",
+                "title": "Refresh error",
+                "message": "Last refresh failed. Run YouTube freshness sync again if needed.",
+                "last_refreshed_at": last_refreshed_at,
+                "last_refreshed_at_display": last_refreshed_at_display if last_refreshed_at else "",
+                "secondary_message": "",
+            }
+
+        if is_stale or stale_state == "stale":
+            return {
+                "state": "stale",
+                "title": "Snapshot may be stale",
+                "message": "Snapshot may be stale. Run YouTube freshness sync if you need the latest videos.",
+                "last_refreshed_at": last_refreshed_at,
+                "last_refreshed_at_display": last_refreshed_at_display if last_refreshed_at else "",
+                "secondary_message": "",
+            }
+
+        freshness_message = "Fresh snapshot."
+        if last_refreshed_at_display and last_refreshed_at_display != "Unknown":
+            freshness_message = f"Fresh snapshot. Last refreshed {last_refreshed_at_display}."
+        return {
+            "state": "fresh",
+            "title": "Fresh snapshot",
+            "message": freshness_message,
+            "last_refreshed_at": last_refreshed_at,
+            "last_refreshed_at_display": last_refreshed_at_display if last_refreshed_at else "",
+            "secondary_message": "",
+        }
 
     def _normalize_sync_status(self, payload):
         status = self.empty_sync_status()

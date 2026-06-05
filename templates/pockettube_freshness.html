@@ -20,6 +20,13 @@
     .pockettube-feed-card .card-title{line-height:1.38;font-size:1rem}
     .pockettube-feed-card .pockettube-tags{display:flex;gap:6px;flex-wrap:wrap}
     .pockettube-feed-card .pockettube-youtube-btn{position:absolute;right:10px;top:10px;z-index:3}
+    .pockettube-freshness-note{display:grid;gap:4px;margin-top:12px;padding:10px 12px;border-radius:14px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.03);color:var(--text-2);font-size:.82rem;line-height:1.4}
+    .pockettube-freshness-note strong{color:var(--heading);font-weight:700}
+    .pockettube-freshness-note.is-fresh{border-color:rgba(52,211,153,.22);background:rgba(52,211,153,.045)}
+    .pockettube-freshness-note.is-stale{border-color:rgba(255,176,0,.28);background:rgba(255,176,0,.055)}
+    .pockettube-freshness-note.is-missing{border-color:rgba(255,0,0,.28);background:rgba(255,0,0,.045)}
+    .pockettube-freshness-note.is-error{border-color:rgba(255,120,120,.24);background:rgba(255,120,120,.05)}
+    .pockettube-freshness-note-meta{font-size:.76rem;opacity:.9}
     @media (max-width: 980px){
         .pockettube-filter-compact{width:100%;justify-items:stretch}
         .pockettube-filter-row{justify-content:stretch}
@@ -59,10 +66,13 @@
     {% if sync_notice %}
     <div class="muted" style="margin-top:10px;">{{ sync_notice }}</div>
     {% endif %}
-    {% if snapshot_status %}
-    <div class="muted" style="margin-top:10px;">
-        Snapshot status:
-        {{ snapshot_status.message or snapshot_status.state or 'unknown' }}
+    {% if freshness_note %}
+    <div class="pockettube-freshness-note is-{{ freshness_note.state or 'fresh' }}">
+        <div><strong>{{ freshness_note.title or 'Fresh snapshot' }}</strong></div>
+        <div>{{ freshness_note.message or '' }}</div>
+        {% if freshness_note.last_refreshed_at_display %}
+        <div class="pockettube-freshness-note-meta">Last refreshed {{ freshness_note.last_refreshed_at_display }}</div>
+        {% endif %}
     </div>
     {% endif %}
 </section>
@@ -160,8 +170,8 @@
                 </div>
                 {% else %}
                 <div class="empty-state" style="margin-top:18px;">
-                    {% if snapshot_status.state == 'missing' %}
-                    Snapshot missing. Run Sync to rebuild the cached PocketTube feed.
+                    {% if freshness_note.state == 'missing' %}
+                    {{ freshness_note.message }}
                     {% elif snapshot_status.state == 'empty' %}
                     Cached snapshot loaded, but it does not contain latest videos yet.
                     {% else %}

@@ -885,6 +885,143 @@ class YouTubeFreshnessServiceTests(unittest.TestCase):
             self.assertEqual(context["refresh_error"], "workflow failed")
             self.assertEqual(context["last_refreshed_at"], FIXED_NOW.isoformat())
             self.assertFalse(context["is_stale"])
+            self.assertEqual(context["sync_notice"], "Last sync failed. Run YouTube freshness sync again if needed.")
+
+    def test_build_page_context_missing_snapshot_returns_safe_freshness_note(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            service, _state = self._build_service(temp_dir)
+
+            context = service.build_page_context()
+
+            self.assertEqual(context["refresh_status"], "missing")
+            self.assertTrue(context["is_stale"])
+            self.assertEqual(context["freshness_note"]["state"], "missing")
+            self.assertEqual(
+                context["freshness_note"]["message"],
+                "No local YouTube freshness snapshot yet. Run YouTube freshness sync, then reload this page.",
+            )
+            self.assertEqual(context["freshness_note"]["last_refreshed_at_display"], "")
+
+    def test_build_page_context_fresh_and_stale_notes_include_last_refreshed_display(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            service, _state = self._build_service(temp_dir)
+            save_json_file(
+                service.snapshot_path,
+                {
+                    "version": 2,
+                    "generated_at": FIXED_NOW.isoformat(),
+                    "synced_at": FIXED_NOW.isoformat(),
+                    "groups": {
+                        "science": {
+                            "group_name": "Science",
+                            "group_key": "science",
+                            "section_name": "Science",
+                            "section_key": "science",
+                            "source_name": "PocketTube",
+                            "imported_at": FIXED_NOW.isoformat(),
+                            "channel_count": 1,
+                            "latest_video_count": 1,
+                            "latest_video": self._group_video("v1"),
+                            "channels": [],
+                        }
+                    },
+                    "channels": {},
+                    "errors": [],
+                },
+            )
+
+            fresh_context = service.build_page_context()
+
+            self.assertEqual(fresh_context["freshness_note"]["state"], "fresh")
+            self.assertEqual(fresh_context["freshness_note"]["title"], "Fresh snapshot")
+            self.assertIn("Last refreshed", fresh_context["freshness_note"]["message"])
+            self.assertEqual(fresh_context["freshness_note"]["last_refreshed_at_display"], "2026-06-02 12:00")
+
+            save_json_file(
+                service.snapshot_path,
+                {
+                    "version": 2,
+                    "generated_at": (FIXED_NOW - timedelta(hours=30)).isoformat(),
+                    "synced_at": (FIXED_NOW - timedelta(hours=30)).isoformat(),
+                    "groups": {
+                        "science": {
+                            "group_name": "Science",
+                            "group_key": "science",
+                            "section_name": "Science",
+                            "section_key": "science",
+                            "source_name": "PocketTube",
+                            "imported_at": (FIXED_NOW - timedelta(hours=30)).isoformat(),
+                            "channel_count": 1,
+                            "latest_video_count": 1,
+                            "latest_video": self._group_video("v2", hours_ago=30),
+                            "channels": [],
+                        }
+                    },
+                    "channels": {},
+                    "errors": [],
+                },
+            )
+
+            stale_context = service.build_page_context()
+
+            self.assertEqual(stale_context["freshness_note"]["state"], "stale")
+            self.assertEqual(
+                stale_context["freshness_note"]["message"],
+                "Snapshot may be stale. Run YouTube freshness sync if you need the latest videos.",
+            )
+            self.assertEqual(stale_context["freshness_note"]["last_refreshed_at_display"], "2026-06-01 06:00")
+
+    def test_pockettube_page_renders_safe_freshness_note_without_raw_error_details(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            service, _state = self._build_service(temp_dir)
+            save_json_file(
+                service.snapshot_path,
+                {
+                    "version": 2,
+                    "generated_at": FIXED_NOW.isoformat(),
+                    "synced_at": FIXED_NOW.isoformat(),
+                    "groups": {
+                        "science": {
+                            "group_name": "Science",
+                            "group_key": "science",
+                            "section_name": "Science",
+                            "section_key": "science",
+                            "source_name": "PocketTube",
+                            "imported_at": FIXED_NOW.isoformat(),
+                            "channel_count": 1,
+                            "latest_video_count": 1,
+                            "latest_video": self._group_video("v1"),
+                            "channels": [],
+                        }
+                    },
+                    "channels": {},
+                    "errors": [],
+                },
+            )
+            save_json_file(
+                service.sync_status_path,
+                {
+                    "status": "failed",
+                    "last_error": "Traceback: secret=github_token super-sensitive payload",
+                    "updated_at": FIXED_NOW.isoformat(),
+                },
+            )
+
+            dragon_app.app.config["TESTING"] = True
+            client = dragon_app.app.test_client()
+
+            with patch.object(dragon_app, "YOUTUBE_FRESHNESS_SERVICE", service):
+                response = client.get("/pockettube")
+
+            body = response.get_data(as_text=True)
+
+            self.assertEqual(response.status_code, 200)
+            self.assertIn("Refresh error", body)
+            self.assertIn("Last refresh failed. Run YouTube freshness sync again if needed.", body)
+            self.assertIn("Last refreshed 2026-06-02 12:00", body)
+            self.assertNotIn("Traceback", body)
+            self.assertNotIn("secret=github_token", body)
+            self.assertNotIn("super-sensitive payload", body)
 
     def test_latest_videos_group_by_channel_and_group(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -2696,6 +2833,14 @@ class YouTubeFreshnessServiceTests(unittest.TestCase):
                 "is_stale": False,
                 "has_snapshot": True,
             },
+            "freshness_note": {
+                "state": "fresh",
+                "title": "Fresh snapshot",
+                "message": "Fresh snapshot. Last refreshed 2026-06-02 12:00.",
+                "last_refreshed_at": FIXED_NOW.isoformat(),
+                "last_refreshed_at_display": "2026-06-02 12:00",
+                "secondary_message": "",
+            },
         }
 
         with patch.object(dragon_app, "YOUTUBE_FRESHNESS_SERVICE", mock_service):
@@ -2707,7 +2852,8 @@ class YouTubeFreshnessServiceTests(unittest.TestCase):
         self.assertIn("Limit", body)
         self.assertIn("Open on YouTube", body)
         self.assertIn("/video/yt-v1", body)
-        self.assertIn("Snapshot status", body)
+        self.assertIn("Fresh snapshot", body)
+        self.assertIn("Last refreshed 2026-06-02 12:00", body)
         mock_service.build_page_context_for_filter.assert_called_once_with(
             "all",
             display_limit="50",
