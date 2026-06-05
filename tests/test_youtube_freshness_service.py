@@ -350,6 +350,10 @@ class YouTubeFreshnessServiceTests(unittest.TestCase):
             self.assertEqual(context["groups"], [])
             self.assertEqual(context["synced_at"], "")
             self.assertEqual(context["sync_status"]["status"], "idle")
+            self.assertEqual(context["last_refreshed_at"], "")
+            self.assertEqual(context["refresh_status"], "missing")
+            self.assertEqual(context["refresh_error"], "")
+            self.assertTrue(context["is_stale"])
 
     def test_snapshot_read_is_local_only(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -811,6 +815,10 @@ class YouTubeFreshnessServiceTests(unittest.TestCase):
             self.assertEqual(context["feed_videos"][0]["group_names"], ["Knowledge", "Science"])
             self.assertEqual(context["feed_videos"][0]["channel_title"], "Channel One")
             self.assertEqual(context["feed_videos"][0]["detail_url"], "/video/yt-v1")
+            self.assertEqual(context["last_refreshed_at"], FIXED_NOW.isoformat())
+            self.assertEqual(context["refresh_status"], "idle")
+            self.assertEqual(context["refresh_error"], "")
+            self.assertFalse(context["is_stale"])
 
     def test_build_page_context_empty_snapshot_remains_safe_state(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -832,6 +840,51 @@ class YouTubeFreshnessServiceTests(unittest.TestCase):
             self.assertTrue(context["empty_state"])
             self.assertEqual(context["feed_video_count"], 0)
             self.assertEqual(context["feed_videos"], [])
+            self.assertEqual(context["refresh_status"], "missing")
+            self.assertTrue(context["is_stale"])
+
+    def test_build_page_context_preserves_failed_sync_status_in_refresh_fields(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            service, _state = self._build_service(temp_dir)
+            save_json_file(
+                service.snapshot_path,
+                {
+                    "version": 2,
+                    "generated_at": FIXED_NOW.isoformat(),
+                    "synced_at": FIXED_NOW.isoformat(),
+                    "groups": {
+                        "science": {
+                            "group_name": "Science",
+                            "group_key": "science",
+                            "section_name": "Science",
+                            "section_key": "science",
+                            "source_name": "PocketTube",
+                            "imported_at": FIXED_NOW.isoformat(),
+                            "channel_count": 1,
+                            "latest_video_count": 1,
+                            "latest_video": self._group_video("v1"),
+                            "channels": [],
+                        }
+                    },
+                    "channels": {},
+                    "errors": [],
+                },
+            )
+            save_json_file(
+                service.sync_status_path,
+                {
+                    "status": "failed",
+                    "last_error": "workflow failed",
+                    "updated_at": FIXED_NOW.isoformat(),
+                },
+            )
+
+            context = service.build_page_context()
+
+            self.assertEqual(context["refresh_status"], "failed")
+            self.assertEqual(context["refresh_error"], "workflow failed")
+            self.assertEqual(context["last_refreshed_at"], FIXED_NOW.isoformat())
+            self.assertFalse(context["is_stale"])
 
     def test_latest_videos_group_by_channel_and_group(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -2629,6 +2682,10 @@ class YouTubeFreshnessServiceTests(unittest.TestCase):
             "has_latest": True,
             "generated_at": "",
             "synced_at": "",
+            "last_refreshed_at": "",
+            "refresh_status": "idle",
+            "refresh_error": "",
+            "is_stale": False,
             "errors": [],
             "empty_state": False,
             "empty_reason": "no_cached_latest",

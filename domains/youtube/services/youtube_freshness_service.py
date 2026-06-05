@@ -36,6 +36,7 @@ class YouTubeFreshnessService:
         requests_module=None,
         registry_path=None,
         app_logger,
+        refresh_service=None,
     ):
         self.load_admin_data = load_admin_data
         self.pockettube_latest_import_snapshot = pockettube_latest_import_snapshot
@@ -57,6 +58,11 @@ class YouTubeFreshnessService:
         self.requests_module = requests_module
         self.registry_path = Path(registry_path) if registry_path else Path(__file__).resolve().parents[1] / "data" / "pockettube_registry.json"
         self.app_logger = app_logger
+        self.refresh_service = refresh_service
+        if self.refresh_service is None:
+            from domains.shared.refresh import RefreshService
+
+            self.refresh_service = RefreshService(format_timestamp_label=self.format_timestamp_label)
 
     def empty_snapshot(self):
         return {
@@ -1302,6 +1308,7 @@ class YouTubeFreshnessService:
         empty_group_count = len([group for group in feed_groups if int(group.get("empty_channel_count", 0) or 0) > 0])
         has_latest = bool(feed_video_count)
         snapshot_status = self._build_snapshot_status(snapshot, sync_status, has_latest=bool(feed_videos))
+        refresh_state = self._build_refresh_state(snapshot, sync_status)
         return {
             "title": "PocketTube Freshness",
             "snapshot": snapshot,
@@ -1330,6 +1337,10 @@ class YouTubeFreshnessService:
             "has_latest": has_latest,
             "generated_at": snapshot.get("generated_at", ""),
             "synced_at": snapshot.get("synced_at", ""),
+            "last_refreshed_at": refresh_state.last_refreshed_at,
+            "refresh_status": refresh_state.refresh_status,
+            "refresh_error": refresh_state.refresh_error,
+            "is_stale": bool(getattr(getattr(refresh_state, "stale", None), "is_stale", False)),
             "errors": list(snapshot.get("errors", []) or []),
             "empty_state": not has_latest,
             "empty_reason": "no_snapshot" if not snapshot.get("groups") else "no_cached_latest",
@@ -1732,6 +1743,30 @@ class YouTubeFreshnessService:
             return status
         status["message"] = "Feed is using the latest cached PocketTube snapshot."
         return status
+
+    def _build_refresh_state(self, snapshot, sync_status):
+        snapshot = snapshot if isinstance(snapshot, dict) else {}
+        sync_status = sync_status if isinstance(sync_status, dict) else {}
+        groups = snapshot.get("groups", {})
+        has_snapshot = bool(isinstance(groups, dict) and groups)
+        last_refreshed_at = str(snapshot.get("synced_at", "") or snapshot.get("generated_at", "") or "").strip()
+        refresh_status = str(sync_status.get("status", "") or "").strip().lower()
+        if not has_snapshot:
+            refresh_status = "missing"
+        elif not refresh_status:
+            refresh_status = "idle"
+        refresh_error = str(sync_status.get("last_error", "") or "").strip()
+        age_seconds = self._timestamp_age_seconds(last_refreshed_at)
+        return self.refresh_service.build_state(
+            last_refreshed_at=last_refreshed_at,
+            age_seconds=age_seconds,
+            missing=not has_snapshot,
+            refresh_status=refresh_status,
+            refresh_error=refresh_error,
+            refresh_now_enabled=False,
+            background_revalidate_enabled=False,
+            background_revalidate_placeholder=True,
+        )
 
     def _cached_channel_latest_entry(self, channel_id, cache_data=None):
         channel_id = str(channel_id or "").strip()
@@ -2441,6 +2476,17 @@ class YouTubeFreshnessService:
         if parsed.tzinfo is None:
             parsed = parsed.replace(tzinfo=timezone.utc)
         return int(parsed.timestamp())
+
+    def _timestamp_age_seconds(self, value):
+        timestamp = str(value or "").strip()
+        if not timestamp:
+            return None
+        now_value = str(self.current_timestamp() or "").strip()
+        now_timestamp = self._published_sort_key(now_value)
+        value_timestamp = self._published_sort_key(timestamp)
+        if not now_timestamp or not value_timestamp:
+            return None
+        return max(0, int(now_timestamp - value_timestamp))
 
     def _github_snapshot_download_error_message(self, exc):
         message = str(exc or "").strip()
