@@ -788,6 +788,14 @@
             {% set torrent_handoff_url = entry.magnet_fhd or entry.magnet_hd or entry.torrent_fhd or entry.torrent_hd %}
             <div class="torrent-links" style="margin-top:20px; border-top:1px solid #333; padding-top:15px;">
                 <h4 style="color:#6ac045; margin-bottom:10px;">Download Torrent</h4>
+                {% if dragon_runtime_watch_url %}
+                <a
+                    class="btn btn-sm btn-outline-success"
+                    href="{{ dragon_runtime_watch_url }}"
+                    data-scroll-top="true">
+                    ▶ Open in Dragon Runtime
+                </a>
+                {% endif %}
                 {% if torrent_handoff_url %}
                 <button
                     type="button"
