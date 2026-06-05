@@ -5,6 +5,7 @@ import asyncio
 import copy
 import hashlib
 import io
+import ipaddress
 import logging
 import shutil
 import requests
@@ -100,6 +101,7 @@ from dragon.paths import (
     PLAYLISTS_PATH,
     READING_BACKUPS_DIR,
     READING_DATA_PATH,
+    READING_FULLTEXT_CACHE_DIR,
     READING_RECIPE_OF_DAY_PATH,
     READING_TTS_CACHE_DIR,
     YOUTUBE_LATEST_SNAPSHOT_PATH,
@@ -293,6 +295,11 @@ READING_REMOTE_SNAPSHOT_PULL_ENABLED = config_flag("READING_REMOTE_SNAPSHOT_PULL
 READING_REMOTE_SNAPSHOT_MIN_BYTES = config_int("READING_REMOTE_SNAPSHOT_MIN_BYTES", 1024, minimum=256, maximum=50 * 1024 * 1024)
 READING_REMOTE_SNAPSHOT_MIN_ENTRIES = config_int("READING_REMOTE_SNAPSHOT_MIN_ENTRIES", 3, minimum=1, maximum=100000)
 READING_REMOTE_SNAPSHOT_MIN_SOURCES = config_int("READING_REMOTE_SNAPSHOT_MIN_SOURCES", 1, minimum=1, maximum=10000)
+READING_FULLTEXT_CACHE_MAX_FILES = config_int("READING_FULLTEXT_CACHE_MAX_FILES", 96, minimum=8, maximum=1000)
+READING_FULLTEXT_CACHE_MAX_BYTES = config_int("READING_FULLTEXT_CACHE_MAX_BYTES", 24 * 1024 * 1024, minimum=256 * 1024, maximum=200 * 1024 * 1024)
+READING_FULLTEXT_CACHE_MAX_ARTICLE_CHARS = config_int("READING_FULLTEXT_CACHE_MAX_ARTICLE_CHARS", 120000, minimum=2000, maximum=500000)
+READING_FULLTEXT_CACHE_MAX_HTML_CHARS = config_int("READING_FULLTEXT_CACHE_MAX_HTML_CHARS", 180000, minimum=0, maximum=500000)
+READING_FULLTEXT_CACHE_TIMEOUT_SECONDS = config_int("READING_FULLTEXT_CACHE_TIMEOUT_SECONDS", 12, minimum=3, maximum=60)
 YOUTUBE_SYNC_GITHUB_OWNER = "Dragon0WaTTyler"
 YOUTUBE_SYNC_GITHUB_REPO = "dragon-dashboard"
 YOUTUBE_SYNC_GITHUB_WORKFLOW = "youtube-freshness-dispatch.yml"
@@ -778,6 +785,195 @@ def _reading_snapshot_payload_is_valid(payload, downloaded_bytes):
     if int(downloaded_bytes or 0) < READING_REMOTE_SNAPSHOT_MIN_BYTES:
         return False, "Downloaded file is too small to be a valid Articles snapshot."
     return True, ""
+
+
+def reading_article_fulltext_cache_key(url):
+    normalized_url = normalize_reading_url(url)
+    if not normalized_url:
+        return ""
+    return hashlib.sha256(normalized_url.encode("utf-8")).hexdigest()
+
+
+def reading_article_fulltext_cache_path(url):
+    cache_key = reading_article_fulltext_cache_key(url)
+    if not cache_key:
+        return None
+    return READING_FULLTEXT_CACHE_DIR / cache_key[:2] / f"{cache_key}.json"
+
+
+def reading_article_url_candidates(entry):
+    entry = entry if isinstance(entry, dict) else {}
+    candidates = []
+    for value in (
+        entry.get("original_url", ""),
+        entry.get("canonical_url", ""),
+        entry.get("url", ""),
+    ):
+        normalized = normalize_reading_url(value)
+        if normalized and normalized not in candidates:
+            candidates.append(normalized)
+    return candidates
+
+
+def reading_article_url_is_safe_for_fetch(url):
+    normalized_url = normalize_reading_url(url)
+    if not normalized_url:
+        return False, "Missing article URL."
+    try:
+        parsed = urllib.parse.urlsplit(normalized_url)
+    except Exception:
+        return False, "Invalid article URL."
+    scheme = str(parsed.scheme or "").strip().lower()
+    if scheme not in {"http", "https"}:
+        return False, "Only http and https article URLs are allowed."
+    hostname = str(parsed.hostname or "").strip().lower()
+    if not hostname:
+        return False, "Invalid article URL host."
+    if hostname in {"localhost", "localhost.localdomain"} or hostname.endswith(".local"):
+        return False, "Local article URLs are not allowed."
+    try:
+        host_ip = ipaddress.ip_address(hostname)
+    except ValueError:
+        host_ip = None
+    if host_ip is not None:
+        if (
+            host_ip.is_private
+            or host_ip.is_loopback
+            or host_ip.is_link_local
+            or host_ip.is_multicast
+            or host_ip.is_unspecified
+            or host_ip.is_reserved
+        ):
+            return False, "Private article URLs are not allowed."
+    return True, ""
+
+
+def reading_article_fulltext_cleanup():
+    if not READING_FULLTEXT_CACHE_DIR.exists():
+        return {"deleted_files": 0, "deleted_bytes": 0}
+    files = [path for path in READING_FULLTEXT_CACHE_DIR.rglob("*.json") if path.is_file()]
+    file_infos = []
+    total_bytes = 0
+    for path in files:
+        try:
+            stat_result = path.stat()
+        except OSError:
+            continue
+        file_infos.append((path, stat_result.st_mtime, stat_result.st_size))
+        total_bytes += int(stat_result.st_size or 0)
+    file_infos.sort(key=lambda item: item[1], reverse=True)
+    deleted_files = 0
+    deleted_bytes = 0
+    for index, (path, _mtime, size_bytes) in enumerate(file_infos):
+        over_file_limit = index >= READING_FULLTEXT_CACHE_MAX_FILES
+        over_size_limit = total_bytes > READING_FULLTEXT_CACHE_MAX_BYTES
+        if not over_file_limit and not over_size_limit:
+            continue
+        try:
+            path.unlink(missing_ok=True)
+        except Exception:
+            continue
+        total_bytes = max(total_bytes - int(size_bytes or 0), 0)
+        deleted_files += 1
+        deleted_bytes += int(size_bytes or 0)
+    return {"deleted_files": deleted_files, "deleted_bytes": deleted_bytes}
+
+
+def reading_article_fulltext_load(url):
+    cache_path = reading_article_fulltext_cache_path(url)
+    if cache_path is None or not cache_path.exists() or not cache_path.is_file():
+        return None
+    try:
+        payload = json.loads(cache_path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    normalized_url = normalize_reading_url(url)
+    payload_url = normalize_reading_url(payload.get("url", "") or "")
+    if normalized_url and payload_url and payload_url != normalized_url:
+        return None
+    return payload
+
+
+def reading_article_fulltext_prepare_record(entry, extraction, article_url):
+    entry = entry if isinstance(entry, dict) else {}
+    extraction = extraction if isinstance(extraction, dict) else {}
+    normalized_url = normalize_reading_url(article_url)
+    sanitized_html = sanitize_reading_article_html(
+        extraction.get("content_html", ""),
+        base_url=normalized_url,
+        hero_image="",
+        author_image="",
+    )
+    content_text = normalize_reading_space(extraction.get("content_text", "") or reading_html_to_text(sanitized_html))
+    if len(content_text) > READING_FULLTEXT_CACHE_MAX_ARTICLE_CHARS:
+        content_text = content_text[:READING_FULLTEXT_CACHE_MAX_ARTICLE_CHARS].rsplit(" ", 1)[0].strip() or content_text[:READING_FULLTEXT_CACHE_MAX_ARTICLE_CHARS].strip()
+    if sanitized_html and READING_FULLTEXT_CACHE_MAX_HTML_CHARS > 0:
+        sanitized_html = sanitized_html[:READING_FULLTEXT_CACHE_MAX_HTML_CHARS].strip()
+    else:
+        sanitized_html = ""
+    word_count = len([word for word in content_text.split(" ") if word.strip()])
+    record = {
+        "url": normalized_url,
+        "title": str(entry.get("title", "") or "").strip(),
+        "source": str(entry.get("source", "") or "").strip(),
+        "fetched_at": current_timestamp(),
+        "status": str(extraction.get("status", "") or "failed").strip() or "failed",
+        "content_text": content_text,
+        "content_html": sanitized_html,
+        "excerpt": normalize_reading_space(extraction.get("excerpt", "") or content_text[:420]),
+        "word_count": int(word_count or 0),
+        "error": str(extraction.get("error", "") or "").strip(),
+    }
+    if not record["content_text"]:
+        record["content_html"] = ""
+    return record
+
+
+def reading_article_fulltext_save(url, record):
+    cache_path = reading_article_fulltext_cache_path(url)
+    if cache_path is None:
+        return None
+    payload = dict(record or {}) if isinstance(record, dict) else {}
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        mode="w",
+        delete=False,
+        dir=str(cache_path.parent),
+        prefix=f"{cache_path.stem}.",
+        suffix=".tmp",
+        encoding="utf-8",
+    ) as temp_file:
+        temp_file.write(json.dumps(payload, ensure_ascii=False, indent=2))
+        temp_path = Path(temp_file.name)
+    temp_path.replace(cache_path)
+    reading_article_fulltext_cleanup()
+    return cache_path
+
+
+def reading_article_fulltext_fetch(entry, force_refresh=False):
+    entry = entry if isinstance(entry, dict) else {}
+    article_urls = reading_article_url_candidates(entry)
+    if not article_urls:
+        return {"ok": False, "error": "This article does not have a valid source URL.", "cache_record": None, "cache_hit": False}
+    article_url = article_urls[0]
+    safe_url, safe_error = reading_article_url_is_safe_for_fetch(article_url)
+    if not safe_url:
+        return {"ok": False, "error": safe_error, "cache_record": None, "cache_hit": False}
+    if not force_refresh:
+        cached = reading_article_fulltext_load(article_url)
+        if isinstance(cached, dict) and cached.get("content_text"):
+            return {"ok": True, "error": "", "cache_record": cached, "cache_hit": True}
+    extraction = extract_reading_article_page(article_url, timeout_seconds=READING_FULLTEXT_CACHE_TIMEOUT_SECONDS)
+    record = reading_article_fulltext_prepare_record(entry, extraction, article_url)
+    reading_article_fulltext_save(article_url, record)
+    return {
+        "ok": bool(record.get("content_text")),
+        "error": str(record.get("error", "") or "").strip() or ("No readable article body found." if not record.get("content_text") else ""),
+        "cache_record": record,
+        "cache_hit": False,
+    }
 
 
 def _rotate_reading_webhook_backup():
@@ -10631,6 +10827,23 @@ def ensure_reading_entry_content(entry_id, force_refresh=False, allow_live_extra
         bool(updated),
     )
     return updated or entry
+
+
+def reading_entry_with_fulltext_cache(entry, cache_record):
+    entry = dict(entry or {}) if isinstance(entry, dict) else {}
+    cache_record = dict(cache_record or {}) if isinstance(cache_record, dict) else {}
+    if not cache_record:
+        return entry
+    if cache_record.get("content_text"):
+        entry["content_text"] = str(cache_record.get("content_text", "") or "").strip()
+    if cache_record.get("content_html"):
+        entry["content_html"] = str(cache_record.get("content_html", "") or "").strip()
+    if cache_record.get("excerpt"):
+        entry["excerpt"] = str(cache_record.get("excerpt", "") or "").strip()
+    entry["extraction_status"] = str(cache_record.get("status", "") or "ok").strip() or "ok"
+    entry["extraction_error"] = str(cache_record.get("error", "") or "").strip()
+    entry["content_cached_at"] = str(cache_record.get("fetched_at", "") or "").strip()
+    return entry
 
 
 def reading_filter_query_params(filters=None):
@@ -28615,25 +28828,18 @@ def reading_article(entry_id):
         bool(preferred_card_entry),
     )
     preferred_card_image_url = normalize_reading_url(preferred_card_entry.get("image_url", "")) if preferred_card_entry else ""
-    force_refresh = str(request.args.get("refresh", "") or "").strip().lower() in {"1", "true", "yes", "on", "force"}
-    live_extraction_allowed = reading_article_live_extraction_allowed(force_refresh=force_refresh)
     cache_selection_started_at = time.monotonic()
-    entry = ensure_reading_entry_content(
-        normalized_entry_id,
-        force_refresh=force_refresh and live_extraction_allowed,
-        allow_live_extraction=live_extraction_allowed,
-        log_reason="article_open",
-    )
+    entry = get_reading_entry(normalized_entry_id)
+    full_cache_record = reading_article_fulltext_load((reading_article_url_candidates(entry) or [""])[0]) if entry else None
     cache_selection_elapsed_ms = (time.monotonic() - cache_selection_started_at) * 1000
     app.logger.info(
-        "reading_article cache_content_selection entry_id=%s elapsed_ms=%.1f force_refresh=%s live_extraction_allowed=%s status=%s has_html=%s has_text=%s",
+        "reading_article cache_content_selection entry_id=%s elapsed_ms=%.1f full_cache_hit=%s status=%s has_html=%s has_text=%s",
         normalized_entry_id,
         cache_selection_elapsed_ms,
-        bool(force_refresh),
-        bool(live_extraction_allowed),
-        str(entry.get("extraction_status", "") or "").strip() or "none" if entry else "missing",
-        bool(entry.get("content_html")) if entry else False,
-        bool(entry.get("content_text") or entry.get("excerpt")) if entry else False,
+        bool(full_cache_record),
+        str((full_cache_record or {}).get("status", "") or "").strip() or (str(entry.get("extraction_status", "") or "").strip() if entry else "missing") or "missing",
+        bool((full_cache_record or {}).get("content_html")) if entry else False,
+        bool((full_cache_record or {}).get("content_text") or entry.get("excerpt")) if entry else False,
     )
     if not entry:
         return Response("Article not found.", status=404)
@@ -28649,63 +28855,64 @@ def reading_article(entry_id):
             entry = updated_entry
             if current_index >= 0:
                 entries[current_index] = updated_entry
+    display_entry = reading_entry_with_fulltext_cache(entry, full_cache_record)
     source_url = entry.get("original_url") or entry.get("url")
-    lead_image_url = normalize_reading_url(entry.get("lead_image_url", "")) if entry.get("lead_image_kind") in {"explicit", "feed_cover"} else ""
+    lead_image_url = normalize_reading_url(display_entry.get("lead_image_url", "")) if display_entry.get("lead_image_kind") in {"explicit", "feed_cover"} else ""
     article_hero_image = reading_choose_article_hero_image(
         preferred_image=preferred_card_image_url,
         lead_image=lead_image_url,
-        content_html=entry.get("content_html", ""),
+        content_html=display_entry.get("content_html", ""),
         article_url=source_url,
-        source_url=entry.get("feed_url", ""),
-        source_name=entry.get("source", ""),
+        source_url=display_entry.get("feed_url", ""),
+        source_name=display_entry.get("source", ""),
     )
-    if article_hero_image and normalize_reading_image_identity(entry.get("author_image_url", "")) == normalize_reading_image_identity(article_hero_image):
+    if article_hero_image and normalize_reading_image_identity(display_entry.get("author_image_url", "")) == normalize_reading_image_identity(article_hero_image):
         article_hero_image = ""
-    article_author_image_url = entry.get("author_image_url", "")
+    article_author_image_url = display_entry.get("author_image_url", "")
     if article_author_image_url and not reading_is_valid_author_avatar(
         article_author_image_url,
         article_url=source_url,
-        author_name=entry.get("author", ""),
+        author_name=display_entry.get("author", ""),
         hero_image=article_hero_image,
-        entry_image=entry.get("image_url", ""),
+        entry_image=display_entry.get("image_url", ""),
     ):
         article_author_image_url = ""
     article_html = sanitize_reading_article_html(
-        entry.get("content_html", ""),
+        display_entry.get("content_html", ""),
         base_url=source_url,
         hero_image=article_hero_image,
         author_image=article_author_image_url,
     )
-    article_text = reading_entry_body_text(entry)
+    article_text = reading_entry_body_text(display_entry)
     article_paragraphs = [] if article_html else [paragraph.strip() for paragraph in article_text.split("\n\n") if paragraph.strip()]
     if not article_paragraphs and article_text:
         article_paragraphs = [article_text]
     article_cache_fallback = not bool(article_html)
     article_cache_fallback_message = ""
     if article_cache_fallback:
-        if entry.get("content_text") or entry.get("excerpt"):
-            article_cache_fallback_message = "Full article content is not cached locally yet. Open original source."
+        if display_entry.get("content_text") or display_entry.get("excerpt"):
+            article_cache_fallback_message = "Full article content is not cached locally yet. Use Load Full Article or open original source."
         else:
-            article_cache_fallback_message = "Full article content is not cached locally yet. Open original source."
+            article_cache_fallback_message = "Full article content is not cached locally yet. Use Load Full Article or open original source."
         app.logger.info(
             "reading_article fallback entry_id=%s status=%s has_text=%s has_excerpt=%s",
             entry_id,
-            str(entry.get("extraction_status", "") or "").strip() or "none",
-            bool(entry.get("content_text")),
-            bool(entry.get("excerpt")),
+            str(display_entry.get("extraction_status", "") or "").strip() or "none",
+            bool(display_entry.get("content_text")),
+            bool(display_entry.get("excerpt")),
         )
     else:
         app.logger.info(
             "reading_article cache_hit entry_id=%s status=%s has_html=1",
             entry_id,
-            str(entry.get("extraction_status", "") or "").strip() or "none",
+            str(display_entry.get("extraction_status", "") or "").strip() or "none",
         )
     article_direction = detect_reading_direction(
-        entry.get("title", ""),
+        display_entry.get("title", ""),
         article_text,
-        strip_reading_html(entry.get("content_html", "")),
+        strip_reading_html(display_entry.get("content_html", "")),
     )
-    tts_payload = build_reading_tts_payload(entry)
+    tts_payload = build_reading_tts_payload(display_entry)
     prev_entry = dict((article_context or {}).get("prev_entry", {}) or {}) if isinstance((article_context or {}).get("prev_entry"), dict) else None
     next_entry = dict((article_context or {}).get("next_entry", {}) or {}) if isinstance((article_context or {}).get("next_entry"), dict) else None
     article_query = dict((article_context or {}).get("filter_query", {}) or {}) if isinstance((article_context or {}).get("filter_query"), dict) else {}
@@ -28765,8 +28972,8 @@ def reading_article(entry_id):
     )
     rendered = render_template(
         "reading_article.html",
-        title=entry.get("title") or "Article",
-        entry=entry,
+        title=display_entry.get("title") or "Article",
+        entry=display_entry,
         article_html=Markup(article_html) if article_html else "",
         article_paragraphs=article_paragraphs,
         article_cache_fallback=article_cache_fallback,
@@ -28774,12 +28981,12 @@ def reading_article(entry_id):
         article_dir=article_direction["dir"],
         article_lang=article_direction["lang"],
         article_hero_image=article_hero_image,
-        article_author_name=entry.get("author", ""),
+        article_author_name=display_entry.get("author", ""),
         article_author_image_url=article_author_image_url,
         reading_tts_available=tts_payload["available"],
         reading_tts_status_message=tts_payload["status_message"],
-        reading_tts_audio_url=reading_tts_audio_url(entry.get("id", ""), tts_payload["text_hash"]) if tts_payload["available"] else "",
-        reading_tts_timings_url=reading_tts_timings_url(entry.get("id", ""), tts_payload["text_hash"]) if tts_payload["available"] else "",
+        reading_tts_audio_url=reading_tts_audio_url(display_entry.get("id", ""), tts_payload["text_hash"]) if tts_payload["available"] else "",
+        reading_tts_timings_url=reading_tts_timings_url(display_entry.get("id", ""), tts_payload["text_hash"]) if tts_payload["available"] else "",
         reading_tts_lang=tts_payload["lang"],
         reading_tts_voice=tts_payload["voice"],
         reading_tts_version=tts_payload["text_hash"],
@@ -28793,6 +29000,13 @@ def reading_article(entry_id):
         reading_recipe_next_url=reading_recipe_next_url,
         reading_recipe_prev_url=reading_recipe_prev_url,
         reading_context_label=reading_context_label,
+        full_article_cached=bool(full_cache_record and full_cache_record.get("content_text")),
+        full_article_cache_status=str((full_cache_record or {}).get("status", "") or "").strip(),
+        full_article_cache_error=str((full_cache_record or {}).get("error", "") or "").strip(),
+        full_article_cached_at=str((full_cache_record or {}).get("fetched_at", "") or "").strip(),
+        full_article_word_count=int((full_cache_record or {}).get("word_count", 0) or 0),
+        full_article_load_error=str(request.args.get("full_error", "") or "").strip(),
+        full_article_load_success=str(request.args.get("full_loaded", "") or "").strip(),
         ai_default_mode="cinematic",
         ai_page_context="general",
     )
@@ -28807,18 +29021,30 @@ def reading_article(entry_id):
     return rendered
 
 
+@app.route("/reading/article/<entry_id>/load-full", methods=["POST"])
+def reading_article_load_full(entry_id):
+    normalized_entry_id = str(entry_id or "").strip()
+    refresh_requested = str(request.form.get("refresh", "") or "").strip().lower() in {"1", "true", "yes", "on", "force"}
+    next_url = str(request.form.get("next", "") or url_for("reading_article", entry_id=normalized_entry_id)).strip() or url_for("reading_article", entry_id=normalized_entry_id)
+    entry = get_reading_entry(normalized_entry_id)
+    if not entry:
+        return Response("Article not found.", status=404)
+    fetch_result = reading_article_fulltext_fetch(entry, force_refresh=refresh_requested)
+    if not fetch_result.get("ok"):
+        return redirect(append_query_param(next_url, full_error=fetch_result.get("error", "") or "Could not load the full article."))
+    success_message = "Full article refreshed." if refresh_requested else ("Full article reused from cache." if fetch_result.get("cache_hit") else "Full article loaded.")
+    return redirect(append_query_param(next_url, full_loaded=success_message))
+
+
 @app.route("/reading/article/<entry_id>/audio", methods=["GET"])
 def reading_article_audio(entry_id):
-    force_refresh = str(request.args.get("refresh", "") or "").strip().lower() in {"1", "true", "yes", "on", "force"}
-    live_extraction_allowed = reading_article_live_extraction_allowed(force_refresh=force_refresh)
-    entry = ensure_reading_entry_content(
-        entry_id,
-        force_refresh=force_refresh and live_extraction_allowed,
-        allow_live_extraction=live_extraction_allowed,
-        log_reason="audio_route",
-    )
+    entry = get_reading_entry(entry_id)
     if not entry:
         return Response("Article not found.", status=404, mimetype="text/plain")
+    entry = reading_entry_with_fulltext_cache(
+        entry,
+        reading_article_fulltext_load((reading_article_url_candidates(entry) or [""])[0]),
+    )
 
     tts_payload = build_reading_tts_payload(entry)
     if not tts_payload["available"]:

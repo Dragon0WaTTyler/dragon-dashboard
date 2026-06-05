@@ -39,6 +39,130 @@ class _DummySession:
 
 
 class ReadingSnapshotAccessTests(unittest.TestCase):
+    def test_pull_latest_articles_snapshot_keeps_inactive_needs_replacement_sources_after_remote_pull(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            reading_data_path = root / "reading_data.json"
+            local_sources = [
+                {
+                    "id": "reading-src-map",
+                    "source_id": "reading-src-map",
+                    "name": "MAP News English",
+                    "url": "https://www.mapnews.ma/en/rss.xml",
+                    "category": "news",
+                    "active": False,
+                    "request_profile": "browser_ua",
+                    "disabled_reason": "Confirmed HTTP 403 from GitHub Actions even with request profile",
+                    "last_repair_status": "blocked_in_github_actions",
+                    "needs_replacement": True,
+                },
+                {
+                    "id": "reading-src-hespress",
+                    "source_id": "reading-src-hespress",
+                    "name": "Hespress - هسبريس جريدة إلكترونية مغربية",
+                    "url": "https://www.hespress.com/feed/index.rss",
+                    "category": "news",
+                    "active": True,
+                },
+            ]
+            reading_data_path.write_text(
+                json.dumps({"version": 1, "sources": local_sources, "entries": []}, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+
+            remote_payload = {
+                "version": 1,
+                "last_sync_at": "2026-06-05T00:00:00+00:00",
+                "sources": [
+                    {"name": "MAP News English", "url": "https://www.mapnews.ma/en/rss.xml", "active": True},
+                    {"name": "Hespress - هسبريس جريدة إلكترونية مغربية", "url": "https://www.hespress.com/feed/index.rss", "active": True},
+                ],
+                "entries": [
+                    {
+                        "source": "Hespress - هسبريس جريدة إلكترونية مغربية",
+                        "source_id": "reading-src-hespress",
+                        "title": "Fresh article",
+                        "url": "https://example.com/article-1",
+                        "published_at": "2026-06-05T00:00:00+00:00",
+                        "added_at": "2026-06-05T00:00:00+00:00",
+                        "status": "unread",
+                        "topic": "News",
+                    },
+                    {
+                        "source": "Hespress - هسبريس جريدة إلكترونية مغربية",
+                        "source_id": "reading-src-hespress",
+                        "title": "Fresh article 2",
+                        "url": "https://example.com/article-2",
+                        "published_at": "2026-06-05T00:10:00+00:00",
+                        "added_at": "2026-06-05T00:10:00+00:00",
+                        "status": "unread",
+                        "topic": "News",
+                    },
+                    {
+                        "source": "Hespress - هسبريس جريدة إلكترونية مغربية",
+                        "source_id": "reading-src-hespress",
+                        "title": "Fresh article 3",
+                        "url": "https://example.com/article-3",
+                        "published_at": "2026-06-05T00:20:00+00:00",
+                        "added_at": "2026-06-05T00:20:00+00:00",
+                        "status": "unread",
+                        "topic": "News",
+                    }
+                ],
+            }
+            remote_bytes = json.dumps(remote_payload).encode("utf-8")
+            if len(remote_bytes) < 2048:
+                remote_payload["padding"] = "x" * (2048 - len(remote_bytes))
+                remote_bytes = json.dumps(remote_payload).encode("utf-8")
+
+            runtime = type(
+                "Runtime",
+                (),
+                {
+                    "github_refresh_lock": threading.Lock(),
+                    "data_cache_lock": threading.Lock(),
+                    "data_cache": {"fingerprint": None, "data": None},
+                },
+            )()
+
+            access = ReadingSnapshotAccess(
+                app_logger=dragon_app.app.logger,
+                reading_runtime=runtime,
+                reading_data_path=reading_data_path,
+                base_dir=root,
+                temp_file_factory=tempfile.NamedTemporaryFile,
+                path_class=Path,
+                requests_module=dragon_app.requests,
+                reading_http_session=_DummySession(remote_bytes),
+                reading_snapshot_url="https://example.com/reading_data.json",
+                reading_snapshot_pull_enabled=True,
+                validate_snapshot_payload=dragon_app._reading_snapshot_payload_is_valid,
+                normalize_reading_data=dragon_app.normalize_reading_data,
+                build_lightweight_snapshot=dragon_app.build_lightweight_articles_snapshot,
+                backup_reading_data_file=lambda reason="save": "",
+                rotate_webhook_backup=lambda: "",
+                clear_reading_data_cache=lambda: None,
+                reading_data_cache_fingerprint=lambda: ("fingerprint", reading_data_path.stat().st_size),
+                reading_format_mtime=lambda path: "mtime",
+                monotonic=lambda: 0.0,
+            )
+
+            result = access.pull_latest_articles_snapshot()
+
+            self.assertTrue(result["ok"])
+            saved_payload = json.loads(reading_data_path.read_text(encoding="utf-8"))
+            saved_sources = [source for source in (saved_payload.get("sources", []) or []) if isinstance(source, dict)]
+            self.assertEqual(len(saved_sources), 2)
+            map_source = next(source for source in saved_sources if source.get("name") == "MAP News English")
+            self.assertFalse(bool(map_source.get("active", True)))
+            self.assertTrue(bool(map_source.get("needs_replacement")))
+            self.assertEqual(
+                map_source.get("disabled_reason"),
+                "Confirmed HTTP 403 from GitHub Actions even with request profile",
+            )
+            self.assertEqual(map_source.get("last_repair_status"), "blocked_in_github_actions")
+            self.assertEqual(map_source.get("request_profile"), "browser_ua")
+
     def test_pull_latest_articles_snapshot_preserves_local_sources_and_merges_new_remote_sources(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)

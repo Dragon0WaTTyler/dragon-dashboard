@@ -25,6 +25,7 @@ BACKUPS_DIR = BASE_DIR / "backups"
 READING_BACKUPS_DIR = BACKUPS_DIR / "reading"
 READING_TTS_CACHE_DIR = CACHE_DIR / "reading_tts"
 READING_RECIPE_OF_DAY_PATH = CACHE_DIR / "reading_recipe_of_day.json"
+READING_FULLTEXT_CACHE_DIR = _resolve_path_from_env("DRAGON_READING_FULLTEXT_CACHE_DIR", CACHE_DIR / "articles" / "full_text")
 YOUTUBE_LATEST_SNAPSHOT_PATH = CACHE_DIR / "youtube_latest_snapshot.json"
 YOUTUBE_LATEST_SYNC_STATUS_PATH = CACHE_DIR / "youtube_latest_sync_status.json"
 BOOKS_SNAPSHOT_PATH = CACHE_DIR / "books_snapshot.json"

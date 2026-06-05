@@ -63,6 +63,8 @@
     .reading-media-placeholder{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;border:1px solid var(--border);border-radius:18px;background:rgba(255,255,255,.03);color:var(--text-2)}
     .reading-media-placeholder a{color:var(--link-muted)}
     .reading-extraction-note{font-size:.88rem;line-height:1.6;color:var(--text-2);padding:14px 16px;border:1px solid var(--border);border-radius:18px;background:rgba(255,255,255,.03);max-width:68ch}
+    .reading-extraction-note.is-error{border-color:rgba(255,0,0,.28);color:#f0b0b0}
+    .reading-extraction-note.is-success{border-color:rgba(139,209,168,.2);color:#bfe7cb}
     .reading-entry-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}
     .reading-entry-actions form{margin:0}
     .reading-entry-actions .btn{padding:8px 10px;min-height:32px;font-size:.72rem;line-height:1;letter-spacing:.06em;min-width:0}
@@ -116,6 +118,17 @@
                 <a class="btn" href="{{ reading_return_url }}"><i data-lucide="arrow-left"></i>{{ 'Back to recipe' if reading_recipe_flow else 'Back to articles' }}</a>
                 {% if entry.url %}
                 <a class="btn" href="{{ entry.url }}" target="_blank" rel="noopener"><i data-lucide="external-link"></i>Open original</a>
+                {% endif %}
+                <form method="post" action="{{ url_for('reading_article_load_full', entry_id=entry.id) }}">
+                    <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
+                    <button type="submit" class="btn"><i data-lucide="file-text"></i>{{ 'Reload Full Article' if full_article_cached else 'Load Full Article' }}</button>
+                </form>
+                {% if full_article_cached %}
+                <form method="post" action="{{ url_for('reading_article_load_full', entry_id=entry.id) }}">
+                    <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
+                    <input type="hidden" name="refresh" value="1">
+                    <button type="submit" class="btn"><i data-lucide="refresh-cw"></i>Refresh Full Article</button>
+                </form>
                 {% endif %}
             </div>
             <div class="reading-article-nav">
@@ -249,6 +262,12 @@
             </div>
 
             <div class="reading-body-row">
+                {% if full_article_load_success %}
+                <div class="reading-extraction-note is-success">{{ full_article_load_success }}</div>
+                {% endif %}
+                {% if full_article_load_error %}
+                <div class="reading-extraction-note is-error">{{ full_article_load_error }}</div>
+                {% endif %}
                 {% if article_html %}
                 <div class="reading-prose" dir="{{ article_dir }}" lang="{{ article_lang }}">
                     {{ article_html }}
@@ -271,6 +290,11 @@
                 <div class="reading-extraction-note">{{ article_cache_fallback_message or 'Full article content is not cached locally yet. Open original source.' }}</div>
                 {% endif %}
 
+                {% if full_article_cached or full_article_cache_error %}
+                <div class="reading-extraction-note">
+                    Full article cache: {{ full_article_cache_status or 'cached' }}{% if full_article_cached_at %} at {{ full_article_cached_at }}{% endif %}{% if full_article_word_count %} · {{ full_article_word_count }} words{% endif %}{% if full_article_cache_error %}. {{ full_article_cache_error }}{% endif %}
+                </div>
+                {% endif %}
                 {% if entry.extraction_status or entry.extraction_error %}
                 <div class="reading-extraction-note">
                     Reader cache: {{ entry.extraction_status or 'not cached' }}{% if entry.content_cached_at %} at {{ entry.content_cached_at }}{% endif %}{% if entry.extraction_error %}. {{ entry.extraction_error }}{% endif %}
