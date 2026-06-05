@@ -1,11 +1,12 @@
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from flask import Flask
 
 from domains.magnets.playback_runtime.media_selection import select_playable_media_file
-from domains.magnets.playback_runtime.runtime_manager import PlaybackRuntimeManager
+from domains.magnets.playback_runtime.runtime_manager import PlaybackRuntimeError, PlaybackRuntimeManager
 from domains.magnets.playback_runtime.runtime_sessions import InMemoryPlaybackRuntimeSessions
 from domains.magnets.playback_runtime.stream_endpoint import build_stream_response
 from domains.magnets.playback_runtime.torrent_runtime import TorrentRuntimeError
@@ -15,24 +16,45 @@ class FakeTorrentClient:
     def __init__(self):
         self.closed_sessions = []
         self.running = True
+        self.last_start_kwargs = None
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.local_file_path = Path(self.temp_dir.name) / "Film.2026.1080p.mp4"
+        self.local_file_path.write_bytes((b"\x00\x00\x00\x18ftypisom" + b"\x00\x00\x00\x08moov" + b"\x00\x00\x00\x08mdat") + (b"x" * ((4 * 1024 * 1024) - 28)))
         self.status_payload = {
             "status": {
                 "progress": 0.24,
                 "downloadSpeed": 1024 * 512,
                 "numPeers": 18,
                 "complete": False,
+                "downloadDir": self.temp_dir.name,
+                "materialization": {
+                    "helperDownloadRoot": self.temp_dir.name,
+                    "selectedFileRelativePath": "Film.2026.1080p.mp4",
+                    "selectedFileExpectedPath": str(self.local_file_path),
+                    "selectedFilePrioritized": True,
+                    "localFileExists": True,
+                    "localFileSize": 4 * 1024 * 1024,
+                    "firstByteReadable": True,
+                    "bytesWritten": 4 * 1024 * 1024,
+                    "writerActive": False,
+                    "state": "file_ready",
+                    "code": "",
+                    "reason": "",
+                },
                 "selectedFile": {
                     "index": 1,
                     "name": "Film.2026.1080p.mp4",
                     "path": "Film.2026.1080p.mp4",
+                    "relativePath": "Film.2026.1080p.mp4",
                     "length": 700 * 1024 * 1024,
                     "downloaded": 4 * 1024 * 1024,
-                    "localPath": "C:/tmp/Film.2026.1080p.mp4",
+                    "localPath": str(self.local_file_path),
                 },
             }
         }
 
     def start(self, **kwargs):
+        self.last_start_kwargs = dict(kwargs)
         return {
             "torrentName": "Film Torrent",
             "files": [
@@ -62,6 +84,12 @@ class FakeTorrentClient:
 
     def terminate(self):
         self.running = False
+
+    def __del__(self):
+        try:
+            self.temp_dir.cleanup()
+        except Exception:
+            pass
 
 
 class PlaybackRuntimeTransportTests(unittest.TestCase):
@@ -94,9 +122,367 @@ class PlaybackRuntimeTransportTests(unittest.TestCase):
 
         self.assertTrue(session["stream_url"].endswith(f"/api/runtime/stream/{session['session_id']}"))
         self.assertEqual(session["status"], "ready_to_play")
+        self.assertEqual(session["state"], "ready")
         self.assertEqual(session["file_name"], "Film.2026.1080p.mp4")
+        self.assertEqual(session["selected_file"]["path"], str(manager.torrent_client.local_file_path))
+        self.assertEqual(session["selected_file"]["relative_path"], "Film.2026.1080p.mp4")
+        self.assertEqual(session["selected_file"]["expected_path"], str(manager.torrent_client.local_file_path))
         self.assertEqual(session["runtime_metrics"]["selected_container"], "mp4")
         self.assertEqual(session["helper_pid"], 4242)
+        self.assertTrue(session["stream_readiness"]["local_file_exists"])
+        self.assertTrue(session["stream_readiness"]["first_byte_readable"])
+        self.assertTrue(session["stream_readiness"]["stream_openable"])
+        self.assertEqual(session["source_quality"]["state"], "playable")
+        self.assertTrue(session["source_quality"]["can_open_stream"])
+        self.assertTrue(session["stream_readiness"]["head_ready"])
+        self.assertFalse(session["stream_readiness"]["tail_ready"])
+        self.assertTrue(session["stream_readiness"]["fast_start_confirmed"])
+        self.assertEqual(session["materialization"]["helper_download_root"], manager.torrent_client.temp_dir.name)
+        self.assertEqual(session["materialization"]["selected_file_relative_path"], "Film.2026.1080p.mp4")
+        self.assertEqual(session["materialization"]["selected_file_expected_path"], str(manager.torrent_client.local_file_path))
+        self.assertTrue(session["materialization"]["selected_file_prioritized"])
+        self.assertEqual(session["materialization"]["state"], "file_ready")
+        self.assertEqual(session["materialization"]["bytes_written"], 4 * 1024 * 1024)
+        self.assertFalse(session["materialization"]["writer_active"])
+
+    def test_runtime_manager_accepts_local_torrent_file_input(self):
+        manager = PlaybackRuntimeManager(
+            sessions=InMemoryPlaybackRuntimeSessions(),
+            torrent_client=FakeTorrentClient(),
+            runtime_root=Path(tempfile.gettempdir()) / "dragon-playback-tests-torrent-file",
+            cleanup_interval_seconds=3600,
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            torrent_path = Path(temp_dir) / "legal-sample.torrent"
+            torrent_path.write_bytes(b"d8:announce0:e")
+            session = manager.create_session(
+                movie={"movie_id": "film-1", "title": "Film"},
+                source={"torrent_file_path": str(torrent_path), "source_fingerprint": "src123"},
+                stream_base_url="http://localhost:5000",
+            )
+
+        self.assertEqual(session["status"], "ready_to_play")
+        self.assertEqual(
+            str(manager.torrent_client.last_start_kwargs.get("torrent_input") or ""),
+            str(torrent_path.resolve()),
+        )
+        self.assertEqual(
+            str(manager.torrent_client.last_start_kwargs.get("source_kind") or ""),
+            "torrent_file",
+        )
+
+    def test_runtime_manager_rejects_empty_torrent_file_input(self):
+        manager = PlaybackRuntimeManager(
+            sessions=InMemoryPlaybackRuntimeSessions(),
+            torrent_client=FakeTorrentClient(),
+            runtime_root=Path(tempfile.gettempdir()) / "dragon-playback-tests-empty-torrent-file",
+            cleanup_interval_seconds=3600,
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            torrent_path = Path(temp_dir) / "empty.torrent"
+            torrent_path.write_bytes(b"")
+            with self.assertRaises(PlaybackRuntimeError) as ctx:
+                manager.create_session(
+                    movie={"movie_id": "film-1", "title": "Film"},
+                    source={"torrent_file_path": str(torrent_path), "source_fingerprint": "src123"},
+                    stream_base_url="http://localhost:5000",
+                )
+
+        self.assertEqual(ctx.exception.code, "torrent_file_empty")
+
+    def test_runtime_manager_rejects_non_torrent_file_input(self):
+        manager = PlaybackRuntimeManager(
+            sessions=InMemoryPlaybackRuntimeSessions(),
+            torrent_client=FakeTorrentClient(),
+            runtime_root=Path(tempfile.gettempdir()) / "dragon-playback-tests-invalid-torrent-file",
+            cleanup_interval_seconds=3600,
+        )
+        with self.assertRaises(PlaybackRuntimeError) as ctx:
+            manager.create_session(
+                movie={"movie_id": "film-1", "title": "Film"},
+                source={"torrent_file_path": "C:/tmp/not-a-torrent.txt", "source_fingerprint": "src123"},
+                stream_base_url="http://localhost:5000",
+            )
+
+        self.assertEqual(ctx.exception.code, "invalid_torrent_file")
+
+    def test_runtime_manager_maps_torrent_file_add_failure(self):
+        class BrokenTorrentFileClient(FakeTorrentClient):
+            def start(self, **kwargs):
+                raise TorrentRuntimeError("Torrent file add failed: Invalid torrent identifier")
+
+        manager = PlaybackRuntimeManager(
+            sessions=InMemoryPlaybackRuntimeSessions(),
+            torrent_client=BrokenTorrentFileClient(),
+            runtime_root=Path(tempfile.gettempdir()) / "dragon-playback-tests-broken-torrent-file",
+            cleanup_interval_seconds=3600,
+        )
+        with tempfile.TemporaryDirectory() as temp_dir:
+            torrent_path = Path(temp_dir) / "broken.torrent"
+            torrent_path.write_bytes(b"not-a-real-torrent")
+            with self.assertRaises(PlaybackRuntimeError) as ctx:
+                manager.create_session(
+                    movie={"movie_id": "film-1", "title": "Film"},
+                    source={"torrent_file_path": str(torrent_path), "source_fingerprint": "src123"},
+                    stream_base_url="http://localhost:5000",
+                )
+
+        self.assertEqual(ctx.exception.code, "torrent_file_add_failed")
+
+    def test_runtime_manager_reports_no_peers_diagnostic_on_zero_peer_timeout(self):
+        class ZeroPeerTorrentClient(FakeTorrentClient):
+            def __init__(self):
+                super().__init__()
+                self.local_file_path.unlink(missing_ok=True)
+                self.status_payload["status"]["numPeers"] = 0
+                self.status_payload["status"]["downloadSpeed"] = 0
+                self.status_payload["status"]["progress"] = 0
+                self.status_payload["status"]["materialization"] = {
+                    "helperDownloadRoot": self.temp_dir.name,
+                    "selectedFileRelativePath": "Film.2026.1080p.mp4",
+                    "selectedFileExpectedPath": str(self.local_file_path),
+                    "selectedFilePrioritized": True,
+                    "localFileExists": False,
+                    "localFileSize": 0,
+                    "firstByteReadable": False,
+                    "bytesWritten": 0,
+                    "writerActive": True,
+                    "readStreamStarted": True,
+                    "readStreamActive": True,
+                    "firstDataReceived": False,
+                    "lastDataAt": "",
+                    "timeSinceLastDataMs": 0,
+                    "materializationTimeoutMs": 45000,
+                    "state": "materialization_failed",
+                    "code": "no_peers",
+                    "reason": "No peers were connected before materialization timed out.",
+                }
+                self.status_payload["status"]["webtorrent"] = {
+                    "numPeers": 0,
+                    "downloaded": 0,
+                    "downloadSpeed": 0,
+                    "progress": 0,
+                    "ready": False,
+                    "paused": False,
+                    "torrentLength": 700 * 1024 * 1024,
+                    "filesCount": 2,
+                    "wiresCount": 0,
+                    "selectedFileIndex": 1,
+                    "selectedFileName": "Film.2026.1080p.mp4",
+                    "selectedFileLength": 700 * 1024 * 1024,
+                    "readStreamStarted": True,
+                    "readStreamActive": True,
+                    "firstDataReceived": False,
+                    "bytesWritten": 0,
+                    "lastDataAt": "",
+                    "timeSinceLastDataMs": 0,
+                    "materializationTimeoutMs": 45000,
+                    "warningMessages": [],
+                    "errorMessages": [],
+                    "trackerMessages": [],
+                }
+
+        manager = PlaybackRuntimeManager(
+            sessions=InMemoryPlaybackRuntimeSessions(),
+            torrent_client=ZeroPeerTorrentClient(),
+            runtime_root=Path(tempfile.gettempdir()) / "dragon-playback-tests-zero-peers",
+            cleanup_interval_seconds=3600,
+        )
+
+        session = manager.create_session(
+            movie={"movie_id": "film-1", "title": "Film"},
+            source={"magnet": "magnet:?xt=urn:btih:1234567890ABCDEF1234567890ABCDEF12345678", "source_fingerprint": "src123"},
+            stream_base_url="http://localhost:5000",
+        )
+
+        self.assertEqual(session["materialization"]["state"], "materialization_failed")
+        self.assertEqual(session["materialization"]["code"], "no_peers")
+        self.assertFalse(session["materialization"]["first_data_received"])
+        self.assertEqual(session["webtorrent"]["numPeers"], 0)
+        self.assertFalse(session["webtorrent"]["firstDataReceived"])
+        self.assertEqual(session["source_quality"]["state"], "no_peers")
+        self.assertFalse(session["source_quality"]["can_open_stream"])
+
+    def test_runtime_manager_keeps_buffering_when_local_file_is_missing(self):
+        class MissingLocalFileClient(FakeTorrentClient):
+            def __init__(self):
+                super().__init__()
+                self.local_file_path.unlink(missing_ok=True)
+                self.status_payload["status"]["materialization"] = {
+                    "helperDownloadRoot": self.temp_dir.name,
+                    "selectedFileRelativePath": "Film.2026.1080p.mp4",
+                    "selectedFileExpectedPath": str(self.local_file_path),
+                    "selectedFilePrioritized": True,
+                    "localFileExists": False,
+                    "localFileSize": 0,
+                    "firstByteReadable": False,
+                    "bytesWritten": 0,
+                    "writerActive": True,
+                    "state": "metadata_loaded_but_file_missing",
+                    "code": "selected_file_missing",
+                    "reason": "",
+                }
+                self.status_payload["status"]["selectedFile"]["localPath"] = str(self.local_file_path)
+
+        manager = PlaybackRuntimeManager(
+            sessions=InMemoryPlaybackRuntimeSessions(),
+            torrent_client=MissingLocalFileClient(),
+            runtime_root=Path(tempfile.gettempdir()) / "dragon-playback-tests-missing-file",
+            cleanup_interval_seconds=3600,
+        )
+
+        session = manager.create_session(
+            movie={"movie_id": "film-1", "title": "Film"},
+            source={"magnet": "magnet:?xt=urn:btih:1234567890ABCDEF1234567890ABCDEF12345678", "source_fingerprint": "src123"},
+            stream_base_url="http://localhost:5000",
+        )
+
+        self.assertEqual(session["status"], "buffering_video")
+        self.assertEqual(session["state"], "buffering")
+        self.assertFalse(session["stream_readiness"]["local_file_exists"])
+        self.assertFalse(session["stream_readiness"]["stream_openable"])
+        self.assertTrue(session["stream_readiness"]["waiting_for_bytes"])
+        self.assertFalse(session["stream_readiness"]["head_ready"])
+        self.assertFalse(session["stream_readiness"]["tail_ready"])
+        self.assertEqual(session["materialization"]["state"], "metadata_loaded_but_file_missing")
+        self.assertEqual(session["materialization"]["code"], "selected_file_missing")
+        self.assertTrue(session["materialization"]["writer_active"])
+        self.assertEqual(session["source_quality"]["state"], "peer_connected_but_no_data")
+        self.assertFalse(session["source_quality"]["can_open_stream"])
+
+    def test_runtime_manager_requires_readable_first_byte_for_stream_openable(self):
+        class UnreadableLocalFileClient(FakeTorrentClient):
+            def __init__(self):
+                super().__init__()
+                self.status_payload["status"]["materialization"] = {
+                    "helperDownloadRoot": self.temp_dir.name,
+                    "selectedFileRelativePath": "Film.2026.1080p.mp4",
+                    "selectedFileExpectedPath": str(self.local_file_path),
+                    "selectedFilePrioritized": True,
+                    "localFileExists": True,
+                    "localFileSize": 4 * 1024 * 1024,
+                    "firstByteReadable": False,
+                    "bytesWritten": 1024,
+                    "writerActive": True,
+                    "state": "materializing",
+                    "code": "waiting_for_bytes",
+                    "reason": "",
+                }
+
+        manager = PlaybackRuntimeManager(
+            sessions=InMemoryPlaybackRuntimeSessions(),
+            torrent_client=UnreadableLocalFileClient(),
+            runtime_root=Path(tempfile.gettempdir()) / "dragon-playback-tests-unreadable-file",
+            cleanup_interval_seconds=3600,
+        )
+
+        with mock.patch.object(manager, "_inspect_local_file", return_value=(True, 4 * 1024 * 1024, False)):
+            session = manager.create_session(
+                movie={"movie_id": "film-1", "title": "Film"},
+                source={"magnet": "magnet:?xt=urn:btih:1234567890ABCDEF1234567890ABCDEF12345678", "source_fingerprint": "src123"},
+                stream_base_url="http://localhost:5000",
+            )
+
+        self.assertFalse(session["stream_readiness"]["stream_openable"])
+        self.assertTrue(session["stream_readiness"]["local_file_exists"])
+        self.assertFalse(session["stream_readiness"]["first_byte_readable"])
+        self.assertEqual(session["materialization"]["state"], "materializing")
+        self.assertEqual(session["materialization"]["bytes_written"], 1024)
+
+    def test_runtime_manager_buffers_mp4_when_only_head_bytes_are_ready(self):
+        class HeadOnlyMp4Client(FakeTorrentClient):
+            def __init__(self):
+                super().__init__()
+                self.local_file_path.write_bytes(b"\x00\x00\x00\x18ftypisom" + (b"x" * 4096))
+                self.status_payload["status"]["selectedFile"]["length"] = 700 * 1024 * 1024
+                self.status_payload["status"]["selectedFile"]["downloaded"] = 4 * 1024 * 1024
+
+        manager = PlaybackRuntimeManager(
+            sessions=InMemoryPlaybackRuntimeSessions(),
+            torrent_client=HeadOnlyMp4Client(),
+            runtime_root=Path(tempfile.gettempdir()) / "dragon-playback-tests-head-only",
+            cleanup_interval_seconds=3600,
+        )
+
+        session = manager.create_session(
+            movie={"movie_id": "film-1", "title": "Film"},
+            source={"magnet": "magnet:?xt=urn:btih:1234567890ABCDEF1234567890ABCDEF12345678", "source_fingerprint": "src123"},
+            stream_base_url="http://localhost:5000",
+        )
+
+        self.assertEqual(session["status"], "buffering_video")
+        self.assertFalse(session["stream_readiness"]["stream_openable"])
+        self.assertTrue(session["stream_readiness"]["head_ready"])
+        self.assertFalse(session["stream_readiness"]["tail_ready"])
+        self.assertEqual(session["stream_readiness"]["tail_probe_code"], "tail_not_ready")
+
+    def test_runtime_manager_reports_unsafe_selected_path(self):
+        class UnsafePathClient(FakeTorrentClient):
+            def __init__(self):
+                super().__init__()
+                self.status_payload["status"]["materialization"] = {
+                    "helperDownloadRoot": self.temp_dir.name,
+                    "selectedFileRelativePath": "../escape/movie.mp4",
+                    "selectedFileExpectedPath": "",
+                    "selectedFilePrioritized": True,
+                    "localFileExists": False,
+                    "localFileSize": 0,
+                    "firstByteReadable": False,
+                    "bytesWritten": 0,
+                    "writerActive": False,
+                    "state": "materialization_failed",
+                    "code": "unsafe_path",
+                    "reason": "Selected file path resolves outside the helper download root.",
+                }
+                self.status_payload["status"]["selectedFile"]["path"] = "../escape/movie.mp4"
+                self.status_payload["status"]["selectedFile"]["relativePath"] = "../escape/movie.mp4"
+                self.status_payload["status"]["selectedFile"]["localPath"] = ""
+
+        manager = PlaybackRuntimeManager(
+            sessions=InMemoryPlaybackRuntimeSessions(),
+            torrent_client=UnsafePathClient(),
+            runtime_root=Path(tempfile.gettempdir()) / "dragon-playback-tests-unsafe-path",
+            cleanup_interval_seconds=3600,
+        )
+
+        session = manager.create_session(
+            movie={"movie_id": "film-1", "title": "Film"},
+            source={"magnet": "magnet:?xt=urn:btih:1234567890ABCDEF1234567890ABCDEF12345678", "source_fingerprint": "src123"},
+            stream_base_url="http://localhost:5000",
+        )
+
+        self.assertEqual(session["status"], "buffering_video")
+        self.assertEqual(session["materialization"]["state"], "materialization_failed")
+        self.assertEqual(session["materialization"]["code"], "unsafe_path")
+        self.assertTrue(session["stream_readiness"]["failed"])
+        self.assertEqual(session["selected_file"]["expected_path"], "")
+
+    def test_runtime_manager_creates_local_file_session(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            video_path = Path(temp_dir) / "local.mp4"
+            video_path.write_bytes(b"x" * 4096)
+            manager = PlaybackRuntimeManager(
+                sessions=InMemoryPlaybackRuntimeSessions(),
+                torrent_client=FakeTorrentClient(),
+                runtime_root=Path(tempfile.gettempdir()) / "dragon-playback-tests-local-file",
+                cleanup_interval_seconds=3600,
+            )
+
+            session = manager.create_local_file_session(
+                file_path=str(video_path),
+                title="Local File Test",
+                stream_base_url="http://localhost:5000",
+            )
+
+        self.assertEqual(session["status"], "ready_to_play")
+        self.assertEqual(session["state"], "ready")
+        self.assertTrue(session["stream_readiness"]["stream_openable"])
+        self.assertTrue(session["stream_readiness"]["local_file_exists"])
+        self.assertEqual(session["materialization"]["state"], "file_ready")
+        self.assertTrue(session["stream_readiness"]["head_ready"])
+        self.assertTrue(session["stream_readiness"]["tail_ready"])
+        self.assertEqual(session["source_quality"]["state"], "playable")
+        self.assertTrue(session["source_quality"]["can_open_stream"])
 
     def test_stream_endpoint_serves_range(self):
         app = Flask(__name__)
@@ -112,6 +498,8 @@ class PlaybackRuntimeTransportTests(unittest.TestCase):
                         "mime_type": "video/mp4",
                         "downloaded_bytes": video_path.stat().st_size,
                         "complete": True,
+                        "selected_file": {"name": "movie.mp4", "length": video_path.stat().st_size},
+                        "file_name": "movie.mp4",
                     }
 
             with app.test_request_context(
@@ -121,8 +509,123 @@ class PlaybackRuntimeTransportTests(unittest.TestCase):
                 response = build_stream_response(StubManager(), "session-1")
                 self.assertEqual(response.status_code, 206)
                 self.assertEqual(response.headers["Content-Range"], f"bytes 5-14/{video_path.stat().st_size}")
+                self.assertEqual(response.headers["Accept-Ranges"], "bytes")
+                self.assertEqual(response.headers["Content-Length"], "10")
+                self.assertEqual(response.headers["Content-Type"], "video/mp4")
                 body = b"".join(response.response)
                 self.assertEqual(body, b"56789abcde")
+
+    def test_stream_endpoint_rejects_invalid_reverse_range(self):
+        app = Flask(__name__)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            video_path = Path(temp_dir) / "movie.mp4"
+            video_path.write_bytes(b"0123456789abcdefghijklmnopqrstuvwxyz")
+
+            class StubManager:
+                def wait_for_bytes(self, session_id, start_offset, timeout_seconds=12.0):
+                    return {
+                        "file_path": str(video_path),
+                        "file_size": video_path.stat().st_size,
+                        "mime_type": "video/mp4",
+                        "downloaded_bytes": video_path.stat().st_size,
+                        "complete": True,
+                        "selected_file": {"name": "movie.mp4", "length": video_path.stat().st_size},
+                        "file_name": "movie.mp4",
+                    }
+
+            with app.test_request_context(
+                "/api/runtime/stream/session-1",
+                headers={"Range": "bytes=20-10"},
+            ):
+                response = build_stream_response(StubManager(), "session-1")
+                self.assertEqual(response.status_code, 416)
+                self.assertEqual(response.headers["Content-Range"], f"bytes */{video_path.stat().st_size}")
+                self.assertEqual(response.headers["Accept-Ranges"], "bytes")
+
+    def test_stream_endpoint_raises_when_active_video_is_missing(self):
+        app = Flask(__name__)
+
+        class StubManager:
+            def wait_for_bytes(self, session_id, start_offset, timeout_seconds=12.0):
+                return {
+                    "file_path": "C:/missing/movie.mp4",
+                    "file_size": 123,
+                    "mime_type": "video/mp4",
+                    "downloaded_bytes": 123,
+                    "complete": True,
+                    "selected_file": {"name": "movie.mp4", "length": 123},
+                    "file_name": "movie.mp4",
+                }
+
+        with app.test_request_context("/api/runtime/stream/session-1"):
+            with self.assertRaises(PlaybackRuntimeError) as error_context:
+                build_stream_response(StubManager(), "session-1")
+        self.assertEqual(error_context.exception.code, "file_not_found")
+        self.assertIn("not available on disk yet", error_context.exception.message)
+
+    def test_stream_endpoint_reports_file_not_ready_for_later_range(self):
+        app = Flask(__name__)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            video_path = Path(temp_dir) / "movie.mp4"
+            video_path.write_bytes(b"0123456789abcdefghijklmnopqrstuvwxyz")
+
+            class StubManager:
+                def wait_for_bytes(self, session_id, start_offset, timeout_seconds=12.0):
+                    return {
+                        "file_path": str(video_path),
+                        "file_size": 4 * 1024 * 1024,
+                        "mime_type": "video/mp4",
+                        "downloaded_bytes": 2048,
+                        "complete": False,
+                        "selected_file": {"name": "movie.mp4", "length": 4 * 1024 * 1024},
+                        "file_name": "movie.mp4",
+                    }
+
+            with app.test_request_context(
+                "/api/runtime/stream/session-1",
+                headers={"Range": "bytes=1048576-1050623"},
+            ):
+                with self.assertRaises(PlaybackRuntimeError) as error_context:
+                    build_stream_response(StubManager(), "session-1")
+        self.assertEqual(error_context.exception.code, "file_not_ready")
+        self.assertEqual(error_context.exception.details.get("session_id"), "session-1")
+        self.assertEqual(error_context.exception.details.get("selected_file_name"), "movie.mp4")
+        self.assertEqual(error_context.exception.details.get("requested_range"), "bytes=1048576-1050623")
+        self.assertFalse(error_context.exception.details.get("near_tail"))
+
+    def test_stream_endpoint_reports_browser_tail_range_blocked(self):
+        app = Flask(__name__)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            video_path = Path(temp_dir) / "movie.mp4"
+            video_path.write_bytes(b"0123456789abcdefghijklmnopqrstuvwxyz")
+
+            class StubManager:
+                def wait_for_bytes(self, session_id, start_offset, timeout_seconds=12.0):
+                    return {
+                        "file_path": str(video_path),
+                        "file_size": 890_203_389,
+                        "mime_type": "video/mp4",
+                        "downloaded_bytes": 188_743_221,
+                        "complete": False,
+                        "selected_file": {"name": "movie.mp4", "length": 890_203_389},
+                        "file_name": "movie.mp4",
+                        "stream_readiness": {
+                            "tail_probe_range": "bytes=889154813-890203388",
+                            "tail_probe_code": "tail_not_ready",
+                        },
+                    }
+
+            with app.test_request_context(
+                "/api/runtime/stream/session-1",
+                headers={"Range": "bytes=890175488-"},
+            ):
+                with self.assertRaises(PlaybackRuntimeError) as error_context:
+                    build_stream_response(StubManager(), "session-1")
+
+        self.assertEqual(error_context.exception.code, "file_not_ready")
+        self.assertTrue(error_context.exception.details.get("near_tail"))
+        self.assertTrue(error_context.exception.details.get("browser_range_blocked"))
+        self.assertEqual(error_context.exception.details.get("tail_probe_code"), "tail_not_ready")
 
     def test_cleanup_expires_inactive_sessions_and_removes_runtime_dir(self):
         client = FakeTorrentClient()

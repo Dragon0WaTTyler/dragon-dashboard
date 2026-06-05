@@ -1,0 +1,406 @@
+{% extends "base.html" %}
+
+{% block title %}Dragon Runtime Test{% endblock %}
+
+{% block content %}
+<section class="page-shell runtime-test-page">
+  <div class="page-hero">
+    <div class="hero-meta">
+      <span class="hero-badge">Dragon Runtime</span>
+      <span>Movie Playback Diagnostics</span>
+    </div>
+    <h2>Runtime Test</h2>
+    <p class="subhead">
+      Test the in-site Dragon torrent playback handoff without leaving Dragon. External qBittorrent opens the magnet in another app.
+      Dragon Runtime tries to prepare a local HTML5 stream inside Dragon when the local runtime is available.
+    </p>
+  </div>
+
+  <div class="detail-grid runtime-test-grid">
+    <section class="surface-card runtime-test-card">
+      <form method="post" action="{{ url_for('runtime_test') }}" class="runtime-test-form">
+        <input type="hidden" name="test_mode" value="torrent-runtime">
+        <label class="runtime-test-field">
+          <span>Magnet Link</span>
+          <textarea
+            name="magnet"
+            rows="6"
+            placeholder="Paste a known legal/public-domain test magnet"
+          >{{ magnet }}</textarea>
+        </label>
+        <label class="runtime-test-field">
+          <span>Title (optional)</span>
+          <input type="text" name="title" value="{{ title }}" placeholder="Runtime test title">
+        </label>
+        <div class="runtime-test-inline-fields">
+          <label class="runtime-test-field">
+            <span>Movie ID (optional)</span>
+            <input type="text" name="movie_id" value="{{ movie_id }}" placeholder="film-test">
+          </label>
+          <label class="runtime-test-field">
+            <span>Entry ID (optional)</span>
+            <input type="text" name="entry_id" value="{{ entry_id }}" placeholder="film-test">
+          </label>
+        </div>
+        <div class="detail-controls">
+          <button type="submit" class="btn">Test Dragon Runtime</button>
+          {% if magnet %}
+          <a class="btn" href="{{ magnet }}">Open Magnet Externally</a>
+          {% endif %}
+        </div>
+      </form>
+    </section>
+
+    <section class="surface-card runtime-test-card">
+      <div class="runtime-result-header">
+        <h3>Local File Stream Self-Test</h3>
+      </div>
+      <form method="post" action="{{ url_for('runtime_test') }}" class="runtime-test-form">
+        <input type="hidden" name="test_mode" value="local-file">
+        <label class="runtime-test-field">
+          <span>Local File Path</span>
+          <input type="text" name="local_file_path" value="{{ local_file_path }}" placeholder="C:\\Movies\\legal-sample.mp4">
+        </label>
+        <label class="runtime-test-field">
+          <span>Title (optional)</span>
+          <input type="text" name="local_file_title" value="{{ local_file_title }}" placeholder="Local file self-test">
+        </label>
+        {% if local_file_sample_path %}
+        <div class="runtime-status-note">
+          Sample path configured: {{ local_file_sample_path }}
+        </div>
+        {% endif %}
+        <div class="detail-controls">
+          <button type="submit" class="btn">Run Local File Self-Test</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="surface-card runtime-test-card">
+      <div class="runtime-result-header">
+        <h3>Torrent File Metadata Test</h3>
+      </div>
+      <form method="post" action="{{ url_for('runtime_test') }}" class="runtime-test-form">
+        <input type="hidden" name="test_mode" value="torrent-file">
+        <label class="runtime-test-field">
+          <span>Local .torrent File Path</span>
+          <input type="text" name="torrent_file_path" value="{{ torrent_file_path }}" placeholder="C:\\Torrents\\legal-sample.torrent">
+        </label>
+        <label class="runtime-test-field">
+          <span>Title (optional)</span>
+          <input type="text" name="title" value="{{ title }}" placeholder="Torrent file metadata test">
+        </label>
+        <div class="runtime-test-inline-fields">
+          <label class="runtime-test-field">
+            <span>Movie ID (optional)</span>
+            <input type="text" name="movie_id" value="{{ movie_id }}" placeholder="film-test">
+          </label>
+          <label class="runtime-test-field">
+            <span>Entry ID (optional)</span>
+            <input type="text" name="entry_id" value="{{ entry_id }}" placeholder="film-test">
+          </label>
+        </div>
+        <div class="runtime-status-note">
+          Use only legal/personal/public-domain torrent files.
+        </div>
+        <div class="detail-controls">
+          <button type="submit" class="btn">Test Torrent File Runtime</button>
+        </div>
+      </form>
+    </section>
+
+    <aside class="detail-sidebar">
+    <section class="surface-card runtime-test-card">
+      <div class="runtime-result-header">
+        <h3>Active result: {{ active_test_mode or "none" }}</h3>
+        {% if active_result and active_result.report %}
+        <button type="button" class="btn runtime-copy-btn" data-copy-target="runtime-report">Copy Report</button>
+        {% endif %}
+      </div>
+
+        {% if active_result %}
+        <div class="runtime-result-list">
+          <div class="info-row"><strong>ok</strong><span>{{ active_result.ok }}</span></div>
+          <div class="info-row"><strong>code</strong><span>{{ active_result.code or "—" }}</span></div>
+          <div class="info-row"><strong>error</strong><span>{{ active_result.error or "—" }}</span></div>
+          <div class="info-row"><strong>state</strong><span>{{ active_result.state or "—" }}</span></div>
+          <div class="info-row"><strong>status</strong><span>{{ active_result.status or "—" }}</span></div>
+          <div class="info-row"><strong>torrent_file_path</strong><span class="runtime-break">{{ active_result.torrent_file_path or "—" }}</span></div>
+          <div class="info-row"><strong>torrent_file_size</strong><span>{{ active_result.torrent_file_size or "—" }}</span></div>
+          <div class="info-row"><strong>materialization_state</strong><span>{{ active_result.materialization_state or "—" }}</span></div>
+          <div class="info-row"><strong>diagnostic_code</strong><span>{{ active_result.diagnostic_code or "—" }}</span></div>
+          <div class="info-row"><strong>selected_file</strong><span class="runtime-break">{{ (active_result.selected_file.path if active_result.selected_file and active_result.selected_file.path else active_result.selected_file.name if active_result.selected_file and active_result.selected_file.name else "—") }}</span></div>
+          <div class="info-row"><strong>materialization</strong><span class="runtime-break">{{ active_result.materialization or "—" }}</span></div>
+          <div class="info-row"><strong>head_ready</strong><span>{{ active_result.stream_readiness.head_ready if active_result.stream_readiness else "—" }}</span></div>
+          <div class="info-row"><strong>tail_ready</strong><span>{{ active_result.stream_readiness.tail_ready if active_result.stream_readiness else "—" }}</span></div>
+          <div class="info-row"><strong>tail_probe_range</strong><span class="runtime-break">{{ active_result.stream_readiness.tail_probe_range if active_result.stream_readiness else "—" }}</span></div>
+          <div class="info-row"><strong>tail_probe_code</strong><span>{{ active_result.stream_readiness.tail_probe_code if active_result.stream_readiness else "—" }}</span></div>
+          <div class="info-row"><strong>stream_readiness</strong><span class="runtime-break">{{ active_result.stream_readiness or "—" }}</span></div>
+          <div class="info-row"><strong>stream_url</strong><span class="runtime-break">{{ active_result.stream_url or "—" }}</span></div>
+          <div class="info-row"><strong>session_id</strong><span class="runtime-break">{{ active_result.session_id or "—" }}</span></div>
+          <div class="info-row"><strong>next_action</strong><span>{{ active_result.next_action or "—" }}</span></div>
+        </div>
+
+        {% if active_result.source_quality %}
+        <div class="runtime-probe-block">
+          <div class="runtime-result-header">
+            <h3>Runtime Source Quality</h3>
+          </div>
+          <div class="runtime-result-list">
+            <div class="info-row"><strong>state</strong><span>{{ active_result.source_quality.state or "—" }}</span></div>
+            <div class="info-row"><strong>code</strong><span>{{ active_result.source_quality.code or "—" }}</span></div>
+            <div class="info-row"><strong>label</strong><span>{{ active_result.source_quality.label or "—" }}</span></div>
+            <div class="info-row"><strong>message</strong><span>{{ active_result.source_quality.message or "—" }}</span></div>
+            <div class="info-row"><strong>recommended_action</strong><span>{{ active_result.source_quality.recommended_action or "—" }}</span></div>
+            <div class="info-row"><strong>can_open_stream</strong><span>{{ active_result.source_quality.can_open_stream }}</span></div>
+            <div class="info-row"><strong>show_qbittorrent_fallback</strong><span>{{ active_result.source_quality.show_qbittorrent_fallback }}</span></div>
+            <div class="info-row"><strong>show_local_file_option</strong><span>{{ active_result.source_quality.show_local_file_option }}</span></div>
+            <div class="info-row"><strong>show_torrent_file_option</strong><span>{{ active_result.source_quality.show_torrent_file_option }}</span></div>
+          </div>
+        </div>
+        {% endif %}
+
+        {% if active_result.webtorrent %}
+        <div class="runtime-probe-block">
+          <div class="runtime-result-header">
+            <h3>WebTorrent diagnostics</h3>
+          </div>
+          <div class="runtime-result-list">
+            <div class="info-row"><strong>num_peers</strong><span>{{ active_result.webtorrent.numPeers if active_result.webtorrent else "—" }}</span></div>
+            <div class="info-row"><strong>source_kind</strong><span>{{ active_result.webtorrent.sourceKind if active_result.webtorrent else "—" }}</span></div>
+            <div class="info-row"><strong>torrent_add_mode</strong><span>{{ active_result.webtorrent.torrentAddMode if active_result.webtorrent else "—" }}</span></div>
+            <div class="info-row"><strong>torrent_file_exists</strong><span>{{ active_result.webtorrent.torrentFileExists if active_result.webtorrent else "—" }}</span></div>
+            <div class="info-row"><strong>torrent_file_size</strong><span>{{ active_result.webtorrent.torrentFileSize if active_result.webtorrent else "—" }}</span></div>
+            <div class="info-row"><strong>client_add_started</strong><span>{{ active_result.webtorrent.clientAddStarted if active_result.webtorrent else "—" }}</span></div>
+            <div class="info-row"><strong>metadata_event_received</strong><span>{{ active_result.webtorrent.metadataEventReceived if active_result.webtorrent else "—" }}</span></div>
+            <div class="info-row"><strong>ready_event_received</strong><span>{{ active_result.webtorrent.readyEventReceived if active_result.webtorrent else "—" }}</span></div>
+            <div class="info-row"><strong>helper_error</strong><span class="runtime-break">{{ active_result.webtorrent.helperError if active_result.webtorrent else "—" }}</span></div>
+            <div class="info-row"><strong>download_speed</strong><span>{{ active_result.webtorrent.downloadSpeed if active_result.webtorrent else "—" }}</span></div>
+            <div class="info-row"><strong>downloaded_bytes</strong><span>{{ active_result.webtorrent.downloaded if active_result.webtorrent else "—" }}</span></div>
+            <div class="info-row"><strong>progress</strong><span>{{ active_result.webtorrent.progress if active_result.webtorrent else "—" }}</span></div>
+            <div class="info-row"><strong>ready</strong><span>{{ active_result.webtorrent.ready if active_result.webtorrent else "—" }}</span></div>
+            <div class="info-row"><strong>paused</strong><span>{{ active_result.webtorrent.paused if active_result.webtorrent else "—" }}</span></div>
+            <div class="info-row"><strong>torrent_length</strong><span>{{ active_result.webtorrent.torrentLength if active_result.webtorrent else "—" }}</span></div>
+            <div class="info-row"><strong>files_count</strong><span>{{ active_result.webtorrent.filesCount if active_result.webtorrent else "—" }}</span></div>
+            <div class="info-row"><strong>selected_file_index</strong><span>{{ active_result.webtorrent.selectedFileIndex if active_result.webtorrent else "—" }}</span></div>
+            <div class="info-row"><strong>selected_file_name</strong><span class="runtime-break">{{ active_result.webtorrent.selectedFileName if active_result.webtorrent else "—" }}</span></div>
+            <div class="info-row"><strong>selected_file_length</strong><span>{{ active_result.webtorrent.selectedFileLength if active_result.webtorrent else "—" }}</span></div>
+            <div class="info-row"><strong>wires_count</strong><span>{{ active_result.webtorrent.wiresCount if active_result.webtorrent else "—" }}</span></div>
+            <div class="info-row"><strong>first_data_received</strong><span>{{ active_result.webtorrent.firstDataReceived if active_result.webtorrent else "—" }}</span></div>
+            <div class="info-row"><strong>read_stream_started</strong><span>{{ active_result.webtorrent.readStreamStarted if active_result.webtorrent else "—" }}</span></div>
+            <div class="info-row"><strong>read_stream_active</strong><span>{{ active_result.webtorrent.readStreamActive if active_result.webtorrent else "—" }}</span></div>
+            <div class="info-row"><strong>bytes_written</strong><span>{{ active_result.webtorrent.bytesWritten if active_result.webtorrent else "—" }}</span></div>
+            <div class="info-row"><strong>last_data_at</strong><span class="runtime-break">{{ active_result.webtorrent.lastDataAt if active_result.webtorrent else "—" }}</span></div>
+            <div class="info-row"><strong>time_since_last_data_ms</strong><span>{{ active_result.webtorrent.timeSinceLastDataMs if active_result.webtorrent else "—" }}</span></div>
+            <div class="info-row"><strong>materialization_timeout_ms</strong><span>{{ active_result.webtorrent.materializationTimeoutMs if active_result.webtorrent else "—" }}</span></div>
+            <div class="info-row"><strong>timeout_code</strong><span>{{ active_result.materialization.code or "—" }}</span></div>
+            <div class="info-row"><strong>tracker_messages</strong><span class="runtime-break">{{ active_result.webtorrent.trackerMessages if active_result.webtorrent else "—" }}</span></div>
+          </div>
+        </div>
+        {% endif %}
+
+        <div class="detail-controls runtime-result-actions">
+          {% if active_result.stream_url and active_result.source_quality and active_result.source_quality.can_open_stream %}
+          <a class="btn" href="{{ active_result.stream_url }}">Open Stream</a>
+          {% elif active_result.stream_url %}
+          <span class="runtime-status-note">{{ active_result.source_quality.message if active_result.source_quality else "Metadata ready, waiting for local file bytes before the stream can open." }}</span>
+          {% endif %}
+          {% if active_result.watch_url %}
+          <a class="btn" href="{{ active_result.watch_url }}">Open Watch Flow</a>
+          {% endif %}
+          {% if active_result.magnet and active_result.source_quality and active_result.source_quality.show_qbittorrent_fallback %}
+          <a class="btn" href="{{ active_result.magnet }}">Open Magnet Externally</a>
+          {% endif %}
+        </div>
+
+        <pre id="runtime-report" class="runtime-report-block">{{ active_result.report }}</pre>
+
+        {% if active_result.stream_probe %}
+        <div class="runtime-probe-block">
+          <div class="runtime-result-header">
+            <h3>Stream Probe</h3>
+          </div>
+          <div class="runtime-result-list">
+            <div class="info-row"><strong>ok</strong><span>{{ active_result.stream_probe.ok }}</span></div>
+            <div class="info-row"><strong>code</strong><span>{{ active_result.stream_probe.code or "—" }}</span></div>
+            <div class="info-row"><strong>error</strong><span>{{ active_result.stream_probe.error or "—" }}</span></div>
+            <div class="info-row"><strong>session_id</strong><span class="runtime-break">{{ active_result.stream_probe.session_id or "—" }}</span></div>
+            <div class="info-row"><strong>selected_file</strong><span class="runtime-break">{{ active_result.stream_probe.selected_file_name or "—" }}</span></div>
+            <div class="info-row"><strong>selected_length</strong><span>{{ active_result.stream_probe.selected_file_length or "—" }}</span></div>
+            <div class="info-row"><strong>local_path_exists</strong><span>{{ active_result.stream_probe.local_path_exists }}</span></div>
+            <div class="info-row"><strong>local_file_size</strong><span>{{ active_result.stream_probe.local_file_size or "—" }}</span></div>
+            <div class="info-row"><strong>materialization_state</strong><span>{{ active_result.stream_probe.materialization_state or "—" }}</span></div>
+            <div class="info-row"><strong>materialization_code</strong><span>{{ active_result.stream_probe.materialization_code or "—" }}</span></div>
+            <div class="info-row"><strong>selected_relative_path</strong><span class="runtime-break">{{ active_result.stream_probe.selected_file_relative_path or "—" }}</span></div>
+            <div class="info-row"><strong>expected_path</strong><span class="runtime-break">{{ active_result.stream_probe.selected_file_expected_path or "—" }}</span></div>
+            <div class="info-row"><strong>helper_download_root</strong><span class="runtime-break">{{ active_result.stream_probe.helper_download_root or "—" }}</span></div>
+            <div class="info-row"><strong>selected_prioritized</strong><span>{{ active_result.stream_probe.selected_file_prioritized }}</span></div>
+            <div class="info-row"><strong>bytes_written</strong><span>{{ active_result.stream_probe.bytes_written or "—" }}</span></div>
+            <div class="info-row"><strong>writer_active</strong><span>{{ active_result.stream_probe.writer_active }}</span></div>
+            <div class="info-row"><strong>head_ready</strong><span>{{ active_result.stream_probe.head_ready }}</span></div>
+            <div class="info-row"><strong>tail_ready</strong><span>{{ active_result.stream_probe.tail_ready }}</span></div>
+            <div class="info-row"><strong>tail_probe_range</strong><span class="runtime-break">{{ active_result.stream_probe.tail_probe_range or "—" }}</span></div>
+            <div class="info-row"><strong>tail_probe_code</strong><span>{{ active_result.stream_probe.tail_probe_code or "—" }}</span></div>
+            <div class="info-row"><strong>browser_range_blocked</strong><span>{{ active_result.stream_probe.browser_range_blocked }}</span></div>
+          </div>
+          {% if active_result.stream_probe.checks %}
+          <div class="runtime-probe-checks">
+            {% for check in active_result.stream_probe.checks %}
+            <div class="runtime-probe-check">
+              <div class="info-row"><strong>range</strong><span class="runtime-break">{{ check.range or "—" }}</span></div>
+              <div class="info-row"><strong>status</strong><span>{{ check.status_code or "—" }}</span></div>
+              <div class="info-row"><strong>code</strong><span>{{ check.code or "—" }}</span></div>
+              <div class="info-row"><strong>accept_ranges</strong><span>{{ check.accept_ranges or "—" }}</span></div>
+              <div class="info-row"><strong>content_range</strong><span class="runtime-break">{{ check.content_range or "—" }}</span></div>
+              <div class="info-row"><strong>content_length</strong><span>{{ check.content_length or "—" }}</span></div>
+              <div class="info-row"><strong>content_type</strong><span class="runtime-break">{{ check.content_type or "—" }}</span></div>
+              <div class="info-row"><strong>bytes_read</strong><span>{{ check.bytes_read or "—" }}</span></div>
+              {% if check.error %}
+              <div class="info-row"><strong>error</strong><span class="runtime-break">{{ check.error }}</span></div>
+              {% endif %}
+            </div>
+            {% endfor %}
+          </div>
+          {% endif %}
+        </div>
+        {% endif %}
+        {% else %}
+        <div class="empty-state">
+          Run a magnet or .torrent runtime test to see session state, selected file, and stream handoff details.
+        </div>
+        {% endif %}
+      </section>
+
+    </aside>
+  </div>
+</section>
+
+<style>
+  .runtime-test-page {
+    gap: 22px;
+  }
+  .runtime-test-grid {
+    align-items: start;
+  }
+  .runtime-test-card {
+    padding: 24px;
+    display: grid;
+    gap: 18px;
+  }
+  .runtime-test-form,
+  .runtime-result-list {
+    display: grid;
+    gap: 14px;
+  }
+  .runtime-test-field {
+    display: grid;
+    gap: 8px;
+  }
+  .runtime-test-field span {
+    font-size: 0.76rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .runtime-test-field textarea {
+    width: 100%;
+    border-radius: 18px;
+    border: 1px solid var(--border);
+    background: var(--input-bg);
+    color: var(--text);
+    padding: 14px;
+    resize: vertical;
+    min-height: 140px;
+  }
+  .runtime-test-field textarea:focus,
+  .runtime-test-field textarea:hover {
+    border-color: var(--accent);
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(255, 0, 0, 0.12);
+  }
+  .runtime-test-inline-fields {
+    display: grid;
+    gap: 14px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .runtime-result-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .runtime-result-header h3 {
+    font-size: 1.8rem;
+  }
+  .runtime-break {
+    word-break: break-word;
+    text-align: right;
+  }
+  .runtime-result-actions {
+    align-items: stretch;
+  }
+  .runtime-status-note {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    padding: 0 8px;
+    color: var(--text-2);
+    line-height: 1.5;
+  }
+  .runtime-report-block {
+    margin: 0;
+    padding: 16px;
+    border-radius: 18px;
+    border: 1px solid var(--border);
+    background: rgba(0, 0, 0, 0.36);
+    color: var(--text);
+    white-space: pre-wrap;
+    word-break: break-word;
+    line-height: 1.55;
+    min-height: 180px;
+  }
+  .runtime-probe-block,
+  .runtime-probe-checks {
+    display: grid;
+    gap: 14px;
+  }
+  .runtime-probe-check {
+    padding: 14px;
+    border-radius: 18px;
+    border: 1px solid var(--border);
+    background: rgba(255, 255, 255, 0.03);
+    display: grid;
+    gap: 10px;
+  }
+  @media (max-width: 820px) {
+    .runtime-test-inline-fields {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>
+
+<script>
+  document.addEventListener("click", function(event) {
+    var trigger = event.target.closest("[data-copy-target]");
+    if (!trigger) {
+      return;
+    }
+    var targetId = trigger.getAttribute("data-copy-target");
+    var target = document.getElementById(targetId);
+    if (!target) {
+      return;
+    }
+    var text = target.innerText || target.textContent || "";
+    if (!text) {
+      return;
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function() {
+        trigger.textContent = "Copied";
+        window.setTimeout(function() { trigger.textContent = "Copy Report"; }, 1600);
+      }).catch(function() {});
+    }
+  });
+</script>
+{% endblock %}

@@ -48,7 +48,7 @@ from domains.magnets.playback.runtime_handoff import (
     probe_runtime_reachability,
     resolve_runtime_base_url,
 )
-from domains.magnets.playback_runtime import PlaybackRuntimeError, PlaybackRuntimeManager, build_stream_response
+from domains.magnets.playback_runtime import PlaybackRuntimeError, PlaybackRuntimeManager, build_runtime_source_quality, build_stream_response
 from domains.magnets.services import ExperimentalRuntimeService, MovieSourcesService, SessionAnalyticsService, SourceActionService, StreamSessionService
 from domains.magnets.preferences import MagnetPreferenceService
 from domains.magnets.runtime.identifiers import source_fingerprint as magnet_source_fingerprint
@@ -298,6 +298,7 @@ READING_REMOTE_SNAPSHOT_PULL_ENABLED = config_flag("READING_REMOTE_SNAPSHOT_PULL
 READING_REMOTE_SNAPSHOT_MIN_BYTES = config_int("READING_REMOTE_SNAPSHOT_MIN_BYTES", 1024, minimum=256, maximum=50 * 1024 * 1024)
 READING_REMOTE_SNAPSHOT_MIN_ENTRIES = config_int("READING_REMOTE_SNAPSHOT_MIN_ENTRIES", 3, minimum=1, maximum=100000)
 READING_REMOTE_SNAPSHOT_MIN_SOURCES = config_int("READING_REMOTE_SNAPSHOT_MIN_SOURCES", 1, minimum=1, maximum=10000)
+DRAGON_RUNTIME_TEST_SAMPLE_FILE = config_value("DRAGON_RUNTIME_TEST_SAMPLE_FILE", "")
 READING_FULLTEXT_CACHE_MAX_FILES = config_int("READING_FULLTEXT_CACHE_MAX_FILES", 96, minimum=8, maximum=1000)
 READING_FULLTEXT_CACHE_MAX_BYTES = config_int("READING_FULLTEXT_CACHE_MAX_BYTES", 24 * 1024 * 1024, minimum=256 * 1024, maximum=200 * 1024 * 1024)
 READING_FULLTEXT_CACHE_MAX_ARTICLE_CHARS = config_int("READING_FULLTEXT_CACHE_MAX_ARTICLE_CHARS", 120000, minimum=2000, maximum=500000)
@@ -25804,6 +25805,7 @@ def get_video_detail_context(entry_id, force_refresh=False):
         detail["torrent_fhd"] = str(detail.get("torrent_fhd", "") or detail.get("Torrent FHD", "") or "").strip()
         detail["magnet_hd"] = str(detail.get("magnet_hd", "") or detail.get("Magnet HD", "") or "").strip()
         detail["magnet_fhd"] = str(detail.get("magnet_fhd", "") or detail.get("Magnet FHD", "") or "").strip()
+        detail["torrent_handoff_url"] = detail["magnet_fhd"] or detail["magnet_hd"] or detail["torrent_fhd"] or detail["torrent_hd"]
         detail["Torrent HD"] = detail["torrent_hd"]
         detail["Torrent FHD"] = detail["torrent_fhd"]
         detail["Magnet HD"] = detail["magnet_hd"]
@@ -25822,6 +25824,7 @@ def get_video_detail_context(entry_id, force_refresh=False):
         movie_sources = MOVIE_SOURCES_SERVICE.get_movie_sources(detail, force_refresh=force_refresh)
         player_sources = movie_player_sources(detail, tmdb_data)
         player_fallback_urls = get_vidsrc_embed_urls(detail)
+        dragon_runtime_watch_url = build_movie_runtime_watch_url(detail)
         playback_plan = prepare_playback_runtime(
             movie=detail,
             sources=list(movie_sources.get("sources") or []),
@@ -25860,6 +25863,8 @@ def get_video_detail_context(entry_id, force_refresh=False):
             "tmdb_data": tmdb_data,
             "top_billed_cast": top_billed_cast,
             "movie_sources": movie_sources,
+            "torrent_handoff_url": detail["torrent_handoff_url"],
+            "dragon_runtime_watch_url": dragon_runtime_watch_url,
             "playback_plan": serialize_playback_runtime(playback_plan),
             "runtime_profiles": get_runtime_profiles_catalog(),
             "related_entries": related,
@@ -25953,6 +25958,25 @@ def get_video_detail_context(entry_id, force_refresh=False):
         "prev_entry": prev_entry,
         "next_entry": next_entry
     }
+
+
+def build_movie_runtime_watch_url(detail):
+    movie = dict(detail or {})
+    torrent_handoff_url = str(movie.get("torrent_handoff_url") or movie.get("magnet_fhd") or movie.get("magnet_hd") or movie.get("torrent_fhd") or movie.get("torrent_hd") or "").strip()
+    magnet = torrent_handoff_url if torrent_handoff_url.lower().startswith("magnet:?xt=urn:btih:") else ""
+    if not magnet or not has_request_context():
+        return ""
+    query = {"magnet": magnet}
+    for key, value in (
+        ("title", movie.get("title") or movie.get("name") or ""),
+        ("movie_id", movie.get("entry_id") or movie.get("movie_id") or ""),
+        ("entry_id", movie.get("entry_id") or ""),
+        ("source_fingerprint", movie.get("source_fingerprint") or ""),
+    ):
+        text = str(value or "").strip()
+        if text:
+            query[key] = text
+    return f"{url_for('watch_runtime_handoff')}?{urllib.parse.urlencode(query, doseq=True)}"
 
 
 def get_director_detail_context(director_page_id):
@@ -27381,6 +27405,714 @@ def _watch_runtime_timeout_page(*, session_id, state, elapsed_seconds, magnet, t
 </html>"""
 
 
+def _runtime_request_wants_json(current_request) -> bool:
+    format_value = str(current_request.args.get("format") or "").strip().lower()
+    if format_value == "json":
+        return True
+    accept_value = str(current_request.headers.get("Accept") or "").lower()
+    return "application/json" in accept_value and "text/html" not in accept_value
+
+
+def _build_runtime_diagnostic_report(payload: dict[str, object]) -> str:
+    ordered_keys = [
+        "ok",
+        "code",
+        "diagnostic_code",
+        "error",
+        "title",
+        "movie_id",
+        "entry_id",
+        "local_file_test",
+        "file_exists",
+        "file_size",
+        "state",
+        "status",
+        "selected_file",
+        "materialization_state",
+        "materialization",
+        "source_quality",
+        "stream_readiness",
+        "stream_probe",
+        "stream_url",
+        "session_id",
+        "next_action",
+        "watch_url",
+    ]
+    lines: list[str] = []
+    for key in ordered_keys:
+        if key not in payload:
+            continue
+        value = payload.get(key)
+        if isinstance(value, (dict, list)):
+            value_text = json.dumps(value, ensure_ascii=True)
+        else:
+            value_text = str(value)
+        lines.append(f"{key}: {value_text}")
+    return "\n".join(lines)
+
+
+def _runtime_source_quality_snapshot(
+    payload: dict[str, object] | None,
+    *,
+    error_code: str = "",
+    error_message: str = "",
+    magnet: str = "",
+    source_kind: str = "",
+) -> dict[str, object]:
+    return build_runtime_source_quality(
+        payload or {},
+        error_code=error_code,
+        error_message=error_message,
+        magnet_available=bool(str(magnet or "").strip()),
+        source_kind=source_kind,
+    )
+
+
+def _attach_runtime_source_quality(
+    payload: dict[str, object],
+    *,
+    magnet: str = "",
+    source_kind: str = "",
+) -> dict[str, object]:
+    diagnostic_code = str(payload.get("diagnostic_code") or payload.get("code") or "").strip()
+    source_quality = _runtime_source_quality_snapshot(
+        payload,
+        error_code=diagnostic_code,
+        error_message=str(payload.get("error") or "").strip(),
+        magnet=magnet,
+        source_kind=source_kind,
+    )
+    payload["source_quality"] = source_quality
+    return payload
+
+
+def _runtime_materialization_snapshot(runtime_session: dict[str, object] | None) -> tuple[dict[str, object], str, str]:
+    payload = dict(runtime_session or {})
+    materialization = dict(payload.get("materialization") or {})
+    stream_readiness = dict(payload.get("stream_readiness") or {})
+    state = str(materialization.get("state") or "").strip()
+    code = str(materialization.get("code") or "").strip()
+    if not state:
+        if bool(stream_readiness.get("stream_openable")):
+            state = "file_ready"
+        elif bool(stream_readiness.get("local_file_exists")) and int(stream_readiness.get("local_file_size", 0) or 0) > 0:
+            state = "materializing"
+            code = code or "waiting_for_bytes"
+        elif bool(stream_readiness.get("metadata_ready")) and bool(stream_readiness.get("selected_file_ready")):
+            state = "metadata_loaded_but_file_missing"
+            code = code or "selected_file_missing"
+        else:
+            state = "idle"
+    if state == "materialization_failed" and not code:
+        code = "materialization_timeout"
+    return materialization, state, code
+
+
+def _runtime_stream_error_status_code(code: str) -> int:
+    normalized = str(code or "").strip()
+    if normalized in {"unknown_session", "session_missing"}:
+        return 404
+    if normalized in {
+        "buffering",
+        "metadata_timeout",
+        "torrent_unavailable",
+        "stream_unavailable",
+        "selected_file_missing",
+        "file_not_found",
+        "file_not_ready",
+        "range_read_failed",
+        "runtime_unavailable",
+        "unknown_stream_error",
+    }:
+        return 503
+    return 400
+
+
+def _runtime_stream_error_payload(exc: PlaybackRuntimeError) -> dict[str, object]:
+    payload = dict(exc.to_dict())
+    return {
+        "ok": False,
+        "error": str(payload.get("message") or exc.message or "Playback runtime failed"),
+        "code": str(payload.get("code") or exc.code or "playback_runtime_error"),
+        "session_id": str(payload.get("session_id") or "").strip(),
+        "selected_file_name": str(payload.get("selected_file_name") or "").strip(),
+        "requested_range": str(payload.get("requested_range") or "").strip(),
+        "disk_size": int(payload.get("disk_size", 0) or 0),
+        "selected_length": int(payload.get("selected_length", 0) or 0),
+        "near_tail": bool(payload.get("near_tail")),
+        "browser_range_blocked": bool(payload.get("browser_range_blocked")),
+        "tail_probe_range": str(payload.get("tail_probe_range") or "").strip(),
+        "tail_probe_code": str(payload.get("tail_probe_code") or "").strip(),
+    }
+
+
+def _run_stream_probe(session_id: str) -> dict[str, object]:
+    normalized_session_id = str(session_id or "").strip()
+    if not normalized_session_id:
+        return {
+            "ok": False,
+            "code": "session_missing",
+            "error": "Playback session was not found.",
+        }
+    try:
+        runtime_session = PLAYBACK_RUNTIME_MANAGER.get_session(normalized_session_id, refresh=False)
+    except PlaybackRuntimeError as exc:
+        return _runtime_stream_error_payload(
+            PlaybackRuntimeError(
+                "session_missing" if exc.code == "unknown_session" else exc.code,
+                exc.message,
+                details=exc.details,
+            )
+        )
+    if not runtime_session:
+        return {
+            "ok": False,
+            "code": "session_missing",
+            "error": "Playback session was not found.",
+            "session_id": normalized_session_id,
+        }
+
+    selected_file = dict(runtime_session.get("selected_file") or {})
+    stream_readiness = dict(runtime_session.get("stream_readiness") or {})
+    materialization = dict(runtime_session.get("materialization") or {})
+    local_path = str(selected_file.get("path") or "").strip()
+    local_exists = False
+    local_size = 0
+    if local_path:
+        try:
+            local_file = Path(local_path)
+            local_exists = local_file.exists()
+            local_size = int(local_file.stat().st_size) if local_exists else 0
+        except OSError:
+            local_exists = False
+            local_size = 0
+
+    if (not local_exists) or local_size <= 0:
+        return {
+            "ok": False,
+            "code": str(materialization.get("code") or "file_not_ready").strip() or "file_not_ready",
+            "error": str(materialization.get("reason") or "The selected media file is not readable yet.").strip(),
+            "session_id": normalized_session_id,
+            "selected_file_present": bool(selected_file),
+            "selected_file_name": str(selected_file.get("name") or "").strip(),
+            "selected_file_length": int(selected_file.get("length", 0) or 0),
+            "local_path": local_path,
+            "local_path_exists": local_exists,
+            "local_file_size": local_size,
+            "materialization_state": str(materialization.get("state") or "").strip(),
+            "materialization_code": str(materialization.get("code") or "").strip(),
+            "helper_download_root": str(materialization.get("helper_download_root") or "").strip(),
+            "selected_file_relative_path": str(materialization.get("selected_file_relative_path") or "").strip(),
+            "selected_file_expected_path": str(materialization.get("selected_file_expected_path") or "").strip(),
+            "selected_file_prioritized": bool(materialization.get("selected_file_prioritized")),
+            "bytes_written": int(materialization.get("bytes_written", materialization.get("bytesWritten", 0)) or 0),
+            "writer_active": bool(materialization.get("writer_active", materialization.get("writerActive"))),
+            "head_ready": bool(stream_readiness.get("head_ready")) if stream_readiness else False,
+            "tail_ready": bool(stream_readiness.get("tail_ready")) if stream_readiness else False,
+            "tail_probe_range": str(stream_readiness.get("tail_probe_range") or "").strip(),
+            "tail_probe_code": str(stream_readiness.get("tail_probe_code") or "").strip(),
+            "browser_range_blocked": False,
+            "webtorrent": dict(runtime_session.get("webtorrent") or {}),
+            "checks": [],
+        }
+
+    def run_range_probe(range_header: str) -> dict[str, object]:
+        with app.test_request_context(
+            f"/api/runtime/stream/{normalized_session_id}",
+            headers={"Range": range_header, "Accept": "application/json"},
+        ):
+            try:
+                response = build_stream_response(PLAYBACK_RUNTIME_MANAGER, normalized_session_id, request)
+            except PlaybackRuntimeError as exc:
+                payload = _runtime_stream_error_payload(exc)
+                payload["status_code"] = _runtime_stream_error_status_code(str(payload.get("code") or ""))
+                payload["range"] = range_header
+                return payload
+            probe_result = {
+                "ok": True,
+                "range": range_header,
+                "status_code": int(response.status_code or 0),
+                "accept_ranges": str(response.headers.get("Accept-Ranges") or "").strip(),
+                "content_range": str(response.headers.get("Content-Range") or "").strip(),
+                "content_length": str(response.headers.get("Content-Length") or "").strip(),
+                "content_type": str(response.headers.get("Content-Type") or "").strip(),
+            }
+            try:
+                body_iter = iter(response.response)
+                first_chunk = next(body_iter, b"")
+                probe_result["bytes_read"] = len(first_chunk)
+            except PlaybackRuntimeError as exc:
+                payload = _runtime_stream_error_payload(exc)
+                payload["status_code"] = _runtime_stream_error_status_code(str(payload.get("code") or ""))
+                payload["range"] = range_header
+                return payload
+            except OSError as exc:
+                return {
+                    "ok": False,
+                    "code": "range_read_failed",
+                    "error": str(exc),
+                    "status_code": 503,
+                    "range": range_header,
+                }
+            if hasattr(response.response, "close"):
+                try:
+                    response.response.close()
+                except Exception:
+                    pass
+            return probe_result
+
+    first_probe = run_range_probe("bytes=0-1023")
+    later_probe = None
+    expected_length = int(selected_file.get("length", 0) or 0)
+    if expected_length > 1_050_624:
+        later_probe = run_range_probe("bytes=1048576-1050623")
+
+    probe_code = ""
+    probe_error = ""
+    browser_range_blocked = False
+    if not first_probe.get("ok", False):
+        probe_code = str(first_probe.get("code") or "unknown_stream_error")
+        probe_error = str(first_probe.get("error") or "Stream probe failed.")
+        browser_range_blocked = bool(first_probe.get("browser_range_blocked"))
+    elif later_probe and not later_probe.get("ok", False):
+        probe_code = str(later_probe.get("code") or "unknown_stream_error")
+        probe_error = str(later_probe.get("error") or "Stream probe failed.")
+        browser_range_blocked = bool(later_probe.get("browser_range_blocked"))
+
+    return {
+        "ok": not probe_code,
+        "code": probe_code,
+        "error": probe_error,
+        "session_id": normalized_session_id,
+        "selected_file_present": bool(selected_file),
+        "selected_file_name": str(selected_file.get("name") or "").strip(),
+        "selected_file_length": expected_length,
+        "local_path": local_path,
+        "local_path_exists": local_exists,
+        "local_file_size": local_size,
+        "materialization_state": str(materialization.get("state") or "").strip(),
+        "materialization_code": str(materialization.get("code") or "").strip(),
+        "helper_download_root": str(materialization.get("helper_download_root") or "").strip(),
+        "selected_file_relative_path": str(materialization.get("selected_file_relative_path") or "").strip(),
+        "selected_file_expected_path": str(materialization.get("selected_file_expected_path") or "").strip(),
+        "selected_file_prioritized": bool(materialization.get("selected_file_prioritized")),
+        "bytes_written": int(materialization.get("bytes_written", materialization.get("bytesWritten", 0)) or 0),
+        "writer_active": bool(materialization.get("writer_active", materialization.get("writerActive"))),
+        "head_ready": bool(stream_readiness.get("head_ready")) if stream_readiness else bool(local_exists and local_size > 0),
+        "tail_ready": bool(stream_readiness.get("tail_ready")) if stream_readiness else bool(local_exists and expected_length > 0 and local_size >= expected_length),
+        "tail_probe_range": str(stream_readiness.get("tail_probe_range") or "").strip(),
+        "tail_probe_code": str(stream_readiness.get("tail_probe_code") or "").strip(),
+        "browser_range_blocked": browser_range_blocked,
+        "webtorrent": dict(runtime_session.get("webtorrent") or {}),
+        "checks": [probe for probe in [first_probe, later_probe] if probe],
+    }
+
+
+def _watch_runtime_failure_page(*, code: str, message: str, magnet: str, title: str, movie_id: str, entry_id: str, source_fingerprint: str, source_quality: dict[str, object] | None = None) -> str:
+    retry_url = (
+        f"/watch?retry=1&magnet={urllib.parse.quote(magnet, safe='')}"
+        f"&title={urllib.parse.quote(title, safe='')}"
+        f"&movie_id={urllib.parse.quote(movie_id, safe='')}"
+        f"&entry_id={urllib.parse.quote(entry_id, safe='')}"
+        f"&source_fingerprint={urllib.parse.quote(source_fingerprint, safe='')}"
+    )
+    failure_payload = {
+        "ok": False,
+        "code": code,
+        "error": message,
+        "title": title,
+        "movie_id": movie_id,
+        "entry_id": entry_id,
+        "next_action": "Try a known legal test magnet or use external qBittorrent handoff.",
+    }
+    quality_payload = dict(source_quality or {}) or _runtime_source_quality_snapshot(
+        failure_payload,
+        error_code=code,
+        error_message=message,
+        magnet=magnet,
+        source_kind="magnet",
+    )
+    failure_payload["source_quality"] = quality_payload
+    report = _build_runtime_diagnostic_report(failure_payload)
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dragon Runtime Error</title>
+  <style>
+    body {{
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      font-family: Arial, sans-serif;
+      background: #0b0f14;
+      color: #f5f7fa;
+    }}
+    .card {{
+      max-width: 720px;
+      width: calc(100% - 32px);
+      background: rgba(20, 24, 31, 0.96);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 16px;
+      padding: 24px;
+      box-shadow: 0 16px 40px rgba(0,0,0,0.35);
+    }}
+    .meta {{ opacity: 0.78; font-size: 14px; line-height: 1.5; margin-top: 8px; }}
+    .error {{ margin-top: 12px; font-size: 18px; color: #ffb4b4; }}
+    .hint {{ margin-top: 14px; color: #f5d48b; }}
+    .link {{ color: #8bd3ff; word-break: break-all; }}
+    pre {{
+      margin-top: 16px;
+      padding: 14px;
+      border-radius: 12px;
+      background: rgba(0,0,0,0.34);
+      border: 1px solid rgba(255,255,255,0.08);
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-size: 13px;
+      line-height: 1.45;
+    }}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div>Dragon Runtime could not start this stream.</div>
+    <div class="meta">Title: {escape(title)}</div>
+    <div class="meta">Error code: {escape(code)}</div>
+    <div class="error">{escape(message)}</div>
+    <div class="hint">{escape(str(quality_payload.get("message") or ""))}</div>
+    <div class="meta">Recommended action: {escape(str(quality_payload.get("recommended_action") or ""))}</div>
+    <div class="meta"><a class="link" href="{escape(retry_url, quote=True)}">Retry runtime handoff</a></div>
+    <pre>{escape(report)}</pre>
+  </div>
+</body>
+</html>"""
+
+
+def _run_runtime_diagnostic(*, magnet: str, title: str, movie_id: str, entry_id: str) -> dict[str, object]:
+    normalized_magnet = str(magnet or "").strip()
+    normalized_title = str(title or "").strip() or "Runtime diagnostic"
+    normalized_movie_id = str(movie_id or "").strip()
+    normalized_entry_id = str(entry_id or "").strip()
+    if not normalized_magnet:
+        return {
+            "ok": False,
+            "code": "missing_magnet",
+            "error": "A magnet link is required.",
+            "state": "idle",
+            "status": "missing_input",
+            "selected_file": {},
+            "stream_url": "",
+            "session_id": "",
+            "watch_url": "",
+            "next_action": "Paste a known legal test magnet or use external qBittorrent handoff.",
+        }
+
+    source_fingerprint = magnet_source_fingerprint({"magnet": normalized_magnet, "title": normalized_title})
+    movie = {
+        "movie_id": normalized_movie_id or normalized_entry_id or source_fingerprint,
+        "entry_id": normalized_entry_id or normalized_movie_id or source_fingerprint,
+        "title": normalized_title,
+        "name": normalized_title,
+    }
+    source = {
+        "magnet": normalized_magnet,
+        "title": normalized_title,
+        "source": "runtime_test",
+        "provider": "runtime_test",
+        "source_fingerprint": source_fingerprint,
+    }
+    runtime_base_url = resolve_runtime_base_url(request)
+    try:
+        runtime_session = PLAYBACK_RUNTIME_MANAGER.create_session(
+            movie=movie,
+            source=source,
+            stream_base_url=runtime_base_url,
+        )
+    except PlaybackRuntimeError as exc:
+        return _attach_runtime_source_quality({
+            "ok": False,
+            "code": "magnet_metadata_timeout" if exc.code == "metadata_timeout" else exc.code,
+            "error": exc.message,
+            "state": "failed",
+            "status": "stream_failed",
+            "selected_file": {},
+            "stream_url": "",
+            "session_id": "",
+            "watch_url": build_movie_runtime_watch_url({"title": normalized_title, "name": normalized_title, "entry_id": movie["entry_id"], "movie_id": movie["movie_id"], "torrent_handoff_url": normalized_magnet}),
+            "next_action": "Try a known legal test magnet or use external qBittorrent handoff.",
+        }, magnet=normalized_magnet, source_kind="magnet")
+
+    materialization, materialization_state, diagnostic_code = _runtime_materialization_snapshot(runtime_session)
+    return _attach_runtime_source_quality({
+        "ok": True,
+        "code": "",
+        "diagnostic_code": diagnostic_code,
+        "error": "",
+        "state": str(runtime_session.get("state") or "").strip(),
+        "status": str(runtime_session.get("status") or "").strip(),
+        "selected_file": dict(runtime_session.get("selected_file") or {}),
+        "materialization_state": materialization_state,
+        "materialization": materialization,
+        "stream_readiness": dict(runtime_session.get("stream_readiness") or {}),
+        "webtorrent": dict(runtime_session.get("webtorrent") or {}),
+        "stream_url": str(runtime_session.get("stream_url") or "").strip(),
+        "session_id": str(runtime_session.get("session_id") or "").strip(),
+        "watch_url": build_movie_runtime_watch_url({"title": normalized_title, "name": normalized_title, "entry_id": movie["entry_id"], "movie_id": movie["movie_id"], "torrent_handoff_url": normalized_magnet}),
+        "stream_probe": _run_stream_probe(str(runtime_session.get("session_id") or "").strip()),
+        "next_action": (
+            "Open the stream URL now."
+            if bool((runtime_session.get("stream_readiness") or {}).get("stream_openable"))
+            else "Metadata is ready. Wait for the selected local file path to appear and become readable, then retry the stream probe."
+        ),
+    }, magnet=normalized_magnet, source_kind="magnet")
+
+
+def _run_torrent_file_runtime_diagnostic(*, torrent_file_path: str, title: str, movie_id: str, entry_id: str) -> dict[str, object]:
+    normalized_torrent_file_path = str(torrent_file_path or "").strip()
+    normalized_title = str(title or "").strip() or "Torrent file runtime diagnostic"
+    normalized_movie_id = str(movie_id or "").strip()
+    normalized_entry_id = str(entry_id or "").strip()
+    if not normalized_torrent_file_path:
+        return _attach_runtime_source_quality({
+            "ok": False,
+            "code": "torrent_file_missing",
+            "error": "A local .torrent file path is required.",
+            "state": "idle",
+            "status": "missing_input",
+            "selected_file": {},
+            "stream_url": "",
+            "session_id": "",
+            "watch_url": "",
+            "next_action": "Choose a legal/personal/public-domain .torrent file and retry.",
+        }, source_kind="torrent_file")
+    candidate = Path(normalized_torrent_file_path).expanduser()
+    if str(candidate.suffix or "").lower() != ".torrent":
+        return _attach_runtime_source_quality({
+            "ok": False,
+            "code": "invalid_torrent_file",
+            "error": "The torrent file path must end with .torrent.",
+            "state": "failed",
+            "status": "stream_failed",
+            "selected_file": {},
+            "stream_url": "",
+            "session_id": "",
+            "watch_url": "",
+            "next_action": "Choose a legal/personal/public-domain .torrent file and retry.",
+        }, source_kind="torrent_file")
+    if not candidate.exists() or not candidate.is_file():
+        return _attach_runtime_source_quality({
+            "ok": False,
+            "code": "torrent_file_missing",
+            "error": "The torrent file path does not exist.",
+            "state": "failed",
+            "status": "stream_failed",
+            "selected_file": {},
+            "stream_url": "",
+            "session_id": "",
+            "watch_url": "",
+            "next_action": "Choose a legal/personal/public-domain .torrent file and retry.",
+        }, source_kind="torrent_file")
+    try:
+        torrent_file_size = int(candidate.stat().st_size)
+    except OSError as exc:
+        return _attach_runtime_source_quality({
+            "ok": False,
+            "code": "torrent_file_read_failed",
+            "error": f"The torrent file could not be read: {exc}",
+            "state": "failed",
+            "status": "stream_failed",
+            "selected_file": {},
+            "stream_url": "",
+            "session_id": "",
+            "watch_url": "",
+            "torrent_file_path": str(candidate),
+            "torrent_file_size": 0,
+            "next_action": "Choose a readable legal/personal/public-domain .torrent file and retry.",
+        }, source_kind="torrent_file")
+    if torrent_file_size <= 0:
+        return _attach_runtime_source_quality({
+            "ok": False,
+            "code": "torrent_file_empty",
+            "error": "The torrent file is empty.",
+            "state": "failed",
+            "status": "stream_failed",
+            "selected_file": {},
+            "stream_url": "",
+            "session_id": "",
+            "watch_url": "",
+            "torrent_file_path": str(candidate),
+            "torrent_file_size": 0,
+            "next_action": "Choose a readable legal/personal/public-domain .torrent file and retry.",
+        }, source_kind="torrent_file")
+
+    source_fingerprint = magnet_source_fingerprint({"torrent_file_path": str(candidate), "title": normalized_title})
+    movie = {
+        "movie_id": normalized_movie_id or normalized_entry_id or source_fingerprint,
+        "entry_id": normalized_entry_id or normalized_movie_id or source_fingerprint,
+        "title": normalized_title,
+        "name": normalized_title,
+    }
+    source = {
+        "torrent_file_path": str(candidate),
+        "title": normalized_title,
+        "source": "runtime_test",
+        "provider": "runtime_test",
+        "source_fingerprint": source_fingerprint,
+    }
+    runtime_base_url = resolve_runtime_base_url(request)
+    try:
+        runtime_session = PLAYBACK_RUNTIME_MANAGER.create_session(
+            movie=movie,
+            source=source,
+            stream_base_url=runtime_base_url,
+        )
+    except PlaybackRuntimeError as exc:
+        return _attach_runtime_source_quality({
+            "ok": False,
+            "code": exc.code,
+            "error": exc.message,
+            "state": "failed",
+            "status": "stream_failed",
+            "selected_file": {},
+            "stream_url": "",
+            "session_id": "",
+            "watch_url": "",
+            "torrent_file_path": str(candidate),
+            "torrent_file_size": torrent_file_size,
+            "next_action": "Choose a readable legal/personal/public-domain .torrent file and retry.",
+        }, source_kind="torrent_file")
+
+    materialization, materialization_state, diagnostic_code = _runtime_materialization_snapshot(runtime_session)
+    return _attach_runtime_source_quality({
+        "ok": True,
+        "code": "torrent_file_loaded",
+        "diagnostic_code": diagnostic_code,
+        "error": "",
+        "state": str(runtime_session.get("state") or "").strip(),
+        "status": str(runtime_session.get("status") or "").strip(),
+        "selected_file": dict(runtime_session.get("selected_file") or {}),
+        "materialization_state": materialization_state,
+        "materialization": materialization,
+        "stream_readiness": dict(runtime_session.get("stream_readiness") or {}),
+        "webtorrent": dict(runtime_session.get("webtorrent") or {}),
+        "torrent_file_path": str(candidate),
+        "torrent_file_size": torrent_file_size,
+        "stream_url": str(runtime_session.get("stream_url") or "").strip(),
+        "session_id": str(runtime_session.get("session_id") or "").strip(),
+        "watch_url": "",
+        "stream_probe": _run_stream_probe(str(runtime_session.get("session_id") or "").strip()),
+        "next_action": (
+            "Open the stream URL now."
+            if bool((runtime_session.get("stream_readiness") or {}).get("stream_openable"))
+            else "Torrent metadata loaded from the .torrent file. Wait for selected local bytes, then retry the stream probe."
+        ),
+    }, source_kind="torrent_file")
+
+
+def _run_local_file_runtime_diagnostic(*, file_path: str, title: str) -> dict[str, object]:
+    normalized_file_path = str(file_path or "").strip()
+    normalized_title = str(title or "").strip() or "Local File Stream Self-Test"
+    if not normalized_file_path:
+        return _attach_runtime_source_quality({
+            "ok": False,
+            "code": "missing_local_file",
+            "error": "A local file path is required.",
+            "local_file_test": True,
+            "file_exists": False,
+            "file_size": 0,
+            "state": "idle",
+            "status": "missing_input",
+            "selected_file": {},
+            "stream_url": "",
+            "session_id": "",
+            "next_action": "Choose a legal personal MP4 file or configure DRAGON_RUNTIME_TEST_SAMPLE_FILE.",
+        }, source_kind="local_file")
+    candidate = Path(normalized_file_path).expanduser()
+    if not candidate.exists() or not candidate.is_file():
+        return _attach_runtime_source_quality({
+            "ok": False,
+            "code": "invalid_local_file",
+            "error": "The local file path does not exist.",
+            "local_file_test": True,
+            "file_exists": False,
+            "file_size": 0,
+            "state": "failed",
+            "status": "stream_failed",
+            "selected_file": {},
+            "stream_url": "",
+            "session_id": "",
+            "next_action": "Choose a readable local MP4 file and retry the self-test.",
+        }, source_kind="local_file")
+    try:
+        file_size = int(candidate.stat().st_size)
+    except OSError as exc:
+        return _attach_runtime_source_quality({
+            "ok": False,
+            "code": "invalid_local_file",
+            "error": f"The local file could not be read: {exc}",
+            "local_file_test": True,
+            "file_exists": True,
+            "file_size": 0,
+            "state": "failed",
+            "status": "stream_failed",
+            "selected_file": {},
+            "stream_url": "",
+            "session_id": "",
+            "next_action": "Choose a readable local MP4 file and retry the self-test.",
+        }, source_kind="local_file")
+
+    runtime_base_url = resolve_runtime_base_url(request)
+    try:
+        runtime_session = PLAYBACK_RUNTIME_MANAGER.create_local_file_session(
+            file_path=str(candidate),
+            title=normalized_title,
+            stream_base_url=runtime_base_url,
+        )
+    except PlaybackRuntimeError as exc:
+        return _attach_runtime_source_quality({
+            "ok": False,
+            "code": exc.code,
+            "error": exc.message,
+            "local_file_test": True,
+            "file_exists": candidate.exists(),
+            "file_size": file_size,
+            "state": "failed",
+            "status": "stream_failed",
+            "selected_file": {},
+            "stream_url": "",
+            "session_id": "",
+            "next_action": "Choose a readable local MP4 file and retry the self-test.",
+        }, source_kind="local_file")
+
+    materialization, materialization_state, diagnostic_code = _runtime_materialization_snapshot(runtime_session)
+    return _attach_runtime_source_quality({
+        "ok": True,
+        "code": "",
+        "diagnostic_code": diagnostic_code,
+        "error": "",
+        "local_file_test": True,
+        "file_exists": True,
+        "file_size": file_size,
+        "state": str(runtime_session.get("state") or "").strip(),
+        "status": str(runtime_session.get("status") or "").strip(),
+        "selected_file": dict(runtime_session.get("selected_file") or {}),
+        "materialization_state": materialization_state,
+        "materialization": materialization,
+        "stream_readiness": dict(runtime_session.get("stream_readiness") or {}),
+        "stream_url": str(runtime_session.get("stream_url") or "").strip(),
+        "session_id": str(runtime_session.get("session_id") or "").strip(),
+        "stream_probe": _run_stream_probe(str(runtime_session.get("session_id") or "").strip()),
+        "next_action": (
+            "Open the stream URL now."
+            if bool((runtime_session.get("stream_readiness") or {}).get("stream_openable"))
+            else "The local file exists but is not stream-openable yet. Check file access and retry the probe."
+        ),
+    }, source_kind="local_file")
+
+
 @app.route("/watch")
 def watch_runtime_handoff():
     magnet = str(request.args.get("magnet") or "").strip()
@@ -27417,7 +28149,21 @@ def watch_runtime_handoff():
             session_was_created = True
             session_id = str(runtime_session.get("session_id") or "").strip()
         except PlaybackRuntimeError as exc:
-            return jsonify({"ok": False, "error": exc.message, "code": exc.code}), 400
+            if _runtime_request_wants_json(request):
+                return jsonify({"ok": False, "error": exc.message, "code": exc.code}), 400
+            return Response(
+                _watch_runtime_failure_page(
+                    code=exc.code,
+                    message=exc.message,
+                    magnet=magnet,
+                    title=title,
+                    movie_id=str(movie.get("movie_id") or ""),
+                    entry_id=str(movie.get("entry_id") or ""),
+                    source_fingerprint=str(source.get("source_fingerprint") or ""),
+                ),
+                status=400,
+                content_type="text/html; charset=utf-8",
+            )
     else:
         session_was_created = False
 
@@ -27446,6 +28192,7 @@ def watch_runtime_handoff():
     )
 
     runtime_state = str(runtime_session.get("state") or runtime_session.get("status") or "").strip()
+    source_quality = dict(runtime_session.get("source_quality") or {})
     stream_url = str(runtime_session.get("stream_url") or f"{runtime_base_url.rstrip('/')}/stream/{session_id}").strip()
     elapsed_seconds = _watch_session_elapsed_seconds(runtime_session)
     if runtime_state in {"ready"}:
@@ -27481,6 +28228,22 @@ def watch_runtime_handoff():
             content_type="text/html; charset=utf-8",
         )
 
+    if str(source_quality.get("code") or "").strip() == "external_recommended" and not _runtime_request_wants_json(request):
+        return Response(
+            _watch_runtime_failure_page(
+                code=str(source_quality.get("state") or runtime_state or "stream_unavailable"),
+                message=str(source_quality.get("message") or "Dragon cannot stream this source right now."),
+                magnet=magnet,
+                title=title,
+                movie_id=str(movie.get("movie_id") or ""),
+                entry_id=str(movie.get("entry_id") or ""),
+                source_fingerprint=str(source.get("source_fingerprint") or ""),
+                source_quality=source_quality,
+            ),
+            status=200,
+            content_type="text/html; charset=utf-8",
+        )
+
     emit_event(
         "[playback-runtime-handoff]",
         event="watch_session_created" if session_was_created else "watch_session_state",
@@ -27495,7 +28258,7 @@ def watch_runtime_handoff():
         stream_url=stream_url,
     )
 
-    if str(request.args.get("format") or "").strip().lower() == "json" or "application/json" in str(request.headers.get("Accept") or ""):
+    if _runtime_request_wants_json(request):
         return jsonify({
             "ok": True,
             "watch_url": watch_url,
@@ -27505,6 +28268,7 @@ def watch_runtime_handoff():
             "elapsed_seconds": elapsed_seconds,
             "runtime_base_url": runtime_base_url,
             "runtime_session": runtime_session,
+            "source_quality": source_quality,
         })
     return Response(
         _watch_runtime_waiting_page(
@@ -27520,6 +28284,63 @@ def watch_runtime_handoff():
         ),
         status=200,
         content_type="text/html; charset=utf-8",
+    )
+
+
+@app.route("/runtime-test", methods=["GET", "POST"])
+def runtime_test():
+    payload = request.form if request.method == "POST" else request.args
+    magnet = str(payload.get("magnet") or "").strip()
+    title = str(payload.get("title") or "").strip()
+    movie_id = str(payload.get("movie_id") or "").strip()
+    entry_id = str(payload.get("entry_id") or "").strip()
+    torrent_file_path = str(payload.get("torrent_file_path") or "").strip()
+    local_file_path = str(payload.get("local_file_path") or request.args.get("local_file_path") or DRAGON_RUNTIME_TEST_SAMPLE_FILE or "").strip()
+    local_file_title = str(payload.get("local_file_title") or "").strip()
+    test_mode = str(payload.get("test_mode") or "").strip().lower()
+    active_result = None
+    active_test_mode = ""
+    if test_mode == "local-file":
+        active_test_mode = "local-file"
+        active_result = _run_local_file_runtime_diagnostic(
+            file_path=local_file_path,
+            title=local_file_title,
+        )
+        active_result["report"] = _build_runtime_diagnostic_report(dict(active_result))
+        active_result["local_file_path"] = local_file_path
+    elif test_mode == "torrent-file":
+        active_test_mode = "torrent-file"
+        active_result = _run_torrent_file_runtime_diagnostic(
+            torrent_file_path=torrent_file_path,
+            title=title,
+            movie_id=movie_id,
+            entry_id=entry_id,
+        )
+        active_result["report"] = _build_runtime_diagnostic_report(dict(active_result))
+        active_result["torrent_file_path"] = torrent_file_path
+    elif request.method == "POST" or magnet:
+        active_test_mode = "magnet"
+        active_result = _run_runtime_diagnostic(
+            magnet=magnet,
+            title=title,
+            movie_id=movie_id,
+            entry_id=entry_id,
+        )
+        active_result["report"] = _build_runtime_diagnostic_report(dict(active_result))
+        active_result["magnet"] = magnet
+        active_result["title"] = title
+    return render_template(
+        "runtime_test.html",
+        active_test_mode=active_test_mode,
+        magnet=magnet,
+        title=title,
+        movie_id=movie_id,
+        entry_id=entry_id,
+        torrent_file_path=torrent_file_path,
+        local_file_path=local_file_path,
+        local_file_title=local_file_title,
+        local_file_sample_path=str(DRAGON_RUNTIME_TEST_SAMPLE_FILE or "").strip(),
+        active_result=active_result,
     )
 
 
@@ -27555,8 +28376,7 @@ def stream_runtime_session(session_id):
     try:
         return build_stream_response(PLAYBACK_RUNTIME_MANAGER, session_id, request)
     except PlaybackRuntimeError as exc:
-        status_code = 503 if exc.code in {"buffering", "metadata_timeout", "torrent_unavailable", "stream_unavailable"} else 404 if exc.code == "unknown_session" else 400
-        return jsonify({"ok": False, "error": exc.message, "code": exc.code}), status_code
+        return jsonify(_runtime_stream_error_payload(exc)), _runtime_stream_error_status_code(exc.code)
 
 
 @app.route("/stream")
@@ -27572,8 +28392,7 @@ def api_runtime_stream(session_id):
     try:
         return build_stream_response(PLAYBACK_RUNTIME_MANAGER, session_id, request)
     except PlaybackRuntimeError as exc:
-        status_code = 503 if exc.code in {"buffering", "metadata_timeout", "torrent_unavailable", "stream_unavailable"} else 404 if exc.code == "unknown_session" else 400
-        return jsonify({"ok": False, "error": exc.message, "code": exc.code}), status_code
+        return jsonify(_runtime_stream_error_payload(exc)), _runtime_stream_error_status_code(exc.code)
 
 
 @app.route("/api/runtime/session/<session_id>", methods=["GET", "POST"])
