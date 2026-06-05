@@ -144,6 +144,52 @@ class ReadingRecipeOfDayServiceTests(unittest.TestCase):
                 [item["id"] for item in second["selected_articles"]],
             )
 
+    def test_recipe_generation_returns_max_seven_items(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            recipe_path = Path(temp_dir) / "reading_recipe_of_day.json"
+            entries = [
+                self._entry(index, source_id=f"source-{index}", source=f"Source {index}", hours_ago=1 + index)
+                for index in range(1, 12)
+            ]
+            sources = [self._source(f"source-{index}", f"Source {index}") for index in range(1, 12)]
+            service = self._build_service({"data": self._base_data(entries, sources)}, recipe_path)
+
+            recipe = service.build_today_recipe(force=True)
+
+            self.assertLessEqual(len(recipe["selected_articles"]), 7)
+
+    def test_duplicate_url_and_title_entries_are_deduped(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            recipe_path = Path(temp_dir) / "reading_recipe_of_day.json"
+            entries = [
+                self._entry(1, source_id="source-1", source="Source One", hours_ago=1, title="Same Story", url="https://example.com/dup"),
+                self._entry(2, source_id="source-1", source="Source One", hours_ago=2, title="Same Story", url="https://example.com/dup"),
+                self._entry(3, source_id="source-2", source="Source Two", hours_ago=1, title="Same Story", url="https://example.com/another"),
+                self._entry(4, source_id="source-3", source="Source Three", hours_ago=1, title="Different Story", url="https://example.com/different"),
+            ]
+            sources = [
+                self._source("source-1", "Source One"),
+                self._source("source-2", "Source Two"),
+                self._source("source-3", "Source Three"),
+            ]
+            service = self._build_service({"data": self._base_data(entries, sources)}, recipe_path)
+
+            recipe = service.build_today_recipe(force=True)
+
+            selected_ids = [item["id"] for item in recipe["selected_articles"]]
+            self.assertEqual(selected_ids.count("entry-1") + selected_ids.count("entry-2"), 1)
+            self.assertNotIn("entry-3", selected_ids)
+
+    def test_empty_or_missing_snapshot_does_not_crash(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            recipe_path = Path(temp_dir) / "reading_recipe_of_day.json"
+            service = self._build_service({"data": None}, recipe_path)
+
+            recipe = service.build_today_recipe(force=True)
+
+            self.assertEqual(recipe["selected_count"], 0)
+            self.assertEqual(recipe["selected_articles"], [])
+
     def test_al_jazeera_variants_share_same_publisher_family(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             recipe_path = Path(temp_dir) / "reading_recipe_of_day.json"
@@ -326,6 +372,91 @@ class ReadingRecipeOfDayServiceTests(unittest.TestCase):
         self.assertIn("/reading/article/first", response.location)
         self.assertIn("recipe=1", response.location)
         self.assertIn("recipe_index=0", response.location)
+
+    def test_recipe_route_loads_successfully_and_shows_stale_note(self):
+        dragon_app.app.config["TESTING"] = True
+        client = dragon_app.app.test_client()
+        fake_service = Mock()
+        fake_service.build_today_recipe.return_value = {
+            "date": "2026-06-02",
+            "generated_at": "2026-06-02T12:00:00+00:00",
+            "generated_at_display": "Jun 02, 2026 12:00",
+            "generated_from": "reading_data.json",
+            "selected_count": 1,
+            "candidate_count": 1,
+            "active_candidate_count": 1,
+            "recent_active_count": 0,
+            "selected_articles": [
+                {
+                    "id": "first",
+                    "title": "First",
+                    "source": "Source A",
+                    "source_dir": "auto",
+                    "title_dir": "auto",
+                    "status": "unread",
+                    "score": 42,
+                    "reason_tags": [],
+                    "reason_label": "Unread fallback",
+                }
+            ],
+            "reused_existing_snapshot": False,
+        }
+        fake_runtime = Mock()
+        fake_runtime._snapshot_freshness.return_value = {
+            "snapshot_freshness_state": "stale",
+            "snapshot_freshness_label": "Stale snapshot",
+            "snapshot_updated_display": "Jun 01, 2026 08:00",
+        }
+
+        with patch.object(dragon_app, "_get_reading_recipe_of_day_service", return_value=fake_service), patch.object(
+            dragon_app, "_get_reading_runtime_service", return_value=fake_runtime
+        ):
+            response = client.get("/reading/recipe")
+
+        self.assertEqual(response.status_code, 200)
+        html = response.get_data(as_text=True)
+        self.assertIn("Recipe of the Day", html)
+        self.assertIn("For freshest results, run Sync Latest Articles, then Pull Latest Articles.", html)
+        self.assertIn("Open detail", html)
+
+    def test_recipe_route_uses_local_snapshot_only_and_does_not_trigger_sync_or_pull(self):
+        dragon_app.app.config["TESTING"] = True
+        client = dragon_app.app.test_client()
+
+        with patch.object(dragon_app, "trigger_reading_github_actions_sync", side_effect=AssertionError("sync should not run during recipe")), patch.object(
+            dragon_app, "pull_latest_articles_snapshot", side_effect=AssertionError("pull should not run during recipe")
+        ), patch.object(
+            dragon_app, "_get_reading_recipe_of_day_service"
+        ) as service_factory, patch.object(
+            dragon_app, "_get_reading_runtime_service"
+        ) as runtime_factory:
+            fake_service = Mock()
+            fake_service.build_today_recipe.return_value = {
+                "date": "2026-06-02",
+                "generated_at": "2026-06-02T12:00:00+00:00",
+                "generated_at_display": "Jun 02, 2026 12:00",
+                "generated_from": "reading_data.json",
+                "selected_count": 0,
+                "candidate_count": 0,
+                "active_candidate_count": 0,
+                "recent_active_count": 0,
+                "selected_articles": [],
+                "reused_existing_snapshot": False,
+            }
+            fake_runtime = Mock()
+            fake_runtime._snapshot_freshness.return_value = {
+                "snapshot_freshness_state": "fresh",
+                "snapshot_freshness_label": "Fresh snapshot",
+                "snapshot_updated_display": "Jun 02, 2026 12:00",
+            }
+            service_factory.return_value = fake_service
+            runtime_factory.return_value = fake_runtime
+
+            response = client.get("/reading/recipe")
+
+        self.assertEqual(response.status_code, 200)
+        fake_service.build_today_recipe.assert_called_once_with(force=False)
+        fake_runtime._snapshot_freshness.assert_called_once_with()
 
 
 if __name__ == "__main__":

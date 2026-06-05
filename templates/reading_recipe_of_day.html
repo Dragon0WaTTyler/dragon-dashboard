@@ -60,6 +60,13 @@
     </section>
     {% endif %}
 
+    {% if recipe_snapshot_note %}
+    <section class="surface-card section-card recipe-notice">
+        <strong>{{ snapshot_freshness_label or 'Stale snapshot' }}.</strong>
+        {{ recipe_snapshot_note }}
+    </section>
+    {% endif %}
+
     <section class="surface-card section-card">
         <div class="detail-header">
             <div>
@@ -69,7 +76,7 @@
                     <span>{{ active_candidate_count }} active candidates</span>
                     <span>{{ recent_active_count }} recent active</span>
                 </div>
-                <h3 style="font-size:2rem; margin-top:12px;">Today&apos;s article recipe</h3>
+                <h3 style="font-size:2rem; margin-top:12px;">Top picks</h3>
             </div>
         </div>
 
@@ -82,6 +89,7 @@
                             <span class="hero-badge" dir="{{ article.source_dir or 'auto' }}">{{ article.source }}</span>
                             {% if article.category %}<span class="reading-category-pill">{{ article.category|title }}</span>{% endif %}
                             <span class="reading-status reading-status-{{ article.status }}">{{ article.status }}</span>
+                            {% if article.reason_label %}<span class="recipe-tag">{{ article.reason_label }}</span>{% endif %}
                         </div>
                         <h3 dir="{{ article.title_dir or 'auto' }}"><a href="{{ url_for('reading_article', entry_id=article.id) }}">{{ article.title }}</a></h3>
                         <div class="recipe-card-submeta">

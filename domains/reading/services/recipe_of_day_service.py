@@ -92,6 +92,11 @@ class ReadingRecipeOfDayService:
         "hespress.com": "hespress",
         "mapnews.ma": "map-news",
     }
+    _NOISY_TITLE_PATTERNS = (
+        r"^\W+$",
+        r"\b(?:live|video|photos|podcast|newsletter|watch)\b",
+        r"^(?:breaking|update|live updates?)$",
+    )
 
     def __init__(
         self,
@@ -156,6 +161,24 @@ class ReadingRecipeOfDayService:
         keywords.sort(key=lambda item: (-item[1], item[0]))
         return [token for token, _count in keywords[:24]]
 
+    def _title_quality_penalty(self, entry):
+        entry = entry if isinstance(entry, dict) else {}
+        title = str(entry.get("title", "") or "").strip()
+        tokens = self._tokenize(title)
+        penalty = 0
+        tags = []
+        if not title:
+            return 12, ["title:missing"]
+        if len(title) < 16 or len(tokens) < 3:
+            penalty += 6
+            tags.append("title:short")
+        for pattern in self._NOISY_TITLE_PATTERNS:
+            if re.search(pattern, title, flags=re.IGNORECASE):
+                penalty += 4
+                tags.append("title:noisy")
+                break
+        return penalty, tags[:2]
+
     def _parse_entry_timestamp(self, entry):
         entry = entry if isinstance(entry, dict) else {}
         for field in ("published_at", "added_at", "imported_at"):
@@ -171,11 +194,6 @@ class ReadingRecipeOfDayService:
         title = re.sub(r"\s+", " ", str(entry.get("title", "") or "").strip().lower())
         title = re.sub(r"[^a-z0-9\s]+", "", title)
         title = re.sub(r"\s+", " ", title).strip()
-        source = re.sub(r"\s+", " ", str(entry.get("source", "") or "").strip().lower())
-        source = re.sub(r"[^a-z0-9\s]+", "", source)
-        source = re.sub(r"\s+", " ", source).strip()
-        if title and source:
-            return f"title:{title}|source:{source}"
         if title:
             return f"title:{title}"
         return ""
@@ -407,15 +425,16 @@ class ReadingRecipeOfDayService:
         status_score, status_tags = self._status_score(candidate.get("status", ""))
         interest_score, interest_tags = self._interest_score(candidate, keyword_profile)
         star_score = 4 if candidate.get("starred") else 0
+        quality_penalty, quality_tags = self._title_quality_penalty(candidate)
         tags = []
-        for tag in freshness_tags + source_tags + status_tags + interest_tags:
+        for tag in freshness_tags + source_tags + status_tags + interest_tags + quality_tags:
             if tag and tag not in tags:
                 tags.append(tag)
         if is_recent and "fresh-24h" not in tags:
             tags.append("fresh-24h")
         if star_score:
             tags.append("starred")
-        score = freshness_score + source_score + status_score + interest_score + star_score
+        score = freshness_score + source_score + status_score + interest_score + star_score - quality_penalty
         score = max(0, min(100, int(round(score))))
         return {
             "score": score,
@@ -424,6 +443,7 @@ class ReadingRecipeOfDayService:
             "status_score": status_score,
             "interest_score": interest_score,
             "star_score": star_score,
+            "quality_penalty": quality_penalty,
             "age_hours": age_hours,
             "is_recent": is_recent,
             "reason_tags": tags[:5],
@@ -491,6 +511,7 @@ class ReadingRecipeOfDayService:
             phase_tag = "source-diverse" if selection_phase == "source-first-pass" else "publisher-cap"
             if phase_tag not in reason_tags:
                 reason_tags.append(phase_tag)
+        reason_label = str(candidate.get("reason_label", "") or "").strip()
         return {
             "id": str(candidate.get("id", "") or "").strip(),
             "title": str(candidate.get("title", "") or "").strip(),
@@ -517,12 +538,28 @@ class ReadingRecipeOfDayService:
             "status_score": int(candidate.get("status_score", 0) or 0),
             "interest_score": int(candidate.get("interest_score", 0) or 0),
             "star_score": int(candidate.get("star_score", 0) or 0),
+            "quality_penalty": int(candidate.get("quality_penalty", 0) or 0),
             "age_hours": None if candidate.get("age_hours") is None else round(float(candidate.get("age_hours", 0.0) or 0.0), 2),
             "is_recent": bool(candidate.get("is_recent", False)),
             "recipe_phase": selection_phase,
+            "reason_label": reason_label,
             "reason_tags": reason_tags,
             "score_breakdown": dict(candidate.get("score_breakdown", {}) or {}),
         }
+
+    def _primary_reason_label(self, candidate):
+        candidate = candidate if isinstance(candidate, dict) else {}
+        if candidate.get("is_recent") and candidate.get("status") == "unread":
+            return "Fresh unread"
+        if candidate.get("is_recent"):
+            return "Fresh pick"
+        if candidate.get("status") == "unread":
+            return "Unread fallback"
+        if int(candidate.get("interest_score", 0) or 0) > 0:
+            return "Interest match"
+        if int(candidate.get("source_quality_score", 0) or 0) >= 12:
+            return "Strong source"
+        return "Recent fallback"
 
     def _select_candidates(self, entries, sources_by_id, sources_by_name):
         keyword_profile = self._build_interest_keyword_profile(entries)
@@ -573,7 +610,9 @@ class ReadingRecipeOfDayService:
                 "status": candidate["status_score"],
                 "interest": candidate["interest_score"],
                 "star": candidate["star_score"],
+                "quality_penalty": -int(candidate["quality_penalty"]),
             }
+            candidate["reason_label"] = self._primary_reason_label(candidate)
             candidate["sort_key"] = self._candidate_rank_key(candidate)
             candidate["selection_key"] = self._selection_sort_key(candidate)
             enriched.append(candidate)

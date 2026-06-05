@@ -28424,12 +28424,20 @@ def reading():
 def reading_recipe_of_day():
     route_started_at = time.monotonic()
     recipe = _build_reading_recipe_flow(_get_reading_recipe_of_day_service().build_today_recipe(force=False))
+    snapshot_freshness = _get_reading_runtime_service()._snapshot_freshness()
     recipe_notice = "Recipe rebuilt for today." if str(request.args.get("regenerated", "") or "").strip() else ""
+    recipe_snapshot_note = ""
+    if str((snapshot_freshness or {}).get("snapshot_freshness_state", "") or "").strip() in {"stale", "missing"}:
+        recipe_snapshot_note = "For freshest results, run Sync Latest Articles, then Pull Latest Articles."
     rendered = render_template(
         "reading_recipe_of_day.html",
         title="Recipe of the Day",
         reading_return_url=url_for("reading"),
         recipe_notice=recipe_notice,
+        recipe_snapshot_note=recipe_snapshot_note,
+        snapshot_freshness_state=(snapshot_freshness or {}).get("snapshot_freshness_state", ""),
+        snapshot_freshness_label=(snapshot_freshness or {}).get("snapshot_freshness_label", ""),
+        last_refreshed_at_display=(snapshot_freshness or {}).get("snapshot_updated_display", "Unknown"),
         **recipe,
     )
     app.logger.info(
