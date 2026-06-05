@@ -56,20 +56,8 @@ from domains.magnets.runtime.observability import emit_event
 from domains.reading import (
     BooksService,
     QuotesService,
-    ReadingCacheAccess,
-    ReadingRssService,
-    ReadingRecipeOfDayService,
-    ReadingRuntimeProjectionService,
-    ReadingRuntimeService,
-    ReadingSnapshotAccess,
-    ReadingSyncService,
 )
-from domains.shared.refresh import RefreshService
 from domains.youtube.services import (
-    YouTubePlaylistService,
-    YouTubeFreshnessService,
-    YouTubeRecommendationService,
-    YouTubeVideoService,
     WatchLaterSyncService,
 )
 from dragon.cache import DragonCache, build_cache_store, build_runtime_cache, clone_json_compatible, load_json_file, save_json_file
@@ -112,6 +100,20 @@ from dragon.paths import (
     YTS_TORRENTS_CACHE_PATH,
 )
 from dragon.state import RUNTIME_STATE
+from dragon.wiring import (
+    build_reading_cache_access,
+    build_reading_recipe_of_day_service,
+    build_reading_rss_service,
+    build_reading_runtime_projection_service,
+    build_reading_runtime_service,
+    build_reading_snapshot_access,
+    build_reading_sync_service,
+    build_refresh_service,
+    build_youtube_freshness_service,
+    build_youtube_playlist_service,
+    build_youtube_recommendation_service,
+    build_youtube_video_service,
+)
 
 BOOKS_RUNTIME = RUNTIME_STATE.books
 READING_RUNTIME = RUNTIME_STATE.reading
@@ -10144,7 +10146,7 @@ def reading_entry_matches_filters(entry, source="All Sources", status="All Statu
 def _get_reading_runtime_projection_service():
     global _READING_RUNTIME_PROJECTION_SERVICE
     if _READING_RUNTIME_PROJECTION_SERVICE is None:
-        _READING_RUNTIME_PROJECTION_SERVICE = ReadingRuntimeProjectionService(
+        _READING_RUNTIME_PROJECTION_SERVICE = build_reading_runtime_projection_service(
             app_logger=app.logger,
             normalize_reading_source=normalize_reading_source,
             normalize_reading_url=normalize_reading_url,
@@ -10164,7 +10166,7 @@ def _get_reading_runtime_projection_service():
 def _get_reading_cache_access():
     global _READING_CACHE_ACCESS
     if _READING_CACHE_ACCESS is None:
-        _READING_CACHE_ACCESS = ReadingCacheAccess(
+        _READING_CACHE_ACCESS = build_reading_cache_access(
             app_logger=app.logger,
             default_reading_data=default_reading_data,
             normalize_reading_source=normalize_reading_source,
@@ -10191,7 +10193,7 @@ def _get_reading_cache_access():
 def _get_reading_rss_service():
     global _READING_RSS_SERVICE
     if _READING_RSS_SERVICE is None:
-        _READING_RSS_SERVICE = ReadingRssService(
+        _READING_RSS_SERVICE = build_reading_rss_service(
             normalize_reading_source=normalize_reading_source,
             reading_source_feed_candidate_urls=reading_source_feed_candidate_urls,
             reading_http_get=reading_http_get,
@@ -10232,7 +10234,7 @@ def _get_reading_rss_service():
 def _get_reading_sync_service():
     global _READING_SYNC_SERVICE
     if _READING_SYNC_SERVICE is None:
-        _READING_SYNC_SERVICE = ReadingSyncService(
+        _READING_SYNC_SERVICE = build_reading_sync_service(
             load_reading_data=load_reading_data,
             save_reading_data=save_reading_data,
             default_reading_data=default_reading_data,
@@ -11423,7 +11425,7 @@ def _get_reading_runtime_service():
     global _READING_RUNTIME_SERVICE
     if _READING_RUNTIME_SERVICE is None:
         # Ownership note: retained GET read shaping now lives in the runtime service layer.
-        _READING_RUNTIME_SERVICE = ReadingRuntimeService(
+        _READING_RUNTIME_SERVICE = build_reading_runtime_service(
             app_logger=app.logger,
             load_reading_data_cached=load_reading_data_cached,
             default_reading_data=default_reading_data,
@@ -11451,7 +11453,7 @@ def _get_reading_runtime_service():
             reading_list_limit_step=READING_LIST_LIMIT_STEP,
             reading_remote_snapshot_url=READING_REMOTE_SNAPSHOT_URL,
             reading_remote_snapshot_pull_enabled=reading_remote_snapshot_pull_enabled(),
-            refresh_service=RefreshService(format_timestamp_label=format_timestamp_label),
+            refresh_service=build_refresh_service(format_timestamp_label=format_timestamp_label),
             datetime_module=datetime,
             monotonic=time.monotonic,
         )
@@ -11461,7 +11463,7 @@ def _get_reading_runtime_service():
 def _get_reading_recipe_of_day_service():
     global _READING_RECIPE_OF_DAY_SERVICE
     if _READING_RECIPE_OF_DAY_SERVICE is None:
-        _READING_RECIPE_OF_DAY_SERVICE = ReadingRecipeOfDayService(
+        _READING_RECIPE_OF_DAY_SERVICE = build_reading_recipe_of_day_service(
             app_logger=app.logger,
             load_reading_data_cached=load_reading_data_cached,
             default_reading_data=default_reading_data,
@@ -26941,7 +26943,7 @@ def admin_global_sync():
     return jsonify(response_payload), status_code
 
 
-YOUTUBE_RECOMMENDATION_SERVICE = YouTubeRecommendationService(
+YOUTUBE_RECOMMENDATION_SERVICE = build_youtube_recommendation_service(
     build_shuffled_related_entries=build_shuffled_related_entries,
     paginate_items=paginate_items,
     build_related_video_detail_url=build_related_video_detail_url,
@@ -26955,7 +26957,7 @@ STREAM_SESSION_SERVICE = StreamSessionService(analytics_service=SESSION_ANALYTIC
 EXPERIMENTAL_RUNTIME_SERVICE = ExperimentalRuntimeService()
 PLAYBACK_RUNTIME_MANAGER = PlaybackRuntimeManager()
 
-YOUTUBE_PLAYLIST_SERVICE = YouTubePlaylistService(
+YOUTUBE_PLAYLIST_SERVICE = build_youtube_playlist_service(
     load_admin_data=load_admin_data,
     build_youtube_section_playlists=build_youtube_section_playlists,
     canonical_section_name=canonical_section_name,
@@ -26975,7 +26977,7 @@ YOUTUBE_PLAYLIST_SERVICE = YouTubePlaylistService(
     normalize_pockettube_group_key=normalize_pockettube_group_key,
 )
 
-YOUTUBE_FRESHNESS_SERVICE = YouTubeFreshnessService(
+YOUTUBE_FRESHNESS_SERVICE = build_youtube_freshness_service(
     load_admin_data=load_admin_data,
     pockettube_latest_import_snapshot=_pockettube_latest_import_snapshot,
     get_persisted_youtube_channel_latest_entry=get_persisted_youtube_channel_latest_entry,
@@ -26997,7 +26999,7 @@ YOUTUBE_FRESHNESS_SERVICE = YouTubeFreshnessService(
     app_logger=app.logger,
 )
 
-YOUTUBE_VIDEO_SERVICE = YouTubeVideoService(
+YOUTUBE_VIDEO_SERVICE = build_youtube_video_service(
     get_video_detail_context=get_video_detail_context,
     recommendation_service=YOUTUBE_RECOMMENDATION_SERVICE,
     get_section_route=get_section_route,
@@ -28602,7 +28604,7 @@ def trigger_reading_github_actions_sync():
 def _get_reading_snapshot_access():
     global _READING_SNAPSHOT_ACCESS
     if _READING_SNAPSHOT_ACCESS is None:
-        _READING_SNAPSHOT_ACCESS = ReadingSnapshotAccess(
+        _READING_SNAPSHOT_ACCESS = build_reading_snapshot_access(
             app_logger=app.logger,
             reading_runtime=READING_RUNTIME,
             reading_data_path=READING_DATA_PATH,
