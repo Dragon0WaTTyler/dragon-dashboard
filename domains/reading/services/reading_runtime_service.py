@@ -31,6 +31,7 @@ class ReadingRuntimeService:
         reading_list_limit_step,
         reading_remote_snapshot_url,
         reading_remote_snapshot_pull_enabled,
+        reading_backups_dir,
         datetime_module,
         monotonic,
         refresh_service=None,
@@ -62,6 +63,7 @@ class ReadingRuntimeService:
         self.reading_list_limit_step = reading_list_limit_step
         self.reading_remote_snapshot_url = str(reading_remote_snapshot_url or "").strip()
         self.reading_remote_snapshot_pull_enabled = bool(reading_remote_snapshot_pull_enabled)
+        self.reading_backups_dir = reading_backups_dir
         self.refresh_service = refresh_service
         self.datetime_module = datetime_module
         self.monotonic = monotonic
@@ -121,6 +123,29 @@ class ReadingRuntimeService:
         if freshness["state"] in {"stale", "unknown", "failed"}:
             freshness["next_action"] = "sync"
         return freshness
+
+    def _build_snapshot_status(self, snapshot_freshness, data, freshness):
+        from domains.shared.snapshots import build_snapshot_status
+
+        snapshot_freshness = snapshot_freshness if isinstance(snapshot_freshness, dict) else {}
+        freshness = freshness if isinstance(freshness, dict) else {}
+        data = data if isinstance(data, dict) else {}
+        last_error = self._reading_sync_error_message(data, self._build_source_status_summary(data.get("sources", []) or []))
+        status = build_snapshot_status(
+            domain="reading",
+            snapshot_path=self.reading_data_path,
+            backups_dir=self.reading_backups_dir,
+            source_of_truth="github_snapshot" if self.reading_remote_snapshot_pull_enabled and self.reading_remote_snapshot_url else "local_snapshot",
+            sync_enabled=bool(self.reading_remote_snapshot_pull_enabled and self.reading_remote_snapshot_url),
+            sync_status="failed" if last_error else ("ready" if self.reading_remote_snapshot_pull_enabled and self.reading_remote_snapshot_url else "disabled"),
+            last_sync_at=str(data.get("last_sync_at", "") or "").strip(),
+            last_error=last_error,
+            freshness_state=str(freshness.get("state", "") or snapshot_freshness.get("snapshot_freshness_state", "") or "unknown").strip(),
+            format_timestamp_label=self.format_timestamp_label,
+        ).to_dict()
+        if status["next_action"] == "pull_latest" and freshness.get("state") == "failed":
+            status["next_action"] = "sync"
+        return status
 
     def reading_filter_query_params(self, filters=None):
         filters = filters if isinstance(filters, dict) else {}
@@ -397,6 +422,7 @@ class ReadingRuntimeService:
             bool(raw_search),
             snapshot_freshness.get("snapshot_freshness_state", ""),
         )
+        source_status_summary = self._build_source_status_summary(sources)
         view = {
             "entries": displayed_entries,
             "sources": source_filters,
@@ -454,11 +480,12 @@ class ReadingRuntimeService:
             "last_sync_sources": int(data.get("last_sync_sources", 0) or 0),
             "last_sync_message": str(data.get("last_sync_message", "") or "").strip(),
             "last_sync_message_display": self._reading_sync_message_display(data),
-            "source_status_summary": self._build_source_status_summary(sources),
+            "source_status_summary": source_status_summary,
             "reading_remote_snapshot_url": self.reading_remote_snapshot_url,
             "reading_remote_pull_enabled": bool(self.reading_remote_snapshot_pull_enabled and self.reading_remote_snapshot_url),
         }
         view["freshness"] = self._build_shared_freshness(snapshot_freshness, data, view["source_status_summary"])
+        view["snapshot_status"] = self._build_snapshot_status(snapshot_freshness, data, view["freshness"])
         view.update(snapshot_freshness)
         view["reading_remote_pull_recommended"] = bool(
             view.get("reading_remote_pull_enabled")

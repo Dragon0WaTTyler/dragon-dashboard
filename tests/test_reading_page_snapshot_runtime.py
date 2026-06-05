@@ -59,6 +59,9 @@ class ReadingPageSnapshotRuntimeTests(unittest.TestCase):
     def test_reading_route_uses_configured_snapshot_without_sync_or_extraction(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             reading_data_path = Path(temp_dir) / "reading_data.json"
+            reading_backups_dir = Path(temp_dir) / "backups" / "reading"
+            reading_backups_dir.mkdir(parents=True, exist_ok=True)
+            (reading_backups_dir / "reading-data-20260605-000000-save.json").write_text("{}", encoding="utf-8")
             sources = [
                 self._source(1, active=True),
                 self._source(2, active=False, needs_replacement=True),
@@ -86,6 +89,8 @@ class ReadingPageSnapshotRuntimeTests(unittest.TestCase):
             reading_data_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
             with patch.object(dragon_app, "READING_DATA_PATH", reading_data_path), patch.object(
+                dragon_app, "READING_BACKUPS_DIR", reading_backups_dir
+            ), patch.object(
                 dragon_app, "_READING_CACHE_ACCESS", None
             ), patch.object(
                 dragon_app, "_READING_RUNTIME_SERVICE", None
@@ -119,10 +124,14 @@ class ReadingPageSnapshotRuntimeTests(unittest.TestCase):
             self.assertFalse(reading_view["is_stale"])
             self.assertEqual(reading_view["freshness"]["state"], "fresh")
             self.assertEqual(reading_view["freshness"]["display_label"], "Fresh")
+            self.assertTrue(reading_view["snapshot_status"]["exists"])
+            self.assertGreaterEqual(reading_view["snapshot_status"]["backup_count"], 1)
+            self.assertTrue(reading_view["snapshot_status"]["restore_available"])
             self.assertIn("12 sources", html)
             self.assertIn("<strong>88</strong> currently rendered.", html)
             self.assertIn("Snapshot article 1", html)
             self.assertIn("MAP News English", html)
+            self.assertIn("backup", html)
             self.assertTrue(all("content_html" not in entry for entry in reading_view["entries"]))
             self.assertTrue(all("content_text" not in entry for entry in reading_view["entries"]))
 

@@ -52,7 +52,10 @@ class ReadingRefreshRouteTests(unittest.TestCase):
     def test_missing_snapshot_does_not_crash_reading_view(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             missing_path = Path(temp_dir) / "missing-reading-data.json"
+            reading_backups_dir = Path(temp_dir) / "backups" / "reading"
             with patch.object(dragon_app, "READING_DATA_PATH", missing_path), patch.object(
+                dragon_app, "READING_BACKUPS_DIR", reading_backups_dir
+            ), patch.object(
                 dragon_app, "_READING_CACHE_ACCESS", None
             ), patch.object(
                 dragon_app, "_READING_RUNTIME_SERVICE", None
@@ -72,6 +75,8 @@ class ReadingRefreshRouteTests(unittest.TestCase):
         self.assertTrue(view["is_stale"])
         self.assertEqual(view["freshness"]["state"], "unknown")
         self.assertEqual(view["freshness"]["display_label"], "Unknown")
+        self.assertFalse(view["snapshot_status"]["exists"])
+        self.assertEqual(view["snapshot_status"]["backup_count"], 0)
         self.assertEqual(view["snapshot_freshness_state"], "missing")
         self.assertEqual(view["snapshot_freshness_label"], "Snapshot missing")
 

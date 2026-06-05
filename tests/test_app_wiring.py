@@ -39,6 +39,7 @@ class AppWiringTests(unittest.TestCase):
             reading_list_limit_step=dragon_app.READING_LIST_LIMIT_STEP,
             reading_remote_snapshot_url=dragon_app.READING_REMOTE_SNAPSHOT_URL,
             reading_remote_snapshot_pull_enabled=dragon_app.reading_remote_snapshot_pull_enabled(),
+            reading_backups_dir=dragon_app.READING_BACKUPS_DIR,
             refresh_service=build_refresh_service(format_timestamp_label=dragon_app.format_timestamp_label),
             datetime_module=dragon_app.datetime,
             monotonic=dragon_app.time.monotonic,

@@ -78,6 +78,8 @@ class ReadingFreshnessTests(unittest.TestCase):
 
         self.assertEqual(view["freshness"]["state"], "failed")
         self.assertEqual(view["freshness"]["safe_error"], "Refresh failed. Try again later.")
+        self.assertEqual(view["snapshot_status"]["sync_status"], "failed")
+        self.assertEqual(view["snapshot_status"]["last_error_safe"], "Refresh failed. Try again later.")
         self.assertEqual(view["source_status_summary"]["items"][0]["message"], "Refresh failed. Try again later.")
 
     def test_reading_page_renders_safe_freshness_note_without_raw_sync_error_details(self):

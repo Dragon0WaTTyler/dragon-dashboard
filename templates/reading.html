@@ -56,6 +56,9 @@
     .reading-source-status-item{display:flex;align-items:flex-start;justify-content:space-between;gap:10px 14px;flex-wrap:wrap;color:var(--text-2);font-size:.76rem;line-height:1.4}
     .reading-source-status-item strong{color:var(--heading)}
     .reading-source-status-item span{overflow-wrap:anywhere}
+    .reading-snapshot-note{display:grid;gap:8px;margin-top:12px;padding:12px;border-radius:14px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.02)}
+    .reading-snapshot-note-meta{display:flex;align-items:center;gap:8px 12px;flex-wrap:wrap;color:var(--text-2);font-size:.76rem;line-height:1.35}
+    .reading-snapshot-note-meta strong{color:var(--heading)}
     .reading-card-badges{display:flex;align-items:center;gap:7px 8px;flex-wrap:wrap;margin-top:-1px}
     .reading-entry-meta{display:flex;align-items:center;gap:8px 10px;flex-wrap:wrap;font-size:.76rem;line-height:1.35}
     .reading-entry-footer{display:grid;gap:8px;margin-top:auto;padding-top:2px;min-width:0;max-width:100%}
@@ -155,6 +158,21 @@
         </form>
         {% endif %}
     </div>
+    {% if snapshot_status %}
+    <div class="reading-snapshot-note">
+        <div class="reading-snapshot-note-meta">
+            <span><strong>{{ snapshot_status.display_label }}</strong></span>
+            <span>{{ snapshot_status.display_message }}</span>
+        </div>
+        <div class="reading-snapshot-note-meta">
+            <span>Snapshot {{ 'exists' if snapshot_status.exists else 'missing' }}</span>
+            <span>Modified {{ snapshot_status.modified_at if snapshot_status.modified_at else 'Never' }}</span>
+            <span>{{ snapshot_status.backup_count }} backup{% if snapshot_status.backup_count != 1 %}s{% endif %}</span>
+            <span>Sync {{ snapshot_status.sync_status }}</span>
+            {% if snapshot_status.next_action and snapshot_status.next_action != 'none' %}<span>Next {{ snapshot_status.next_action|replace('_', ' ') }}</span>{% endif %}
+        </div>
+    </div>
+    {% endif %}
     {% if source_status_summary.total %}
     <div class="reading-source-status">
         <div class="reading-source-status-summary">

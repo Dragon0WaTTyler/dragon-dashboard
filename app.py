@@ -11454,6 +11454,7 @@ def _get_reading_runtime_service():
             reading_list_limit_step=READING_LIST_LIMIT_STEP,
             reading_remote_snapshot_url=READING_REMOTE_SNAPSHOT_URL,
             reading_remote_snapshot_pull_enabled=reading_remote_snapshot_pull_enabled(),
+            reading_backups_dir=READING_BACKUPS_DIR,
             refresh_service=build_refresh_service(format_timestamp_label=format_timestamp_label),
             datetime_module=datetime,
             monotonic=time.monotonic,
