@@ -895,6 +895,8 @@ class YouTubeFreshnessServiceTests(unittest.TestCase):
 
             self.assertEqual(context["refresh_status"], "missing")
             self.assertTrue(context["is_stale"])
+            self.assertEqual(context["freshness"]["state"], "unknown")
+            self.assertEqual(context["freshness"]["display_label"], "Unknown")
             self.assertEqual(context["freshness_note"]["state"], "missing")
             self.assertEqual(
                 context["freshness_note"]["message"],
@@ -932,8 +934,9 @@ class YouTubeFreshnessServiceTests(unittest.TestCase):
 
             fresh_context = service.build_page_context()
 
+            self.assertEqual(fresh_context["freshness"]["state"], "fresh")
             self.assertEqual(fresh_context["freshness_note"]["state"], "fresh")
-            self.assertEqual(fresh_context["freshness_note"]["title"], "Fresh snapshot")
+            self.assertEqual(fresh_context["freshness_note"]["title"], "Fresh")
             self.assertIn("Last refreshed", fresh_context["freshness_note"]["message"])
             self.assertEqual(fresh_context["freshness_note"]["last_refreshed_at_display"], "2026-06-02 12:00")
 
@@ -964,6 +967,7 @@ class YouTubeFreshnessServiceTests(unittest.TestCase):
 
             stale_context = service.build_page_context()
 
+            self.assertEqual(stale_context["freshness"]["state"], "stale")
             self.assertEqual(stale_context["freshness_note"]["state"], "stale")
             self.assertEqual(
                 stale_context["freshness_note"]["message"],
@@ -1016,8 +1020,8 @@ class YouTubeFreshnessServiceTests(unittest.TestCase):
             body = response.get_data(as_text=True)
 
             self.assertEqual(response.status_code, 200)
-            self.assertIn("Refresh error", body)
-            self.assertIn("Last refresh failed. Run YouTube freshness sync again if needed.", body)
+            self.assertIn("Failed", body)
+            self.assertIn("Refresh failed. Try again later.", body)
             self.assertIn("Last refreshed 2026-06-02 12:00", body)
             self.assertNotIn("Traceback", body)
             self.assertNotIn("secret=github_token", body)
@@ -2833,9 +2837,23 @@ class YouTubeFreshnessServiceTests(unittest.TestCase):
                 "is_stale": False,
                 "has_snapshot": True,
             },
+            "freshness": {
+                "state": "fresh",
+                "last_refreshed_at": FIXED_NOW.isoformat(),
+                "stale_reason": "",
+                "source_label": "PocketTube snapshot",
+                "safe_error": "",
+                "refresh_available": True,
+                "refresh_in_progress": False,
+                "next_action": "none",
+                "age_seconds": 0,
+                "is_stale": False,
+                "display_label": "Fresh",
+                "display_message": "PocketTube snapshot is fresh. Last refreshed 2026-06-02 12:00.",
+            },
             "freshness_note": {
                 "state": "fresh",
-                "title": "Fresh snapshot",
+                "title": "Fresh",
                 "message": "Fresh snapshot. Last refreshed 2026-06-02 12:00.",
                 "last_refreshed_at": FIXED_NOW.isoformat(),
                 "last_refreshed_at_display": "2026-06-02 12:00",
@@ -2852,7 +2870,7 @@ class YouTubeFreshnessServiceTests(unittest.TestCase):
         self.assertIn("Limit", body)
         self.assertIn("Open on YouTube", body)
         self.assertIn("/video/yt-v1", body)
-        self.assertIn("Fresh snapshot", body)
+        self.assertIn("Fresh", body)
         self.assertIn("Last refreshed 2026-06-02 12:00", body)
         mock_service.build_page_context_for_filter.assert_called_once_with(
             "all",

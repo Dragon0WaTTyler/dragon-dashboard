@@ -117,6 +117,8 @@ class ReadingPageSnapshotRuntimeTests(unittest.TestCase):
             self.assertEqual(reading_view["background_revalidate"]["key"], "background_revalidate")
             self.assertTrue(reading_view["background_revalidate"]["placeholder"])
             self.assertFalse(reading_view["is_stale"])
+            self.assertEqual(reading_view["freshness"]["state"], "fresh")
+            self.assertEqual(reading_view["freshness"]["display_label"], "Fresh")
             self.assertIn("12 sources", html)
             self.assertIn("<strong>88</strong> currently rendered.", html)
             self.assertIn("Snapshot article 1", html)

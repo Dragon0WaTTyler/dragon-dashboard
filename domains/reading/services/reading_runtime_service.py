@@ -70,6 +70,58 @@ class ReadingRuntimeService:
 
             self.refresh_service = RefreshService(format_timestamp_label=self.format_timestamp_label)
 
+    def _reading_sync_error_message(self, data, source_status_summary):
+        from domains.shared.refresh import sanitize_freshness_error
+
+        summary = source_status_summary if isinstance(source_status_summary, dict) else {}
+        for item in list(summary.get("items", []) or []):
+            if str(item.get("status", "") or "").strip().lower() == "error":
+                message = str(item.get("message", "") or "").strip()
+                safe_message = sanitize_freshness_error(message)
+                if safe_message:
+                    return safe_message
+        fallback_message = str((data or {}).get("last_sync_message", "") or "").strip()
+        if fallback_message.lower().startswith("fetch failed") or fallback_message.lower().startswith("sync failed"):
+            return sanitize_freshness_error(fallback_message)
+        return ""
+
+    def _reading_sync_message_display(self, data):
+        from domains.shared.refresh import sanitize_freshness_error
+
+        message = str((data or {}).get("last_sync_message", "") or "").strip()
+        if message.lower().startswith("fetch failed") or message.lower().startswith("sync failed"):
+            return sanitize_freshness_error(message)
+        return message
+
+    def _build_shared_freshness(self, snapshot_freshness, data, source_status_summary):
+        from domains.shared.refresh import build_freshness
+
+        snapshot_freshness = snapshot_freshness if isinstance(snapshot_freshness, dict) else {}
+        source_status_summary = source_status_summary if isinstance(source_status_summary, dict) else {}
+        last_refreshed_at = str(snapshot_freshness.get("snapshot_updated_at", "") or "").strip()
+        snapshot_state = str(snapshot_freshness.get("snapshot_freshness_state", "") or "").strip().lower()
+        safe_error = self._reading_sync_error_message(data, source_status_summary)
+        stale_reason = ""
+        if snapshot_state == "stale":
+            stale_reason = "ttl_expired"
+        elif snapshot_state == "missing":
+            stale_reason = "missing_snapshot"
+        elif snapshot_state == "aging":
+            stale_reason = "aging_snapshot"
+
+        freshness = build_freshness(
+            last_refreshed_at=last_refreshed_at,
+            stale_reason=stale_reason,
+            source_label="Articles snapshot",
+            error=safe_error,
+            refresh_available=True,
+            refresh_in_progress=False,
+            format_timestamp_label=self.format_timestamp_label,
+        ).to_dict()
+        if freshness["state"] in {"stale", "unknown", "failed"}:
+            freshness["next_action"] = "sync"
+        return freshness
+
     def reading_filter_query_params(self, filters=None):
         filters = filters if isinstance(filters, dict) else {}
         query = {}
@@ -158,6 +210,8 @@ class ReadingRuntimeService:
         )
 
     def _build_source_status_summary(self, sources):
+        from domains.shared.refresh import sanitize_freshness_error
+
         summary = {
             "total": len(sources),
             "ok": 0,
@@ -181,13 +235,16 @@ class ReadingRuntimeService:
             else:
                 summary["never"] += 1
                 status_label = "Not synced yet"
+            message = str(source.get("last_sync_message", "") or "").strip()
+            if status == "error":
+                message = sanitize_freshness_error(message)
             summary["items"].append({
                 "name": str(source.get("name", "Unknown Source") or "Unknown Source").strip(),
                 "status": status or "never",
                 "status_label": status_label,
                 "last_synced_at": last_synced_at,
                 "last_synced_at_display": self.format_timestamp_label(last_synced_at, default="Never"),
-                "message": str(source.get("last_sync_message", "") or "").strip(),
+                "message": message,
             })
         summary["items"].sort(
             key=lambda item: (
@@ -396,10 +453,12 @@ class ReadingRuntimeService:
             "last_sync_count": int(data.get("last_sync_count", 0) or 0),
             "last_sync_sources": int(data.get("last_sync_sources", 0) or 0),
             "last_sync_message": str(data.get("last_sync_message", "") or "").strip(),
+            "last_sync_message_display": self._reading_sync_message_display(data),
             "source_status_summary": self._build_source_status_summary(sources),
             "reading_remote_snapshot_url": self.reading_remote_snapshot_url,
             "reading_remote_pull_enabled": bool(self.reading_remote_snapshot_pull_enabled and self.reading_remote_snapshot_url),
         }
+        view["freshness"] = self._build_shared_freshness(snapshot_freshness, data, view["source_status_summary"])
         view.update(snapshot_freshness)
         view["reading_remote_pull_recommended"] = bool(
             view.get("reading_remote_pull_enabled")

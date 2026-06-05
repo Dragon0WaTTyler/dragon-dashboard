@@ -43,8 +43,12 @@
     .reading-sync-row .btn{padding:8px 12px;min-height:32px}
     .reading-freshness-banner{display:flex;align-items:center;justify-content:space-between;gap:8px 12px;flex-wrap:wrap;margin-top:14px;padding:10px 12px;border-radius:14px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.025);color:var(--text-2);font-size:.78rem;line-height:1.35}
     .reading-freshness-banner strong{color:var(--heading);font-weight:700}
+    .reading-freshness-banner.is-fresh{border-color:rgba(52,211,153,.22);background:rgba(52,211,153,.045)}
     .reading-freshness-banner.is-stale{border-color:rgba(255,176,0,.28);background:rgba(255,176,0,.055)}
-    .reading-freshness-banner.is-missing{border-color:rgba(255,0,0,.28);background:rgba(255,0,0,.045)}
+    .reading-freshness-banner.is-failed{border-color:rgba(255,120,120,.24);background:rgba(255,120,120,.05)}
+    .reading-freshness-banner.is-refreshing{border-color:rgba(96,165,250,.24);background:rgba(96,165,250,.05)}
+    .reading-freshness-banner.is-unknown,.reading-freshness-banner.is-missing{border-color:rgba(255,0,0,.28);background:rgba(255,0,0,.045)}
+    .reading-freshness-banner.is-disabled{border-color:rgba(148,163,184,.22);background:rgba(148,163,184,.05)}
     .reading-source-status{display:grid;gap:10px;margin-top:12px;padding:12px;border-radius:14px;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.02)}
     .reading-source-status-summary{display:flex;align-items:center;gap:8px 12px;flex-wrap:wrap;color:var(--text-2);font-size:.78rem;line-height:1.35}
     .reading-source-status-summary strong{color:var(--heading)}
@@ -121,7 +125,7 @@
     <div class="reading-sync-row">
         <div class="reading-sync-meta">
             <span>{{ fresh_count }} new since last sync</span>
-            <span id="reading-sync-message">{{ last_sync_message or 'Ready to check for updates.' }}</span>
+            <span id="reading-sync-message">{{ last_sync_message_display or 'Ready to check for updates.' }}</span>
         </div>
         <div class="reading-entry-actions">
             <button type="button" class="btn section-refresh-btn" onclick="dragonRefreshSection('articles')" data-default-label="Refresh" data-loading-label="Refreshing..."><i data-lucide="refresh-cw"></i>Refresh</button>
@@ -138,9 +142,12 @@
             <a class="btn" href="{{ url_for('reading_recipe_of_day') }}"><i data-lucide="sparkles"></i>Recipe of the Day</a>
         </div>
     </div>
-    <div class="reading-freshness-banner is-{{ snapshot_freshness_state }}">
-        <span><strong>{{ snapshot_freshness_label }}</strong>: showing local snapshot reading_data.json refreshed {{ last_refreshed_at_display }}.</span>
-        <span>Last feed sync: {{ last_sync_at_display }}</span>
+    <div class="reading-freshness-banner is-{{ (freshness.state if freshness else snapshot_freshness_state) }}">
+        <span><strong>{{ freshness.display_label if freshness else snapshot_freshness_label }}</strong>: {{ freshness.display_message if freshness else ('showing local snapshot reading_data.json refreshed ' ~ last_refreshed_at_display ~ '.') }}</span>
+        <span>
+            Last feed sync: {{ last_sync_at_display }}
+            {% if freshness and freshness.next_action == 'sync' %} · Next: Sync{% endif %}
+        </span>
         {% if reading_remote_pull_recommended %}
         <form method="post" action="{{ url_for('reading_pull_latest_snapshot_route') }}" style="margin:0;">
             <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">

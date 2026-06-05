@@ -70,6 +70,8 @@ class ReadingRefreshRouteTests(unittest.TestCase):
         self.assertEqual(view["refresh_status"], "missing")
         self.assertEqual(view["refresh_error"], "")
         self.assertTrue(view["is_stale"])
+        self.assertEqual(view["freshness"]["state"], "unknown")
+        self.assertEqual(view["freshness"]["display_label"], "Unknown")
         self.assertEqual(view["snapshot_freshness_state"], "missing")
         self.assertEqual(view["snapshot_freshness_label"], "Snapshot missing")
 
