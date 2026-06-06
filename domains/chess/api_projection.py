@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from urllib.parse import unquote
 from typing import Any
 
 from dragon.cache import load_json_file
@@ -115,6 +116,52 @@ def _safe_projected_games(chess_data, *, source=None, result=None):
     return projected
 
 
+def _find_chess_game(chess_data, game_id):
+    payload = chess_data if isinstance(chess_data, dict) else default_chess_data()
+    target = unquote(str(game_id or "").strip())
+    if not target:
+        return None
+    for game in (payload.get("games", []) or []):
+        if not isinstance(game, dict):
+            continue
+        game_id_value = str(game.get("id", "") or "").strip()
+        source_game_id_value = str(game.get("source_game_id", "") or "").strip()
+        if game_id_value == target or source_game_id_value == target:
+            return dict(game)
+    return None
+
+
+def _project_chess_game_detail_item(game):
+    payload = game if isinstance(game, dict) else {}
+    opening = payload.get("opening", {}) if isinstance(payload.get("opening", {}), dict) else {}
+    source = _normalize_chess_source(payload.get("source", ""))
+    user_result = _normalize_chess_result(payload.get("user_result", ""))
+    opening_name = _safe_text(opening.get("name", ""), "")
+    opening_eco = _safe_text(opening.get("eco", ""), "")
+    opening_variation = _safe_text(opening.get("variation", ""), "")
+    return {
+        "id": _safe_text(payload.get("id", ""), ""),
+        "source": source,
+        "white": _safe_text(payload.get("white", ""), ""),
+        "black": _safe_text(payload.get("black", ""), ""),
+        "user_color": _safe_text(payload.get("user_color", ""), "unknown").lower(),
+        "user_result": user_result,
+        "result": _safe_text(payload.get("result", ""), "Unknown"),
+        "date": _safe_text(payload.get("date", ""), ""),
+        "time_class": _safe_text(payload.get("time_class", ""), "other").lower(),
+        "time_control": _safe_text(payload.get("time_control", ""), ""),
+        "opening": {
+            "name": opening_name,
+            "eco": opening_eco,
+            "variation": opening_variation,
+        },
+        "url": _safe_text(payload.get("url", ""), ""),
+        "rated": bool(payload.get("rated", False)),
+        "pgn_available": bool(str(payload.get("pgn", "") or "").strip()),
+        "moves_available": bool([move for move in (payload.get("moves", []) or []) if str(move or "").strip()]),
+    }
+
+
 def build_chess_home_projection():
     chess_data = _safe_load(load_chess_data, default_chess_data)
     chess_courses_data = _safe_load(load_chess_courses_data, default_chess_courses)
@@ -155,4 +202,16 @@ def build_chess_games_projection(*, limit=50, offset=0, source=None, result=None
         "count": len(all_items),
         "limit": safe_limit,
         "offset": safe_offset,
+    }
+
+
+def build_chess_game_detail_projection(game_id):
+    chess_data = _safe_load(load_chess_data, default_chess_data)
+    game = _find_chess_game(chess_data, game_id)
+    if not game:
+        return None
+    return {
+        "ok": True,
+        "section": "chess",
+        "item": _project_chess_game_detail_item(game),
     }

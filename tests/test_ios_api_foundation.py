@@ -1,4 +1,5 @@
 import unittest
+from urllib.parse import quote
 from unittest.mock import patch
 
 import app as dragon_app
@@ -211,3 +212,97 @@ class IOSApiFoundationTests(unittest.TestCase):
         self.assertEqual(payload["count"], 0)
         self.assertEqual(payload["limit"], 50)
         self.assertEqual(payload["offset"], 0)
+
+    def test_chess_game_detail_endpoint_returns_safe_item(self):
+        game = {
+            "id": "lichess:game 1",
+            "source": "lichess",
+            "white": "Alpha",
+            "black": "Beta",
+            "user_color": "black",
+            "user_result": "win",
+            "result": "0-1",
+            "date": "2026-01-05",
+            "time_class": "rapid",
+            "time_control": "10+0",
+            "rated": True,
+            "url": "https://lichess.org/game1",
+            "opening": {"name": "French Defense", "eco": "C00", "variation": "Advance"},
+            "pgn": "[Event \"hidden\"]",
+            "moves": ["e4", "e5"],
+            "raw_source": {"token": "hidden"},
+        }
+        with patch("domains.chess.api_projection.load_chess_data", return_value={"games": [game]}):
+            response = self.client.get("/api/v1/chess/games/lichess:game%201")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload["ok"], True)
+        self.assertEqual(payload["section"], "chess")
+        self.assertEqual(payload["item"]["id"], "lichess:game 1")
+        self.assertEqual(payload["item"]["source"], "lichess")
+        self.assertEqual(payload["item"]["opening"], {"name": "French Defense", "eco": "C00", "variation": "Advance"})
+        self.assertTrue(payload["item"]["pgn_available"])
+        self.assertTrue(payload["item"]["moves_available"])
+        self.assertEqual(
+            set(payload["item"].keys()),
+            {
+                "id",
+                "source",
+                "white",
+                "black",
+                "user_color",
+                "user_result",
+                "result",
+                "date",
+                "time_class",
+                "time_control",
+                "opening",
+                "url",
+                "rated",
+                "pgn_available",
+                "moves_available",
+            },
+        )
+        body = response.get_data(as_text=True)
+        self.assertNotIn("raw_source", body.lower())
+        self.assertNotIn("token", body.lower())
+        self.assertNotIn("secret", body.lower())
+        self.assertNotIn("path", body.lower())
+
+    def test_chess_game_detail_endpoint_handles_missing_game(self):
+        with patch("domains.chess.api_projection.load_chess_data", return_value={"games": []}):
+            response = self.client.get("/api/v1/chess/games/missing-id")
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.get_json(), {"ok": False, "error": "game_not_found"})
+
+    def test_chess_game_detail_endpoint_supports_url_encoded_ids(self):
+        game_id = "lichess:space id"
+        encoded_id = quote(game_id, safe="")
+        with patch("domains.chess.api_projection.load_chess_data", return_value={
+            "games": [
+                {
+                    "id": game_id,
+                    "source": "lichess",
+                    "white": "A",
+                    "black": "B",
+                    "user_color": "white",
+                    "user_result": "draw",
+                    "result": "1/2-1/2",
+                    "date": "2026-01-06",
+                    "time_class": "blitz",
+                    "time_control": "3+2",
+                    "rated": False,
+                    "url": "",
+                    "opening": {"name": "", "eco": "", "variation": ""},
+                    "moves": [],
+                }
+            ]
+        }):
+            response = self.client.get(f"/api/v1/chess/games/{encoded_id}")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload["item"]["id"], game_id)
+        self.assertEqual(payload["item"]["user_result"], "draw")
