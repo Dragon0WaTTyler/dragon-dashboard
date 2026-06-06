@@ -257,6 +257,8 @@ DRAGON_ADMIN_PASSWORD = config_value("DRAGON_ADMIN_PASSWORD", "")
 DRAGON_PROTECT_WHOLE_SITE = config_flag("DRAGON_PROTECT_WHOLE_SITE", IS_PRODUCTION)
 DRAGON_ALLOW_WEB_REFRESH_SYNC = config_flag("DRAGON_ALLOW_WEB_REFRESH_SYNC", False)
 DRAGON_ALLOW_LIVE_ARTICLE_EXTRACTION = config_flag("DRAGON_ALLOW_LIVE_ARTICLE_EXTRACTION", False)
+DRAGON_ALLOW_FULLTEXT_REQUEST_DISPATCH = config_flag("DRAGON_ALLOW_FULLTEXT_REQUEST_DISPATCH", False)
+DRAGON_FULLTEXT_REQUEST_DISPATCH_MODE = str(config_value("DRAGON_FULLTEXT_REQUEST_DISPATCH_MODE", "") or "").strip().lower()
 DRAGON_READING_SYNC_EXTRACT_FULL_CONTENT = config_flag("DRAGON_READING_SYNC_EXTRACT_FULL_CONTENT", False)
 DRAGON_READING_SYNC_EXTRACT_MAX_ARTICLES = config_int("DRAGON_READING_SYNC_EXTRACT_MAX_ARTICLES", 6, minimum=0, maximum=50)
 DRAGON_READING_SYNC_EXTRACT_TIMEOUT_SECONDS = config_int("DRAGON_READING_SYNC_EXTRACT_TIMEOUT_SECONDS", 12, minimum=3, maximum=60)
@@ -898,6 +900,174 @@ def reading_article_fulltext_load(url):
     if normalized_url and payload_url and payload_url != normalized_url:
         return None
     return payload
+
+
+def reading_article_fulltext_request_cache_path(article_id):
+    normalized_article_id = str(article_id or "").strip()
+    if not normalized_article_id:
+        return None
+    request_key = hashlib.sha256(normalized_article_id.encode("utf-8")).hexdigest()
+    return READING_FULLTEXT_CACHE_DIR / "_requests" / request_key[:2] / f"{request_key}.json"
+
+
+def reading_article_fulltext_request_load(article_id):
+    request_path = reading_article_fulltext_request_cache_path(article_id)
+    if request_path is None or not request_path.exists():
+        return None
+    try:
+        payload = json.loads(request_path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    return payload
+
+
+def reading_article_fulltext_request_save(article_id, record):
+    request_path = reading_article_fulltext_request_cache_path(article_id)
+    if request_path is None:
+        return None
+    payload = dict(record or {}) if isinstance(record, dict) else {}
+    request_path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        mode="w",
+        delete=False,
+        dir=str(request_path.parent),
+        prefix=f"{request_path.stem}.",
+        suffix=".tmp",
+        encoding="utf-8",
+    ) as temp_file:
+        temp_file.write(json.dumps(payload, ensure_ascii=False, indent=2))
+        temp_path = Path(temp_file.name)
+    temp_path.replace(request_path)
+    return request_path
+
+
+def reading_article_fulltext_safe_error(error_text="", fallback_message=""):
+    fallback_message = str(fallback_message or "").strip() or "Full article loading is not available on this host. Open original source."
+    text = str(error_text or "").strip()
+    if not text:
+        return fallback_message
+    lowered = text.lower()
+    if any(marker in lowered for marker in (
+        "proxyerror",
+        "token",
+        "traceback",
+        "stack trace",
+        "pythonanywhere",
+        "tunnel connection failed",
+        "forbidden",
+        "c:\\",
+        "/home/",
+        "local path",
+    )):
+        return fallback_message
+    if "no readable article body found" in lowered:
+        return "No readable article body found."
+    if len(text) > 220:
+        return fallback_message
+    return text
+
+
+def reading_article_fulltext_request_dispatch_capability():
+    if not DRAGON_ALLOW_FULLTEXT_REQUEST_DISPATCH:
+        return {
+            "enabled": False,
+            "available": False,
+            "reason": "disabled",
+            "message": "Full article loading is not available on this host. Open original source.",
+        }
+    dispatch_mode = str(DRAGON_FULLTEXT_REQUEST_DISPATCH_MODE or "").strip().lower()
+    if not dispatch_mode:
+        return {
+            "enabled": True,
+            "available": False,
+            "reason": "not_configured",
+            "message": "Full article cache requests are not configured on this host yet.",
+        }
+    return {
+        "enabled": True,
+        "available": False,
+        "reason": "not_configured",
+        "message": "Full article cache requests are not configured on this host yet.",
+    }
+
+
+def build_reading_article_fulltext_status(entry, cache_record=None, request_record=None):
+    entry = dict(entry or {}) if isinstance(entry, dict) else {}
+    cache_record = dict(cache_record or {}) if isinstance(cache_record, dict) else {}
+    request_record = dict(request_record or {}) if isinstance(request_record, dict) else {}
+    article_id = str(entry.get("id", "") or request_record.get("article_id", "") or "").strip()
+    safe_disabled_message = "Full article loading is not available on this host. Open original source."
+    dispatch_capability = reading_article_fulltext_request_dispatch_capability()
+    request_status = str(request_record.get("status", "") or "").strip().lower()
+    cache_status = str(cache_record.get("status", "") or "").strip().lower()
+    cached_at = str(cache_record.get("fetched_at", "") or request_record.get("cached_at", "") or "").strip()
+
+    if str(cache_record.get("content_text", "") or "").strip():
+        has_html = bool(str(cache_record.get("content_html", "") or "").strip())
+        return {
+            "article_id": article_id,
+            "status": "cached",
+            "cached_at": cached_at,
+            "safe_error": "",
+            "can_request": bool(dispatch_capability.get("available")),
+            "next_action": "request_cache" if dispatch_capability.get("available") else "open_cached",
+            "display_label": "Cached",
+            "display_message": "Full article content is cached locally." if has_html else "Full article content is cached locally in text mode.",
+        }
+
+    if request_status in {"queued", "running"}:
+        display_message = "Full article cache request queued. Check back soon." if request_status == "queued" else "Full article cache request is running. Check back soon."
+        return {
+            "article_id": article_id,
+            "status": request_status,
+            "cached_at": cached_at,
+            "safe_error": "",
+            "can_request": False,
+            "next_action": "wait",
+            "display_label": "Queued" if request_status == "queued" else "Running",
+            "display_message": display_message,
+        }
+
+    if request_status == "failed" or cache_status == "failed":
+        safe_error = reading_article_fulltext_safe_error(
+            request_record.get("safe_error", "") or cache_record.get("error", ""),
+            fallback_message="Full article cache is unavailable right now. Open original source.",
+        )
+        return {
+            "article_id": article_id,
+            "status": "failed",
+            "cached_at": cached_at,
+            "safe_error": safe_error,
+            "can_request": bool(dispatch_capability.get("available")),
+            "next_action": "request_cache" if dispatch_capability.get("available") else "open_original",
+            "display_label": "Unavailable",
+            "display_message": safe_error,
+        }
+
+    if dispatch_capability.get("available"):
+        return {
+            "article_id": article_id,
+            "status": "missing",
+            "cached_at": cached_at,
+            "safe_error": "",
+            "can_request": True,
+            "next_action": "request_cache",
+            "display_label": "Not cached",
+            "display_message": "Full article content is not cached yet. You can request a cache build.",
+        }
+
+    return {
+        "article_id": article_id,
+        "status": "disabled",
+        "cached_at": cached_at,
+        "safe_error": safe_disabled_message,
+        "can_request": False,
+        "next_action": dispatch_capability.get("reason", "open_original"),
+        "display_label": "Unavailable",
+        "display_message": reading_article_fulltext_safe_error(dispatch_capability.get("message", ""), fallback_message=safe_disabled_message),
+    }
 
 
 def reading_article_fulltext_prepare_record(entry, extraction, article_url):
@@ -10267,6 +10437,8 @@ def _get_reading_sync_service():
             datetime_module=datetime,
             traceback_module=traceback,
             urllib_parse=urllib.parse,
+            reading_article_fulltext_prepare_record=reading_article_fulltext_prepare_record,
+            reading_article_fulltext_save=reading_article_fulltext_save,
             dragon_reading_sync_extract_full_content=DRAGON_READING_SYNC_EXTRACT_FULL_CONTENT,
             dragon_reading_sync_extract_max_articles=DRAGON_READING_SYNC_EXTRACT_MAX_ARTICLES,
             dragon_reading_sync_extract_timeout_seconds=DRAGON_READING_SYNC_EXTRACT_TIMEOUT_SECONDS,
@@ -10753,6 +10925,19 @@ def extract_reading_article_page(url, timeout_seconds=None):
 
 def reading_article_live_extraction_allowed(force_refresh=False):
     return bool(DRAGON_ALLOW_LIVE_ARTICLE_EXTRACTION)
+
+
+def reading_article_fulltext_request_dispatch(entry, fulltext_status, force_refresh=False):
+    entry = dict(entry or {}) if isinstance(entry, dict) else {}
+    fulltext_status = dict(fulltext_status or {}) if isinstance(fulltext_status, dict) else {}
+    dispatch_capability = reading_article_fulltext_request_dispatch_capability()
+    return {
+        "ok": False,
+        "status": fulltext_status.get("status", "disabled") or "disabled",
+        "reason": dispatch_capability.get("reason", "disabled"),
+        "message": fulltext_status.get("display_message", "") or dispatch_capability.get("message", "") or "Full article cache requests are unavailable right now.",
+        "record": None,
+    }
 
 
 def ensure_reading_entry_content(entry_id, force_refresh=False, allow_live_extraction=False, log_reason=""):
@@ -29733,6 +29918,11 @@ def reading_article(entry_id):
             if current_index >= 0:
                 entries[current_index] = updated_entry
     display_entry = reading_entry_with_fulltext_cache(entry, full_cache_record)
+    fulltext_status = build_reading_article_fulltext_status(
+        display_entry,
+        cache_record=full_cache_record,
+        request_record=reading_article_fulltext_request_load(normalized_entry_id),
+    )
     source_url = entry.get("original_url") or entry.get("url")
     lead_image_url = normalize_reading_url(display_entry.get("lead_image_url", "")) if display_entry.get("lead_image_kind") in {"explicit", "feed_cover"} else ""
     article_hero_image = reading_choose_article_hero_image(
@@ -29765,12 +29955,8 @@ def reading_article(entry_id):
     if not article_paragraphs and article_text:
         article_paragraphs = [article_text]
     article_cache_fallback = not bool(article_html)
-    article_cache_fallback_message = ""
+    article_cache_fallback_message = str(fulltext_status.get("display_message", "") or "").strip()
     if article_cache_fallback:
-        if display_entry.get("content_text") or display_entry.get("excerpt"):
-            article_cache_fallback_message = "Full article content is not cached locally yet. Use Load Full Article or open original source."
-        else:
-            article_cache_fallback_message = "Full article content is not cached locally yet. Use Load Full Article or open original source."
         app.logger.info(
             "reading_article fallback entry_id=%s status=%s has_text=%s has_excerpt=%s",
             entry_id,
@@ -29884,6 +30070,8 @@ def reading_article(entry_id):
         full_article_word_count=int((full_cache_record or {}).get("word_count", 0) or 0),
         full_article_load_error=str(request.args.get("full_error", "") or "").strip(),
         full_article_load_success=str(request.args.get("full_loaded", "") or "").strip(),
+        fulltext_status=fulltext_status,
+        fulltext_live_load_supported=bool(DRAGON_ALLOW_LIVE_ARTICLE_EXTRACTION),
         ai_default_mode="cinematic",
         ai_page_context="general",
     )
@@ -29911,6 +30099,56 @@ def reading_article_load_full(entry_id):
         return redirect(append_query_param(next_url, full_error=fetch_result.get("error", "") or "Could not load the full article."))
     success_message = "Full article refreshed." if refresh_requested else ("Full article reused from cache." if fetch_result.get("cache_hit") else "Full article loaded.")
     return redirect(append_query_param(next_url, full_loaded=success_message))
+
+
+@app.route("/reading/article/<entry_id>/fulltext-status", methods=["GET"])
+def reading_article_fulltext_status_api(entry_id):
+    normalized_entry_id = str(entry_id or "").strip()
+    entry = get_reading_entry(normalized_entry_id)
+    if not entry:
+        return jsonify({"ok": False, "error": "Article not found."}), 404
+    cache_record = reading_article_fulltext_load((reading_article_url_candidates(entry) or [""])[0])
+    status_payload = build_reading_article_fulltext_status(
+        reading_entry_with_fulltext_cache(entry, cache_record),
+        cache_record=cache_record,
+        request_record=reading_article_fulltext_request_load(normalized_entry_id),
+    )
+    return jsonify(status_payload), 200
+
+
+@app.route("/reading/article/<entry_id>/request-fulltext", methods=["POST"])
+def reading_article_request_fulltext_api(entry_id):
+    normalized_entry_id = str(entry_id or "").strip()
+    entry = get_reading_entry(normalized_entry_id)
+    if not entry:
+        return jsonify({"ok": False, "error": "Article not found."}), 404
+    cache_record = reading_article_fulltext_load((reading_article_url_candidates(entry) or [""])[0])
+    status_payload = build_reading_article_fulltext_status(
+        reading_entry_with_fulltext_cache(entry, cache_record),
+        cache_record=cache_record,
+        request_record=reading_article_fulltext_request_load(normalized_entry_id),
+    )
+    if status_payload.get("status") == "cached":
+        return jsonify(status_payload), 200
+
+    dispatch_result = reading_article_fulltext_request_dispatch(entry, status_payload, force_refresh=False)
+    if dispatch_result.get("ok"):
+        record = dict(dispatch_result.get("record", {}) or {})
+        if record:
+            reading_article_fulltext_request_save(normalized_entry_id, record)
+        refreshed_status = build_reading_article_fulltext_status(
+            entry,
+            cache_record=cache_record,
+            request_record=record,
+        )
+        return jsonify(refreshed_status), 202
+
+    refreshed_status = build_reading_article_fulltext_status(
+        entry,
+        cache_record=cache_record,
+        request_record=reading_article_fulltext_request_load(normalized_entry_id),
+    )
+    return jsonify(refreshed_status), 200
 
 
 @app.route("/reading/article/<entry_id>/audio", methods=["GET"])

@@ -36,6 +36,8 @@ class ReadingSyncService:
         datetime_module,
         traceback_module,
         urllib_parse,
+        reading_article_fulltext_prepare_record,
+        reading_article_fulltext_save,
         dragon_reading_sync_extract_full_content,
         dragon_reading_sync_extract_max_articles,
         dragon_reading_sync_extract_timeout_seconds,
@@ -77,6 +79,8 @@ class ReadingSyncService:
         self.datetime_module = datetime_module
         self.traceback_module = traceback_module
         self.urllib_parse = urllib_parse
+        self.reading_article_fulltext_prepare_record = reading_article_fulltext_prepare_record
+        self.reading_article_fulltext_save = reading_article_fulltext_save
         self.dragon_reading_sync_extract_full_content = dragon_reading_sync_extract_full_content
         self.dragon_reading_sync_extract_max_articles = dragon_reading_sync_extract_max_articles
         self.dragon_reading_sync_extract_timeout_seconds = dragon_reading_sync_extract_timeout_seconds
@@ -562,8 +566,15 @@ class ReadingSyncService:
                 self.reading_merge_extraction_snapshot(entry, extraction),
                 candidate_index,
             )
-            entries[candidate_index] = merged_entry
             extraction_status = str(extraction.get("status", "") or "").strip().lower()
+            if extraction_status in {"ok", "partial", "weak_partial"} and (
+                str(extraction.get("content_text", "") or "").strip()
+                or str(extraction.get("content_html", "") or "").strip()
+            ):
+                cache_record = self.reading_article_fulltext_prepare_record(entry, extraction, article_url)
+                if str(cache_record.get("content_text", "") or "").strip():
+                    self.reading_article_fulltext_save(article_url, cache_record)
+            entries[candidate_index] = merged_entry
             if extraction_status in {"ok", "partial", "weak_partial"} and (
                 self.reading_entry_content_score(merged_entry) >= self.reading_entry_content_score(entry)
                 or merged_entry.get("content_html")

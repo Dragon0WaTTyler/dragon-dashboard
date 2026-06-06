@@ -119,10 +119,17 @@
                 {% if entry.url %}
                 <a class="btn" href="{{ entry.url }}" target="_blank" rel="noopener"><i data-lucide="external-link"></i>Open original</a>
                 {% endif %}
+                {% if fulltext_live_load_supported or full_article_cached %}
                 <form method="post" action="{{ url_for('reading_article_load_full', entry_id=entry.id) }}">
                     <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
                     <button type="submit" class="btn"><i data-lucide="file-text"></i>{{ 'Reload Full Article' if full_article_cached else 'Load Full Article' }}</button>
                 </form>
+                {% endif %}
+                {% if fulltext_status.can_request %}
+                <form method="post" action="{{ url_for('reading_article_request_fulltext_api', entry_id=entry.id) }}">
+                    <button type="submit" class="btn"><i data-lucide="inbox"></i>Request Full Article Cache</button>
+                </form>
+                {% endif %}
                 {% if full_article_cached %}
                 <form method="post" action="{{ url_for('reading_article_load_full', entry_id=entry.id) }}">
                     <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
