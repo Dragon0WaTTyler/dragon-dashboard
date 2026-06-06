@@ -50,6 +50,7 @@ from domains.magnets.playback.runtime_handoff import (
 )
 from domains.magnets.playback_runtime import PlaybackRuntimeError, PlaybackRuntimeManager, build_runtime_source_quality, build_stream_response
 from domains.magnets.services import ExperimentalRuntimeService, MovieSourcesService, SessionAnalyticsService, SourceActionService, StreamSessionService
+from domains.api import api_v1_bp
 from domains.magnets.preferences import MagnetPreferenceService
 from domains.magnets.runtime.identifiers import source_fingerprint as magnet_source_fingerprint
 from domains.magnets.runtime.observability import emit_event
@@ -193,6 +194,7 @@ def create_app():
 
 
 app = create_app()
+app.register_blueprint(api_v1_bp)
 
 # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 #  CONFIGURATION
