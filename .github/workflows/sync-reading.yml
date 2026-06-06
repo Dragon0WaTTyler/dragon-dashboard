@@ -4,6 +4,22 @@ on:
   schedule:
     - cron: "0 */2 * * *"
   workflow_dispatch:
+    inputs:
+      mode:
+        description: "Optional workflow mode. Use fulltext_request for a single requested article."
+        required: false
+        default: ""
+        type: string
+      article_id:
+        description: "Target article id for fulltext_request mode."
+        required: false
+        default: ""
+        type: string
+      max_articles:
+        description: "Requested extraction bound for workflow mode."
+        required: false
+        default: "1"
+        type: string
 
 permissions:
   contents: write
@@ -27,6 +43,9 @@ jobs:
       DRAGON_READING_SYNC_EXTRACT_SLOW_LOG_LIMIT: "5"
       DRAGON_READING_SYNC_BACKFILL_BBC: "0"
       DRAGON_READING_SYNC_BBC_BACKFILL_MAX: "0"
+      DRAGON_READING_SYNC_WORKFLOW_MODE: ${{ github.event.inputs.mode || '' }}
+      DRAGON_READING_SYNC_REQUEST_ARTICLE_ID: ${{ github.event.inputs.article_id || '' }}
+      DRAGON_READING_SYNC_REQUEST_MAX_ARTICLES: ${{ github.event.inputs.max_articles || '' }}
 
     steps:
       - name: Check out repository
@@ -51,7 +70,45 @@ jobs:
         run: |
           set -euo pipefail
           echo "Starting Reading sync at $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
-          python -u scripts/sync_reading_feeds.py
+          mode="${DRAGON_READING_SYNC_WORKFLOW_MODE:-}"
+          article_id="${DRAGON_READING_SYNC_REQUEST_ARTICLE_ID:-}"
+          max_articles="${DRAGON_READING_SYNC_REQUEST_MAX_ARTICLES:-}"
+          if [ "$mode" = "fulltext_request" ]; then
+            export DRAGON_READING_SYNC_EXTRACT_FULL_CONTENT="1"
+            export DRAGON_READING_SYNC_EXTRACT_MAX_ARTICLES="1"
+            export DRAGON_READING_SYNC_BACKFILL_BBC="0"
+            export DRAGON_READING_SYNC_BBC_BACKFILL_MAX="0"
+            if [ -z "$article_id" ]; then
+              echo "fulltext_request mode requires article_id"
+              exit 1
+            fi
+            python -u scripts/sync_reading_feeds.py --mode "$mode" --article-id "$article_id" --max-articles "${max_articles:-1}"
+          else
+            python -u scripts/sync_reading_feeds.py
+          fi
+
+      - name: Resolve targeted fulltext cache path
+        id: fulltext_target
+        if: ${{ github.event.inputs.mode == 'fulltext_request' && github.event.inputs.article_id != '' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import os
+          import app as dragon_app
+
+          article_id = str(os.environ.get("DRAGON_READING_SYNC_REQUEST_ARTICLE_ID", "") or "").strip()
+          entry = dragon_app.get_reading_entry(article_id) if article_id else None
+          cache_rel_path = ""
+          cache_exists = "false"
+          if isinstance(entry, dict):
+              article_urls = dragon_app.reading_article_url_candidates(entry)
+              if article_urls:
+                  cache_rel_path = str(dragon_app.reading_article_fulltext_repo_relative_path(article_urls[0]) or "").strip()
+                  cache_exists = "true" if cache_rel_path and os.path.isfile(os.path.join(os.getcwd(), cache_rel_path)) else "false"
+          print(f"cache_rel_path={cache_rel_path}")
+          print(f"cache_exists={cache_exists}")
+          PY
 
       - name: Export lightweight runtime snapshot
         if: success()
@@ -94,10 +151,18 @@ jobs:
             )
           fi
           cp "$GITHUB_WORKSPACE/cache/reading_runtime_snapshot.json" "$publish_dir/reading_data.json"
+          fulltext_rel_path="${{ steps.fulltext_target.outputs.cache_rel_path }}"
+          if [ -n "$fulltext_rel_path" ] && [ -f "$GITHUB_WORKSPACE/$fulltext_rel_path" ]; then
+            mkdir -p "$publish_dir/$(dirname "$fulltext_rel_path")"
+            cp "$GITHUB_WORKSPACE/$fulltext_rel_path" "$publish_dir/$fulltext_rel_path"
+          fi
           (
             cd "$publish_dir"
             git add -f reading_data.json
-            if [ -z "$(git status --porcelain -- reading_data.json)" ]; then
+            if [ -n "$fulltext_rel_path" ] && [ -f "$fulltext_rel_path" ]; then
+              git add -f "$fulltext_rel_path"
+            fi
+            if [ -z "$(git status --porcelain)" ]; then
               echo "No runtime reading snapshot changes to publish."
               exit 0
             fi
@@ -117,10 +182,23 @@ jobs:
             echo "PythonAnywhere notify skipped: DRAGON_GITHUB_WEBHOOK_SECRET is not configured in GitHub secrets."
             exit 0
           fi
+          payload=$(python - <<'PY'
+          import json
+          import os
+
+          print(json.dumps({
+              "mode": str(os.environ.get("DRAGON_READING_SYNC_WORKFLOW_MODE", "") or "").strip(),
+              "article_id": str(os.environ.get("DRAGON_READING_SYNC_REQUEST_ARTICLE_ID", "") or "").strip(),
+              "max_articles": str(os.environ.get("DRAGON_READING_SYNC_REQUEST_MAX_ARTICLES", "") or "").strip(),
+              "cache_rel_path": "${{ steps.fulltext_target.outputs.cache_rel_path }}",
+          }))
+          PY
+          )
           http_code=$(curl -sS -o /tmp/dragon-reading-notify-response.txt -w "%{http_code}" \
             -X POST "https://dragon99.pythonanywhere.com/reading/github-snapshot-updated" \
             -H "X-Dragon-GitHub-Secret: ${DRAGON_GITHUB_WEBHOOK_SECRET}" \
-            -H "Content-Type: application/json")
+            -H "Content-Type: application/json" \
+            -d "$payload")
           if [ "$http_code" -lt 200 ] || [ "$http_code" -ge 300 ]; then
             echo "PythonAnywhere notify failed with HTTP $http_code"
             cat /tmp/dragon-reading-notify-response.txt || true

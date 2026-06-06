@@ -27,6 +27,37 @@ Runtime branch commit message:
 
 - `Sync reading runtime snapshot`
 
+## Fulltext request adapter V0
+
+The backend can now optionally dispatch the same workflow for a bounded fulltext request contract.
+
+Relevant backend flags:
+
+- `DRAGON_READING_FULLTEXT_REQUESTS_ENABLED=false`
+- `DRAGON_READING_FULLTEXT_DISPATCH_MODE=disabled`
+- `DRAGON_READING_FULLTEXT_GITHUB_WORKFLOW=sync-reading.yml`
+- `DRAGON_READING_FULLTEXT_GITHUB_BRANCH=main`
+
+When `DRAGON_READING_FULLTEXT_DISPATCH_MODE=github_action`, the backend sends `workflow_dispatch` inputs:
+
+- `article_id`
+- `mode=fulltext_request`
+- `max_articles=1`
+
+`sync-reading.yml` now accepts workflow inputs:
+
+- `mode`
+- `article_id`
+- `max_articles`
+
+For `mode=fulltext_request`:
+
+- the workflow enables extraction only for that run
+- extraction is bounded to one requested article
+- the sync script routes to targeted fulltext handling instead of broad RSS sync
+- the resulting fulltext cache file is published to the `runtime-data` branch under `cache/articles/full_text/...`
+- PythonAnywhere can pull that one cache file through the existing reading GitHub webhook path without enabling live extraction
+
 ## Manual trigger in GitHub
 
 1. Open the GitHub repository.

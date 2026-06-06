@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import signal
 import sys
 import time
@@ -198,8 +199,43 @@ def reconcile_reading_sources_registry(reading_data_path: Path | None = None) ->
     )
 
 
-def run_sync(source_id: str = "", source_name: str = "", data_path: str = "", dry_run: bool = False) -> int:
+def resolve_sync_invocation_options(mode: str = "", article_id: str = "", max_articles: int | str = 0, env=None) -> dict:
+    env = env if isinstance(env, dict) else os.environ
+    resolved_mode = str(mode or env.get("DRAGON_READING_SYNC_WORKFLOW_MODE", "") or "").strip().lower()
+    resolved_article_id = str(article_id or env.get("DRAGON_READING_SYNC_REQUEST_ARTICLE_ID", "") or "").strip()
+    raw_max_articles = max_articles if str(max_articles or "").strip() else env.get("DRAGON_READING_SYNC_REQUEST_MAX_ARTICLES", "")
+    try:
+        resolved_max_articles = int(str(raw_max_articles or "0").strip() or "0")
+    except (TypeError, ValueError):
+        resolved_max_articles = 0
+    if resolved_mode == "fulltext_request":
+        resolved_max_articles = 1
+    else:
+        resolved_mode = ""
+        resolved_article_id = ""
+        resolved_max_articles = 0
+    return {
+        "mode": resolved_mode,
+        "article_id": resolved_article_id,
+        "max_articles": resolved_max_articles,
+    }
+
+
+def run_sync(
+    source_id: str = "",
+    source_name: str = "",
+    data_path: str = "",
+    dry_run: bool = False,
+    mode: str = "",
+    article_id: str = "",
+    max_articles: int | str = 0,
+) -> int:
     started_at = time.monotonic()
+    invocation_options = resolve_sync_invocation_options(
+        mode=mode,
+        article_id=article_id,
+        max_articles=max_articles,
+    )
     configured_data_path = configure_reading_data_path(data_path)
     seeded = reconcile_reading_sources_registry(configured_data_path)
     safe_print(
@@ -228,10 +264,22 @@ def run_sync(source_id: str = "", source_name: str = "", data_path: str = "", dr
         "Reading RSS sync started | "
         f"source_id={resolved_source_id or source_id or 'all'} | "
         f"data_path={(configured_data_path or dragon_app.READING_DATA_PATH)} | "
-        f"dry_run={int(dry_run)}"
+        f"dry_run={int(dry_run)} | "
+        f"mode={invocation_options['mode'] or 'rss_sync'}"
     )
     try:
-        result = dragon_app.sync_reading_sources(source_id=resolved_source_id or source_id)
+        if invocation_options["mode"] == "fulltext_request":
+            if not invocation_options["article_id"]:
+                safe_print("Reading fulltext request aborted: article_id is required.")
+                if cleanup_path and cleanup_path.exists():
+                    cleanup_path.unlink(missing_ok=True)
+                return 1
+            result = dragon_app.sync_reading_fulltext_request(
+                article_id=invocation_options["article_id"],
+                max_articles=invocation_options["max_articles"],
+            )
+        else:
+            result = dragon_app.sync_reading_sources(source_id=resolved_source_id or source_id)
     except KeyboardInterrupt as exc:
         safe_print(str(exc) or "Reading sync cancelled.")
         if cleanup_path and cleanup_path.exists():
@@ -243,6 +291,24 @@ def run_sync(source_id: str = "", source_name: str = "", data_path: str = "", dr
         if cleanup_path and cleanup_path.exists():
             cleanup_path.unlink(missing_ok=True)
         return 1
+
+    if invocation_options["mode"] == "fulltext_request":
+        elapsed = time.monotonic() - started_at
+        safe_print(
+            "Reading fulltext request completed | "
+            f"elapsed={elapsed:.1f}s | "
+            f"article_id={invocation_options['article_id']} | "
+            f"status={str(result.get('status', '') or 'unknown').strip() or 'unknown'} | "
+            f"cached_articles={int(result.get('cached_articles', 0) or 0)} | "
+            f"failed_articles={int(result.get('failed_articles', 0) or 0)}"
+        )
+        if result.get("cache_path"):
+            safe_print(f"Fulltext cache path: {result.get('cache_path')}")
+        if result.get("safe_error"):
+            safe_print(f"Fulltext request note: {result.get('safe_error')}")
+        if cleanup_path and cleanup_path.exists():
+            safe_print(f"Dry-run output saved to temporary file: {cleanup_path}")
+        return 0 if result.get("ok") else 1
 
     summary = build_summary(result)
     elapsed = time.monotonic() - started_at
@@ -407,6 +473,9 @@ def main() -> int:
     parser.add_argument("--data-path", default="", help="Optional alternate reading_data.json path for safe testing.")
     parser.add_argument("--dry-run", action="store_true", help="Copy the reading data to a temporary file before syncing.")
     parser.add_argument("--inspect-source", action="store_true", help="Fetch a source feed and print diagnostics without saving anything.")
+    parser.add_argument("--mode", default="", help="Optional workflow mode. Supported: fulltext_request.")
+    parser.add_argument("--article-id", default="", help="Target article id for fulltext_request mode.")
+    parser.add_argument("--max-articles", default="0", help="Requested max articles for workflow mode.")
     args = parser.parse_args()
     try:
         if bool(args.inspect_source):
@@ -420,6 +489,9 @@ def main() -> int:
             source_name=str(args.source_name or "").strip(),
             data_path=str(args.data_path or "").strip(),
             dry_run=bool(args.dry_run),
+            mode=str(args.mode or "").strip(),
+            article_id=str(args.article_id or "").strip(),
+            max_articles=str(args.max_articles or "").strip(),
         )
     except KeyboardInterrupt as exc:
         safe_print(str(exc) or "Reading sync cancelled.")

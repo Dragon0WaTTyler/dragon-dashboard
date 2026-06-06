@@ -299,6 +299,41 @@ class ReadingFullArticleCacheTests(unittest.TestCase):
             self.assertEqual(reading_response.status_code, 200)
             self.assertEqual(article_response.status_code, 200)
 
+    def test_article_page_only_shows_request_button_when_can_request(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            reading_data_path = root / "reading_data.json"
+            cache_dir = root / "fulltext-cache"
+            reading_data_path.write_text(json.dumps(self._payload(), ensure_ascii=False, indent=2), encoding="utf-8")
+
+            patches = self._patched_runtime(reading_data_path, cache_dir)
+            with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patch.object(
+                dragon_app,
+                "DRAGON_READING_FULLTEXT_REQUESTS_ENABLED",
+                True,
+            ), patch.object(
+                dragon_app,
+                "DRAGON_READING_FULLTEXT_DISPATCH_MODE",
+                "disabled",
+            ):
+                enabled_response = self.client.get("/reading/article/reading-entry-1")
+
+            with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patch.object(
+                dragon_app,
+                "DRAGON_READING_FULLTEXT_REQUESTS_ENABLED",
+                False,
+            ), patch.object(
+                dragon_app,
+                "DRAGON_READING_FULLTEXT_DISPATCH_MODE",
+                "disabled",
+            ):
+                disabled_response = self.client.get("/reading/article/reading-entry-1")
+
+            self.assertEqual(enabled_response.status_code, 200)
+            self.assertEqual(disabled_response.status_code, 200)
+            self.assertIn("Request Full Article Cache", enabled_response.get_data(as_text=True))
+            self.assertNotIn("Request Full Article Cache", disabled_response.get_data(as_text=True))
+
 
 if __name__ == "__main__":
     unittest.main()

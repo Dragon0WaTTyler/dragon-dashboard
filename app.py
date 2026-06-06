@@ -257,8 +257,17 @@ DRAGON_ADMIN_PASSWORD = config_value("DRAGON_ADMIN_PASSWORD", "")
 DRAGON_PROTECT_WHOLE_SITE = config_flag("DRAGON_PROTECT_WHOLE_SITE", IS_PRODUCTION)
 DRAGON_ALLOW_WEB_REFRESH_SYNC = config_flag("DRAGON_ALLOW_WEB_REFRESH_SYNC", False)
 DRAGON_ALLOW_LIVE_ARTICLE_EXTRACTION = config_flag("DRAGON_ALLOW_LIVE_ARTICLE_EXTRACTION", False)
-DRAGON_ALLOW_FULLTEXT_REQUEST_DISPATCH = config_flag("DRAGON_ALLOW_FULLTEXT_REQUEST_DISPATCH", False)
-DRAGON_FULLTEXT_REQUEST_DISPATCH_MODE = str(config_value("DRAGON_FULLTEXT_REQUEST_DISPATCH_MODE", "") or "").strip().lower()
+DRAGON_READING_FULLTEXT_REQUESTS_ENABLED = config_flag(
+    "DRAGON_READING_FULLTEXT_REQUESTS_ENABLED",
+    config_flag("DRAGON_ALLOW_FULLTEXT_REQUEST_DISPATCH", False),
+)
+DRAGON_READING_FULLTEXT_DISPATCH_MODE = str(
+    config_value(
+        "DRAGON_READING_FULLTEXT_DISPATCH_MODE",
+        config_value("DRAGON_FULLTEXT_REQUEST_DISPATCH_MODE", "disabled"),
+    )
+    or "disabled"
+).strip().lower()
 DRAGON_READING_SYNC_EXTRACT_FULL_CONTENT = config_flag("DRAGON_READING_SYNC_EXTRACT_FULL_CONTENT", False)
 DRAGON_READING_SYNC_EXTRACT_MAX_ARTICLES = config_int("DRAGON_READING_SYNC_EXTRACT_MAX_ARTICLES", 6, minimum=0, maximum=50)
 DRAGON_READING_SYNC_EXTRACT_TIMEOUT_SECONDS = config_int("DRAGON_READING_SYNC_EXTRACT_TIMEOUT_SECONDS", 12, minimum=3, maximum=60)
@@ -283,6 +292,12 @@ READING_SYNC_GITHUB_REPO = "dragon-dashboard"
 READING_SYNC_GITHUB_WORKFLOW = "sync-reading.yml"
 READING_SYNC_GITHUB_BRANCH = "main"
 READING_SYNC_GITHUB_API_BASE = "https://api.github.com"
+DRAGON_READING_FULLTEXT_GITHUB_WORKFLOW = str(
+    config_value("DRAGON_READING_FULLTEXT_GITHUB_WORKFLOW", READING_SYNC_GITHUB_WORKFLOW) or READING_SYNC_GITHUB_WORKFLOW
+).strip() or READING_SYNC_GITHUB_WORKFLOW
+DRAGON_READING_FULLTEXT_GITHUB_BRANCH = str(
+    config_value("DRAGON_READING_FULLTEXT_GITHUB_BRANCH", READING_SYNC_GITHUB_BRANCH) or READING_SYNC_GITHUB_BRANCH
+).strip() or READING_SYNC_GITHUB_BRANCH
 READING_RUNTIME_DATA_BRANCH = config_value("READING_RUNTIME_DATA_BRANCH", "runtime-data")
 READING_SYNC_GITHUB_RAW_SNAPSHOT_URL = config_value(
     "READING_SYNC_GITHUB_RAW_SNAPSHOT_URL",
@@ -807,6 +822,13 @@ def reading_article_fulltext_cache_path(url):
     return READING_FULLTEXT_CACHE_DIR / cache_key[:2] / f"{cache_key}.json"
 
 
+def reading_article_fulltext_repo_relative_path(url):
+    cache_key = reading_article_fulltext_cache_key(url)
+    if not cache_key:
+        return ""
+    return str(Path("cache") / "articles" / "full_text" / cache_key[:2] / f"{cache_key}.json").replace("\\", "/")
+
+
 def reading_article_url_candidates(entry):
     entry = entry if isinstance(entry, dict) else {}
     candidates = []
@@ -970,26 +992,174 @@ def reading_article_fulltext_safe_error(error_text="", fallback_message=""):
 
 
 def reading_article_fulltext_request_dispatch_capability():
-    if not DRAGON_ALLOW_FULLTEXT_REQUEST_DISPATCH:
+    if not DRAGON_READING_FULLTEXT_REQUESTS_ENABLED:
         return {
             "enabled": False,
             "available": False,
             "reason": "disabled",
+            "dispatch_mode": "disabled",
             "message": "Full article loading is not available on this host. Open original source.",
         }
-    dispatch_mode = str(DRAGON_FULLTEXT_REQUEST_DISPATCH_MODE or "").strip().lower()
-    if not dispatch_mode:
+    dispatch_mode = str(DRAGON_READING_FULLTEXT_DISPATCH_MODE or "disabled").strip().lower() or "disabled"
+    if dispatch_mode == "disabled":
+        return {
+            "enabled": True,
+            "available": True,
+            "reason": "queued_local_only",
+            "dispatch_mode": "disabled",
+            "message": "Full article cache requests can be queued on this host.",
+        }
+    if dispatch_mode != "github_action":
         return {
             "enabled": True,
             "available": False,
             "reason": "not_configured",
+            "dispatch_mode": dispatch_mode,
+            "message": "Full article cache requests are not configured on this host yet.",
+        }
+    if not str(GITHUB_ACTIONS_TOKEN or "").strip():
+        return {
+            "enabled": True,
+            "available": False,
+            "reason": "not_configured",
+            "dispatch_mode": "github_action",
+            "message": "Full article cache requests are not configured on this host yet.",
+        }
+    if not str(DRAGON_READING_FULLTEXT_GITHUB_WORKFLOW or "").strip():
+        return {
+            "enabled": True,
+            "available": False,
+            "reason": "not_configured",
+            "dispatch_mode": "github_action",
             "message": "Full article cache requests are not configured on this host yet.",
         }
     return {
         "enabled": True,
-        "available": False,
-        "reason": "not_configured",
-        "message": "Full article cache requests are not configured on this host yet.",
+        "available": True,
+        "reason": "github_action",
+        "dispatch_mode": "github_action",
+        "message": "Full article cache requests are ready to queue.",
+    }
+
+
+def reading_article_fulltext_request_record(entry, status="", existing_record=None, **updates):
+    entry = dict(entry or {}) if isinstance(entry, dict) else {}
+    existing_record = dict(existing_record or {}) if isinstance(existing_record, dict) else {}
+    now_value = current_timestamp()
+    safe_status = str(status or existing_record.get("status", "") or "queued").strip().lower() or "queued"
+    if safe_status not in {"queued", "running", "failed", "cached", "disabled"}:
+        safe_status = "queued"
+    attempts = existing_record.get("attempts", 0)
+    try:
+        attempts = int(attempts or 0)
+    except (TypeError, ValueError):
+        attempts = 0
+    if updates.pop("increment_attempts", False):
+        attempts += 1
+    record = {
+        "article_id": str(entry.get("id", "") or existing_record.get("article_id", "") or "").strip(),
+        "status": safe_status,
+        "requested_at": str(existing_record.get("requested_at", "") or now_value).strip() or now_value,
+        "updated_at": now_value,
+        "last_dispatch_at": str(existing_record.get("last_dispatch_at", "") or "").strip(),
+        "dispatch_mode": str(existing_record.get("dispatch_mode", "") or "disabled").strip().lower() or "disabled",
+        "dispatch_status": str(existing_record.get("dispatch_status", "") or "").strip(),
+        "safe_error": str(existing_record.get("safe_error", "") or "").strip(),
+        "attempts": attempts,
+        "source_url": normalize_reading_url(
+            entry.get("original_url", "") or entry.get("canonical_url", "") or entry.get("url", "") or existing_record.get("source_url", "")
+        ),
+        "title": str(entry.get("title", "") or existing_record.get("title", "") or "").strip(),
+        "source": str(entry.get("source", "") or existing_record.get("source", "") or "").strip(),
+    }
+    record.update({key: value for key, value in updates.items() if value is not None})
+    record["dispatch_mode"] = str(record.get("dispatch_mode", "") or "disabled").strip().lower() or "disabled"
+    record["dispatch_status"] = str(record.get("dispatch_status", "") or "").strip()
+    record["safe_error"] = reading_article_fulltext_safe_error(
+        record.get("safe_error", ""),
+        fallback_message="Could not queue full article cache request right now.",
+    ) if str(record.get("safe_error", "") or "").strip() else ""
+    record["source_url"] = normalize_reading_url(record.get("source_url", "") or "")
+    return record
+
+
+def reading_article_fulltext_remote_raw_url(url):
+    relative_path = str(reading_article_fulltext_repo_relative_path(url) or "").strip()
+    if not relative_path:
+        return ""
+    return (
+        f"https://raw.githubusercontent.com/"
+        f"{READING_SYNC_GITHUB_OWNER}/{READING_SYNC_GITHUB_REPO}/"
+        f"{READING_RUNTIME_DATA_BRANCH}/{relative_path}"
+    )
+
+
+def refresh_deployed_reading_fulltext_from_github(article_id):
+    normalized_article_id = str(article_id or "").strip()
+    if not normalized_article_id:
+        raise RuntimeError("Missing article_id for fulltext cache refresh.")
+    entry = get_reading_entry(normalized_article_id)
+    if not entry:
+        raise RuntimeError("Requested article not found in local Reading snapshot.")
+    article_url = normalize_reading_url((reading_article_url_candidates(entry) or [""])[0])
+    if not article_url:
+        raise RuntimeError("Requested article does not have a valid source URL.")
+    remote_url = reading_article_fulltext_remote_raw_url(article_url)
+    relative_path = reading_article_fulltext_repo_relative_path(article_url)
+    if not remote_url or not relative_path:
+        raise RuntimeError("Fulltext cache location could not be resolved.")
+    response = requests.get(remote_url, timeout=20)
+    if int(getattr(response, "status_code", 0) or 0) == 404:
+        raise RuntimeError(f"GitHub fulltext cache file missing: {relative_path}")
+    if int(getattr(response, "status_code", 0) or 0) >= 400:
+        raise RuntimeError(f"GitHub returned status {int(getattr(response, 'status_code', 0) or 0)} for fulltext cache download")
+    try:
+        payload = response.json()
+    except ValueError as exc:
+        raise RuntimeError("GitHub fulltext cache file is not valid JSON") from exc
+    if not isinstance(payload, dict):
+        raise RuntimeError("GitHub fulltext cache file is invalid")
+    payload_url = normalize_reading_url(payload.get("url", "") or "")
+    if payload_url and payload_url != article_url:
+        raise RuntimeError("GitHub fulltext cache file did not match the requested article")
+    cache_path = reading_article_fulltext_save(article_url, payload)
+    existing_request_record = reading_article_fulltext_request_load(normalized_article_id)
+    reading_article_fulltext_request_save(
+        normalized_article_id,
+        reading_article_fulltext_request_record(
+            entry,
+            status="cached",
+            existing_record=existing_request_record,
+            dispatch_status="remote_cache_downloaded",
+            safe_error="",
+            cached_at=str(payload.get("fetched_at", "") or "").strip(),
+        ),
+    )
+    return {
+        "ok": True,
+        "status": "cached",
+        "article_id": normalized_article_id,
+        "cache_path": str(cache_path or ""),
+        "relative_path": relative_path,
+        "remote_url": remote_url,
+    }
+
+
+def _reading_fulltext_github_actions_dispatch_url():
+    workflow_name = urllib.parse.quote(str(DRAGON_READING_FULLTEXT_GITHUB_WORKFLOW or "").strip(), safe="")
+    return (
+        f"{READING_SYNC_GITHUB_API_BASE}/repos/"
+        f"{READING_SYNC_GITHUB_OWNER}/{READING_SYNC_GITHUB_REPO}/actions/workflows/"
+        f"{workflow_name}/dispatches"
+    )
+
+
+def _reading_fulltext_github_dispatch_inputs(entry):
+    entry = dict(entry or {}) if isinstance(entry, dict) else {}
+    return {
+        "article_id": str(entry.get("id", "") or "").strip(),
+        "mode": "fulltext_request",
+        "max_articles": "1",
     }
 
 
@@ -1046,16 +1216,28 @@ def build_reading_article_fulltext_status(entry, cache_record=None, request_reco
             "display_message": safe_error,
         }
 
-    if dispatch_capability.get("available"):
+    if request_status == "disabled" and not dispatch_capability.get("available"):
+        return {
+            "article_id": article_id,
+            "status": "disabled",
+            "cached_at": cached_at,
+            "safe_error": safe_disabled_message,
+            "can_request": False,
+            "next_action": dispatch_capability.get("reason", "open_original"),
+            "display_label": "Unavailable",
+            "display_message": reading_article_fulltext_safe_error(dispatch_capability.get("message", ""), fallback_message=safe_disabled_message),
+        }
+
+    if dispatch_capability.get("enabled"):
         return {
             "article_id": article_id,
             "status": "missing",
             "cached_at": cached_at,
             "safe_error": "",
-            "can_request": True,
-            "next_action": "request_cache",
+            "can_request": bool(dispatch_capability.get("available")),
+            "next_action": "request_cache" if dispatch_capability.get("available") else dispatch_capability.get("reason", "open_original"),
             "display_label": "Not cached",
-            "display_message": "Full article content is not cached yet. You can request a cache build.",
+            "display_message": "Full article content is not cached yet. You can request a cache build." if dispatch_capability.get("available") else "Full article cache requests are not configured on this host yet.",
         }
 
     return {
@@ -10438,7 +10620,12 @@ def _get_reading_sync_service():
             traceback_module=traceback,
             urllib_parse=urllib.parse,
             reading_article_fulltext_prepare_record=reading_article_fulltext_prepare_record,
+            reading_article_fulltext_load=reading_article_fulltext_load,
             reading_article_fulltext_save=reading_article_fulltext_save,
+            reading_article_fulltext_request_load=reading_article_fulltext_request_load,
+            reading_article_fulltext_request_save=reading_article_fulltext_request_save,
+            reading_article_fulltext_request_record=reading_article_fulltext_request_record,
+            reading_article_fulltext_safe_error=reading_article_fulltext_safe_error,
             dragon_reading_sync_extract_full_content=DRAGON_READING_SYNC_EXTRACT_FULL_CONTENT,
             dragon_reading_sync_extract_max_articles=DRAGON_READING_SYNC_EXTRACT_MAX_ARTICLES,
             dragon_reading_sync_extract_timeout_seconds=DRAGON_READING_SYNC_EXTRACT_TIMEOUT_SECONDS,
@@ -10543,6 +10730,10 @@ def fetch_reading_feed(source):
 
 def sync_reading_sources(source_id=""):
     return _get_reading_sync_service().sync_reading_sources(source_id=source_id)
+
+
+def sync_reading_fulltext_request(article_id="", max_articles=1):
+    return _get_reading_sync_service().sync_requested_fulltext(article_id=article_id, max_articles=max_articles)
 
 
 def update_reading_source(source_id, updates):
@@ -10930,13 +11121,125 @@ def reading_article_live_extraction_allowed(force_refresh=False):
 def reading_article_fulltext_request_dispatch(entry, fulltext_status, force_refresh=False):
     entry = dict(entry or {}) if isinstance(entry, dict) else {}
     fulltext_status = dict(fulltext_status or {}) if isinstance(fulltext_status, dict) else {}
+    article_id = str(entry.get("id", "") or fulltext_status.get("article_id", "") or "").strip()
+    existing_record = reading_article_fulltext_request_load(article_id)
     dispatch_capability = reading_article_fulltext_request_dispatch_capability()
-    return {
+    disabled_result = {
         "ok": False,
         "status": fulltext_status.get("status", "disabled") or "disabled",
         "reason": dispatch_capability.get("reason", "disabled"),
         "message": fulltext_status.get("display_message", "") or dispatch_capability.get("message", "") or "Full article cache requests are unavailable right now.",
         "record": None,
+    }
+    if fulltext_status.get("status") == "cached":
+        return {
+            "ok": True,
+            "status": "cached",
+            "reason": "cached",
+            "message": "Full article content is already cached.",
+            "record": reading_article_fulltext_request_record(
+                entry,
+                status="cached",
+                existing_record=existing_record,
+                dispatch_mode="cache",
+                dispatch_status="cache_hit",
+                safe_error="",
+            ),
+        }
+    if not dispatch_capability.get("enabled"):
+        return disabled_result
+    dispatch_mode = str(dispatch_capability.get("dispatch_mode", "") or "disabled").strip().lower() or "disabled"
+    if dispatch_mode == "disabled":
+        return {
+            "ok": True,
+            "status": "queued",
+            "reason": "queued_local_only",
+            "message": "Full article cache request queued locally.",
+            "record": reading_article_fulltext_request_record(
+                entry,
+                status="queued",
+                existing_record=existing_record,
+                dispatch_mode="disabled",
+                dispatch_status="queued_local_only",
+                safe_error="",
+            ),
+        }
+    if dispatch_mode != "github_action" or not dispatch_capability.get("available"):
+        return disabled_result
+    dispatch_started_at = current_timestamp()
+    try:
+        response = requests.post(
+            _reading_fulltext_github_actions_dispatch_url(),
+            headers=_reading_github_actions_headers(),
+            json={
+                "ref": DRAGON_READING_FULLTEXT_GITHUB_BRANCH,
+                "inputs": _reading_fulltext_github_dispatch_inputs(entry),
+            },
+            timeout=10,
+        )
+    except requests.RequestException as exc:
+        safe_error = reading_article_fulltext_safe_error(
+            str(exc),
+            fallback_message="Could not queue full article cache request right now.",
+        )
+        return {
+            "ok": False,
+            "status": "failed",
+            "reason": "dispatch_failed",
+            "message": safe_error,
+            "record": reading_article_fulltext_request_record(
+                entry,
+                status="failed",
+                existing_record=existing_record,
+                dispatch_mode="github_action",
+                dispatch_status="dispatch_failed",
+                last_dispatch_at=dispatch_started_at,
+                safe_error=safe_error,
+                increment_attempts=True,
+            ),
+        }
+    if int(getattr(response, "status_code", 0) or 0) != 204:
+        safe_error = reading_article_fulltext_safe_error(
+            f"GitHub rejected the full article cache request (status {int(getattr(response, 'status_code', 0) or 0)}).",
+            fallback_message="Could not queue full article cache request right now.",
+        )
+        app.logger.warning(
+            "reading_fulltext_request dispatch_rejected status=%s body=%s article_id=%s",
+            getattr(response, "status_code", 0),
+            str(getattr(response, "text", "") or "")[:500],
+            article_id,
+        )
+        return {
+            "ok": False,
+            "status": "failed",
+            "reason": "dispatch_rejected",
+            "message": safe_error,
+            "record": reading_article_fulltext_request_record(
+                entry,
+                status="failed",
+                existing_record=existing_record,
+                dispatch_mode="github_action",
+                dispatch_status=f"http_{int(getattr(response, 'status_code', 0) or 0)}",
+                last_dispatch_at=dispatch_started_at,
+                safe_error=safe_error,
+                increment_attempts=True,
+            ),
+        }
+    return {
+        "ok": True,
+        "status": "queued",
+        "reason": "queued",
+        "message": "Full article cache request queued.",
+        "record": reading_article_fulltext_request_record(
+            entry,
+            status="queued",
+            existing_record=existing_record,
+            dispatch_mode="github_action",
+            dispatch_status="workflow_dispatch_accepted",
+            last_dispatch_at=dispatch_started_at,
+            safe_error="",
+            increment_attempts=True,
+        ),
     }
 
 
@@ -29715,6 +30018,28 @@ def reading_github_snapshot_updated():
     if not _reading_github_webhook_secret_valid(provided_secret):
         app.logger.warning("reading_github_snapshot_updated rejected reason=invalid_secret")
         return jsonify({"ok": False, "error": "Forbidden"}), 403
+    payload = request.get_json(silent=True) if request.is_json else {}
+    payload = payload if isinstance(payload, dict) else {}
+    workflow_mode = str(payload.get("mode", "") or "").strip().lower()
+    article_id = str(payload.get("article_id", "") or "").strip()
+    if workflow_mode == "fulltext_request" and article_id:
+        try:
+            result = refresh_deployed_reading_fulltext_from_github(article_id)
+        except requests.RequestException as exc:
+            app.logger.warning("reading_github_snapshot_updated fulltext_download_failed article_id=%s error=%s", article_id, exc)
+            return jsonify({"ok": False, "status": "download_failed", "error": str(exc)}), 502
+        except RuntimeError as exc:
+            app.logger.warning("reading_github_snapshot_updated fulltext_failed article_id=%s error=%s", article_id, exc)
+            return jsonify({"ok": False, "status": "fulltext_refresh_failed", "error": str(exc)}), 502
+        except Exception as exc:
+            app.logger.warning("reading_github_snapshot_updated fulltext_failed article_id=%s status=unexpected error=%s", article_id, exc)
+            return jsonify({"ok": False, "status": "fulltext_refresh_failed", "error": str(exc)}), 500
+        app.logger.info(
+            "reading_github_snapshot_updated fulltext_completed article_id=%s cache_path=%s",
+            article_id,
+            result.get("cache_path", ""),
+        )
+        return jsonify(result), 200
     if READING_RUNTIME.github_refresh_lock.locked():
         app.logger.info("reading_github_snapshot_updated skipped reason=refresh_in_progress")
         return jsonify({"ok": True, "status": "already_refreshing"}), 202
@@ -30132,10 +30457,10 @@ def reading_article_request_fulltext_api(entry_id):
         return jsonify(status_payload), 200
 
     dispatch_result = reading_article_fulltext_request_dispatch(entry, status_payload, force_refresh=False)
+    record = dict(dispatch_result.get("record", {}) or {})
+    if record:
+        reading_article_fulltext_request_save(normalized_entry_id, record)
     if dispatch_result.get("ok"):
-        record = dict(dispatch_result.get("record", {}) or {})
-        if record:
-            reading_article_fulltext_request_save(normalized_entry_id, record)
         refreshed_status = build_reading_article_fulltext_status(
             entry,
             cache_record=cache_record,
@@ -30148,7 +30473,9 @@ def reading_article_request_fulltext_api(entry_id):
         cache_record=cache_record,
         request_record=reading_article_fulltext_request_load(normalized_entry_id),
     )
-    return jsonify(refreshed_status), 200
+    failure_reasons = {"dispatch_failed", "dispatch_rejected"}
+    status_code = 502 if str(dispatch_result.get("reason", "") or "").strip().lower() in failure_reasons else 200
+    return jsonify(refreshed_status), status_code
 
 
 @app.route("/reading/article/<entry_id>/audio", methods=["GET"])

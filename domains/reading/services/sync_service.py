@@ -37,7 +37,12 @@ class ReadingSyncService:
         traceback_module,
         urllib_parse,
         reading_article_fulltext_prepare_record,
+        reading_article_fulltext_load,
         reading_article_fulltext_save,
+        reading_article_fulltext_request_load,
+        reading_article_fulltext_request_save,
+        reading_article_fulltext_request_record,
+        reading_article_fulltext_safe_error,
         dragon_reading_sync_extract_full_content,
         dragon_reading_sync_extract_max_articles,
         dragon_reading_sync_extract_timeout_seconds,
@@ -80,7 +85,12 @@ class ReadingSyncService:
         self.traceback_module = traceback_module
         self.urllib_parse = urllib_parse
         self.reading_article_fulltext_prepare_record = reading_article_fulltext_prepare_record
+        self.reading_article_fulltext_load = reading_article_fulltext_load
         self.reading_article_fulltext_save = reading_article_fulltext_save
+        self.reading_article_fulltext_request_load = reading_article_fulltext_request_load
+        self.reading_article_fulltext_request_save = reading_article_fulltext_request_save
+        self.reading_article_fulltext_request_record = reading_article_fulltext_request_record
+        self.reading_article_fulltext_safe_error = reading_article_fulltext_safe_error
         self.dragon_reading_sync_extract_full_content = dragon_reading_sync_extract_full_content
         self.dragon_reading_sync_extract_max_articles = dragon_reading_sync_extract_max_articles
         self.dragon_reading_sync_extract_timeout_seconds = dragon_reading_sync_extract_timeout_seconds
@@ -90,6 +100,158 @@ class ReadingSyncService:
         self.dragon_reading_sync_bbc_backfill_max = dragon_reading_sync_bbc_backfill_max
         self.reading_github_sync_online_message = reading_github_sync_online_message
         self.app_logger = app_logger
+
+    def _fulltext_request_entry_lookup(self, entries, article_id):
+        normalized_article_id = str(article_id or "").strip()
+        for index, entry in enumerate(list(entries or [])):
+            if not isinstance(entry, dict):
+                continue
+            normalized_entry = self.normalize_reading_entry(entry, index)
+            if str(normalized_entry.get("id", "") or "").strip() == normalized_article_id:
+                return index, normalized_entry
+        return -1, None
+
+    def _save_fulltext_request_status(self, entry, status, existing_record=None, **updates):
+        record = self.reading_article_fulltext_request_record(
+            entry,
+            status=status,
+            existing_record=existing_record,
+            **updates,
+        )
+        article_id = str(record.get("article_id", "") or "").strip()
+        if article_id:
+            self.reading_article_fulltext_request_save(article_id, record)
+        return record
+
+    def sync_requested_fulltext(self, article_id="", max_articles=1):
+        sync_started_at = self.monotonic()
+        normalized_article_id = str(article_id or "").strip()
+        bounded_max_articles = 1
+        if not normalized_article_id:
+            raise RuntimeError("Missing article_id for fulltext request.")
+        loaded_data = self.load_reading_data()
+        data = copy.deepcopy(loaded_data)
+        entries = list(data.get("entries", []) or [])
+        entry_index, entry = self._fulltext_request_entry_lookup(entries, normalized_article_id)
+        if entry is None:
+            placeholder_entry = {"id": normalized_article_id}
+            self._save_fulltext_request_status(
+                placeholder_entry,
+                "failed",
+                existing_record=self.reading_article_fulltext_request_load(normalized_article_id),
+                dispatch_status="target_not_found",
+                safe_error="Requested article was not found in the Reading snapshot.",
+            )
+            raise RuntimeError(f"Requested article not found: {normalized_article_id}")
+
+        article_url = self.normalize_reading_url(entry.get("original_url") or entry.get("canonical_url") or entry.get("url"))
+        if not article_url:
+            self._save_fulltext_request_status(
+                entry,
+                "failed",
+                existing_record=self.reading_article_fulltext_request_load(normalized_article_id),
+                dispatch_status="missing_url",
+                safe_error="Requested article does not have a valid source URL.",
+            )
+            raise RuntimeError(f"Requested article is missing a valid source URL: {normalized_article_id}")
+
+        existing_request_record = self.reading_article_fulltext_request_load(normalized_article_id)
+        existing_cache_record = self.reading_article_fulltext_load(article_url)
+        if isinstance(existing_cache_record, dict) and str(existing_cache_record.get("content_text", "") or "").strip():
+            self._save_fulltext_request_status(
+                entry,
+                "cached",
+                existing_record=existing_request_record,
+                dispatch_status="cache_hit",
+                safe_error="",
+            )
+            return {
+                "ok": True,
+                "mode": "fulltext_request",
+                "article_id": normalized_article_id,
+                "requested_articles": bounded_max_articles,
+                "attempted_articles": 0,
+                "cached_articles": 1,
+                "failed_articles": 0,
+                "cache_path": "",
+                "status": "cached",
+                "reading_data_changed": False,
+            }
+
+        self._save_fulltext_request_status(
+            entry,
+            "running",
+            existing_record=existing_request_record,
+            dispatch_status="extracting",
+            safe_error="",
+        )
+        extract_timeout_seconds = int(self.dragon_reading_sync_extract_timeout_seconds or 12)
+        extraction = self.extract_reading_article_page(article_url, timeout_seconds=extract_timeout_seconds)
+        extraction_status = str(extraction.get("status", "") or "").strip().lower()
+        if extraction_status in {"ok", "partial", "weak_partial"} and (
+            str(extraction.get("content_text", "") or "").strip()
+            or str(extraction.get("content_html", "") or "").strip()
+        ):
+            cache_record = self.reading_article_fulltext_prepare_record(entry, extraction, article_url)
+            cache_path = self.reading_article_fulltext_save(article_url, cache_record)
+            self._save_fulltext_request_status(
+                entry,
+                "cached",
+                existing_record=self.reading_article_fulltext_request_load(normalized_article_id),
+                dispatch_status="cache_saved",
+                safe_error="",
+            )
+            self.app_logger.info(
+                "reading_sync targeted_fulltext elapsed_ms=%.1f article_id=%s status=%s cache_saved=1",
+                (self.monotonic() - sync_started_at) * 1000,
+                normalized_article_id,
+                extraction_status or "unknown",
+            )
+            return {
+                "ok": True,
+                "mode": "fulltext_request",
+                "article_id": normalized_article_id,
+                "requested_articles": bounded_max_articles,
+                "attempted_articles": 1,
+                "cached_articles": 1,
+                "failed_articles": 0,
+                "cache_path": str(cache_path) if cache_path else "",
+                "status": "cached",
+                "reading_data_changed": False,
+                "entry_index": entry_index,
+            }
+
+        safe_error = self.reading_article_fulltext_safe_error(
+            extraction.get("error", ""),
+            fallback_message="No readable article body found.",
+        )
+        self._save_fulltext_request_status(
+            entry,
+            "failed",
+            existing_record=self.reading_article_fulltext_request_load(normalized_article_id),
+            dispatch_status="extract_failed",
+            safe_error=safe_error,
+        )
+        self.app_logger.info(
+            "reading_sync targeted_fulltext elapsed_ms=%.1f article_id=%s status=failed safe_error=%s",
+            (self.monotonic() - sync_started_at) * 1000,
+            normalized_article_id,
+            safe_error,
+        )
+        return {
+            "ok": False,
+            "mode": "fulltext_request",
+            "article_id": normalized_article_id,
+            "requested_articles": bounded_max_articles,
+            "attempted_articles": 1,
+            "cached_articles": 0,
+            "failed_articles": 1,
+            "cache_path": "",
+            "status": "failed",
+            "safe_error": safe_error,
+            "reading_data_changed": False,
+            "entry_index": entry_index,
+        }
 
     def _existing_content_keys(self):
         return (
