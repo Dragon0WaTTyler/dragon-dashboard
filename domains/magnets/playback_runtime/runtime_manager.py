@@ -11,6 +11,7 @@ from typing import Any, Mapping
 
 from dragon.paths import CACHE_DIR
 
+from ..runtime.magnet import parse_magnet_uri
 from ..runtime.identifiers import source_fingerprint
 from .media_selection import select_playable_media_file
 from .mime_helpers import guess_media_mime_type
@@ -100,6 +101,8 @@ def build_runtime_source_quality(
     materialization = dict(runtime_payload.get("materialization") or details.get("materialization") or {})
     webtorrent = dict(runtime_payload.get("webtorrent") or details.get("webtorrent") or {})
     selected_file = dict(runtime_payload.get("selected_file") or details.get("selected_file") or {})
+    magnet_text = str(runtime_payload.get("magnet") or "").strip()
+    magnet_valid = bool(parse_magnet_uri(magnet_text).get("is_valid")) if magnet_text else bool(magnet_available)
     normalized_error_code = str(error_code or runtime_payload.get("code") or "").strip()
     normalized_error_message = str(error_message or runtime_payload.get("error") or runtime_payload.get("message") or "").strip()
     normalized_source_kind = str(source_kind or details.get("source_type") or "").strip().lower()
@@ -122,73 +125,116 @@ def build_runtime_source_quality(
     has_data = bool(local_file_exists and local_file_size > 0 and first_byte_readable and max(bytes_written, downloaded_bytes, local_file_size) > 0)
     can_open_stream = bool(stream_openable and has_data and browser_ready)
     materialization_code = str(materialization.get("code") or "").strip()
-
-    state = "metadata_failed"
-    code = normalized_error_code or materialization_code or "metadata_failed"
-    label = "Metadata Failed"
-    message = normalized_error_message or "Dragon could not load enough runtime metadata to prepare playback."
-    recommended_action = "Try another legal/personal/public-domain source."
-
-    metadata_failure_codes = {
-        "metadata_timeout",
-        "magnet_metadata_timeout",
-        "torrent_file_metadata_timeout",
-        "torrent_file_metadata_failed",
+    unsupported_source_codes = {
+        "invalid_torrent_file",
         "torrent_file_missing",
         "torrent_file_empty",
         "torrent_file_read_failed",
         "torrent_file_add_failed",
         "torrent_file_no_files",
-        "invalid_torrent_file",
-        "invalid_magnet",
-        "missing_magnet",
         "no_playable_media",
     }
+    runtime_unavailable_codes = {
+        "runtime_unavailable",
+        "stream_unavailable",
+        "torrent_unavailable",
+    }
+    metadata_timeout_codes = {
+        "metadata_timeout",
+        "magnet_metadata_timeout",
+        "torrent_file_metadata_timeout",
+        "torrent_file_metadata_failed",
+    }
+    dead_magnet_codes = {
+        "invalid_magnet",
+        "missing_magnet",
+    }
+
+    state = "metadata_failed"
+    code = normalized_error_code or materialization_code or "metadata_failed"
+    label = "Runtime unavailable"
+    message = normalized_error_message or "Dragon could not prepare playback for this source right now."
+    recommended_action = "Try another legal/personal/public-domain source or use the external handoff if available."
+    fallback_available = bool(magnet_valid or normalized_source_kind != "local_file")
 
     if can_open_stream:
         state = "playable"
         code = "playable"
-        label = "Playable"
-        message = "Source is playable. Open Stream is available."
+        label = "Ready"
+        message = "This source is ready. Open Stream to start playback."
         recommended_action = "Open Stream now."
-    elif normalized_error_code in metadata_failure_codes or (not metadata_ready and not selected_file_ready):
+    elif normalized_error_code in metadata_timeout_codes:
         state = "metadata_failed"
-        code = normalized_error_code or "metadata_failed"
-        label = "Metadata Failed"
-        message = normalized_error_message or "Dragon could not load torrent metadata or choose a playable file."
+        code = normalized_error_code or "metadata_timeout"
+        label = "Runtime unavailable"
+        message = "Dragon could not prepare playback for this source in time."
+        recommended_action = (
+            "Retry playback or use external qBittorrent handoff."
+            if magnet_valid
+            else "Try another legal/personal/public-domain source or a known-good .torrent file."
+        )
+    elif normalized_error_code in unsupported_source_codes or (
+        normalized_source_kind == "torrent_file" and normalized_error_code == "torrent_file_metadata_failed"
+    ):
+        state = "metadata_failed"
+        code = normalized_error_code or "no_playable_media"
+        label = "Unsupported file / codec"
+        message = normalized_error_message or "Dragon found the source, but the selected file cannot play here."
         recommended_action = (
             "Use external qBittorrent handoff or try another legal/personal/public-domain source."
-            if magnet_available
+            if magnet_valid
+            else "Try another legal/personal/public-domain source or a known-good .torrent file."
+        )
+    elif (bool(magnet_text) and not magnet_valid) or normalized_error_code in dead_magnet_codes:
+        state = "metadata_failed"
+        code = normalized_error_code or "invalid_magnet"
+        label = "Dead or invalid magnet"
+        message = normalized_error_message or "This magnet link cannot be used for playback."
+        recommended_action = (
+            "Open the magnet externally in qBittorrent or try another legal/personal/public-domain source."
+            if magnet_valid
+            else "Paste a valid magnet or choose another legal/personal/public-domain source."
+        )
+    elif normalized_error_code in runtime_unavailable_codes or (
+        not metadata_ready and not selected_file_ready and not magnet_valid
+    ):
+        state = "metadata_failed"
+        code = normalized_error_code or "runtime_unavailable"
+        label = "Runtime unavailable"
+        message = normalized_error_message or "Dragon runtime is unavailable right now."
+        recommended_action = (
+            "Use external qBittorrent handoff or try again later."
+            if magnet_valid
             else "Try another legal/personal/public-domain source or a known-good .torrent file."
         )
     elif tracker_issue and not first_data_received and bytes_written <= 0 and downloaded_bytes <= 0:
         state = "tracker_unavailable"
         code = "external_recommended"
-        label = "Tracker Unavailable"
-        message = "Metadata loaded, but tracker reachability failed and no peers are sending data. Dragon cannot stream this source right now."
+        label = "Buffering"
+        message = "The source is buffering, but tracker reachability has not produced any bytes yet."
         recommended_action = (
             "Use external qBittorrent handoff or try another legal/personal/public-domain source."
-            if magnet_available
+            if magnet_valid
             else "Try another legal/personal/public-domain source or a different .torrent file."
         )
     elif metadata_ready and selected_file_ready and num_peers <= 0 and downloaded_bytes <= 0 and bytes_written <= 0 and not first_data_received:
         state = "no_peers"
         code = "external_recommended"
-        label = "No Peers"
-        message = "Metadata loaded, but no reachable peers are sending data. Dragon cannot stream this source right now."
+        label = "Buffering"
+        message = "The source is buffering while Dragon waits for peers to send data."
         recommended_action = (
             "Use external qBittorrent handoff or try another legal/personal/public-domain source."
-            if magnet_available
+            if magnet_valid
             else "Try another legal/personal/public-domain source or a different .torrent file."
         )
     elif metadata_ready and selected_file_ready and num_peers > 0 and bytes_written <= 0 and not first_data_received:
         state = "peer_connected_but_no_data"
         code = "external_recommended"
-        label = "Peer Connected, No Data"
-        message = "Peers connected, but the selected file has not started delivering bytes yet."
+        label = "Buffering"
+        message = "The source is buffering, but the selected file has not started delivering bytes yet."
         recommended_action = (
             "Wait briefly, then retry the probe. If no bytes arrive, use external qBittorrent handoff."
-            if magnet_available
+            if magnet_valid
             else "Wait briefly, then retry the probe or try another legal/personal/public-domain source."
         )
     elif metadata_ready and selected_file_ready and (
@@ -201,7 +247,7 @@ def build_runtime_source_quality(
         state = "buffering"
         code = materialization_code or "buffering"
         label = "Buffering"
-        message = "Source is materializing. Wait and retry the probe."
+        message = "The source is buffering. Wait and retry the probe."
         recommended_action = "Wait for local bytes to grow, then retry the stream probe."
 
     return {
@@ -211,7 +257,8 @@ def build_runtime_source_quality(
         "message": message,
         "can_open_stream": can_open_stream,
         "recommended_action": recommended_action,
-        "show_qbittorrent_fallback": bool(magnet_available and not can_open_stream and state in {"metadata_failed", "no_peers", "tracker_unavailable", "peer_connected_but_no_data"}),
+        "fallback_available": bool(fallback_available),
+        "show_qbittorrent_fallback": bool(magnet_valid and not can_open_stream and state in {"metadata_failed", "no_peers", "tracker_unavailable", "peer_connected_but_no_data", "buffering"}),
         "show_local_file_option": bool(not can_open_stream and normalized_source_kind != "local_file"),
         "show_torrent_file_option": bool(not can_open_stream and normalized_source_kind == "magnet"),
     }
@@ -293,7 +340,7 @@ class PlaybackRuntimeManager:
             startup_error_message = "Torrent metadata timeout"
             metadata_timeout_ms = MAGNET_METADATA_TIMEOUT_MS
         else:
-            raise PlaybackRuntimeError("invalid_magnet", "Invalid magnet link for playback runtime.")
+            raise PlaybackRuntimeError("invalid_magnet", "This magnet link cannot be used for playback.")
 
         session_id = secrets.token_urlsafe(12)
         download_dir = self.runtime_root / session_id
@@ -339,7 +386,7 @@ class PlaybackRuntimeManager:
         selected_file = select_playable_media_file(started.get("files"))
         if not selected_file:
             self.teardown_session(session_id, reason="no_playable_media")
-            raise PlaybackRuntimeError("no_playable_media", "No playable MP4 or MKV file was found in the torrent.")
+            raise PlaybackRuntimeError("no_playable_media", "Dragon could not find a playable video file in this source.")
 
         session.torrent_name = str(started.get("torrentName") or "").strip()
         session.status = "selecting_media"

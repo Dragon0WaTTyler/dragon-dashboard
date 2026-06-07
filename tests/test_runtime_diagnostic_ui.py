@@ -185,7 +185,7 @@ class RuntimeDiagnosticUiTests(unittest.TestCase):
         self.assertIn("torrent_file_loaded", html)
         self.assertIn("no_peers", html)
         self.assertIn("Runtime Source Quality", html)
-        self.assertIn("No Peers", html)
+        self.assertIn("Buffering", html)
         self.assertIn("external_recommended", html)
         self.assertIn("Stream Probe", html)
         self.assertIn("WebTorrent diagnostics", html)
@@ -221,6 +221,31 @@ class RuntimeDiagnosticUiTests(unittest.TestCase):
         html = response.get_data(as_text=True)
         self.assertIn("torrent_file_add_failed", html)
         self.assertIn("Invalid torrent identifier", html)
+        self.assertIn("Active result: torrent-file", html)
+        self.assertEqual(html.count("Active result:"), 1)
+
+    def test_runtime_test_unsupported_file_is_shown_cleanly(self):
+        with TemporaryDirectory() as temp_dir:
+            torrent_path = Path(temp_dir) / "unsupported.torrent"
+            torrent_path.write_bytes(b"d8:announce0:e")
+            with patch.object(
+                dragon_app.PLAYBACK_RUNTIME_MANAGER,
+                "create_session",
+                side_effect=PlaybackRuntimeError("no_playable_media", "Dragon could not find a playable video file in this source."),
+            ):
+                response = self.client.post(
+                    "/runtime-test",
+                    data={
+                        "test_mode": "torrent-file",
+                        "torrent_file_path": str(torrent_path),
+                        "title": "Torrent File Test",
+                    },
+                )
+
+        self.assertEqual(response.status_code, 200)
+        html = response.get_data(as_text=True)
+        self.assertIn("Unsupported file / codec", html)
+        self.assertIn("Dragon could not find a playable video file in this source.", html)
         self.assertIn("Active result: torrent-file", html)
         self.assertEqual(html.count("Active result:"), 1)
 
@@ -306,7 +331,7 @@ class RuntimeDiagnosticUiTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         html = response.get_data(as_text=True)
-        self.assertIn("Tracker Unavailable", html)
+        self.assertIn("Buffering", html)
         self.assertIn("external_recommended", html)
         self.assertNotIn(">Open Stream<", html)
 
@@ -413,7 +438,7 @@ class RuntimeDiagnosticUiTests(unittest.TestCase):
         self.assertIn("Active result: magnet", html)
         self.assertEqual(html.count("Active result:"), 1)
         self.assertIn("Runtime Source Quality", html)
-        self.assertIn("Playable", html)
+        self.assertIn("Ready", html)
         self.assertIn("Open Stream", html)
         self.assertIn("Open Watch Flow", html)
         self.assertIn("sess-1", html)
@@ -518,7 +543,7 @@ class RuntimeDiagnosticUiTests(unittest.TestCase):
         self.assertIn("Active result: magnet", html)
         self.assertEqual(html.count("Active result:"), 1)
         self.assertNotIn("Open Stream", html)
-        self.assertIn("no reachable peers are sending data", html.lower())
+        self.assertIn("Buffering", html)
         self.assertIn("buffering_video", html)
         self.assertIn("selected_file_missing", html)
         self.assertIn("metadata_loaded_but_file_missing", html)
@@ -735,7 +760,7 @@ class RuntimeDiagnosticUiTests(unittest.TestCase):
         self.assertEqual(html.count("Active result:"), 1)
         self.assertIn("local_file_test", html)
         self.assertIn("Runtime Source Quality", html)
-        self.assertIn("Playable", html)
+        self.assertIn("Ready", html)
         self.assertIn("Open Stream", html)
         self.assertIn("Stream Probe", html)
         self.assertIn("bytes 0-1023/", html)
@@ -759,11 +784,11 @@ class RuntimeDiagnosticUiTests(unittest.TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.content_type, "text/html; charset=utf-8")
         html = response.get_data(as_text=True)
-        self.assertIn("Dragon Runtime could not start this stream.", html)
-        self.assertIn("metadata_timeout", html)
-        self.assertIn("Torrent metadata timeout", html)
-        self.assertIn("Metadata Failed", html)
-        self.assertIn("Use external qBittorrent handoff", html)
+        self.assertIn("Playback unavailable", html)
+        self.assertIn("Runtime unavailable", html)
+        self.assertIn("Dragon could not prepare playback for this source in time.", html)
+        self.assertNotIn("metadata_timeout", html)
+        self.assertIn("Retry playback", html)
 
     def test_watch_json_metadata_timeout_preserves_json_behavior(self):
         with patch.object(
@@ -788,6 +813,62 @@ class RuntimeDiagnosticUiTests(unittest.TestCase):
             response.get_json(),
             {"ok": False, "error": "Torrent metadata timeout", "code": "metadata_timeout"},
         )
+
+    def test_watch_invalid_magnet_renders_safe_error_page(self):
+        with patch.object(
+            dragon_app.PLAYBACK_RUNTIME_MANAGER,
+            "create_session",
+            side_effect=PlaybackRuntimeError("invalid_magnet", "This magnet link cannot be used for playback."),
+        ):
+            response = self.client.get(
+                "/watch",
+                query_string={
+                    "magnet": "not-a-magnet",
+                    "title": "Test Film",
+                    "movie_id": "film-test",
+                    "entry_id": "film-test",
+                },
+            )
+
+        self.assertEqual(response.status_code, 400)
+        html = response.get_data(as_text=True)
+        self.assertIn("Dead or invalid magnet", html)
+        self.assertIn("This magnet link cannot be used for playback.", html)
+        self.assertNotIn("invalid_magnet", html)
+        self.assertNotIn("Open magnet externally", html)
+
+    def test_watch_buffering_timeout_pauses_auto_refresh(self):
+        buffering_session = {
+            "session_id": "sess-timeout",
+            "state": "buffering",
+            "status": "buffering_video",
+            "created_at": "2026-01-01T00:00:00+00:00",
+            "details": {
+                "metadata_wait_started_at": "2026-01-01T00:00:00+00:00",
+            },
+            "stream_url": "http://127.0.0.1:5000/api/runtime/stream/sess-timeout",
+            "selected_file": {"name": "movie.mp4"},
+            "source_quality": {"state": "buffering", "code": "buffering"},
+        }
+
+        with patch.object(dragon_app.PLAYBACK_RUNTIME_MANAGER, "get_session", return_value=buffering_session):
+            response = self.client.get(
+                "/watch",
+                query_string={
+                    "magnet": TEST_MAGNET,
+                    "title": "Test Film",
+                    "movie_id": "film-test",
+                    "entry_id": "film-test",
+                    "session_id": "sess-timeout",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        html = response.get_data(as_text=True)
+        self.assertIn("Playback paused", html)
+        self.assertIn("The page has paused auto-refresh", html)
+        self.assertIn("Retry with a fresh session", html)
+        self.assertNotIn("http-equiv=\"refresh\"", html)
 
     def test_watch_existing_session_refreshes_and_redirects_when_ready(self):
         buffering_session = {
@@ -831,7 +912,7 @@ class RuntimeDiagnosticUiTests(unittest.TestCase):
             )
 
         self.assertEqual(first_response.status_code, 200)
-        self.assertIn("Dragon runtime is preparing this stream.", first_response.get_data(as_text=True))
+        self.assertIn("Buffering", first_response.get_data(as_text=True))
         create_session_mock.assert_called_once()
         get_session_mock.assert_called_once_with("sess-1", refresh=True)
         self.assertEqual(second_response.status_code, 302)
@@ -896,7 +977,7 @@ class RuntimeDiagnosticUiTests(unittest.TestCase):
             )
 
         self.assertEqual(first_response.status_code, 200)
-        self.assertIn("Dragon runtime is preparing this stream.", first_response.get_data(as_text=True))
+        self.assertIn("Buffering", first_response.get_data(as_text=True))
         self.assertEqual(second_response.status_code, 302)
         self.assertEqual(second_response.headers["Location"], "http://127.0.0.1:5000/api/runtime/stream/sess-1")
         self.assertEqual(get_session_mock.call_count, 2)

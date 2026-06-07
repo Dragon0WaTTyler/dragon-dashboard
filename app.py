@@ -27818,7 +27818,50 @@ def _watch_session_elapsed_seconds(session):
         return 0
 
 
-def _watch_runtime_waiting_page(*, session_id, state, stream_url, elapsed_seconds, magnet, title, movie_id, entry_id, source_fingerprint):
+WATCH_BUFFERING_TIMEOUT_SECONDS = 90
+
+
+def _watch_runtime_status_copy(*, runtime_state: str, source_quality: dict[str, object] | None = None) -> dict[str, str]:
+    quality_payload = dict(source_quality or {})
+    label = str(quality_payload.get("label") or "").strip()
+    message = str(quality_payload.get("message") or "").strip()
+    recommended_action = str(quality_payload.get("recommended_action") or "").strip()
+    fallback_available = bool(quality_payload.get("fallback_available") or quality_payload.get("show_qbittorrent_fallback"))
+
+    if not label:
+        if runtime_state in {"ready", "ready_to_play"}:
+            label = "Ready"
+            message = message or "This source is ready. Open Stream to start playback."
+        elif runtime_state in {"buffering", "metadata_fetching", "metadata_retrying", "selecting_media", "connecting_peers", "buffering_video"}:
+            label = "Buffering"
+            message = message or "The source is buffering. Please wait a moment and retry."
+        else:
+            label = "Runtime unavailable"
+            message = message or "Dragon could not prepare playback for this source right now."
+
+    if fallback_available and not recommended_action:
+        recommended_action = "Open the external handoff or try another source."
+
+    return {
+        "label": label,
+        "message": message,
+        "recommended_action": recommended_action,
+        "fallback_text": "Fallback available" if fallback_available else "",
+    }
+
+
+def _watch_runtime_waiting_page(*, session_id, state, stream_url, elapsed_seconds, magnet, title, movie_id, entry_id, source_fingerprint, source_quality=None):
+    status_copy = _watch_runtime_status_copy(runtime_state=state, source_quality=source_quality)
+    refresh_meta = ""
+    if int(elapsed_seconds or 0) < WATCH_BUFFERING_TIMEOUT_SECONDS:
+        refresh_meta = (
+            f'  <meta http-equiv="refresh" content="3;url=/watch?session_id={urllib.parse.quote(session_id, safe="")}'
+            f'&magnet={urllib.parse.quote(magnet, safe="")}'
+            f'&title={urllib.parse.quote(title, safe="")}'
+            f'&movie_id={urllib.parse.quote(movie_id, safe="")}'
+            f'&entry_id={urllib.parse.quote(entry_id, safe="")}'
+            f'&source_fingerprint={urllib.parse.quote(source_fingerprint, safe="")}">\n'
+        )
     retry_url = (
         f"/watch?retry=1&magnet={urllib.parse.quote(magnet, safe='')}"
         f"&title={urllib.parse.quote(title, safe='')}"
@@ -27830,9 +27873,8 @@ def _watch_runtime_waiting_page(*, session_id, state, stream_url, elapsed_second
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta http-equiv="refresh" content="3;url=/watch?session_id={urllib.parse.quote(session_id, safe='')}&magnet={urllib.parse.quote(magnet, safe='')}&title={urllib.parse.quote(title, safe='')}&movie_id={urllib.parse.quote(movie_id, safe='')}&entry_id={urllib.parse.quote(entry_id, safe='')}&source_fingerprint={urllib.parse.quote(source_fingerprint, safe='')}">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Preparing playback</title>
+{refresh_meta}  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Playback status</title>
   <style>
     body {{
       margin: 0;
@@ -27853,24 +27895,62 @@ def _watch_runtime_waiting_page(*, session_id, state, stream_url, elapsed_second
       box-shadow: 0 16px 40px rgba(0,0,0,0.35);
     }}
     .small {{ opacity: 0.72; font-size: 14px; line-height: 1.5; margin-top: 8px; }}
-    .status {{ margin-top: 12px; font-size: 16px; }}
+    .label {{ margin-top: 12px; font-size: 24px; font-weight: 700; }}
+    .message {{ margin-top: 10px; font-size: 16px; line-height: 1.55; color: #dce6ef; }}
+    .action {{ margin-top: 14px; color: #f5d48b; }}
+    .buttons {{ margin-top: 18px; display: flex; flex-wrap: wrap; gap: 10px; }}
+    .button {{
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 42px;
+      padding: 0 14px;
+      border-radius: 12px;
+      text-decoration: none;
+      color: #0b0f14;
+      background: #8bd3ff;
+      font-weight: 700;
+    }}
+    .button.secondary {{
+      background: transparent;
+      color: #f5f7fa;
+      border: 1px solid rgba(255,255,255,0.16);
+    }}
+    .badge {{
+      display: inline-flex;
+      margin-top: 8px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: rgba(139, 211, 255, 0.12);
+      color: #8bd3ff;
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }}
     .link {{ color: #8bd3ff; word-break: break-all; }}
   </style>
 </head>
 <body>
   <div class="card">
-    <div class="small">Dragon runtime is preparing this stream.</div>
-    <div class="status">Session: {escape(session_id)}</div>
-    <div class="small">State: {escape(state)}</div>
+    <div class="small">Dragon is preparing this movie for playback.</div>
+    <div class="badge">{escape(status_copy["fallback_text"] or "Playback pending")}</div>
+    <div class="label">{escape(status_copy["label"] or "Buffering")}</div>
+    <div class="message">{escape(status_copy["message"] or "Dragon is still waiting for playable bytes.")}</div>
     <div class="small">Elapsed: {int(elapsed_seconds)}s</div>
-    <div class="small">This page refreshes every 3 seconds until the stream is ready.</div>
+    <div class="small">The page refreshes briefly while playback is still progressing, then stops and offers a manual retry.</div>
+    <div class="action">{escape(status_copy["recommended_action"] or "Retry the handoff or try another source.")}</div>
+    <div class="buttons">
+      <a class="button" href="{escape(retry_url, quote=True)}">Retry playback</a>
+      <a class="button secondary" href="{escape(stream_url, quote=True)}">Open stream URL</a>
+    </div>
     <div class="small">Stream URL: <a class="link" href="{escape(stream_url, quote=True)}">{escape(stream_url)}</a></div>
   </div>
 </body>
 </html>"""
 
 
-def _watch_runtime_timeout_page(*, session_id, state, elapsed_seconds, magnet, title, movie_id, entry_id, source_fingerprint):
+def _watch_runtime_timeout_page(*, session_id, state, elapsed_seconds, magnet, title, movie_id, entry_id, source_fingerprint, source_quality=None):
+    status_copy = _watch_runtime_status_copy(runtime_state=state, source_quality=source_quality)
     retry_url = (
         f"/watch?retry=1&magnet={urllib.parse.quote(magnet, safe='')}"
         f"&title={urllib.parse.quote(title, safe='')}"
@@ -27883,7 +27963,7 @@ def _watch_runtime_timeout_page(*, session_id, state, elapsed_seconds, magnet, t
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Playback timeout</title>
+  <title>Playback paused</title>
   <style>
     body {{
       margin: 0;
@@ -27905,16 +27985,20 @@ def _watch_runtime_timeout_page(*, session_id, state, elapsed_seconds, magnet, t
     }}
     .small {{ opacity: 0.72; font-size: 14px; line-height: 1.5; margin-top: 8px; }}
     .error {{ margin-top: 12px; font-size: 18px; color: #ffb4b4; }}
+    .label {{ margin-top: 12px; font-size: 24px; font-weight: 700; }}
+    .message {{ margin-top: 10px; font-size: 16px; line-height: 1.55; color: #dce6ef; }}
+    .action {{ margin-top: 14px; color: #f5d48b; }}
     .link {{ color: #8bd3ff; word-break: break-all; }}
   </style>
 </head>
 <body>
   <div class="card">
-    <div class="small">Dragon runtime did not receive torrent metadata in time.</div>
-    <div class="small">Session: {escape(session_id)}</div>
-    <div class="small">State: {escape(state)}</div>
+    <div class="small">Dragon is still waiting for this source to become playable.</div>
+    <div class="label">{escape(status_copy["label"] or "Buffering")}</div>
+    <div class="message">{escape(status_copy["message"] or "Playback has not become ready yet.")}</div>
     <div class="small">Elapsed: {int(elapsed_seconds)}s</div>
-    <div class="error">Torrent metadata was not received.</div>
+    <div class="error">The page has paused auto-refresh so you can choose a fallback.</div>
+    <div class="action">{escape(status_copy["recommended_action"] or "Try a different source or hand off the magnet externally.")}</div>
     <div class="small"><a class="link" href="{escape(retry_url, quote=True)}">Retry with a fresh session</a></div>
   </div>
 </body>
@@ -28249,13 +28333,22 @@ def _watch_runtime_failure_page(*, code: str, message: str, magnet: str, title: 
         source_kind="magnet",
     )
     failure_payload["source_quality"] = quality_payload
-    report = _build_runtime_diagnostic_report(failure_payload)
+    status_copy = _watch_runtime_status_copy(
+        runtime_state=str(quality_payload.get("state") or code or "runtime_unavailable"),
+        source_quality=quality_payload,
+    )
+    open_external_url = ""
+    if str(magnet or "").strip() and bool(quality_payload.get("show_qbittorrent_fallback", False)):
+        open_external_url = magnet
+    open_external_button = ""
+    if open_external_url:
+        open_external_button = f'<a class="button secondary" href="{escape(open_external_url, quote=True)}">Open magnet externally</a>'
     return f"""<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Dragon Runtime Error</title>
+  <title>Playback unavailable</title>
   <style>
     body {{
       margin: 0;
@@ -28290,18 +28383,42 @@ def _watch_runtime_failure_page(*, code: str, message: str, magnet: str, title: 
       font-size: 13px;
       line-height: 1.45;
     }}
+    .label {{ margin-top: 12px; font-size: 24px; font-weight: 700; }}
+    .message {{ margin-top: 10px; font-size: 16px; line-height: 1.55; color: #dce6ef; }}
+    .action {{ margin-top: 14px; color: #f5d48b; }}
+    .buttons {{ margin-top: 18px; display: flex; flex-wrap: wrap; gap: 10px; }}
+    .button {{
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 42px;
+      padding: 0 14px;
+      border-radius: 12px;
+      text-decoration: none;
+      color: #0b0f14;
+      background: #8bd3ff;
+      font-weight: 700;
+    }}
+    .button.secondary {{
+      background: transparent;
+      color: #f5f7fa;
+      border: 1px solid rgba(255,255,255,0.16);
+    }}
   </style>
 </head>
 <body>
   <div class="card">
-    <div>Dragon Runtime could not start this stream.</div>
+    <div>Dragon could not start playback for this source.</div>
     <div class="meta">Title: {escape(title)}</div>
-    <div class="meta">Error code: {escape(code)}</div>
-    <div class="error">{escape(message)}</div>
-    <div class="hint">{escape(str(quality_payload.get("message") or ""))}</div>
-    <div class="meta">Recommended action: {escape(str(quality_payload.get("recommended_action") or ""))}</div>
+    <div class="label">{escape(status_copy["label"] or "Playback unavailable")}</div>
+    <div class="message">{escape(status_copy["message"] or message or "Dragon could not prepare playback right now.")}</div>
+    <div class="hint">{escape(str(quality_payload.get("recommended_action") or status_copy["recommended_action"] or ""))}</div>
+    <div class="meta">Fallback available: {escape(str(bool(quality_payload.get("fallback_available") or quality_payload.get("show_qbittorrent_fallback") or False)))}</div>
+    <div class="buttons">
+      <a class="button" href="{escape(retry_url, quote=True)}">Retry playback</a>
+      {open_external_button}
+    </div>
     <div class="meta"><a class="link" href="{escape(retry_url, quote=True)}">Retry runtime handoff</a></div>
-    <pre>{escape(report)}</pre>
   </div>
 </body>
 </html>"""
@@ -28654,7 +28771,24 @@ def watch_runtime_handoff():
     runtime_session = None
     session_was_created = False
     if session_id and not retry_requested:
-        runtime_session = PLAYBACK_RUNTIME_MANAGER.get_session(session_id, refresh=True)
+        try:
+            runtime_session = PLAYBACK_RUNTIME_MANAGER.get_session(session_id, refresh=True)
+        except PlaybackRuntimeError as exc:
+            if _runtime_request_wants_json(request):
+                return jsonify({"ok": False, "error": exc.message, "code": exc.code}), 400
+            return Response(
+                _watch_runtime_failure_page(
+                    code="runtime_unavailable",
+                    message="Dragon runtime is unavailable right now.",
+                    magnet=magnet,
+                    title=title,
+                    movie_id=str(movie.get("movie_id") or ""),
+                    entry_id=str(movie.get("entry_id") or ""),
+                    source_fingerprint=str(source.get("source_fingerprint") or ""),
+                ),
+                status=200,
+                content_type="text/html; charset=utf-8",
+            )
     if runtime_session is None:
         try:
             runtime_session = PLAYBACK_RUNTIME_MANAGER.create_session(
@@ -28676,6 +28810,13 @@ def watch_runtime_handoff():
                     movie_id=str(movie.get("movie_id") or ""),
                     entry_id=str(movie.get("entry_id") or ""),
                     source_fingerprint=str(source.get("source_fingerprint") or ""),
+                    source_quality=_runtime_source_quality_snapshot(
+                        {"code": exc.code, "error": exc.message, "magnet": magnet},
+                        error_code=exc.code,
+                        error_message=exc.message,
+                        magnet=magnet,
+                        source_kind="magnet",
+                    ),
                 ),
                 status=400,
                 content_type="text/html; charset=utf-8",
@@ -28721,7 +28862,32 @@ def watch_runtime_handoff():
         )
         return redirect(stream_url, code=302)
 
-    if runtime_state == "metadata_timeout":
+    quality_label = str(source_quality.get("label") or "").strip().lower()
+    quality_code = str(source_quality.get("code") or "").strip()
+    if quality_code in {"runtime_unavailable", "stream_unavailable", "torrent_unavailable"} or quality_label in {"runtime unavailable", "dead or invalid magnet", "unsupported file / codec"}:
+        emit_event(
+            "[playback-runtime-handoff]",
+            event="watch_failure_page_returned",
+            session_id=session_id,
+            state=runtime_state or quality_code or "runtime_unavailable",
+            stream_url=stream_url,
+        )
+        return Response(
+            _watch_runtime_failure_page(
+                code=quality_code or runtime_state or "runtime_unavailable",
+                message=str(source_quality.get("message") or "Dragon could not prepare playback for this source right now."),
+                magnet=magnet,
+                title=title,
+                movie_id=str(movie.get("movie_id") or ""),
+                entry_id=str(movie.get("entry_id") or ""),
+                source_fingerprint=str(source.get("source_fingerprint") or ""),
+                source_quality=source_quality,
+            ),
+            status=200,
+            content_type="text/html; charset=utf-8",
+        )
+
+    if runtime_state == "metadata_timeout" or (runtime_state in {"buffering", "buffering_video", "metadata_retrying"} and elapsed_seconds >= WATCH_BUFFERING_TIMEOUT_SECONDS):
         emit_event(
             "[playback-runtime-handoff]",
             event="watch_timeout_page_returned",
@@ -28739,6 +28905,7 @@ def watch_runtime_handoff():
                 movie_id=str(movie.get("movie_id") or ""),
                 entry_id=str(movie.get("entry_id") or ""),
                 source_fingerprint=str(source.get("source_fingerprint") or ""),
+                source_quality=source_quality,
             ),
             status=200,
             content_type="text/html; charset=utf-8",
@@ -28797,6 +28964,7 @@ def watch_runtime_handoff():
             movie_id=str(movie.get("movie_id") or ""),
             entry_id=str(movie.get("entry_id") or ""),
             source_fingerprint=str(source.get("source_fingerprint") or ""),
+            source_quality=source_quality,
         ),
         status=200,
         content_type="text/html; charset=utf-8",
@@ -29617,6 +29785,36 @@ def books_entry_detail(entry_id):
         book_quotes_error_message=str(quotes_fetched.get("error") or "").strip(),
         books_return_url=url_for("books_archive"),
         books_text_direction=books_text_direction,
+        ai_default_mode="cinematic",
+        ai_page_context="general",
+    )
+
+
+@app.route("/books/admin/metadata-repair", methods=["GET", "POST"])
+def books_metadata_repair_admin():
+    default_limit = 10
+    preview_limit = default_limit
+    report = None
+    error_message = ""
+    if request.method == "POST":
+        raw_limit = str(request.form.get("limit", default_limit) or default_limit).strip()
+        try:
+            preview_limit = max(1, min(int(raw_limit), 25))
+        except (TypeError, ValueError):
+            preview_limit = default_limit
+        try:
+            report = _get_book_metadata_repair_service().preview({"all": True, "limit": preview_limit})
+        except Exception as exc:
+            app.logger.warning("books_metadata_repair_admin failed error=%s", exc)
+            error_message = str(exc) or "Preview failed."
+            report = {"ok": False, "dry_run": True, "count": 0, "items": [], "warnings": [error_message]}
+    return render_template(
+        "books_metadata_repair.html",
+        title="Books Metadata Repair",
+        books_text_direction=books_text_direction,
+        books_metadata_repair_report=report,
+        books_metadata_repair_limit=preview_limit,
+        books_metadata_repair_error_message=error_message,
         ai_default_mode="cinematic",
         ai_page_context="general",
     )
