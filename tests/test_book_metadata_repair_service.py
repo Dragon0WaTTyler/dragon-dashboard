@@ -302,5 +302,62 @@ class PreviewRouteTests(unittest.TestCase):
         create_mock.assert_not_called()
 
 
+class BooksMetadataRepairAdminPageTests(unittest.TestCase):
+    def setUp(self):
+        dragon_app.app.config["TESTING"] = True
+        self.client = dragon_app.app.test_client()
+
+    def test_admin_page_renders_preview_warning(self):
+        response = self.client.get("/books/admin/metadata-repair")
+
+        self.assertEqual(response.status_code, 200)
+        html = response.get_data(as_text=True)
+        self.assertIn("Books Metadata Repair", html)
+        self.assertIn("Preview only — no Notion changes will be made.", html)
+        self.assertIn("Preview Books", html)
+        self.assertNotIn("Apply", html)
+        self.assertNotIn("Write back", html)
+
+    def test_admin_page_posts_preview_results_without_write_helpers(self):
+        mock_service = Mock()
+        mock_service.preview.return_value = {
+            "ok": True,
+            "dry_run": True,
+            "count": 1,
+            "items": [
+                {
+                    "entry_id": "b1",
+                    "current": {"title": "The Trial", "author": "Franz Kafka"},
+                    "best_match": {"source": "open_library", "confidence": "high", "score": 0.9876},
+                    "proposed_changes": [
+                        {"field": "description", "current": "", "suggested": "A novel.", "source": "open_library", "confidence": "high"},
+                    ],
+                    "warnings": ["Title differs from the current Notion value. V0 will not propose a title change."],
+                }
+            ],
+            "warnings": [],
+        }
+        with patch.object(dragon_app, "_get_book_metadata_repair_service", return_value=mock_service), patch.object(
+            dragon_app,
+            "update_notion_page_properties",
+        ) as update_mock, patch.object(
+            dragon_app,
+            "create_notion_database_page",
+        ) as create_mock:
+            response = self.client.post("/books/admin/metadata-repair", data={"limit": "3"})
+
+        self.assertEqual(response.status_code, 200)
+        html = response.get_data(as_text=True)
+        self.assertIn("Preview Results", html)
+        self.assertIn("The Trial", html)
+        self.assertIn("Franz Kafka", html)
+        self.assertIn("open_library", html)
+        self.assertIn("high", html)
+        self.assertNotIn("Apply", html)
+        update_mock.assert_not_called()
+        create_mock.assert_not_called()
+        mock_service.preview.assert_called_once_with({"all": True, "limit": 3})
+
+
 if __name__ == "__main__":
     unittest.main()

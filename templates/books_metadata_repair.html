@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+{% block content %}
+<style>
+    .books-metadata-repair-shell{display:grid;gap:18px}
+    .books-metadata-repair-panel{display:grid;gap:14px}
+    .books-metadata-repair-form{display:flex;align-items:end;gap:12px;flex-wrap:wrap}
+    .books-metadata-repair-field{display:grid;gap:6px;min-width:140px}
+    .books-metadata-repair-field span{font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;color:var(--text-2)}
+    .books-metadata-repair-field input{min-width:120px}
+    .books-metadata-repair-note{color:var(--text-2);font-size:.88rem;line-height:1.7}
+    .books-metadata-repair-warning{padding:14px 16px;border-radius:18px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.03);color:#fff}
+    .books-metadata-repair-results{overflow:auto}
+    .books-metadata-repair-table{min-width:980px}
+    .books-metadata-repair-list{margin:0;padding-left:18px;display:grid;gap:6px}
+    .books-metadata-repair-list li{word-break:break-word}
+    .books-metadata-repair-cell{vertical-align:top;white-space:normal;word-break:break-word}
+    .books-metadata-repair-mono{font-variant-numeric:tabular-nums}
+    .books-dir-rtl{direction:rtl;text-align:right}
+    .books-dir-ltr{direction:ltr;text-align:left}
+    @media (max-width:720px){
+        .books-metadata-repair-form{align-items:stretch}
+        .books-metadata-repair-field{min-width:0;flex:1 1 160px}
+    }
+</style>
+
+<div class="books-metadata-repair-shell">
+    <section class="page-hero">
+        <div class="hero-meta">
+            <span class="hero-badge">Books Admin</span>
+            <span>Preview only</span>
+        </div>
+        <h2>Books Metadata Repair</h2>
+        <p class="subhead">Preview only — no Notion changes will be made.</p>
+        <p class="books-metadata-repair-note">Use this page to review suggested metadata repairs for books tracked in Notion. The preview is read-only and does not write back to Notion.</p>
+    </section>
+
+    <section class="surface-card section-card books-metadata-repair-panel">
+        <form method="post" class="books-metadata-repair-form">
+            <label class="books-metadata-repair-field" for="limit">
+                <span>Limit</span>
+                <input id="limit" name="limit" type="number" min="1" max="25" value="{{ books_metadata_repair_limit or 10 }}">
+            </label>
+            <button type="submit" class="btn">
+                <i data-lucide="search"></i>Preview Books
+            </button>
+        </form>
+        {% if books_metadata_repair_error_message %}
+        <div class="books-metadata-repair-warning">{{ books_metadata_repair_error_message }}</div>
+        {% endif %}
+        {% if books_metadata_repair_report and books_metadata_repair_report["warnings"] %}
+        <div class="books-metadata-repair-note">
+            {% for warning in books_metadata_repair_report["warnings"] %}
+            <div>{{ warning }}</div>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </section>
+
+    {% if books_metadata_repair_report and books_metadata_repair_report["items"] %}
+    <section class="surface-card section-card books-metadata-repair-results">
+        <div class="hero-meta">
+            <span class="hero-badge">Preview Results</span>
+            <span>{{ books_metadata_repair_report.count }} item(s)</span>
+        </div>
+        <table class="admin-table books-metadata-repair-table" style="margin-top:18px;">
+            <thead>
+                <tr>
+                    <th>Current Title</th>
+                    <th>Current Author</th>
+                    <th>Best Match Source</th>
+                    <th>Confidence</th>
+                    <th>Score</th>
+                    <th>Proposed Changes</th>
+                    <th>Warnings</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in books_metadata_repair_report["items"] %}
+                <tr>
+                    <td class="books-metadata-repair-cell books-dir-{{ books_text_direction(item.current.title) }}" dir="{{ books_text_direction(item.current.title) }}">{{ item.current.title }}</td>
+                    <td class="books-metadata-repair-cell books-dir-{{ books_text_direction(item.current.author) }}" dir="{{ books_text_direction(item.current.author) }}">{{ item.current.author }}</td>
+                    <td class="books-metadata-repair-cell">{{ item.best_match.source or 'none' }}</td>
+                    <td class="books-metadata-repair-cell books-metadata-repair-mono">{{ item.best_match.confidence or 'no_match' }}</td>
+                    <td class="books-metadata-repair-cell books-metadata-repair-mono">{{ '%.4f'|format(item.best_match.score or 0) }}</td>
+                    <td class="books-metadata-repair-cell">
+                        {% if item.proposed_changes %}
+                        <ul class="books-metadata-repair-list">
+                            {% for change in item.proposed_changes %}
+                            <li>
+                                <strong>{{ change.field }}</strong>:
+                                <span class="books-dir-{{ books_text_direction(change.current) }}" dir="{{ books_text_direction(change.current) }}">{{ change.current|truncate(64, True, '...') }}</span>
+                                &rarr;
+                                <span class="books-dir-{{ books_text_direction(change.suggested) }}" dir="{{ books_text_direction(change.suggested) }}">{{ change.suggested|truncate(64, True, '...') }}</span>
+                            </li>
+                            {% endfor %}
+                        </ul>
+                        {% else %}
+                        <span class="books-metadata-repair-note">No proposed changes.</span>
+                        {% endif %}
+                    </td>
+                    <td class="books-metadata-repair-cell">
+                        {% if item.warnings %}
+                        <ul class="books-metadata-repair-list">
+                            {% for warning in item.warnings %}
+                            <li>{{ warning }}</li>
+                            {% endfor %}
+                        </ul>
+                        {% else %}
+                        <span class="books-metadata-repair-note">No warnings.</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </section>
+    {% elif books_metadata_repair_report %}
+    <section class="surface-card section-card">
+        <div class="books-metadata-repair-note">No preview results were returned for the selected limit.</div>
+    </section>
+    {% endif %}
+</div>
+{% endblock %}
