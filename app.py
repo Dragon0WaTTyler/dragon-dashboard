@@ -26349,6 +26349,7 @@ def get_video_detail_context(entry_id, force_refresh=False):
         player_fallback_urls = get_vidsrc_embed_urls(detail)
         detail["fallback_url"] = player_fallback_urls[0] if player_fallback_urls else ""
         dragon_runtime_watch_url = build_movie_runtime_watch_url(detail)
+        resume_context = build_movie_resume_context(detail, watch_url=dragon_runtime_watch_url)
         playback_plan = prepare_playback_runtime(
             movie=detail,
             sources=list(movie_sources.get("sources") or []),
@@ -26389,6 +26390,7 @@ def get_video_detail_context(entry_id, force_refresh=False):
             "movie_sources": movie_sources,
             "torrent_handoff_url": detail["torrent_handoff_url"],
             "dragon_runtime_watch_url": dragon_runtime_watch_url,
+            "movie_resume": resume_context,
             "playback_plan": serialize_playback_runtime(playback_plan),
             "runtime_profiles": get_runtime_profiles_catalog(),
             "related_entries": related,
@@ -27847,6 +27849,93 @@ def movie_watch_progress_post():
     payload = request.get_json(silent=True)
     result, status_code = MOVIE_WATCH_PROGRESS_SERVICE.save_progress(payload)
     return jsonify(result), status_code
+
+
+@app.get("/api/movies/continue-watching")
+def movie_continue_watching_get():
+    include_completed = str(request.args.get("include_completed") or "").strip().lower() in {"1", "true", "yes", "on"}
+    limit_raw = str(request.args.get("limit") or "").strip()
+    limit = None
+    if limit_raw:
+        try:
+            limit = max(int(limit_raw), 0)
+        except (TypeError, ValueError):
+            limit = None
+    items = (
+        MOVIE_WATCH_PROGRESS_SERVICE.list_progress(include_completed=True, only_resumable=False, limit=limit)
+        if include_completed
+        else MOVIE_WATCH_PROGRESS_SERVICE.list_continue_watching(limit=limit)
+    )
+    return jsonify({"ok": True, "items": items, "count": len(items), "include_completed": include_completed})
+
+
+def build_movie_resume_context(detail, watch_url=""):
+    movie = dict(detail or {})
+    progress = MOVIE_WATCH_PROGRESS_SERVICE.load_progress(
+        movie_id=movie.get("entry_id") or movie.get("movie_id"),
+        tmdb_id=movie.get("tmdb_id"),
+        title=movie.get("title") or movie.get("name"),
+    )
+    has_resume = bool(progress.get("has_progress")) and bool(progress.get("resume_available"))
+    return {
+        "has_progress": bool(progress.get("has_progress")),
+        "has_resume": has_resume,
+        "completed": bool(progress.get("completed")),
+        "resume_label": str(progress.get("resume_label") or "").strip(),
+        "progress_percent_label": str(progress.get("progress_percent_label") or "").strip(),
+        "resume_time": float(progress.get("resume_time") or 0.0),
+        "updated_at": str(progress.get("updated_at") or "").strip(),
+        "resume_watch_url": str(watch_url or "").strip() if has_resume else "",
+    }
+
+
+def build_continue_watching_context(films, limit=6):
+    film_items = [dict(film or {}) for film in (films or [])]
+    matched_by_id = {}
+    matched_by_tmdb = {}
+    matched_by_title = {}
+    for film in film_items:
+        entry_id = str(film.get("entry_id") or film.get("movie_id") or "").strip()
+        tmdb_id = str(film.get("tmdb_id") or "").strip()
+        title = str(film.get("title") or film.get("name") or "").strip().lower()
+        if entry_id and entry_id not in matched_by_id:
+            matched_by_id[entry_id] = film
+        if tmdb_id and tmdb_id not in matched_by_tmdb:
+            matched_by_tmdb[tmdb_id] = film
+        if title and title not in matched_by_title:
+            matched_by_title[title] = film
+
+    items = []
+    for progress in MOVIE_WATCH_PROGRESS_SERVICE.list_continue_watching(limit=limit):
+        movie_id = str(progress.get("movie_id") or "").strip()
+        tmdb_id = str(progress.get("tmdb_id") or "").strip()
+        title = str(progress.get("title") or "").strip()
+        film = matched_by_id.get(movie_id) or matched_by_tmdb.get(tmdb_id) or matched_by_title.get(title.lower())
+        detail_url = url_for("video_detail", entry_id=film.get("entry_id")) if film and str(film.get("entry_id") or "").strip() else ""
+        watch_url = build_movie_runtime_watch_url(film or {
+            "entry_id": movie_id,
+            "movie_id": movie_id,
+            "tmdb_id": tmdb_id,
+            "title": title,
+            "name": title,
+            "poster": "",
+            "fallback_url": "",
+            "torrent_handoff_url": "",
+        })
+        items.append({
+            "movie_id": movie_id,
+            "tmdb_id": tmdb_id,
+            "title": str((film or {}).get("name") or (film or {}).get("title") or title).strip(),
+            "poster": str((film or {}).get("poster") or "").strip(),
+            "detail_url": detail_url,
+            "resume_watch_url": watch_url,
+            "resume_label": str(progress.get("resume_label") or "").strip(),
+            "progress_percent_label": str(progress.get("progress_percent_label") or "").strip(),
+            "updated_at": str(progress.get("updated_at") or "").strip(),
+            "source": str((film or {}).get("source") or "").strip(),
+            "year": str((film or {}).get("year") or "").strip(),
+        })
+    return {"items": items, "count": len(items)}
 
 
 def _watch_runtime_status_copy(*, runtime_state: str, source_quality: dict[str, object] | None = None) -> dict[str, str]:
@@ -29804,6 +29893,7 @@ def home():
 @app.route("/library")
 def library():
     films = [build_film_entry(film) for film in fetch_library_films_for_flagged_paths()]
+    continue_watching = build_continue_watching_context(films, limit=6)
     raw_search = request.args.get("search", "")
     search = raw_search.lower()
     raw_genre = str(request.args.get("genre", "") or "").strip()
@@ -29883,6 +29973,7 @@ def library():
                            total_pages=pagination["total_pages"], per_page=per_page,
                            pagination_numbers=pagination["pagination"],
                            categories=categories, statuses=statuses, sources=sources, scores=scores,
+                           continue_watching=continue_watching,
                            suggestion_titles=suggestion_titles,
                            current_filters={"search": raw_search, "category": cat,
                                             "status": status, "source": source, "score": score, "sort": sort,

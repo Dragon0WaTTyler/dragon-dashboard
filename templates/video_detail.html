@@ -788,12 +788,32 @@
             {% set torrent_handoff_url = entry.magnet_fhd or entry.magnet_hd or entry.torrent_fhd or entry.torrent_hd %}
             <div class="torrent-links" style="margin-top:20px; border-top:1px solid #333; padding-top:15px;">
                 <h4 style="color:#6ac045; margin-bottom:10px;">Download Torrent</h4>
+                {% if movie_resume and movie_resume.has_progress %}
+                <div style="margin:0 0 12px; padding:10px 12px; border-radius:12px; border:1px solid rgba(255,255,255,.12); background:rgba(255,255,255,.04); color:rgba(255,255,255,.86);">
+                    {% if movie_resume.has_resume %}
+                    <div style="font-weight:700;">{{ movie_resume.resume_label }}</div>
+                    {% if movie_resume.progress_percent_label %}
+                    <div class="muted" style="margin-top:4px;">Progress: {{ movie_resume.progress_percent_label }}</div>
+                    {% endif %}
+                    {% elif movie_resume.completed %}
+                    <div style="font-weight:700;">Watched locally</div>
+                    {% endif %}
+                </div>
+                {% endif %}
                 {% if dragon_runtime_watch_url %}
                 <a
                     class="btn btn-sm btn-outline-success"
                     href="{{ dragon_runtime_watch_url }}"
                     data-scroll-top="true">
                     ▶ Open in Dragon Runtime
+                </a>
+                {% endif %}
+                {% if movie_resume and movie_resume.resume_watch_url %}
+                <a
+                    class="btn btn-sm btn-outline-warning"
+                    href="{{ movie_resume.resume_watch_url }}"
+                    data-scroll-top="true">
+                    ▶ Resume
                 </a>
                 {% endif %}
                 {% if torrent_handoff_url %}

@@ -32,6 +32,26 @@ def _normalized_text(value: Any) -> str:
     return str(value or "").strip()
 
 
+def _parse_iso_timestamp(value: Any) -> datetime | None:
+    raw_value = _normalized_text(value)
+    if not raw_value:
+        return None
+    try:
+        return datetime.fromisoformat(raw_value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def _format_seconds_label(value: Any) -> str:
+    total_seconds = max(int(_safe_float(value) or 0), 0)
+    hours = total_seconds // 3600
+    minutes = (total_seconds % 3600) // 60
+    seconds = total_seconds % 60
+    if hours > 0:
+        return f"{hours}:{minutes:02d}:{seconds:02d}"
+    return f"{minutes:02d}:{seconds:02d}"
+
+
 class MovieWatchProgressService:
     def __init__(self, path: Path) -> None:
         self.path = Path(path)
@@ -70,6 +90,33 @@ class MovieWatchProgressService:
             payload = self._load()
             entry = dict((payload.get("entries") or {}).get(key) or {}) if key else {}
         return self._public_payload(key=key, entry=entry)
+
+    def list_progress(self, *, include_completed: bool = True, only_resumable: bool = False, limit: int | None = None) -> list[dict[str, Any]]:
+        with self.lock:
+            payload = self._load()
+            raw_entries = list((payload.get("entries") or {}).items())
+
+        items: list[dict[str, Any]] = []
+        for key, entry in raw_entries:
+            public_entry = self._public_payload(key=str(key or ""), entry=dict(entry or {}))
+            if not public_entry.get("has_progress"):
+                continue
+            if not include_completed and public_entry.get("completed"):
+                continue
+            if only_resumable and not public_entry.get("resume_available"):
+                continue
+            items.append(public_entry)
+
+        items.sort(
+            key=lambda item: _parse_iso_timestamp(item.get("updated_at")) or datetime.min.replace(tzinfo=timezone.utc),
+            reverse=True,
+        )
+        if limit is not None:
+            return items[: max(int(limit), 0)]
+        return items
+
+    def list_continue_watching(self, *, limit: int | None = None) -> list[dict[str, Any]]:
+        return self.list_progress(include_completed=False, only_resumable=True, limit=limit)
 
     def save_progress(self, progress: Mapping[str, Any] | None) -> tuple[dict[str, Any], int]:
         payload = dict(progress or {})
@@ -141,6 +188,9 @@ class MovieWatchProgressService:
         if not completed and duration > 0 and current_time >= WATCH_PROGRESS_MIN_SECONDS:
             resume_time = min(current_time, max(duration - WATCH_PROGRESS_RESUME_PADDING_SECONDS, 0.0))
             resume_available = resume_time >= WATCH_PROGRESS_MIN_SECONDS
+        progress_percent = 0.0
+        if duration > 0:
+            progress_percent = min(max((current_time / duration) * 100.0, 0.0), 100.0)
         return {
             "ok": True,
             "movie_id": _normalized_text(item.get("movie_id") or key),
@@ -152,6 +202,11 @@ class MovieWatchProgressService:
             "local_state": _normalized_text(item.get("local_state") or ("watched" if completed else "")),
             "resume_time": resume_time,
             "resume_available": resume_available,
+            "resume_label": f"Continue from {_format_seconds_label(resume_time)}" if resume_available else "",
+            "progress_percent": progress_percent,
+            "progress_percent_label": f"{int(round(progress_percent))}%" if duration > 0 else "",
+            "current_time_label": _format_seconds_label(current_time) if current_time > 0 else "",
+            "duration_label": _format_seconds_label(duration) if duration > 0 else "",
             "has_progress": bool(item),
             "updated_at": _normalized_text(item.get("updated_at")),
         }

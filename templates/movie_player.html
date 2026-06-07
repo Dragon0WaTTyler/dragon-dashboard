@@ -231,6 +231,20 @@
       line-height: 1.55;
     }
 
+    .state-note {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--dragon-text);
+    }
+
+    .state-note strong {
+      color: var(--dragon-gold);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      font-size: 12px;
+    }
+
     .pause-note {
       color: #f1d3d3;
     }
@@ -373,6 +387,7 @@
         </div>
 
         <div class="player-notes">
+          <div class="state-note"><strong>State</strong><span>{{ status_label }}</span></div>
           {% if message and show_video %}
           <div>{{ message }}</div>
           {% endif %}

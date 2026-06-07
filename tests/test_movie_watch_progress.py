@@ -4,6 +4,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import app as dragon_app
+from domains.magnets.playback import watch_progress as watch_progress_module
 from domains.magnets.playback.watch_progress import MovieWatchProgressService
 
 
@@ -102,6 +103,94 @@ class MovieWatchProgressTests(unittest.TestCase):
         self.assertTrue(payload["resume_available"])
         self.assertGreaterEqual(payload["resume_time"], 240.0)
 
+    def test_listing_continue_watching_records(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            service = self._service(temp_dir)
+            service.save_progress(
+                {
+                    "movie_id": "film-a",
+                    "title": "Film A",
+                    "current_time": 120.0,
+                    "duration": 7200.0,
+                    "completed": False,
+                }
+            )
+            records = service.list_continue_watching()
+
+            self.assertEqual(len(records), 1)
+            self.assertEqual(records[0]["movie_id"], "film-a")
+            self.assertEqual(records[0]["resume_label"], "Continue from 02:00")
+            self.assertEqual(records[0]["progress_percent_label"], "2%")
+
+    def test_listing_continue_watching_excludes_completed_records(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            service = self._service(temp_dir)
+            service.save_progress(
+                {
+                    "movie_id": "film-a",
+                    "title": "Film A",
+                    "current_time": 120.0,
+                    "duration": 7200.0,
+                    "completed": False,
+                }
+            )
+            service.save_progress(
+                {
+                    "movie_id": "film-b",
+                    "title": "Film B",
+                    "current_time": 7200.0,
+                    "duration": 7200.0,
+                    "completed": True,
+                }
+            )
+            continue_watching = service.list_continue_watching()
+            all_records = service.list_progress()
+
+            self.assertEqual([item["movie_id"] for item in continue_watching], ["film-a"])
+            self.assertEqual({item["movie_id"] for item in all_records}, {"film-a", "film-b"})
+
+    def test_listing_continue_watching_sorts_by_updated_at_descending(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            service = self._service(temp_dir)
+            timestamps = iter(
+                [
+                    "2026-06-07T20:00:00+00:00",
+                    "2026-06-07T21:00:00+00:00",
+                    "2026-06-07T22:00:00+00:00",
+                ]
+            )
+            with patch.object(watch_progress_module, "_utc_now_iso", side_effect=lambda: next(timestamps)):
+                service.save_progress(
+                    {
+                        "movie_id": "film-a",
+                        "title": "Film A",
+                        "current_time": 120.0,
+                        "duration": 7200.0,
+                        "completed": False,
+                    }
+                )
+                service.save_progress(
+                    {
+                        "movie_id": "film-b",
+                        "title": "Film B",
+                        "current_time": 240.0,
+                        "duration": 7200.0,
+                        "completed": False,
+                    }
+                )
+                service.save_progress(
+                    {
+                        "movie_id": "film-c",
+                        "title": "Film C",
+                        "current_time": 360.0,
+                        "duration": 7200.0,
+                        "completed": False,
+                    }
+                )
+            records = service.list_continue_watching()
+
+            self.assertEqual([item["movie_id"] for item in records], ["film-c", "film-b", "film-a"])
+
     def test_player_page_includes_watch_progress_script_and_data_attributes(self):
         ready_session = {
             "session_id": "sess-1",
@@ -156,6 +245,28 @@ class MovieWatchProgressTests(unittest.TestCase):
             )
 
         html = response.get_data(as_text=True)
+        self.assertNotIn("Developer details", html)
+        self.assertNotIn("runtime_session", html)
+
+    def test_watch_failure_page_hides_debug_details_in_normal_mode(self):
+        with patch.object(
+            dragon_app.PLAYBACK_RUNTIME_MANAGER,
+            "create_session",
+            side_effect=dragon_app.PlaybackRuntimeError("runtime_unavailable", "Runtime offline"),
+        ):
+            response = self.client.get(
+                "/watch",
+                query_string={
+                    "magnet": TEST_MAGNET,
+                    "title": "Test Film",
+                    "movie_id": "film-test",
+                    "entry_id": "film-test",
+                },
+            )
+
+        html = response.get_data(as_text=True)
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Retry playback", html)
         self.assertNotIn("Developer details", html)
         self.assertNotIn("runtime_session", html)
 
