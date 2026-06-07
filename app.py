@@ -58,6 +58,11 @@ from domains.reading import (
     BooksService,
     QuotesService,
 )
+from domains.reading.services.book_metadata_repair_service import BookMetadataRepairService
+from domains.reading.services.book_metadata_sources import (
+    GoogleBooksMetadataSource,
+    OpenLibraryMetadataSource,
+)
 from domains.youtube.services import (
     WatchLaterSyncService,
 )
@@ -172,6 +177,7 @@ IS_PRODUCTION = RUNTIME_CONFIG.is_production
 FLASK_SECRET_KEY = RUNTIME_CONFIG.flask_secret_key
 _APP_INSTANCE = None
 _BOOKS_SERVICE = None
+_BOOK_METADATA_REPAIR_SERVICE = None
 _QUOTES_SERVICE = None
 _READING_CACHE_ACCESS = None
 _READING_RSS_SERVICE = None
@@ -17699,6 +17705,25 @@ def _get_books_service():
     return _BOOKS_SERVICE
 
 
+def _get_book_metadata_repair_service():
+    global _BOOK_METADATA_REPAIR_SERVICE
+    if _BOOK_METADATA_REPAIR_SERVICE is None:
+        _BOOK_METADATA_REPAIR_SERVICE = BookMetadataRepairService(
+            fetch_books_entries=fetch_books_entries,
+            open_library_source=OpenLibraryMetadataSource(
+                requests_module=requests,
+                timeout_seconds=6,
+            ),
+            google_books_source=GoogleBooksMetadataSource(
+                requests_module=requests,
+                timeout_seconds=6,
+            ),
+            default_limit=10,
+            max_limit=25,
+        )
+    return _BOOK_METADATA_REPAIR_SERVICE
+
+
 def fetch_book_quotes_entries(force_refresh=False):
     return _get_quotes_service().fetch_book_quotes_entries(force_refresh=force_refresh)
 
@@ -29706,6 +29731,18 @@ def books_quotes_migrate():
         return jsonify({"ok": False, "error": f"Notion request failed: {exc}"}), 502
     except RuntimeError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
+    return jsonify(report)
+
+
+@app.route("/api/books/metadata-repair/preview", methods=["POST"])
+def books_metadata_repair_preview():
+    payload = request.get_json(silent=True) if request.is_json else {}
+    payload = payload if isinstance(payload, dict) else {}
+    try:
+        report = _get_book_metadata_repair_service().preview(payload)
+    except Exception as exc:
+        app.logger.warning("books_metadata_repair_preview failed error=%s", exc)
+        return jsonify({"ok": False, "dry_run": True, "count": 0, "items": [], "warnings": [str(exc) or "Preview failed."]}), 500
     return jsonify(report)
 
 
