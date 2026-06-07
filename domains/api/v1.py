@@ -4,7 +4,12 @@ from __future__ import annotations
 
 from flask import Blueprint, current_app, jsonify, request, session
 
-from domains.chess.api_projection import build_chess_game_detail_projection, build_chess_games_projection, build_chess_home_projection
+from domains.chess.api_projection import (
+    build_chess_game_detail_projection,
+    build_chess_games_projection,
+    build_chess_home_projection,
+    build_chess_train_today_projection,
+)
 
 api_v1_bp = Blueprint("api_v1", __name__)
 
@@ -54,3 +59,8 @@ def api_v1_chess_game_detail(game_id):
     if payload is None:
         return jsonify({"ok": False, "error": "game_not_found"}), 404
     return jsonify(payload)
+
+
+@api_v1_bp.get("/api/v1/chess/train-today")
+def api_v1_chess_train_today():
+    return jsonify(build_chess_train_today_projection())

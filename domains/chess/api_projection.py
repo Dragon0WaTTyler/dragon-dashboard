@@ -215,3 +215,107 @@ def build_chess_game_detail_projection(game_id):
         "section": "chess",
         "item": _project_chess_game_detail_item(game),
     }
+
+
+def _normalize_train_today_type(value):
+    normalized = str(value or "").strip().lower().replace(" ", "_")
+    if normalized in {"opening_repair", "win_the_position", "puzzle", "review"}:
+        return normalized
+    if normalized in {"opening repair"}:
+        return "opening_repair"
+    if normalized in {"win the position"}:
+        return "win_the_position"
+    if normalized in {"review from your games", "review_from_your_games"}:
+        return "review"
+    return "unknown"
+
+
+def _safe_train_today_opening(item):
+    payload = item if isinstance(item, dict) else {}
+    return {
+        "name": _safe_text(payload.get("opening_label", "") or payload.get("opening_name", ""), ""),
+        "eco": _safe_text(payload.get("opening_eco", ""), ""),
+    }
+
+
+def _project_train_today_item(item, *, priority=0):
+    payload = item if isinstance(item, dict) else {}
+    item_type = _normalize_train_today_type(payload.get("training_type_label", payload.get("type", "")))
+    if item_type == "unknown":
+        raw_type = str(payload.get("type", "") or "").strip().lower()
+        if raw_type in {"game", "opening", "line"}:
+            item_type = "review"
+    source_game_id = _safe_text(payload.get("game_id", "") or payload.get("source_game_id", ""), "")
+    if not source_game_id and str(payload.get("id", "") or "").strip().startswith("review-"):
+        source_game_id = _safe_text(payload.get("game_id", ""), "")
+    completed = str(payload.get("status", "") or "").strip().lower() == "done"
+    title = _safe_text(payload.get("title", ""), "")
+    subtitle = _safe_text(payload.get("subtitle", ""), "")
+    if not subtitle:
+        subtitle = _safe_text(payload.get("reason", ""), "")
+    if not subtitle:
+        subtitle = _safe_text(payload.get("line_label", "") or payload.get("opening_label", ""), "")
+    return {
+        "id": _safe_text(payload.get("id", ""), f"train-{priority}"),
+        "type": item_type,
+        "title": title or "Training item",
+        "subtitle": subtitle,
+        "source_game_id": source_game_id,
+        "opening": _safe_train_today_opening(payload),
+        "priority": max(0, int(payload.get("priority_score", priority) or priority)),
+        "completed": bool(completed),
+    }
+
+
+def build_chess_train_today_projection():
+    chess_data = _safe_load(load_chess_data, default_chess_data)
+    payload = chess_data if isinstance(chess_data, dict) else default_chess_data()
+    items = []
+    seen_ids = set()
+
+    review_snapshot = [dict(item) for item in (payload.get("review_queue", []) or []) if isinstance(item, dict)]
+    for index, review_item in enumerate(review_snapshot):
+        status = str(review_item.get("status", "active") or "active").strip().lower() or "active"
+        if status == "done":
+            continue
+        projected = _project_train_today_item(
+            {
+                "id": review_item.get("id", ""),
+                "type": review_item.get("type", "game"),
+                "title": review_item.get("title", ""),
+                "subtitle": review_item.get("reason", ""),
+                "game_id": review_item.get("game_id", ""),
+                "opening_label": review_item.get("opening_label", ""),
+                "opening_eco": "",
+                "status": status,
+                "training_type_label": "Review from your games",
+            },
+            priority=index,
+        )
+        if projected["id"] in seen_ids:
+            continue
+        items.append(projected)
+        seen_ids.add(projected["id"])
+
+    candidate_snapshot = [dict(item) for item in (payload.get("auto_puzzle_candidates", []) or []) if isinstance(item, dict)]
+    for index, candidate in enumerate(candidate_snapshot):
+        status = str(candidate.get("status", "candidate") or "candidate").strip().lower() or "candidate"
+        if status not in {"candidate", "queued", "training"}:
+            continue
+        projected = _project_train_today_item(candidate, priority=100 + index)
+        if projected["id"] in seen_ids:
+            continue
+        if projected["type"] == "unknown":
+            projected["type"] = "puzzle"
+        items.append(projected)
+        seen_ids.add(projected["id"])
+
+    items.sort(key=lambda item: (-int(item.get("priority", 0) or 0), str(item.get("title", "") or "").lower()))
+    return {
+        "ok": True,
+        "section": "chess",
+        "title": "Train Today",
+        "available": bool(items),
+        "items": items,
+        "count": len(items),
+    }

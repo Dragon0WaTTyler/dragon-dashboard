@@ -306,3 +306,66 @@ class IOSApiFoundationTests(unittest.TestCase):
         payload = response.get_json()
         self.assertEqual(payload["item"]["id"], game_id)
         self.assertEqual(payload["item"]["user_result"], "draw")
+
+    def test_chess_train_today_endpoint_returns_ok_true(self):
+        with patch("domains.chess.api_projection.load_chess_data", return_value={
+            "review_queue": [
+                {
+                    "id": "review-1",
+                    "type": "game",
+                    "title": "Alpha vs Beta",
+                    "reason": "Review from your games.",
+                    "game_id": "game-1",
+                    "opening_label": "C00 · French Defense",
+                    "status": "active",
+                }
+            ],
+            "auto_puzzle_candidates": [
+                {
+                    "id": "candidate-1",
+                    "training_type_label": "Opening repair",
+                    "title": "French Defense",
+                    "subtitle": "Low score branch",
+                    "game_id": "game-2",
+                    "opening_label": "C00 · French Defense",
+                    "opening_eco": "C00",
+                    "priority_score": 88,
+                    "status": "candidate",
+                }
+            ],
+        }):
+            response = self.client.get("/api/v1/chess/train-today")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload["ok"], True)
+        self.assertEqual(payload["section"], "chess")
+        self.assertEqual(payload["title"], "Train Today")
+        self.assertIsInstance(payload["items"], list)
+        self.assertGreaterEqual(payload["count"], 1)
+        self.assertEqual(payload["available"], True)
+        first = payload["items"][0]
+        self.assertIn(first["type"], {"opening_repair", "win_the_position", "puzzle", "review", "unknown"})
+        self.assertIn("opening", first)
+        self.assertIn("priority", first)
+        self.assertIn("completed", first)
+        body = response.get_data(as_text=True)
+        self.assertNotIn("pgn", body.lower())
+        self.assertNotIn("moves", body.lower())
+        self.assertNotIn("raw_source", body.lower())
+        self.assertNotIn("token", body.lower())
+        self.assertNotIn("secret", body.lower())
+        self.assertNotIn("path", body.lower())
+
+    def test_chess_train_today_endpoint_handles_missing_data(self):
+        with patch("domains.chess.api_projection.load_chess_data", side_effect=FileNotFoundError("missing")):
+            response = self.client.get("/api/v1/chess/train-today")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload["ok"], True)
+        self.assertEqual(payload["section"], "chess")
+        self.assertEqual(payload["title"], "Train Today")
+        self.assertEqual(payload["items"], [])
+        self.assertEqual(payload["count"], 0)
+        self.assertEqual(payload["available"], False)
