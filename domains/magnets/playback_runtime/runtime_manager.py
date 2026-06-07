@@ -29,6 +29,7 @@ INITIAL_READY_BYTES = 2 * 1024 * 1024
 HEAD_PROBE_BYTES = 1024
 MP4_FAST_START_SCAN_BYTES = 1024 * 1024
 MP4_TAIL_PROBE_BYTES = 1024 * 1024
+MP4_INITIAL_PLAYBACK_WINDOW_BYTES = 8 * 1024 * 1024
 METADATA_TIMEOUT_MS = 20000
 READY_TIMEOUT_MS = 45000
 SESSION_INACTIVE_SECONDS = 30 * 60
@@ -50,6 +51,37 @@ def _runtime_tracker_issue_message(webtorrent: Mapping[str, Any] | None) -> str:
         if re.search(r"tracker|announce|enotfound|timed out|timeout|dns", message, re.IGNORECASE):
             return message
     return ""
+
+
+def _selected_container_label(file_name: str) -> str:
+    suffix = str(Path(str(file_name or "").strip()).suffix or "").lower().lstrip(".")
+    return suffix or "unknown"
+
+
+def _infer_audio_codec_risk(file_name: str) -> tuple[str, str]:
+    lowered_name = str(file_name or "").lower()
+    if "eac3" in lowered_name or "ddp" in lowered_name:
+        return ("eac3", "high")
+    if "truehd" in lowered_name or "atmos" in lowered_name:
+        return ("truehd", "high")
+    if "dts" in lowered_name:
+        return ("dts", "high")
+    if "ac3" in lowered_name:
+        return ("ac3", "high")
+    if "aac" in lowered_name:
+        return ("aac", "low")
+    return ("unknown", "unknown")
+
+
+def _infer_video_codec_risk(file_name: str) -> tuple[str, str]:
+    lowered_name = str(file_name or "").lower()
+    if "10bit" in lowered_name or "10-bit" in lowered_name:
+        return ("10bit", "high")
+    if "x265" in lowered_name or "h265" in lowered_name or "hevc" in lowered_name:
+        return ("hevc", "high")
+    if "x264" in lowered_name or "h264" in lowered_name or "avc" in lowered_name:
+        return ("h264", "low")
+    return ("unknown", "unknown")
 
 
 def build_runtime_source_quality(
@@ -543,6 +575,10 @@ class PlaybackRuntimeManager:
             or ""
         ).strip()
         selected_file_prioritized = bool(materialization.get("selectedFilePrioritized") or session.file_index >= 0)
+        selected_file_label = str(runtime_file.get("name") or runtime_file.get("path") or session.file_name or selected_relative_path or "").strip()
+        selected_container = _selected_container_label(selected_file_label)
+        audio_codec_hint, audio_codec_risk = _infer_audio_codec_risk(selected_file_label)
+        video_codec_hint, video_codec_risk = _infer_video_codec_risk(selected_file_label)
         materialization_code = str(materialization.get("code") or "").strip()
         materialization_reason = str(materialization.get("reason") or "").strip()
         materialization_state = self._materialization_state(
@@ -601,6 +637,12 @@ class PlaybackRuntimeManager:
             "name": session.file_name,
             "path": selected_relative_path,
             "length": session.file_size,
+            "container": selected_container,
+            "extension": selected_container,
+            "audio_codec_hint": audio_codec_hint,
+            "audio_codec_risk": audio_codec_risk,
+            "video_codec_hint": video_codec_hint,
+            "video_codec_risk": video_codec_risk,
         }
         session.details["materialization"] = {
             "helper_download_root": helper_download_root,
@@ -662,6 +704,9 @@ class PlaybackRuntimeManager:
             "head_ready": bool(mp4_readiness["head_ready"]),
             "tail_ready": bool(mp4_readiness["tail_ready"]),
             "fast_start_confirmed": bool(mp4_readiness["fast_start_confirmed"]),
+            "initial_window_ready": bool(mp4_readiness["initial_window_ready"]),
+            "initial_window_range": str(mp4_readiness["initial_window_range"] or "").strip(),
+            "initial_window_bytes_required": int(mp4_readiness["initial_window_bytes_required"] or 0),
             "tail_probe_range": str(mp4_readiness["tail_probe_range"] or "").strip(),
             "tail_probe_code": str(mp4_readiness["tail_probe_code"] or "").strip(),
             "stream_openable_for_browser": bool(mp4_readiness["stream_openable_for_browser"]),
@@ -681,6 +726,7 @@ class PlaybackRuntimeManager:
 
     def _build_session_payload(self, payload: Mapping[str, Any]) -> dict[str, Any]:
         response = dict(payload)
+        selected_file_details = dict((response.get("details") or {}).get("selected_file") or {})
         materialization = dict((response.get("details") or {}).get("materialization") or {})
         response["selected_file"] = {
             "index": int(response.get("file_index", -1) or -1),
@@ -690,6 +736,12 @@ class PlaybackRuntimeManager:
             "mime_type": str(response.get("mime_type") or "application/octet-stream"),
             "relative_path": str(materialization.get("selected_file_relative_path") or "").strip(),
             "expected_path": str(materialization.get("selected_file_expected_path") or response.get("file_path") or "").strip(),
+            "container": str(selected_file_details.get("container") or _selected_container_label(str(response.get("file_name") or ""))),
+            "extension": str(selected_file_details.get("extension") or _selected_container_label(str(response.get("file_name") or ""))),
+            "audio_codec_hint": str(selected_file_details.get("audio_codec_hint") or "unknown"),
+            "audio_codec_risk": str(selected_file_details.get("audio_codec_risk") or "unknown"),
+            "video_codec_hint": str(selected_file_details.get("video_codec_hint") or "unknown"),
+            "video_codec_risk": str(selected_file_details.get("video_codec_risk") or "unknown"),
         }
         response["state"] = self._public_state(response)
         response["runtime_metrics"] = build_runtime_metrics(response)
@@ -800,6 +852,17 @@ class PlaybackRuntimeManager:
 
     def _refresh_local_file_session(self, session: PlaybackRuntimeSession) -> None:
         local_file_exists, local_file_size, first_byte_readable = self._inspect_local_file(session.file_path)
+        mp4_readiness = self._inspect_browser_mp4_readiness(
+            file_path=session.file_path,
+            file_size=session.file_size,
+            mime_type=session.mime_type,
+            local_file_exists=local_file_exists,
+            local_file_size=local_file_size,
+            first_byte_readable=first_byte_readable,
+        )
+        selected_container = _selected_container_label(session.file_name or session.file_path)
+        audio_codec_hint, audio_codec_risk = _infer_audio_codec_risk(session.file_name or session.file_path)
+        video_codec_hint, video_codec_risk = _infer_video_codec_risk(session.file_name or session.file_path)
         session.downloaded_bytes = local_file_size
         session.complete = bool(local_file_exists and local_file_size > 0 and first_byte_readable)
         session.ready = session.complete
@@ -811,6 +874,12 @@ class PlaybackRuntimeManager:
             "name": session.file_name,
             "path": session.file_path,
             "length": session.file_size,
+            "container": selected_container,
+            "extension": selected_container,
+            "audio_codec_hint": audio_codec_hint,
+            "audio_codec_risk": audio_codec_risk,
+            "video_codec_hint": video_codec_hint,
+            "video_codec_risk": video_codec_risk,
         }
         session.details["materialization"] = {
             "helper_download_root": str(Path(session.file_path).parent if session.file_path else ""),
@@ -842,11 +911,14 @@ class PlaybackRuntimeManager:
             "local_file_size": local_file_size,
             "first_byte_readable": first_byte_readable,
             "head_ready": bool(local_file_exists and local_file_size >= min(session.file_size or HEAD_PROBE_BYTES, HEAD_PROBE_BYTES) and first_byte_readable),
-            "tail_ready": bool(local_file_exists and local_file_size >= session.file_size and first_byte_readable),
-            "fast_start_confirmed": False,
+            "tail_ready": bool(mp4_readiness["tail_ready"]),
+            "fast_start_confirmed": bool(mp4_readiness["fast_start_confirmed"]),
+            "initial_window_ready": bool(mp4_readiness["initial_window_ready"]),
+            "initial_window_range": str(mp4_readiness["initial_window_range"] or "").strip(),
+            "initial_window_bytes_required": int(mp4_readiness["initial_window_bytes_required"] or 0),
             "tail_probe_range": self._tail_probe_range_text(session.file_size),
-            "tail_probe_code": "" if local_file_exists and local_file_size >= session.file_size and first_byte_readable else "tail_not_ready",
-            "stream_openable_for_browser": bool(local_file_exists and local_file_size > 0 and first_byte_readable),
+            "tail_probe_code": str(mp4_readiness["tail_probe_code"] or "").strip(),
+            "stream_openable_for_browser": bool(mp4_readiness["stream_openable_for_browser"]),
         }
 
     def _materialization_state(
@@ -892,6 +964,9 @@ class PlaybackRuntimeManager:
                 "head_ready": bool(local_file_exists and local_file_size > 0 and first_byte_readable),
                 "tail_ready": True,
                 "fast_start_confirmed": False,
+                "initial_window_ready": bool(local_file_exists and local_file_size > 0 and first_byte_readable),
+                "initial_window_range": "",
+                "initial_window_bytes_required": 0,
                 "tail_probe_range": "",
                 "tail_probe_code": "",
                 "stream_openable_for_browser": bool(local_file_exists and local_file_size > 0 and first_byte_readable),
@@ -899,6 +974,12 @@ class PlaybackRuntimeManager:
         head_ready = bool(local_file_exists and local_file_size >= min(max(file_size, 1), HEAD_PROBE_BYTES) and first_byte_readable)
         fast_start_confirmed = self._mp4_fast_start_confirmed(file_path, local_file_exists, local_file_size)
         tail_range = self._tail_probe_range(file_size)
+        initial_window_bytes_required = min(max(int(file_size or 0), 1), MP4_INITIAL_PLAYBACK_WINDOW_BYTES)
+        initial_window_ready = bool(
+            local_file_exists
+            and first_byte_readable
+            and local_file_size >= initial_window_bytes_required
+        )
         tail_ready = bool(helper_tail_ready or (local_file_exists and first_byte_readable and file_size > 0 and local_file_size >= file_size))
         tail_probe_code = ""
         if not tail_ready and not fast_start_confirmed:
@@ -907,12 +988,15 @@ class PlaybackRuntimeManager:
             "head_ready": head_ready,
             "tail_ready": tail_ready,
             "fast_start_confirmed": fast_start_confirmed,
+            "initial_window_ready": initial_window_ready,
+            "initial_window_range": self._initial_window_range_text(initial_window_bytes_required),
+            "initial_window_bytes_required": initial_window_bytes_required,
             "tail_probe_range": str(helper_tail_probe_range or self._tail_probe_range_text(file_size)).strip(),
             "tail_probe_code": tail_probe_code,
             # Keep MP4 browser readiness conservative: if the browser later seeks
             # near the tail for metadata, we should stay buffering until those
             # bytes are actually materialized on disk.
-            "stream_openable_for_browser": bool(head_ready and tail_ready),
+            "stream_openable_for_browser": bool(head_ready and tail_ready and initial_window_ready),
             "tail_range": tail_range,
         }
 
@@ -947,3 +1031,9 @@ class PlaybackRuntimeManager:
         if file_size <= 0:
             return ""
         return f"bytes={start}-{end}"
+
+    def _initial_window_range_text(self, initial_window_bytes_required: int) -> str:
+        normalized_size = max(int(initial_window_bytes_required or 0), 0)
+        if normalized_size <= 0:
+            return ""
+        return f"bytes=0-{normalized_size - 1}"

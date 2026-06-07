@@ -146,6 +146,12 @@ class PlaybackRuntimeTransportTests(unittest.TestCase):
         self.assertTrue(session["stream_readiness"]["head_ready"])
         self.assertTrue(session["stream_readiness"]["tail_ready"])
         self.assertTrue(session["stream_readiness"]["fast_start_confirmed"])
+        self.assertTrue(session["stream_readiness"]["initial_window_ready"])
+        self.assertEqual(session["stream_readiness"]["initial_window_bytes_required"], 4 * 1024 * 1024)
+        self.assertEqual(session["stream_readiness"]["initial_window_range"], f"bytes=0-{(4 * 1024 * 1024) - 1}")
+        self.assertEqual(session["selected_file"]["container"], "mp4")
+        self.assertEqual(session["selected_file"]["audio_codec_risk"], "unknown")
+        self.assertEqual(session["selected_file"]["video_codec_risk"], "unknown")
         self.assertEqual(session["materialization"]["helper_download_root"], manager.torrent_client.temp_dir.name)
         self.assertEqual(session["materialization"]["selected_file_relative_path"], "Film.2026.1080p.mp4")
         self.assertEqual(session["materialization"]["selected_file_expected_path"], str(manager.torrent_client.local_file_path))
@@ -458,6 +464,179 @@ class PlaybackRuntimeTransportTests(unittest.TestCase):
         self.assertTrue(session["stream_readiness"]["fast_start_confirmed"])
         self.assertFalse(session["stream_readiness"]["stream_openable"])
         self.assertFalse(session["source_quality"]["can_open_stream"])
+
+    def test_runtime_manager_keeps_mp4_buffering_until_initial_playback_window_is_ready(self):
+        class TailReadyButShortHeadClient(FakeTorrentClient):
+            def __init__(self):
+                super().__init__()
+                self.local_file_path.write_bytes(
+                    b"\x00\x00\x00\x18ftypisom"
+                    + b"\x00\x00\x00\x08moov"
+                    + b"\x00\x00\x00\x08mdat"
+                    + (b"x" * ((4 * 1024 * 1024) - 28))
+                )
+                self.status_payload["status"]["selectedFile"]["length"] = 700 * 1024 * 1024
+                self.status_payload["status"]["selectedFile"]["downloaded"] = 4 * 1024 * 1024
+                self.status_payload["status"]["materialization"].update(
+                    {
+                        "tailPriorityRequested": True,
+                        "tailWindowReady": True,
+                        "tailWindowStart": (700 * 1024 * 1024) - (1024 * 1024),
+                        "tailWindowEnd": (700 * 1024 * 1024) - 1,
+                        "tailWindowLength": 1024 * 1024,
+                        "tailWindowRange": f"bytes={(700 * 1024 * 1024) - (1024 * 1024)}-{(700 * 1024 * 1024) - 1}",
+                    }
+                )
+
+        manager = PlaybackRuntimeManager(
+            sessions=InMemoryPlaybackRuntimeSessions(),
+            torrent_client=TailReadyButShortHeadClient(),
+            runtime_root=Path(tempfile.gettempdir()) / "dragon-playback-tests-initial-window-wait",
+            cleanup_interval_seconds=3600,
+        )
+
+        session = manager.create_session(
+            movie={"movie_id": "film-1", "title": "Film"},
+            source={"magnet": "magnet:?xt=urn:btih:1234567890ABCDEF1234567890ABCDEF12345678", "source_fingerprint": "src123"},
+            stream_base_url="http://localhost:5000",
+        )
+
+        self.assertEqual(session["status"], "buffering_video")
+        self.assertTrue(session["stream_readiness"]["head_ready"])
+        self.assertTrue(session["stream_readiness"]["tail_ready"])
+        self.assertFalse(session["stream_readiness"]["initial_window_ready"])
+        self.assertEqual(session["stream_readiness"]["initial_window_bytes_required"], 8 * 1024 * 1024)
+        self.assertEqual(session["stream_readiness"]["initial_window_range"], f"bytes=0-{(8 * 1024 * 1024) - 1}")
+        self.assertFalse(session["stream_readiness"]["stream_openable"])
+
+    def test_runtime_manager_marks_mp4_ready_when_head_tail_and_initial_window_are_ready(self):
+        class TailReadyAndWideHeadClient(FakeTorrentClient):
+            def __init__(self):
+                super().__init__()
+                self.local_file_path.write_bytes(
+                    b"\x00\x00\x00\x18ftypisom"
+                    + b"\x00\x00\x00\x08moov"
+                    + b"\x00\x00\x00\x08mdat"
+                    + (b"x" * ((8 * 1024 * 1024) - 28))
+                )
+                self.status_payload["status"]["selectedFile"]["length"] = 700 * 1024 * 1024
+                self.status_payload["status"]["selectedFile"]["downloaded"] = 8 * 1024 * 1024
+                self.status_payload["status"]["materialization"].update(
+                    {
+                        "localFileSize": 8 * 1024 * 1024,
+                        "bytesWritten": 8 * 1024 * 1024,
+                        "tailPriorityRequested": True,
+                        "tailWindowReady": True,
+                        "tailWindowStart": (700 * 1024 * 1024) - (1024 * 1024),
+                        "tailWindowEnd": (700 * 1024 * 1024) - 1,
+                        "tailWindowLength": 1024 * 1024,
+                        "tailWindowRange": f"bytes={(700 * 1024 * 1024) - (1024 * 1024)}-{(700 * 1024 * 1024) - 1}",
+                    }
+                )
+
+        manager = PlaybackRuntimeManager(
+            sessions=InMemoryPlaybackRuntimeSessions(),
+            torrent_client=TailReadyAndWideHeadClient(),
+            runtime_root=Path(tempfile.gettempdir()) / "dragon-playback-tests-initial-window-ready",
+            cleanup_interval_seconds=3600,
+        )
+
+        session = manager.create_session(
+            movie={"movie_id": "film-1", "title": "Film"},
+            source={"magnet": "magnet:?xt=urn:btih:1234567890ABCDEF1234567890ABCDEF12345678", "source_fingerprint": "src123"},
+            stream_base_url="http://localhost:5000",
+        )
+
+        self.assertEqual(session["status"], "ready_to_play")
+        self.assertTrue(session["stream_readiness"]["head_ready"])
+        self.assertTrue(session["stream_readiness"]["tail_ready"])
+        self.assertTrue(session["stream_readiness"]["initial_window_ready"])
+        self.assertEqual(session["stream_readiness"]["initial_window_bytes_required"], 8 * 1024 * 1024)
+        self.assertTrue(session["stream_readiness"]["stream_openable"])
+
+    def test_runtime_manager_classifies_codec_risk_from_selected_filename(self):
+        class AacClient(FakeTorrentClient):
+            def __init__(self):
+                super().__init__()
+                target_name = "Film.2026.1080p.x264.AAC.mp4"
+                renamed_path = self.local_file_path.with_name(target_name)
+                self.local_file_path.replace(renamed_path)
+                self.local_file_path = renamed_path
+                self.status_payload["status"]["materialization"]["selectedFileRelativePath"] = target_name
+                self.status_payload["status"]["materialization"]["selectedFileExpectedPath"] = str(self.local_file_path)
+                self.status_payload["status"]["selectedFile"].update(
+                    {
+                        "name": target_name,
+                        "path": target_name,
+                        "relativePath": target_name,
+                        "localPath": str(self.local_file_path),
+                    }
+                )
+
+            def start(self, **kwargs):
+                started = super().start(**kwargs)
+                started["files"][1]["name"] = "Film.2026.1080p.x264.AAC.mp4"
+                started["files"][1]["path"] = "Film.2026.1080p.x264.AAC.mp4"
+                return started
+
+        class Ac3Client(AacClient):
+            def __init__(self):
+                super().__init__()
+                target_name = "Film.2026.1080p.HEVC.EAC3.mkv"
+                renamed_path = self.local_file_path.with_name(target_name)
+                self.local_file_path.replace(renamed_path)
+                self.local_file_path = renamed_path
+                self.status_payload["status"]["materialization"]["selectedFileRelativePath"] = target_name
+                self.status_payload["status"]["materialization"]["selectedFileExpectedPath"] = str(self.local_file_path)
+                self.status_payload["status"]["selectedFile"].update(
+                    {
+                        "name": target_name,
+                        "path": target_name,
+                        "relativePath": target_name,
+                        "localPath": str(self.local_file_path),
+                    }
+                )
+
+            def start(self, **kwargs):
+                started = super().start(**kwargs)
+                started["files"][1]["name"] = "Film.2026.1080p.HEVC.EAC3.mkv"
+                started["files"][1]["path"] = "Film.2026.1080p.HEVC.EAC3.mkv"
+                return started
+
+        aac_manager = PlaybackRuntimeManager(
+            sessions=InMemoryPlaybackRuntimeSessions(),
+            torrent_client=AacClient(),
+            runtime_root=Path(tempfile.gettempdir()) / "dragon-playback-tests-aac-risk",
+            cleanup_interval_seconds=3600,
+        )
+        ac3_manager = PlaybackRuntimeManager(
+            sessions=InMemoryPlaybackRuntimeSessions(),
+            torrent_client=Ac3Client(),
+            runtime_root=Path(tempfile.gettempdir()) / "dragon-playback-tests-ac3-risk",
+            cleanup_interval_seconds=3600,
+        )
+
+        aac_session = aac_manager.create_session(
+            movie={"movie_id": "film-1", "title": "Film"},
+            source={"magnet": "magnet:?xt=urn:btih:1234567890ABCDEF1234567890ABCDEF12345678", "source_fingerprint": "src123"},
+            stream_base_url="http://localhost:5000",
+        )
+        ac3_session = ac3_manager.create_session(
+            movie={"movie_id": "film-1", "title": "Film"},
+            source={"magnet": "magnet:?xt=urn:btih:1234567890ABCDEF1234567890ABCDEF12345678", "source_fingerprint": "src123"},
+            stream_base_url="http://localhost:5000",
+        )
+
+        self.assertEqual(aac_session["selected_file"]["container"], "mp4")
+        self.assertEqual(aac_session["selected_file"]["audio_codec_hint"], "aac")
+        self.assertEqual(aac_session["selected_file"]["audio_codec_risk"], "low")
+        self.assertEqual(aac_session["selected_file"]["video_codec_hint"], "h264")
+        self.assertEqual(aac_session["selected_file"]["video_codec_risk"], "low")
+        self.assertEqual(ac3_session["selected_file"]["container"], "mkv")
+        self.assertEqual(ac3_session["selected_file"]["audio_codec_hint"], "eac3")
+        self.assertEqual(ac3_session["selected_file"]["audio_codec_risk"], "high")
+        self.assertEqual(ac3_session["selected_file"]["video_codec_hint"], "hevc")
+        self.assertEqual(ac3_session["selected_file"]["video_codec_risk"], "high")
 
     def test_runtime_manager_exposes_tail_priority_window_diagnostics(self):
         class TailPriorityClient(FakeTorrentClient):
