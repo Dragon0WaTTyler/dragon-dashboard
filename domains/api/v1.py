@@ -10,6 +10,7 @@ from domains.chess.api_projection import (
     build_chess_courses_projection,
     build_chess_home_projection,
     build_chess_openings_projection,
+    build_chess_progress_projection,
     build_chess_train_today_projection,
 )
 
@@ -90,3 +91,8 @@ def api_v1_chess_courses():
             status=request.args.get("status", ""),
         )
     )
+
+
+@api_v1_bp.get("/api/v1/chess/progress")
+def api_v1_chess_progress():
+    return jsonify(build_chess_progress_projection())

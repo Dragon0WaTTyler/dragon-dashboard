@@ -17,6 +17,7 @@ The current backend foundation exposes safe, read-only endpoints for:
 - Chess games list
 - Chess game detail shell
 - Chess courses list
+- Chess progress summary
 
 The contract is intentionally minimal so the native iOS app can be built against stable JSON before any SwiftUI screens exist.
 
@@ -304,6 +305,38 @@ Notes:
 - It uses stored course URLs only and does not fetch anything remotely.
 - If course data is missing or empty, it still returns `ok: true` with an empty `items` array.
 
+### `GET /api/v1/chess/progress`
+
+Purpose: compact progress summary for the future iOS progress screen.
+
+Example response:
+
+```json
+{
+  "ok": true,
+  "section": "chess",
+  "title": "Progress",
+  "summary": {
+    "games_count": 4,
+    "profiles_count": 1,
+    "openings_count": 3,
+    "courses_count": 2,
+    "training_count": 2,
+    "wins": 1,
+    "losses": 1,
+    "draws": 1,
+    "unknown_results": 1,
+    "review_due_count": 1
+  }
+}
+```
+
+Notes:
+
+- The endpoint is read-only and safe.
+- If chess or course data is missing or empty, it still returns `ok: true` with zero counts.
+- The endpoint is intentionally lightweight and deterministic.
+
 ## Safety Rules
 
 The iOS API foundation must remain safe by default.
@@ -362,6 +395,15 @@ Goal:
 - Show a paginated list of chess courses
 - Support category and status filtering
 - Keep the row design compact and scan-friendly
+
+### Progress Summary
+
+Use `GET /api/v1/chess/progress`.
+
+Goal:
+
+- Show a concise progress snapshot
+- Surface game totals, result breakdown, openings, courses, training, and review due counts
 
 ## Suggested Swift Models
 

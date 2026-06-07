@@ -661,3 +661,101 @@ class IOSApiFoundationTests(unittest.TestCase):
         self.assertEqual(payload["ok"], True)
         self.assertEqual(payload["items"], [])
         self.assertEqual(payload["count"], 0)
+
+    def test_chess_progress_endpoint_returns_ok_true(self):
+        with patch("domains.chess.api_projection.load_chess_data", return_value={
+            "profiles": [{"id": "p1"}],
+            "games": [
+                {
+                    "id": "g1",
+                    "source": "lichess",
+                    "user_result": "win",
+                    "opening": {"name": "French Defense", "eco": "C00"},
+                },
+                {
+                    "id": "g2",
+                    "source": "chess.com",
+                    "user_result": "loss",
+                    "opening": {"name": "Queen's Gambit", "eco": "D06"},
+                },
+                {
+                    "id": "g3",
+                    "source": "lichess",
+                    "user_result": "draw",
+                    "opening": {"name": "Queen's Gambit", "eco": "D06"},
+                },
+                {
+                    "id": "g4",
+                    "source": "lichess",
+                    "user_result": "",
+                    "opening": {"name": "A40 Opening", "eco": "A40"},
+                },
+            ],
+            "review_queue": [
+                {"id": "rq1", "status": "active"},
+                {"id": "rq2", "status": "done"},
+            ],
+            "puzzle_seeds": [],
+            "auto_puzzle_candidates": [
+                {"id": "c1", "status": "candidate"},
+                {"id": "c2", "status": "done"},
+            ],
+        }), patch("domains.chess.api_projection.load_chess_courses_data", return_value={
+            "courses": [
+                {"id": "course-1", "title": "Opening Principles"},
+                {"id": "course-2", "title": "Endgame Basics"},
+            ],
+            "updated_at": "2026-01-02T00:00:00Z",
+        }):
+            response = self.client.get("/api/v1/chess/progress")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload["ok"], True)
+        self.assertEqual(payload["section"], "chess")
+        self.assertEqual(payload["title"], "Progress")
+        self.assertEqual(payload["summary"], {
+            "games_count": 4,
+            "profiles_count": 1,
+            "openings_count": 3,
+            "courses_count": 2,
+            "training_count": 2,
+            "wins": 1,
+            "losses": 1,
+            "draws": 1,
+            "unknown_results": 1,
+            "review_due_count": 1,
+        })
+        body = response.get_data(as_text=True)
+        self.assertNotIn("pgn", body.lower())
+        self.assertNotIn("moves", body.lower())
+        self.assertNotIn("raw_source", body.lower())
+        self.assertNotIn("path", body.lower())
+        self.assertNotIn("secret", body.lower())
+        self.assertNotIn("token", body.lower())
+        self.assertNotIn("api_key", body.lower())
+        self.assertNotIn("env", body.lower())
+
+    def test_chess_progress_endpoint_handles_missing_data(self):
+        with patch("domains.chess.api_projection.load_chess_data", side_effect=FileNotFoundError("missing")), patch(
+            "domains.chess.api_projection.load_chess_courses_data",
+            side_effect=FileNotFoundError("missing"),
+        ):
+            response = self.client.get("/api/v1/chess/progress")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload["ok"], True)
+        self.assertEqual(payload["title"], "Progress")
+        self.assertEqual(payload["summary"], {
+            "games_count": 0,
+            "profiles_count": 0,
+            "openings_count": 0,
+            "courses_count": 0,
+            "training_count": 0,
+            "wins": 0,
+            "losses": 0,
+            "draws": 0,
+            "unknown_results": 0,
+            "review_due_count": 0,
+        })

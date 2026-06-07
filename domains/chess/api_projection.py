@@ -564,3 +564,52 @@ def build_chess_courses_projection(*, limit=50, offset=0, category=None, status=
         "items": paged_items,
         "count": len(projected),
     }
+
+
+def _build_chess_progress_counts(chess_data, chess_courses_data):
+    payload = chess_data if isinstance(chess_data, dict) else default_chess_data()
+    games = [dict(item) for item in (payload.get("games", []) or []) if isinstance(item, dict)]
+    profiles_count = _count_dict_items(payload.get("profiles", []))
+    courses_count = _count_dict_items((chess_courses_data or {}).get("courses", []))
+    games_count = len(games)
+    openings_count = build_chess_openings_projection(limit=100, offset=0).get("count", 0)
+    training_count = build_chess_train_today_projection().get("count", 0)
+    review_due_count = len([
+        item
+        for item in (payload.get("review_queue", []) or [])
+        if isinstance(item, dict) and str(item.get("status", "active") or "active").strip().lower() != "done"
+    ])
+    wins = losses = draws = unknown_results = 0
+    for game in games:
+        result = _normalize_chess_result(game.get("user_result", ""))
+        if result == "win":
+            wins += 1
+        elif result == "loss":
+            losses += 1
+        elif result == "draw":
+            draws += 1
+        else:
+            unknown_results += 1
+    return {
+        "games_count": games_count,
+        "profiles_count": profiles_count,
+        "openings_count": openings_count,
+        "courses_count": courses_count,
+        "training_count": training_count,
+        "wins": wins,
+        "losses": losses,
+        "draws": draws,
+        "unknown_results": unknown_results,
+        "review_due_count": review_due_count,
+    }
+
+
+def build_chess_progress_projection():
+    chess_data = _safe_load(load_chess_data, default_chess_data)
+    chess_courses_data = _safe_load(load_chess_courses_data, default_chess_courses)
+    return {
+        "ok": True,
+        "section": "chess",
+        "title": "Progress",
+        "summary": _build_chess_progress_counts(chess_data, chess_courses_data),
+    }
