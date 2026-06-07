@@ -837,6 +837,71 @@ class RuntimeDiagnosticUiTests(unittest.TestCase):
         self.assertEqual(second_response.status_code, 302)
         self.assertEqual(second_response.headers["Location"], "http://127.0.0.1:5000/api/runtime/stream/sess-1")
 
+    def test_watch_existing_session_keeps_waiting_until_mp4_tail_is_ready(self):
+        buffering_session = {
+            "session_id": "sess-1",
+            "state": "buffering",
+            "status": "buffering_video",
+            "stream_url": "http://127.0.0.1:5000/api/runtime/stream/sess-1",
+            "selected_file": {"name": "movie.mp4"},
+            "source_quality": {"state": "buffering", "code": "buffering"},
+            "stream_readiness": {
+                "head_ready": True,
+                "tail_ready": False,
+                "stream_openable": False,
+                "tail_probe_code": "tail_not_ready",
+            },
+        }
+        ready_session = {
+            "session_id": "sess-1",
+            "state": "ready",
+            "status": "ready_to_play",
+            "stream_url": "http://127.0.0.1:5000/api/runtime/stream/sess-1",
+            "selected_file": {"name": "movie.mp4"},
+            "source_quality": {"state": "playable", "code": "playable"},
+            "stream_readiness": {
+                "head_ready": True,
+                "tail_ready": True,
+                "stream_openable": True,
+                "tail_probe_code": "",
+            },
+        }
+
+        with patch.object(
+            dragon_app.PLAYBACK_RUNTIME_MANAGER,
+            "get_session",
+            side_effect=[buffering_session, ready_session],
+        ) as get_session_mock:
+            first_response = self.client.get(
+                "/watch",
+                query_string={
+                    "magnet": TEST_MAGNET,
+                    "title": "Test Film",
+                    "movie_id": "film-test",
+                    "entry_id": "film-test",
+                    "session_id": "sess-1",
+                },
+                follow_redirects=False,
+            )
+            second_response = self.client.get(
+                "/watch",
+                query_string={
+                    "magnet": TEST_MAGNET,
+                    "title": "Test Film",
+                    "movie_id": "film-test",
+                    "entry_id": "film-test",
+                    "session_id": "sess-1",
+                },
+                follow_redirects=False,
+            )
+
+        self.assertEqual(first_response.status_code, 200)
+        self.assertIn("Dragon runtime is preparing this stream.", first_response.get_data(as_text=True))
+        self.assertEqual(second_response.status_code, 302)
+        self.assertEqual(second_response.headers["Location"], "http://127.0.0.1:5000/api/runtime/stream/sess-1")
+        self.assertEqual(get_session_mock.call_count, 2)
+        get_session_mock.assert_any_call("sess-1", refresh=True)
+
     def test_api_runtime_stream_503_includes_stable_error_code(self):
         with patch.object(
             dragon_app,

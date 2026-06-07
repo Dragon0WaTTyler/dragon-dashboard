@@ -46,7 +46,7 @@ class FakeTorrentClient:
                     "name": "Film.2026.1080p.mp4",
                     "path": "Film.2026.1080p.mp4",
                     "relativePath": "Film.2026.1080p.mp4",
-                    "length": 700 * 1024 * 1024,
+                    "length": 4 * 1024 * 1024,
                     "downloaded": 4 * 1024 * 1024,
                     "localPath": str(self.local_file_path),
                 },
@@ -135,7 +135,7 @@ class PlaybackRuntimeTransportTests(unittest.TestCase):
         self.assertEqual(session["source_quality"]["state"], "playable")
         self.assertTrue(session["source_quality"]["can_open_stream"])
         self.assertTrue(session["stream_readiness"]["head_ready"])
-        self.assertFalse(session["stream_readiness"]["tail_ready"])
+        self.assertTrue(session["stream_readiness"]["tail_ready"])
         self.assertTrue(session["stream_readiness"]["fast_start_confirmed"])
         self.assertEqual(session["materialization"]["helper_download_root"], manager.torrent_client.temp_dir.name)
         self.assertEqual(session["materialization"]["selected_file_relative_path"], "Film.2026.1080p.mp4")
@@ -415,6 +415,40 @@ class PlaybackRuntimeTransportTests(unittest.TestCase):
         self.assertTrue(session["stream_readiness"]["head_ready"])
         self.assertFalse(session["stream_readiness"]["tail_ready"])
         self.assertEqual(session["stream_readiness"]["tail_probe_code"], "tail_not_ready")
+
+    def test_runtime_manager_keeps_fast_start_mp4_buffering_until_tail_bytes_exist(self):
+        class FastStartHeadOnlyMp4Client(FakeTorrentClient):
+            def __init__(self):
+                super().__init__()
+                self.local_file_path.write_bytes(
+                    b"\x00\x00\x00\x18ftypisom"
+                    + b"\x00\x00\x00\x08moov"
+                    + b"\x00\x00\x00\x08mdat"
+                    + (b"x" * 4096)
+                )
+                self.status_payload["status"]["selectedFile"]["length"] = 700 * 1024 * 1024
+                self.status_payload["status"]["selectedFile"]["downloaded"] = 4 * 1024 * 1024
+
+        manager = PlaybackRuntimeManager(
+            sessions=InMemoryPlaybackRuntimeSessions(),
+            torrent_client=FastStartHeadOnlyMp4Client(),
+            runtime_root=Path(tempfile.gettempdir()) / "dragon-playback-tests-fast-start-head-only",
+            cleanup_interval_seconds=3600,
+        )
+
+        session = manager.create_session(
+            movie={"movie_id": "film-1", "title": "Film"},
+            source={"magnet": "magnet:?xt=urn:btih:1234567890ABCDEF1234567890ABCDEF12345678", "source_fingerprint": "src123"},
+            stream_base_url="http://localhost:5000",
+        )
+
+        self.assertEqual(session["status"], "buffering_video")
+        self.assertEqual(session["state"], "buffering")
+        self.assertTrue(session["stream_readiness"]["head_ready"])
+        self.assertFalse(session["stream_readiness"]["tail_ready"])
+        self.assertTrue(session["stream_readiness"]["fast_start_confirmed"])
+        self.assertFalse(session["stream_readiness"]["stream_openable"])
+        self.assertFalse(session["source_quality"]["can_open_stream"])
 
     def test_runtime_manager_reports_unsafe_selected_path(self):
         class UnsafePathClient(FakeTorrentClient):

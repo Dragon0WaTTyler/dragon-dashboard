@@ -892,7 +892,10 @@ class PlaybackRuntimeManager:
             "fast_start_confirmed": fast_start_confirmed,
             "tail_probe_range": self._tail_probe_range_text(file_size),
             "tail_probe_code": tail_probe_code,
-            "stream_openable_for_browser": bool(head_ready and (tail_ready or fast_start_confirmed)),
+            # Keep MP4 browser readiness conservative: if the browser later seeks
+            # near the tail for metadata, we should stay buffering until those
+            # bytes are actually materialized on disk.
+            "stream_openable_for_browser": bool(head_ready and tail_ready),
             "tail_range": tail_range,
         }
 
