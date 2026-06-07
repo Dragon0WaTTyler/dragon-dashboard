@@ -450,6 +450,65 @@ class PlaybackRuntimeTransportTests(unittest.TestCase):
         self.assertFalse(session["stream_readiness"]["stream_openable"])
         self.assertFalse(session["source_quality"]["can_open_stream"])
 
+    def test_runtime_manager_exposes_tail_priority_window_diagnostics(self):
+        class TailPriorityClient(FakeTorrentClient):
+            def __init__(self):
+                super().__init__()
+                self.status_payload["status"]["selectedFile"]["length"] = 700 * 1024 * 1024
+                self.status_payload["status"]["selectedFile"]["downloaded"] = 3 * 1024 * 1024
+                self.status_payload["status"]["materialization"].update(
+                    {
+                        "tailPriorityRequested": True,
+                        "tailPriorityReason": "",
+                        "tailWindowStart": (700 * 1024 * 1024) - (1024 * 1024),
+                        "tailWindowEnd": (700 * 1024 * 1024) - 1,
+                        "tailWindowLength": 1024 * 1024,
+                        "tailWindowRange": f"bytes={(700 * 1024 * 1024) - (1024 * 1024)}-{(700 * 1024 * 1024) - 1}",
+                        "tailBytesWritten": 0,
+                        "tailWriterActive": True,
+                        "tailFirstDataReceived": False,
+                        "tailLastDataAt": "",
+                        "tailWindowReady": False,
+                        "tailErrorCode": "",
+                        "tailErrorReason": "",
+                    }
+                )
+                self.status_payload["status"]["webtorrent"] = {
+                    "tailPriorityRequested": True,
+                    "tailWindowStart": (700 * 1024 * 1024) - (1024 * 1024),
+                    "tailWindowEnd": (700 * 1024 * 1024) - 1,
+                    "tailWindowLength": 1024 * 1024,
+                    "tailBytesWritten": 0,
+                    "tailWriterActive": True,
+                    "tailFirstDataReceived": False,
+                    "tailWindowReady": False,
+                    "tailErrorCode": "",
+                    "tailErrorReason": "",
+                    "selectedFileStartPiece": 0,
+                    "selectedFileEndPiece": 10,
+                    "pieceLength": 256 * 1024,
+                }
+
+        manager = PlaybackRuntimeManager(
+            sessions=InMemoryPlaybackRuntimeSessions(),
+            torrent_client=TailPriorityClient(),
+            runtime_root=Path(tempfile.gettempdir()) / "dragon-playback-tests-tail-priority-diagnostics",
+            cleanup_interval_seconds=3600,
+        )
+
+        session = manager.create_session(
+            movie={"movie_id": "film-1", "title": "Film"},
+            source={"magnet": "magnet:?xt=urn:btih:1234567890ABCDEF1234567890ABCDEF12345678", "source_fingerprint": "src123"},
+            stream_base_url="http://localhost:5000",
+        )
+
+        self.assertTrue(session["materialization"]["tail_priority_requested"])
+        self.assertFalse(session["materialization"]["tail_window_ready"])
+        self.assertTrue(session["materialization"]["tail_writer_active"])
+        self.assertIn("bytes=", session["materialization"]["tail_window_range"])
+        self.assertTrue(session["webtorrent"]["tailPriorityRequested"])
+        self.assertEqual(session["webtorrent"]["pieceLength"], 256 * 1024)
+
     def test_runtime_manager_reports_unsafe_selected_path(self):
         class UnsafePathClient(FakeTorrentClient):
             def __init__(self):
@@ -660,6 +719,52 @@ class PlaybackRuntimeTransportTests(unittest.TestCase):
         self.assertTrue(error_context.exception.details.get("near_tail"))
         self.assertTrue(error_context.exception.details.get("browser_range_blocked"))
         self.assertEqual(error_context.exception.details.get("tail_probe_code"), "tail_not_ready")
+
+    def test_stream_endpoint_serves_ready_tail_window_even_when_downloaded_bytes_are_low(self):
+        app = Flask(__name__)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            file_size = 2 * 1024 * 1024
+            tail_window = 1024 * 1024
+            tail_start = file_size - tail_window
+            video_path = Path(temp_dir) / "movie.mp4"
+            with video_path.open("wb") as handle:
+                handle.seek(file_size - 1)
+                handle.write(b"\x00")
+            with video_path.open("r+b") as handle:
+                handle.seek(tail_start)
+                handle.write(b"z" * tail_window)
+
+            class StubManager:
+                def wait_for_bytes(self, session_id, start_offset, timeout_seconds=12.0):
+                    return {
+                        "file_path": str(video_path),
+                        "file_size": file_size,
+                        "mime_type": "video/mp4",
+                        "downloaded_bytes": 2 * 1024,
+                        "complete": False,
+                        "selected_file": {"name": "movie.mp4", "length": file_size},
+                        "file_name": "movie.mp4",
+                        "materialization": {
+                            "tail_window_ready": True,
+                            "tail_window_start": tail_start,
+                            "tail_window_end": file_size - 1,
+                        },
+                        "stream_readiness": {
+                            "tail_probe_range": f"bytes={tail_start}-{file_size - 1}",
+                            "tail_probe_code": "",
+                        },
+                    }
+
+            with app.test_request_context(
+                "/api/runtime/stream/session-1",
+                headers={"Range": f"bytes={tail_start}-{tail_start + 1023}"},
+            ):
+                response = build_stream_response(StubManager(), "session-1")
+                self.assertEqual(response.status_code, 206)
+                self.assertEqual(response.headers["Content-Range"], f"bytes {tail_start}-{tail_start + 1023}/{file_size}")
+                self.assertEqual(response.headers["Content-Type"], "video/mp4")
+                body = b"".join(response.response)
+                self.assertEqual(body, b"z" * 1024)
 
     def test_cleanup_expires_inactive_sessions_and_removes_runtime_dir(self):
         client = FakeTorrentClient()

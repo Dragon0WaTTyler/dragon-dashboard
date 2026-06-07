@@ -569,6 +569,8 @@ class PlaybackRuntimeManager:
             local_file_exists=local_file_exists,
             local_file_size=local_file_size,
             first_byte_readable=first_byte_readable,
+            helper_tail_ready=bool(materialization.get("tailWindowReady")),
+            helper_tail_probe_range=str(materialization.get("tailWindowRange") or "").strip(),
         )
         session.ready = session.complete or (
             available_local_bytes > 0
@@ -616,6 +618,19 @@ class PlaybackRuntimeManager:
             "last_data_at": last_data_at,
             "time_since_last_data_ms": time_since_last_data_ms,
             "materialization_timeout_ms": materialization_timeout_ms,
+            "tail_priority_requested": bool(materialization.get("tailPriorityRequested")),
+            "tail_priority_reason": str(materialization.get("tailPriorityReason") or "").strip(),
+            "tail_window_start": int(materialization.get("tailWindowStart", 0) or 0),
+            "tail_window_end": int(materialization.get("tailWindowEnd", 0) or 0),
+            "tail_window_length": int(materialization.get("tailWindowLength", 0) or 0),
+            "tail_window_range": str(materialization.get("tailWindowRange") or "").strip(),
+            "tail_bytes_written": int(materialization.get("tailBytesWritten", 0) or 0),
+            "tail_writer_active": bool(materialization.get("tailWriterActive")),
+            "tail_first_data_received": bool(materialization.get("tailFirstDataReceived")),
+            "tail_last_data_at": str(materialization.get("tailLastDataAt") or "").strip(),
+            "tail_window_ready": bool(materialization.get("tailWindowReady")),
+            "tail_error_code": str(materialization.get("tailErrorCode") or "").strip(),
+            "tail_error_reason": str(materialization.get("tailErrorReason") or "").strip(),
             "state": materialization_state,
             "code": materialization_code,
             "reason": materialization_reason,
@@ -869,6 +884,8 @@ class PlaybackRuntimeManager:
         local_file_exists: bool,
         local_file_size: int,
         first_byte_readable: bool,
+        helper_tail_ready: bool = False,
+        helper_tail_probe_range: str = "",
     ) -> dict[str, Any]:
         if str(mime_type or "").strip().lower() != "video/mp4":
             return {
@@ -882,7 +899,7 @@ class PlaybackRuntimeManager:
         head_ready = bool(local_file_exists and local_file_size >= min(max(file_size, 1), HEAD_PROBE_BYTES) and first_byte_readable)
         fast_start_confirmed = self._mp4_fast_start_confirmed(file_path, local_file_exists, local_file_size)
         tail_range = self._tail_probe_range(file_size)
-        tail_ready = bool(local_file_exists and first_byte_readable and file_size > 0 and local_file_size >= file_size)
+        tail_ready = bool(helper_tail_ready or (local_file_exists and first_byte_readable and file_size > 0 and local_file_size >= file_size))
         tail_probe_code = ""
         if not tail_ready and not fast_start_confirmed:
             tail_probe_code = "tail_not_ready"
@@ -890,7 +907,7 @@ class PlaybackRuntimeManager:
             "head_ready": head_ready,
             "tail_ready": tail_ready,
             "fast_start_confirmed": fast_start_confirmed,
-            "tail_probe_range": self._tail_probe_range_text(file_size),
+            "tail_probe_range": str(helper_tail_probe_range or self._tail_probe_range_text(file_size)).strip(),
             "tail_probe_code": tail_probe_code,
             # Keep MP4 browser readiness conservative: if the browser later seeks
             # near the tail for metadata, we should stay buffering until those

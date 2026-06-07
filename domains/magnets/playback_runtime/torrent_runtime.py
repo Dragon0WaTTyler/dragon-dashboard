@@ -199,6 +199,18 @@ function stopMaterializer(entry) {
     } catch (_error) {
     }
   }
+  if (materializer.tailReadStream) {
+    try {
+      materializer.tailReadStream.destroy()
+    } catch (_error) {
+    }
+  }
+  if (materializer.tailWriteStream) {
+    try {
+      materializer.tailWriteStream.destroy()
+    } catch (_error) {
+    }
+  }
 }
 
 function nowIso() {
@@ -243,6 +255,30 @@ function classifyMaterializationFailure(entry, materializer, localState) {
   return { code: 'materialization_timeout', reason: 'Selected file materialization timeout' }
 }
 
+function buildTailPriorityWindow(file) {
+  const fileName = String(file?.name || file?.path || '').trim().toLowerCase()
+  const fileLength = Number(file?.length || file?.size || 0)
+  if (!fileName.endsWith('.mp4') || fileLength <= 0) {
+    return {
+      requested: false,
+      start: 0,
+      end: 0,
+      length: 0,
+      reason: fileLength <= 0 ? 'tail_priority_unavailable' : 'tail_priority_not_required',
+    }
+  }
+  const probeBytes = Math.min(fileLength, 1024 * 1024)
+  const start = Math.max(fileLength - probeBytes, 0)
+  const end = Math.max(fileLength - 1, 0)
+  return {
+    requested: true,
+    start,
+    end,
+    length: Math.max(end - start + 1, 0),
+    reason: '',
+  }
+}
+
 async function ensureMaterializer(entry, file) {
   const resolvedPath = resolveExpectedPath(entry.downloadDir, file.path)
   if (!resolvedPath.ok) {
@@ -257,12 +293,25 @@ async function ensureMaterializer(entry, file) {
       errorReason: resolvedPath.reason,
       readStream: null,
       writeStream: null,
+      tailReadStream: null,
+      tailWriteStream: null,
       readStreamStarted: false,
       readStreamActive: false,
       firstDataReceived: false,
       lastDataAt: '',
       timeSinceLastDataMs: 0,
       materializationTimeoutMs: 0,
+      tailPriorityRequested: false,
+      tailPriorityReason: resolvedPath.reason,
+      tailWindowStart: 0,
+      tailWindowEnd: 0,
+      tailWindowLength: 0,
+      tailBytesWritten: 0,
+      tailWriterActive: false,
+      tailFirstDataReceived: false,
+      tailLastDataAt: '',
+      tailErrorCode: '',
+      tailErrorReason: '',
     }
     return entry.materializer
   }
@@ -280,6 +329,13 @@ async function ensureMaterializer(entry, file) {
   await mkdir(path.dirname(resolvedPath.expectedPath), { recursive: true })
   const readStream = file.createReadStream()
   const writeStream = createWriteStream(resolvedPath.expectedPath, { flags: 'w' })
+  const tailPriority = buildTailPriorityWindow(file)
+  const tailReadStream = tailPriority.requested
+    ? file.createReadStream({ start: tailPriority.start, end: tailPriority.end })
+    : null
+  const tailWriteStream = tailPriority.requested
+    ? createWriteStream(resolvedPath.expectedPath, { flags: 'r+', start: tailPriority.start })
+    : null
   const materializer = {
     relativePath: resolvedPath.relativePath,
     expectedPath: resolvedPath.expectedPath,
@@ -289,12 +345,25 @@ async function ensureMaterializer(entry, file) {
     errorReason: '',
     readStream,
     writeStream,
+    tailReadStream,
+    tailWriteStream,
     readStreamStarted: true,
     readStreamActive: true,
     firstDataReceived: false,
     lastDataAt: '',
     timeSinceLastDataMs: 0,
     materializationTimeoutMs: 0,
+    tailPriorityRequested: Boolean(tailPriority.requested),
+    tailPriorityReason: String(tailPriority.reason || ''),
+    tailWindowStart: Number(tailPriority.start || 0),
+    tailWindowEnd: Number(tailPriority.end || 0),
+    tailWindowLength: Number(tailPriority.length || 0),
+    tailBytesWritten: 0,
+    tailWriterActive: Boolean(tailPriority.requested),
+    tailFirstDataReceived: false,
+    tailLastDataAt: '',
+    tailErrorCode: '',
+    tailErrorReason: '',
   }
   const failMaterializer = (code, error) => {
     if (materializer.errorCode) {
@@ -309,6 +378,14 @@ async function ensureMaterializer(entry, file) {
   const finishMaterializer = () => {
     materializer.writerActive = false
     materializer.readStreamActive = false
+  }
+  const failTailMaterializer = (code, error) => {
+    materializer.tailWriterActive = false
+    materializer.tailErrorCode = code
+    materializer.tailErrorReason = error instanceof Error ? error.message : String(error || code)
+  }
+  const finishTailMaterializer = () => {
+    materializer.tailWriterActive = false
   }
 
   readStream.on('data', chunk => {
@@ -334,6 +411,29 @@ async function ensureMaterializer(entry, file) {
     }
   })
   readStream.pipe(writeStream)
+  if (tailReadStream && tailWriteStream) {
+    tailReadStream.on('data', chunk => {
+      materializer.tailFirstDataReceived = true
+      materializer.tailWriterActive = true
+      materializer.tailBytesWritten += Number(chunk?.length || 0)
+      materializer.tailLastDataAt = nowIso()
+    })
+    tailReadStream.on('error', error => failTailMaterializer('tail_read_stream_error', error))
+    tailReadStream.on('end', () => finishTailMaterializer())
+    tailReadStream.on('close', () => {
+      if (!materializer.tailErrorCode) {
+        finishTailMaterializer()
+      }
+    })
+    tailWriteStream.on('error', error => failTailMaterializer('tail_write_stream_error', error))
+    tailWriteStream.on('finish', () => finishTailMaterializer())
+    tailWriteStream.on('close', () => {
+      if (!materializer.tailErrorCode) {
+        finishTailMaterializer()
+      }
+    })
+    tailReadStream.pipe(tailWriteStream)
+  }
 
   entry.materializer = materializer
   return materializer
@@ -396,6 +496,24 @@ async function buildMaterializationPayload(entry) {
     lastDataAt: String(materializer?.lastDataAt || ''),
     timeSinceLastDataMs: Number(materializer?.timeSinceLastDataMs || 0),
     materializationTimeoutMs: Number(materializer?.materializationTimeoutMs || 0),
+    tailPriorityRequested: Boolean(materializer?.tailPriorityRequested),
+    tailPriorityReason: String(materializer?.tailPriorityReason || ''),
+    tailWindowStart: Number(materializer?.tailWindowStart || 0),
+    tailWindowEnd: Number(materializer?.tailWindowEnd || 0),
+    tailWindowLength: Number(materializer?.tailWindowLength || 0),
+    tailWindowRange: Number(materializer?.tailWindowLength || 0) > 0
+      ? `bytes=${Number(materializer?.tailWindowStart || 0)}-${Number(materializer?.tailWindowEnd || 0)}`
+      : '',
+    tailBytesWritten: Number(materializer?.tailBytesWritten || 0),
+    tailWriterActive: Boolean(materializer?.tailWriterActive),
+    tailFirstDataReceived: Boolean(materializer?.tailFirstDataReceived),
+    tailLastDataAt: String(materializer?.tailLastDataAt || ''),
+    tailWindowReady: Boolean(
+      Number(materializer?.tailWindowLength || 0) > 0
+      && Number(materializer?.tailBytesWritten || 0) >= Number(materializer?.tailWindowLength || 0)
+    ),
+    tailErrorCode: String(materializer?.tailErrorCode || ''),
+    tailErrorReason: String(materializer?.tailErrorReason || ''),
     state,
     code,
     reason,
@@ -429,6 +547,9 @@ function buildWebTorrentPayload(entry) {
     selectedFileIndex: Number(entry.selectedIndex ?? -1),
     selectedFileName: String(selectedFile?.name || ''),
     selectedFileLength: Number(selectedFile?.length || selectedFile?.size || 0),
+    selectedFileStartPiece: Number(selectedFile?._startPiece ?? -1),
+    selectedFileEndPiece: Number(selectedFile?._endPiece ?? -1),
+    pieceLength: Number(torrent?.pieceLength || 0),
     readStreamStarted: Boolean(materializer?.readStreamStarted),
     readStreamActive: Boolean(materializer?.readStreamActive),
       firstDataReceived: Boolean(materializer?.firstDataReceived),
@@ -436,6 +557,20 @@ function buildWebTorrentPayload(entry) {
       lastDataAt: String(materializer?.lastDataAt || ''),
       timeSinceLastDataMs: Number(materializer?.timeSinceLastDataMs || 0),
       materializationTimeoutMs: Number(materializer?.materializationTimeoutMs || 0),
+    tailPriorityRequested: Boolean(materializer?.tailPriorityRequested),
+    tailPriorityReason: String(materializer?.tailPriorityReason || ''),
+    tailWindowStart: Number(materializer?.tailWindowStart || 0),
+    tailWindowEnd: Number(materializer?.tailWindowEnd || 0),
+    tailWindowLength: Number(materializer?.tailWindowLength || 0),
+    tailBytesWritten: Number(materializer?.tailBytesWritten || 0),
+    tailWriterActive: Boolean(materializer?.tailWriterActive),
+    tailFirstDataReceived: Boolean(materializer?.tailFirstDataReceived),
+    tailWindowReady: Boolean(
+      Number(materializer?.tailWindowLength || 0) > 0
+      && Number(materializer?.tailBytesWritten || 0) >= Number(materializer?.tailWindowLength || 0)
+    ),
+    tailErrorCode: String(materializer?.tailErrorCode || ''),
+    tailErrorReason: String(materializer?.tailErrorReason || ''),
     warningMessages: normalizeMessages([entry.warning]),
     errorMessages: normalizeMessages([entry.error]),
     trackerMessages: normalizeMessages(trackerMessages),

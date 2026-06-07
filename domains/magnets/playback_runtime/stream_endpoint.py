@@ -65,6 +65,7 @@ def build_stream_response(manager: PlaybackRuntimeManager, session_id: str, http
     selected_file_name = str(selected_file.get("name") or selected_file_name).strip()
     file_size = int(session.get("file_size", file_size) or 0)
     stream_readiness = dict(session.get("stream_readiness") or {})
+    materialization = dict(session.get("materialization") or {})
     if not file_exists:
         raise _stream_error(
             "file_not_found",
@@ -80,7 +81,8 @@ def build_stream_response(manager: PlaybackRuntimeManager, session_id: str, http
             browser_range_blocked=bool(start >= disk_size),
         )
 
-    if downloaded_bytes <= start and not complete:
+    tail_window_ready = _range_within_ready_tail_window(start, end, file_size, materialization)
+    if downloaded_bytes <= start and not complete and not tail_window_ready:
         raise _stream_error(
             "file_not_ready",
             "The requested playback range has not been downloaded yet.",
@@ -99,7 +101,11 @@ def build_stream_response(manager: PlaybackRuntimeManager, session_id: str, http
     if start >= file_size:
         return Response(status=416, headers={"Content-Range": f"bytes */{file_size}"})
 
-    readable_end = file_size - 1 if complete else min(file_size - 1, max(downloaded_bytes - 1, start))
+    readable_end = (
+        file_size - 1
+        if complete
+        else end if tail_window_ready else min(file_size - 1, max(downloaded_bytes - 1, start))
+    )
     available_end = min(end, readable_end)
     if available_end < start:
         raise _stream_error(
@@ -326,6 +332,22 @@ def _is_near_tail_range(start: int, end: int, total_size: int) -> bool:
     tail_probe_bytes = min(total_size, 1024 * 1024)
     tail_start = max(total_size - tail_probe_bytes, 0)
     return max(int(start or 0), 0) >= tail_start or max(int(end or 0), 0) >= tail_start
+
+
+def _range_within_ready_tail_window(start: int, end: int, total_size: int, materialization: Mapping[str, Any] | None) -> bool:
+    payload = dict(materialization or {})
+    if not bool(payload.get("tail_window_ready")):
+        return False
+    try:
+        tail_start = max(int(payload.get("tail_window_start", -1) or -1), 0)
+        tail_end = max(int(payload.get("tail_window_end", -1) or -1), 0)
+    except (TypeError, ValueError):
+        return False
+    if tail_start < 0 or tail_end < tail_start or total_size <= 0:
+        return False
+    normalized_start = max(int(start or 0), 0)
+    normalized_end = max(int(end or 0), 0)
+    return normalized_start >= tail_start and normalized_end <= min(tail_end, max(total_size - 1, 0))
 
 
 def _resolve_range(range_header: str, total_size: int) -> dict[str, int | bool]:
