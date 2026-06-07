@@ -327,6 +327,8 @@ async function ensureMaterializer(entry, file) {
   }
 
   await mkdir(path.dirname(resolvedPath.expectedPath), { recursive: true })
+  const fileHandle = await openFile(resolvedPath.expectedPath, 'w')
+  await fileHandle.close()
   const readStream = file.createReadStream()
   const writeStream = createWriteStream(resolvedPath.expectedPath, { flags: 'w' })
   const tailPriority = buildTailPriorityWindow(file)

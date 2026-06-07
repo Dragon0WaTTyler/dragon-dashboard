@@ -9,7 +9,7 @@ from domains.magnets.playback_runtime.media_selection import select_playable_med
 from domains.magnets.playback_runtime.runtime_manager import PlaybackRuntimeError, PlaybackRuntimeManager
 from domains.magnets.playback_runtime.runtime_sessions import InMemoryPlaybackRuntimeSessions
 from domains.magnets.playback_runtime.stream_endpoint import build_stream_response
-from domains.magnets.playback_runtime.torrent_runtime import TorrentRuntimeError
+from domains.magnets.playback_runtime.torrent_runtime import TorrentRuntimeError, WEBTORRENT_HELPER_SOURCE
 
 
 class FakeTorrentClient:
@@ -93,6 +93,15 @@ class FakeTorrentClient:
 
 
 class PlaybackRuntimeTransportTests(unittest.TestCase):
+    def test_webtorrent_helper_primes_output_file_before_tail_writer_opens(self):
+        mkdir_index = WEBTORRENT_HELPER_SOURCE.index("await mkdir(path.dirname(resolvedPath.expectedPath), { recursive: true })")
+        prime_index = WEBTORRENT_HELPER_SOURCE.index("const fileHandle = await openFile(resolvedPath.expectedPath, 'w')")
+        tail_writer_index = WEBTORRENT_HELPER_SOURCE.index("const tailWriteStream = tailPriority.requested")
+
+        self.assertLess(mkdir_index, prime_index)
+        self.assertLess(prime_index, tail_writer_index)
+        self.assertIn("flags: 'r+'", WEBTORRENT_HELPER_SOURCE)
+
     def test_media_selection_prefers_mp4_and_rejects_sample(self):
         selected = select_playable_media_file(
             [
