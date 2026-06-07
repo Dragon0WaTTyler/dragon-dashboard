@@ -183,6 +183,84 @@ Notes:
 - The endpoint does not return full moves yet.
 - The endpoint does not return `raw_source`.
 
+### `GET /api/v1/chess/train-today`
+
+Purpose: safe projection of the current training candidates for the iOS Train Today screen.
+
+Example response:
+
+```json
+{
+  "ok": true,
+  "section": "chess",
+  "title": "Train Today",
+  "available": true,
+  "items": [
+    {
+      "id": "review-game-123",
+      "type": "review",
+      "title": "Alpha vs Beta",
+      "subtitle": "Review from your games.",
+      "source_game_id": "game-123",
+      "opening": {
+        "name": "French Defense",
+        "eco": "C00"
+      },
+      "priority": 0,
+      "completed": false
+    }
+  ],
+  "count": 1
+}
+```
+
+Notes:
+
+- The endpoint is read-only and safe.
+- If no candidates exist, it still returns `ok: true` with an empty `items` array.
+
+### `GET /api/v1/chess/openings`
+
+Purpose: opening summary list for the future iOS openings screen.
+
+Query parameters:
+
+- `limit` default `50`, max `100`
+- `offset` default `0`
+- `side` optional `white` or `black`
+- `needs_work` optional `true` or `false`
+
+Example response:
+
+```json
+{
+  "ok": true,
+  "section": "chess",
+  "title": "Openings",
+  "items": [
+    {
+      "key": "c00|french defense",
+      "name": "French Defense",
+      "eco": "C00",
+      "side": "white",
+      "games_count": 12,
+      "wins": 5,
+      "losses": 6,
+      "draws": 1,
+      "score_label": "50.0%",
+      "needs_work": true
+    }
+  ],
+  "count": 1
+}
+```
+
+Notes:
+
+- The endpoint is read-only and safe.
+- It is derived from normalized chess game data only.
+- No raw PGN, moves, or `raw_source` are returned.
+
 ## Safety Rules
 
 The iOS API foundation must remain safe by default.
@@ -342,8 +420,6 @@ struct ChessOpeningDetail: Decodable {
 
 These are not implemented yet, but they are the natural next steps for the native client:
 
-- `GET /api/v1/chess/train-today`
-- `GET /api/v1/chess/openings`
 - `GET /api/v1/chess/puzzles`
 
 ## Implementation Notes

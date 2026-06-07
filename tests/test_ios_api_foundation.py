@@ -369,3 +369,144 @@ class IOSApiFoundationTests(unittest.TestCase):
         self.assertEqual(payload["items"], [])
         self.assertEqual(payload["count"], 0)
         self.assertEqual(payload["available"], False)
+
+    def test_chess_openings_endpoint_returns_ok_true(self):
+        mocked_games = [
+            {
+                "id": "g1",
+                "source": "lichess",
+                "white": "A",
+                "black": "B",
+                "user_color": "white",
+                "user_result": "win",
+                "result": "1-0",
+                "date": "2026-01-01",
+                "time_class": "rapid",
+                "opening": {"name": "French Defense", "eco": "C00"},
+            },
+            {
+                "id": "g2",
+                "source": "lichess",
+                "white": "C",
+                "black": "D",
+                "user_color": "white",
+                "user_result": "loss",
+                "result": "0-1",
+                "date": "2026-01-02",
+                "time_class": "blitz",
+                "opening": {"name": "French Defense", "eco": "C00"},
+            },
+            {
+                "id": "g3",
+                "source": "chess.com",
+                "white": "E",
+                "black": "F",
+                "user_color": "black",
+                "user_result": "draw",
+                "result": "1/2-1/2",
+                "date": "2026-01-03",
+                "time_class": "rapid",
+                "opening": {"name": "Queen's Gambit", "eco": "D06"},
+            },
+            {
+                "id": "g4",
+                "source": "lichess",
+                "white": "G",
+                "black": "H",
+                "user_color": "white",
+                "user_result": "loss",
+                "result": "0-1",
+                "date": "2026-01-04",
+                "time_class": "rapid",
+                "opening": {"name": "", "eco": "A40"},
+            },
+            {
+                "id": "g5",
+                "source": "lichess",
+                "white": "I",
+                "black": "J",
+                "user_color": "black",
+                "user_result": "draw",
+                "result": "1/2-1/2",
+                "date": "2026-01-05",
+                "time_class": "rapid",
+                "opening": {"name": "", "eco": ""},
+            },
+        ]
+        with patch("domains.chess.api_projection.load_chess_data", return_value={"games": mocked_games}):
+            response = self.client.get("/api/v1/chess/openings")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload["ok"], True)
+        self.assertEqual(payload["section"], "chess")
+        self.assertEqual(payload["title"], "Openings")
+        self.assertEqual(payload["count"], 4)
+        self.assertEqual(len(payload["items"]), 4)
+        first = payload["items"][0]
+        self.assertEqual(
+            set(first.keys()),
+            {
+                "key",
+                "name",
+                "eco",
+                "side",
+                "games_count",
+                "wins",
+                "losses",
+                "draws",
+                "score_label",
+                "needs_work",
+            },
+        )
+        self.assertTrue(all(item["name"] for item in payload["items"]))
+        self.assertTrue(all(not str(item["key"]).endswith("|") for item in payload["items"]))
+        self.assertIn("A40 Opening", [item["name"] for item in payload["items"]])
+        self.assertIn("Unknown Opening", [item["name"] for item in payload["items"]])
+        body = response.get_data(as_text=True)
+        self.assertNotIn("pgn", body.lower())
+        self.assertNotIn("moves", body.lower())
+        self.assertNotIn("raw_source", body.lower())
+        self.assertNotIn("token", body.lower())
+        self.assertNotIn("secret", body.lower())
+        self.assertNotIn("path", body.lower())
+
+    def test_chess_openings_endpoint_caps_limit_and_filters_safely(self):
+        mocked_games = []
+        for i in range(120):
+            opening_index = i
+            for j in range(3):
+                mocked_games.append(
+                    {
+                        "id": f"g{i}-{j}",
+                        "source": "lichess" if (i + j) % 2 == 0 else "chess.com",
+                        "white": "A",
+                        "black": "B",
+                        "user_color": "white",
+                        "user_result": "loss" if j < 2 else "win",
+                        "result": "1-0" if j == 2 else "0-1",
+                        "date": "2026-01-01",
+                        "time_class": "rapid",
+                        "opening": {"name": f"Opening {opening_index}", "eco": f"C{opening_index:02d}"},
+                    }
+                )
+        with patch("domains.chess.api_projection.load_chess_data", return_value={"games": mocked_games}):
+            response = self.client.get("/api/v1/chess/openings", query_string={"limit": 999, "side": "white", "needs_work": "true"})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload["ok"], True)
+        self.assertEqual(payload["count"], 120)
+        self.assertLessEqual(len(payload["items"]), 100)
+        self.assertTrue(all(item["side"] == "white" for item in payload["items"]))
+        self.assertTrue(all(item["needs_work"] for item in payload["items"]))
+
+    def test_chess_openings_endpoint_handles_missing_data(self):
+        with patch("domains.chess.api_projection.load_chess_data", side_effect=FileNotFoundError("missing")):
+            response = self.client.get("/api/v1/chess/openings")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload["ok"], True)
+        self.assertEqual(payload["items"], [])
+        self.assertEqual(payload["count"], 0)

@@ -8,6 +8,7 @@ from domains.chess.api_projection import (
     build_chess_game_detail_projection,
     build_chess_games_projection,
     build_chess_home_projection,
+    build_chess_openings_projection,
     build_chess_train_today_projection,
 )
 
@@ -64,3 +65,15 @@ def api_v1_chess_game_detail(game_id):
 @api_v1_bp.get("/api/v1/chess/train-today")
 def api_v1_chess_train_today():
     return jsonify(build_chess_train_today_projection())
+
+
+@api_v1_bp.get("/api/v1/chess/openings")
+def api_v1_chess_openings():
+    return jsonify(
+        build_chess_openings_projection(
+            limit=request.args.get("limit", 50),
+            offset=request.args.get("offset", 0),
+            side=request.args.get("side", ""),
+            needs_work=request.args.get("needs_work", ""),
+        )
+    )
