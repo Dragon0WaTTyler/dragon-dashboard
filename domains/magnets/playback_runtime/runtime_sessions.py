@@ -42,6 +42,9 @@ class PlaybackRuntimeSession:
     cleanup_reason: str = ""
     startup_failures: int = 0
     recovery_attempts: int = 0
+    metadata_retry_count: int = 0
+    metadata_timeout_ms: int = 0
+    last_metadata_error: str = ""
     runtime_errors: list[str] = field(default_factory=list)
     created_at: str = field(default_factory=utc_now_iso)
     updated_at: str = field(default_factory=utc_now_iso)

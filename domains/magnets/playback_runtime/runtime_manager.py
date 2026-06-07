@@ -30,7 +30,9 @@ HEAD_PROBE_BYTES = 1024
 MP4_FAST_START_SCAN_BYTES = 1024 * 1024
 MP4_TAIL_PROBE_BYTES = 1024 * 1024
 MP4_INITIAL_PLAYBACK_WINDOW_BYTES = 8 * 1024 * 1024
-METADATA_TIMEOUT_MS = 20000
+MAGNET_METADATA_TIMEOUT_MS = 25000
+TORRENT_FILE_METADATA_TIMEOUT_MS = 20000
+MAX_METADATA_RETRIES = 1
 READY_TIMEOUT_MS = 45000
 SESSION_INACTIVE_SECONDS = 30 * 60
 FAILED_STARTUP_EXPIRY_SECONDS = 5 * 60
@@ -262,6 +264,7 @@ class PlaybackRuntimeManager:
         torrent_file_size = 0
         startup_error_code = "metadata_timeout"
         startup_error_message = "Torrent metadata timeout"
+        metadata_timeout_ms = MAGNET_METADATA_TIMEOUT_MS
         if torrent_file_path:
             candidate = Path(torrent_file_path).expanduser()
             if str(candidate.suffix or "").lower() != ".torrent":
@@ -282,11 +285,13 @@ class PlaybackRuntimeManager:
             torrent_input = str(candidate)
             startup_error_code = "torrent_file_metadata_timeout"
             startup_error_message = "Torrent file metadata could not be loaded"
+            metadata_timeout_ms = TORRENT_FILE_METADATA_TIMEOUT_MS
         elif magnet.lower().startswith("magnet:?xt=urn:btih:"):
             source_type = "magnet"
             torrent_input = magnet
             startup_error_code = "metadata_timeout"
             startup_error_message = "Torrent metadata timeout"
+            metadata_timeout_ms = MAGNET_METADATA_TIMEOUT_MS
         else:
             raise PlaybackRuntimeError("invalid_magnet", "Invalid magnet link for playback runtime.")
 
@@ -308,23 +313,28 @@ class PlaybackRuntimeManager:
                 "torrent_input": torrent_input,
                 "torrent_file_path": str(torrent_input if source_type == "torrent_file" else "").strip(),
                 "torrent_file_size": int(torrent_file_size or 0),
+                "metadata_diagnostics": {
+                    "metadata_retry_count": 0,
+                    "metadata_retry_limit": self._metadata_retry_limit_for_source(source_type),
+                    "metadata_retry_in_progress": False,
+                    "metadata_retry_exhausted": False,
+                    "metadata_timeout_ms": int(metadata_timeout_ms),
+                    "last_metadata_error": "",
+                },
             },
         )
+        session.metadata_timeout_ms = int(metadata_timeout_ms)
         self.sessions.save(session)
 
-        try:
-            started = self.torrent_client.start(
-                session_id=session_id,
-                torrent_input=torrent_input,
-                source_kind=source_type,
-                download_dir=download_dir,
-                metadata_timeout_ms=METADATA_TIMEOUT_MS,
-            )
-        except TorrentRuntimeError as exc:
-            session.startup_failures += 1
-            mapped_code = self._classify_startup_error(source_type=source_type, fallback_code=startup_error_code, error_message=str(exc))
-            self._mark_failed(session, mapped_code, str(exc))
-            raise PlaybackRuntimeError(mapped_code, str(exc) or startup_error_message) from exc
+        started = self._start_runtime_with_metadata_retry(
+            session=session,
+            torrent_input=torrent_input,
+            source_type=source_type,
+            download_dir=download_dir,
+            metadata_timeout_ms=metadata_timeout_ms,
+            startup_error_code=startup_error_code,
+            startup_error_message=startup_error_message,
+        )
 
         selected_file = select_playable_media_file(started.get("files"))
         if not selected_file:
@@ -526,7 +536,7 @@ class PlaybackRuntimeManager:
                 torrent_input=str((session.details or {}).get("torrent_input") or session.magnet or "").strip(),
                 source_kind=str((session.details or {}).get("source_type") or "magnet").strip() or "magnet",
                 download_dir=Path(session.download_dir),
-                metadata_timeout_ms=METADATA_TIMEOUT_MS,
+                metadata_timeout_ms=self._metadata_timeout_ms_for_source(str((session.details or {}).get("source_type") or "magnet").strip() or "magnet"),
             )
             self.torrent_client.select(
                 session_id=session.session_id,
@@ -677,6 +687,28 @@ class PlaybackRuntimeManager:
             "code": materialization_code,
             "reason": materialization_reason,
         }
+        metadata_diagnostics = dict((session.details or {}).get("metadata_diagnostics") or {})
+        metadata_diagnostics.update(
+            {
+                "metadata_retry_count": int(session.metadata_retry_count or 0),
+                "metadata_retry_limit": self._metadata_retry_limit_for_source(str((session.details or {}).get("source_type") or "magnet").strip() or "magnet"),
+                "metadata_retry_in_progress": bool(metadata_diagnostics.get("metadata_retry_in_progress")),
+                "metadata_retry_exhausted": bool(metadata_diagnostics.get("metadata_retry_exhausted")),
+                "metadata_timeout_ms": int(session.metadata_timeout_ms or self._metadata_timeout_ms_for_source(str((session.details or {}).get("source_type") or "magnet").strip() or "magnet")),
+                "last_metadata_error": str(session.last_metadata_error or metadata_diagnostics.get("last_metadata_error") or "").strip(),
+            }
+        )
+        session.details["metadata_diagnostics"] = metadata_diagnostics
+        webtorrent.update(
+            {
+                "metadataRetryCount": int(metadata_diagnostics.get("metadata_retry_count", 0) or 0),
+                "metadataRetryLimit": int(metadata_diagnostics.get("metadata_retry_limit", 0) or 0),
+                "metadataRetryInProgress": bool(metadata_diagnostics.get("metadata_retry_in_progress")),
+                "metadataRetryExhausted": bool(metadata_diagnostics.get("metadata_retry_exhausted")),
+                "metadataTimeoutMs": int(metadata_diagnostics.get("metadata_timeout_ms", 0) or 0),
+                "lastMetadataError": str(metadata_diagnostics.get("last_metadata_error") or "").strip(),
+            }
+        )
         session.details["webtorrent"] = webtorrent
         session.details["stream_readiness"] = {
             "metadata_ready": session.status != "metadata_fetching",
@@ -747,6 +779,7 @@ class PlaybackRuntimeManager:
         response["runtime_metrics"] = build_runtime_metrics(response)
         response["stream_readiness"] = dict((response.get("details") or {}).get("stream_readiness") or {})
         response["materialization"] = materialization
+        response["metadata_diagnostics"] = dict((response.get("details") or {}).get("metadata_diagnostics") or {})
         response["webtorrent"] = dict((response.get("details") or {}).get("webtorrent") or {})
         response["source_quality"] = build_runtime_source_quality(
             response,
@@ -763,7 +796,7 @@ class PlaybackRuntimeManager:
             return "failed"
         if status == "metadata_fetching":
             return "metadata_fetching"
-        if status in {"selecting_media", "connecting_peers", "buffering_video"}:
+        if status in {"metadata_retrying", "selecting_media", "connecting_peers", "buffering_video"}:
             return "buffering"
         return status or str(payload.get("playback_state") or "").strip() or "preparing"
 
@@ -808,6 +841,114 @@ class PlaybackRuntimeManager:
         errors = [item for item in session.runtime_errors if item]
         errors.append(text)
         session.runtime_errors = errors[-5:]
+
+    def _metadata_timeout_ms_for_source(self, source_type: str) -> int:
+        return TORRENT_FILE_METADATA_TIMEOUT_MS if str(source_type or "").strip() == "torrent_file" else MAGNET_METADATA_TIMEOUT_MS
+
+    def _metadata_retry_limit_for_source(self, source_type: str) -> int:
+        return MAX_METADATA_RETRIES if str(source_type or "").strip() == "magnet" else 0
+
+    def _update_metadata_diagnostics(
+        self,
+        session: PlaybackRuntimeSession,
+        *,
+        retry_count: int | None = None,
+        retry_in_progress: bool | None = None,
+        retry_exhausted: bool | None = None,
+        last_error: str | None = None,
+        metadata_timeout_ms: int | None = None,
+    ) -> None:
+        diagnostics = dict((session.details or {}).get("metadata_diagnostics") or {})
+        if retry_count is not None:
+            session.metadata_retry_count = int(retry_count)
+            diagnostics["metadata_retry_count"] = int(retry_count)
+        if retry_in_progress is not None:
+            diagnostics["metadata_retry_in_progress"] = bool(retry_in_progress)
+        if retry_exhausted is not None:
+            diagnostics["metadata_retry_exhausted"] = bool(retry_exhausted)
+        if metadata_timeout_ms is not None:
+            session.metadata_timeout_ms = int(metadata_timeout_ms)
+            diagnostics["metadata_timeout_ms"] = int(metadata_timeout_ms)
+        if last_error is not None:
+            session.last_metadata_error = str(last_error or "").strip()
+            diagnostics["last_metadata_error"] = session.last_metadata_error
+        diagnostics["metadata_retry_limit"] = self._metadata_retry_limit_for_source(
+            str((session.details or {}).get("source_type") or "magnet").strip() or "magnet"
+        )
+        session.details["metadata_diagnostics"] = diagnostics
+
+    def _start_runtime_with_metadata_retry(
+        self,
+        *,
+        session: PlaybackRuntimeSession,
+        torrent_input: str,
+        source_type: str,
+        download_dir: Path,
+        metadata_timeout_ms: int,
+        startup_error_code: str,
+        startup_error_message: str,
+    ) -> dict[str, Any]:
+        retry_limit = self._metadata_retry_limit_for_source(source_type)
+        self._update_metadata_diagnostics(
+            session,
+            retry_count=0,
+            retry_in_progress=False,
+            retry_exhausted=False,
+            last_error="",
+            metadata_timeout_ms=metadata_timeout_ms,
+        )
+        self.sessions.save(session)
+        last_error = startup_error_message
+        for attempt_index in range(retry_limit + 1):
+            try:
+                started = self.torrent_client.start(
+                    session_id=session.session_id,
+                    torrent_input=torrent_input,
+                    source_kind=source_type,
+                    download_dir=download_dir,
+                    metadata_timeout_ms=metadata_timeout_ms,
+                )
+                self._update_metadata_diagnostics(
+                    session,
+                    retry_count=attempt_index,
+                    retry_in_progress=False,
+                    retry_exhausted=False,
+                )
+                self.sessions.save(session)
+                return started
+            except TorrentRuntimeError as exc:
+                mapped_code = self._classify_startup_error(
+                    source_type=source_type,
+                    fallback_code=startup_error_code,
+                    error_message=str(exc),
+                )
+                last_error = str(exc) or startup_error_message
+                should_retry = (
+                    attempt_index < retry_limit
+                    and mapped_code == startup_error_code
+                )
+                self._update_metadata_diagnostics(
+                    session,
+                    retry_count=attempt_index + (1 if should_retry else 0),
+                    retry_in_progress=should_retry,
+                    retry_exhausted=not should_retry,
+                    last_error=last_error,
+                    metadata_timeout_ms=metadata_timeout_ms,
+                )
+                if should_retry:
+                    session.status = "metadata_retrying"
+                    session.playback_state = "buffering"
+                    self._append_error(session, f"{mapped_code}:{last_error}")
+                    self.sessions.save(session)
+                    try:
+                        self.torrent_client.close(session_id=session.session_id)
+                    except TorrentRuntimeError:
+                        pass
+                    continue
+                session.startup_failures += 1
+                self._mark_failed(session, mapped_code, last_error)
+                raise PlaybackRuntimeError(mapped_code, last_error or startup_error_message) from exc
+        raise PlaybackRuntimeError(startup_error_code, last_error or startup_error_message)
 
     def _session_timestamp(self, value: str, *, default: str) -> float:
         from datetime import datetime

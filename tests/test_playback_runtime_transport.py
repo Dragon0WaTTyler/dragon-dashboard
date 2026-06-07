@@ -185,6 +185,105 @@ class PlaybackRuntimeTransportTests(unittest.TestCase):
             str(manager.torrent_client.last_start_kwargs.get("source_kind") or ""),
             "torrent_file",
         )
+        self.assertEqual(session["metadata_diagnostics"]["metadata_retry_count"], 0)
+        self.assertEqual(session["metadata_diagnostics"]["metadata_timeout_ms"], 20000)
+
+    def test_runtime_manager_retries_magnet_metadata_timeout_once_before_success(self):
+        class RetryThenSuccessClient(FakeTorrentClient):
+            def __init__(self):
+                super().__init__()
+                self.start_calls = 0
+                self.close_calls = 0
+
+            def start(self, **kwargs):
+                self.start_calls += 1
+                self.last_start_kwargs = dict(kwargs)
+                if self.start_calls == 1:
+                    raise TorrentRuntimeError("Torrent metadata timeout")
+                return super().start(**kwargs)
+
+            def close(self, **kwargs):
+                self.close_calls += 1
+                return super().close(**kwargs)
+
+        client = RetryThenSuccessClient()
+        manager = PlaybackRuntimeManager(
+            sessions=InMemoryPlaybackRuntimeSessions(),
+            torrent_client=client,
+            runtime_root=Path(tempfile.gettempdir()) / "dragon-playback-tests-metadata-retry-success",
+            cleanup_interval_seconds=3600,
+        )
+
+        session = manager.create_session(
+            movie={"movie_id": "film-1", "title": "Film"},
+            source={"magnet": "magnet:?xt=urn:btih:1234567890ABCDEF1234567890ABCDEF12345678", "source_fingerprint": "src123"},
+            stream_base_url="http://localhost:5000",
+        )
+
+        self.assertEqual(client.start_calls, 2)
+        self.assertEqual(client.close_calls, 1)
+        self.assertEqual(client.last_start_kwargs["metadata_timeout_ms"], 25000)
+        self.assertEqual(session["status"], "ready_to_play")
+        self.assertEqual(session["metadata_diagnostics"]["metadata_retry_count"], 1)
+        self.assertFalse(session["metadata_diagnostics"]["metadata_retry_in_progress"])
+        self.assertFalse(session["metadata_diagnostics"]["metadata_retry_exhausted"])
+        self.assertEqual(session["metadata_diagnostics"]["metadata_timeout_ms"], 25000)
+        self.assertEqual(session["metadata_diagnostics"]["last_metadata_error"], "Torrent metadata timeout")
+        self.assertEqual(session["webtorrent"]["metadataRetryCount"], 1)
+        self.assertEqual(session["webtorrent"]["metadataTimeoutMs"], 25000)
+        self.assertEqual(session["webtorrent"]["lastMetadataError"], "Torrent metadata timeout")
+
+    def test_runtime_manager_fails_cleanly_after_metadata_retry_is_exhausted(self):
+        class AlwaysMetadataTimeoutClient(FakeTorrentClient):
+            def __init__(self):
+                super().__init__()
+                self.start_calls = 0
+                self.close_calls = 0
+
+            def start(self, **kwargs):
+                self.start_calls += 1
+                self.last_start_kwargs = dict(kwargs)
+                raise TorrentRuntimeError("Torrent metadata timeout")
+
+            def close(self, **kwargs):
+                self.close_calls += 1
+                return super().close(**kwargs)
+
+        client = AlwaysMetadataTimeoutClient()
+        sessions = InMemoryPlaybackRuntimeSessions()
+        manager = PlaybackRuntimeManager(
+            sessions=sessions,
+            torrent_client=client,
+            runtime_root=Path(tempfile.gettempdir()) / "dragon-playback-tests-metadata-retry-failure",
+            cleanup_interval_seconds=3600,
+        )
+
+        with self.assertRaises(PlaybackRuntimeError) as ctx:
+            manager.create_session(
+                movie={"movie_id": "film-1", "title": "Film"},
+                source={"magnet": "magnet:?xt=urn:btih:1234567890ABCDEF1234567890ABCDEF12345678", "source_fingerprint": "src123"},
+                stream_base_url="http://localhost:5000",
+            )
+
+        self.assertEqual(ctx.exception.code, "metadata_timeout")
+        self.assertEqual(str(ctx.exception), "Torrent metadata timeout")
+        self.assertEqual(client.start_calls, 2)
+        self.assertEqual(client.close_calls, 1)
+        failed_session = sessions.all()[0].to_dict()
+        self.assertEqual(failed_session["status"], "stream_failed")
+        self.assertEqual(failed_session["metadata_retry_count"], 1)
+        self.assertEqual(failed_session["metadata_timeout_ms"], 25000)
+        self.assertEqual(failed_session["last_metadata_error"], "Torrent metadata timeout")
+        self.assertEqual(
+            failed_session["details"]["metadata_diagnostics"]["metadata_retry_count"],
+            1,
+        )
+        self.assertTrue(
+            failed_session["details"]["metadata_diagnostics"]["metadata_retry_exhausted"]
+        )
+        self.assertFalse(
+            failed_session["details"]["metadata_diagnostics"]["metadata_retry_in_progress"]
+        )
 
     def test_runtime_manager_rejects_empty_torrent_file_input(self):
         manager = PlaybackRuntimeManager(
