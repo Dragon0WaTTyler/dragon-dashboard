@@ -1184,7 +1184,9 @@ def build_reading_article_fulltext_status(entry, cache_record=None, request_reco
     request_record = dict(request_record or {}) if isinstance(request_record, dict) else {}
     article_id = str(entry.get("id", "") or request_record.get("article_id", "") or "").strip()
     safe_disabled_message = "Full article loading is not available on this host. Open original source."
+    safe_failed_message = "Could not load full article. Open original source."
     dispatch_capability = reading_article_fulltext_request_dispatch_capability()
+    local_live_available = bool(reading_article_live_extraction_allowed())
     request_status = str(request_record.get("status", "") or "").strip().lower()
     cache_status = str(cache_record.get("status", "") or "").strip().lower()
     cached_at = str(cache_record.get("fetched_at", "") or request_record.get("cached_at", "") or "").strip()
@@ -1193,10 +1195,13 @@ def build_reading_article_fulltext_status(entry, cache_record=None, request_reco
         has_html = bool(str(cache_record.get("content_html", "") or "").strip())
         return {
             "article_id": article_id,
+            "state": "cached",
             "status": "cached",
             "cached_at": cached_at,
             "safe_error": "",
             "can_request": bool(dispatch_capability.get("available")),
+            "can_local_load": bool(local_live_available),
+            "local_button_label": "Reload full article locally" if local_live_available else "",
             "next_action": "request_cache" if dispatch_capability.get("available") else "open_cached",
             "display_label": "Cached",
             "display_message": "Full article content is cached locally." if has_html else "Full article content is cached locally in text mode.",
@@ -1206,63 +1211,93 @@ def build_reading_article_fulltext_status(entry, cache_record=None, request_reco
         display_message = "Full article cache request queued. Check back soon." if request_status == "queued" else "Full article cache request is running. Check back soon."
         return {
             "article_id": article_id,
+            "state": "requested" if request_status == "queued" else "loading",
             "status": request_status,
             "cached_at": cached_at,
             "safe_error": "",
             "can_request": False,
+            "can_local_load": False,
+            "local_button_label": "",
             "next_action": "wait",
-            "display_label": "Queued" if request_status == "queued" else "Running",
+            "display_label": "Requested" if request_status == "queued" else "Loading",
             "display_message": display_message,
         }
 
     if request_status == "failed" or cache_status == "failed":
         safe_error = reading_article_fulltext_safe_error(
             request_record.get("safe_error", "") or cache_record.get("error", ""),
-            fallback_message="Full article cache is unavailable right now. Open original source.",
+            fallback_message=safe_failed_message,
         )
         return {
             "article_id": article_id,
+            "state": "failed",
             "status": "failed",
             "cached_at": cached_at,
             "safe_error": safe_error,
             "can_request": bool(dispatch_capability.get("available")),
+            "can_local_load": bool(local_live_available),
+            "local_button_label": "Load full article locally" if local_live_available else "",
             "next_action": "request_cache" if dispatch_capability.get("available") else "open_original",
-            "display_label": "Unavailable",
+            "display_label": "Failed",
             "display_message": safe_error,
+        }
+
+    if local_live_available:
+        return {
+            "article_id": article_id,
+            "state": "not_cached",
+            "status": "missing",
+            "cached_at": cached_at,
+            "safe_error": "",
+            "can_request": bool(dispatch_capability.get("available")),
+            "can_local_load": True,
+            "local_button_label": "Load full article locally",
+            "next_action": "load_local",
+            "display_label": "Not cached",
+            "display_message": "Full article content is not cached locally yet.",
         }
 
     if request_status == "disabled" and not dispatch_capability.get("available"):
         return {
             "article_id": article_id,
+            "state": "disabled_on_this_host",
             "status": "disabled",
             "cached_at": cached_at,
             "safe_error": safe_disabled_message,
             "can_request": False,
+            "can_local_load": False,
+            "local_button_label": "",
             "next_action": dispatch_capability.get("reason", "open_original"),
-            "display_label": "Unavailable",
+            "display_label": "Disabled on this host",
             "display_message": reading_article_fulltext_safe_error(dispatch_capability.get("message", ""), fallback_message=safe_disabled_message),
         }
 
     if dispatch_capability.get("enabled"):
         return {
             "article_id": article_id,
+            "state": "disabled_on_this_host",
             "status": "missing",
             "cached_at": cached_at,
-            "safe_error": "",
+            "safe_error": safe_disabled_message,
             "can_request": bool(dispatch_capability.get("available")),
+            "can_local_load": False,
+            "local_button_label": "",
             "next_action": "request_cache" if dispatch_capability.get("available") else dispatch_capability.get("reason", "open_original"),
-            "display_label": "Not cached",
-            "display_message": "Full article content is not cached yet. You can request a cache build." if dispatch_capability.get("available") else "Full article cache requests are not configured on this host yet.",
+            "display_label": "Disabled on this host",
+            "display_message": safe_disabled_message,
         }
 
     return {
         "article_id": article_id,
+        "state": "disabled_on_this_host",
         "status": "disabled",
         "cached_at": cached_at,
         "safe_error": safe_disabled_message,
         "can_request": False,
+        "can_local_load": False,
+        "local_button_label": "",
         "next_action": dispatch_capability.get("reason", "open_original"),
-        "display_label": "Unavailable",
+        "display_label": "Disabled on this host",
         "display_message": reading_article_fulltext_safe_error(dispatch_capability.get("message", ""), fallback_message=safe_disabled_message),
     }
 
@@ -30906,7 +30941,11 @@ def reading_article_load_full(entry_id):
         return Response("Article not found.", status=404)
     fetch_result = reading_article_fulltext_fetch(entry, force_refresh=refresh_requested)
     if not fetch_result.get("ok"):
-        return redirect(append_query_param(next_url, full_error=fetch_result.get("error", "") or "Could not load the full article."))
+        safe_error = reading_article_fulltext_safe_error(
+            fetch_result.get("error", ""),
+            fallback_message="Could not load full article. Open original source.",
+        )
+        return redirect(append_query_param(next_url, full_error=safe_error))
     success_message = "Full article refreshed." if refresh_requested else ("Full article reused from cache." if fetch_result.get("cache_hit") else "Full article loaded.")
     return redirect(append_query_param(next_url, full_loaded=success_message))
 

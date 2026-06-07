@@ -30,6 +30,7 @@ node_modules/
 
 backups/
 cache/
+cache/articles/full_text/
 cache/youtube_latest_snapshot.json
 cache/youtube_latest_sync_status.json
 exports/

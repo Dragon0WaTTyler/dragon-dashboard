@@ -167,6 +167,7 @@ class ReadingFullArticleCacheTests(unittest.TestCase):
             self.assertEqual(response.status_code, 302)
             html = article_response.get_data(as_text=True)
             self.assertIn("Full article loading is not available on this host. Open original source.", html)
+            self.assertNotIn("Load full article locally", html)
             self.assertNotIn("ProxyError", html)
             self.assertNotIn("Tunnel connection failed", html)
 
@@ -299,6 +300,26 @@ class ReadingFullArticleCacheTests(unittest.TestCase):
             self.assertEqual(reading_response.status_code, 200)
             self.assertEqual(article_response.status_code, 200)
 
+    def test_article_page_shows_local_load_button_when_live_extraction_enabled(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            reading_data_path = root / "reading_data.json"
+            cache_dir = root / "fulltext-cache"
+            reading_data_path.write_text(json.dumps(self._payload(), ensure_ascii=False, indent=2), encoding="utf-8")
+
+            patches = self._patched_runtime(reading_data_path, cache_dir)
+            with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patch.object(
+                dragon_app,
+                "DRAGON_ALLOW_LIVE_ARTICLE_EXTRACTION",
+                True,
+            ):
+                article_response = self.client.get("/reading/article/reading-entry-1")
+
+            self.assertEqual(article_response.status_code, 200)
+            html = article_response.get_data(as_text=True)
+            self.assertIn("Load full article locally", html)
+            self.assertIn("Full article status: Not cached.", html)
+
     def test_article_page_only_shows_request_button_when_can_request(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
@@ -333,6 +354,46 @@ class ReadingFullArticleCacheTests(unittest.TestCase):
             self.assertEqual(disabled_response.status_code, 200)
             self.assertIn("Request Full Article Cache", enabled_response.get_data(as_text=True))
             self.assertNotIn("Request Full Article Cache", disabled_response.get_data(as_text=True))
+
+    def test_failed_local_extraction_shows_safe_error_without_raw_details(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            reading_data_path = root / "reading_data.json"
+            cache_dir = root / "fulltext-cache"
+            reading_data_path.write_text(json.dumps(self._payload(), ensure_ascii=False, indent=2), encoding="utf-8")
+            extraction = {
+                "status": "failed",
+                "content_html": "",
+                "content_text": "",
+                "excerpt": "",
+                "error": "ProxyError: token leaked from C:\\private\\path",
+            }
+
+            patches = self._patched_runtime(reading_data_path, cache_dir)
+            with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patch.object(
+                dragon_app,
+                "DRAGON_ALLOW_LIVE_ARTICLE_EXTRACTION",
+                True,
+            ), patch.object(
+                dragon_app,
+                "extract_reading_article_page",
+                return_value=extraction,
+            ):
+                response = self.client.post("/reading/article/reading-entry-1/load-full", data={"next": "/reading/article/reading-entry-1"})
+                article_response = self.client.get(response.headers.get("Location", ""))
+
+            self.assertEqual(response.status_code, 302)
+            html = article_response.get_data(as_text=True)
+            self.assertIn("Could not load full article. Open original source.", html)
+            self.assertIn("Full article status: Failed.", html)
+            self.assertNotIn("ProxyError", html)
+            self.assertNotIn("token", html.lower())
+
+    def test_gitignore_excludes_runtime_fulltext_cache_files(self):
+        gitignore_path = Path(__file__).resolve().parent.parent / ".gitignore"
+        gitignore_text = gitignore_path.read_text(encoding="utf-8")
+        self.assertIn("cache/", gitignore_text)
+        self.assertIn("cache/articles/full_text/", gitignore_text)
 
 
 if __name__ == "__main__":

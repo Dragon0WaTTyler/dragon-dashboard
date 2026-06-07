@@ -87,6 +87,7 @@ class ReadingFulltextRequestStatusTests(unittest.TestCase):
             payload = response.get_json()
             self.assertEqual(payload["article_id"], "reading-entry-1")
             self.assertEqual(payload["status"], "cached")
+            self.assertEqual(payload["state"], "cached")
             self.assertEqual(payload["cached_at"], "2026-06-05T00:30:00+00:00")
             self.assertFalse(payload["safe_error"])
             self.assertEqual(payload["display_label"], "Cached")
@@ -104,6 +105,7 @@ class ReadingFulltextRequestStatusTests(unittest.TestCase):
             self.assertEqual(response.status_code, 200)
             payload = response.get_json()
             self.assertEqual(payload["status"], "disabled")
+            self.assertEqual(payload["state"], "disabled_on_this_host")
             self.assertFalse(payload["can_request"])
             self.assertEqual(payload["safe_error"], "Full article loading is not available on this host. Open original source.")
             self.assertNotIn("ProxyError", payload["display_message"])
@@ -124,6 +126,27 @@ class ReadingFulltextRequestStatusTests(unittest.TestCase):
 
             self.assertEqual(response.status_code, 200)
             self.assertEqual(response.get_json()["status"], "disabled")
+
+    def test_missing_cache_returns_not_cached_when_local_live_extraction_enabled(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            reading_data_path = root / "reading_data.json"
+            cache_dir = root / "fulltext-cache"
+            reading_data_path.write_text(json.dumps(self._payload(), ensure_ascii=False, indent=2), encoding="utf-8")
+            patches = self._patched_runtime(reading_data_path, cache_dir)
+            with patches[0], patches[1], patches[2], patches[3], patches[4], patches[5], patch.object(
+                dragon_app,
+                "DRAGON_ALLOW_LIVE_ARTICLE_EXTRACTION",
+                True,
+            ):
+                response = self.client.get("/reading/article/reading-entry-1/fulltext-status")
+
+            self.assertEqual(response.status_code, 200)
+            payload = response.get_json()
+            self.assertEqual(payload["status"], "missing")
+            self.assertEqual(payload["state"], "not_cached")
+            self.assertTrue(payload["can_local_load"])
+            self.assertEqual(payload["local_button_label"], "Load full article locally")
 
     def test_post_request_returns_safe_disabled_when_dispatch_unavailable(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -171,6 +194,7 @@ class ReadingFulltextRequestStatusTests(unittest.TestCase):
             self.assertEqual(response.status_code, 202)
             payload = response.get_json()
             self.assertEqual(payload["status"], "queued")
+            self.assertEqual(payload["state"], "requested")
             self.assertFalse(payload["can_request"])
             self.assertIsInstance(request_record, dict)
             self.assertEqual(request_record.get("status"), "queued")
@@ -210,6 +234,7 @@ class ReadingFulltextRequestStatusTests(unittest.TestCase):
             self.assertEqual(response.status_code, 202)
             payload = response.get_json()
             self.assertEqual(payload["status"], "queued")
+            self.assertEqual(payload["state"], "requested")
             self.assertEqual(request_record.get("dispatch_mode"), "github_action")
             self.assertEqual(request_record.get("dispatch_status"), "workflow_dispatch_accepted")
             self.assertEqual(request_record.get("attempts"), 1)
@@ -250,6 +275,7 @@ class ReadingFulltextRequestStatusTests(unittest.TestCase):
             self.assertEqual(response.status_code, 502)
             payload = response.get_json()
             self.assertEqual(payload["status"], "failed")
+            self.assertEqual(payload["state"], "failed")
             self.assertNotIn("ProxyError", payload["display_message"])
             self.assertNotIn("token", payload["display_message"].lower())
             self.assertIsInstance(request_record, dict)
@@ -295,6 +321,7 @@ class ReadingFulltextRequestStatusTests(unittest.TestCase):
             self.assertEqual(response.status_code, 200)
             payload = response.get_json()
             self.assertEqual(payload["status"], "running")
+            self.assertEqual(payload["state"], "loading")
             self.assertFalse(payload["can_request"])
 
     def test_cached_status_wins_over_request_record(self):

@@ -119,10 +119,10 @@
                 {% if entry.url %}
                 <a class="btn" href="{{ entry.url }}" target="_blank" rel="noopener"><i data-lucide="external-link"></i>Open original</a>
                 {% endif %}
-                {% if fulltext_live_load_supported or full_article_cached %}
+                {% if fulltext_status.can_local_load or full_article_cached %}
                 <form method="post" action="{{ url_for('reading_article_load_full', entry_id=entry.id) }}">
                     <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
-                    <button type="submit" class="btn"><i data-lucide="file-text"></i>{{ 'Reload Full Article' if full_article_cached else 'Load Full Article' }}</button>
+                    <button type="submit" class="btn"><i data-lucide="file-text"></i>{{ fulltext_status.local_button_label or ('Reload full article locally' if full_article_cached else 'Load full article locally') }}</button>
                 </form>
                 {% endif %}
                 {% if fulltext_status.can_request %}
@@ -130,11 +130,11 @@
                     <button type="submit" class="btn"><i data-lucide="inbox"></i>Request Full Article Cache</button>
                 </form>
                 {% endif %}
-                {% if full_article_cached %}
+                {% if full_article_cached and fulltext_status.can_local_load %}
                 <form method="post" action="{{ url_for('reading_article_load_full', entry_id=entry.id) }}">
                     <input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
                     <input type="hidden" name="refresh" value="1">
-                    <button type="submit" class="btn"><i data-lucide="refresh-cw"></i>Refresh Full Article</button>
+                    <button type="submit" class="btn"><i data-lucide="refresh-cw"></i>Refresh full article locally</button>
                 </form>
                 {% endif %}
             </div>
@@ -274,6 +274,9 @@
                 {% endif %}
                 {% if full_article_load_error %}
                 <div class="reading-extraction-note is-error">{{ full_article_load_error }}</div>
+                {% endif %}
+                {% if fulltext_status.display_label %}
+                <div class="reading-extraction-note">Full article status: {{ fulltext_status.display_label }}.</div>
                 {% endif %}
                 {% if article_html %}
                 <div class="reading-prose" dir="{{ article_dir }}" lang="{{ article_lang }}">
