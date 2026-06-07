@@ -36,7 +36,11 @@ from domains.chess.runtime import (
     save_chess_data,
 )
 from domains.magnets.playback import (
+    build_movie_player_page_context,
     build_playback_response_payload,
+    build_watch_refresh_url,
+    build_watch_retry_url,
+    build_watch_status_copy,
     get_runtime_profiles_catalog,
     parse_playback_runtime_request,
     prepare_playback_runtime,
@@ -26340,6 +26344,7 @@ def get_video_detail_context(entry_id, force_refresh=False):
         movie_sources = MOVIE_SOURCES_SERVICE.get_movie_sources(detail, force_refresh=force_refresh)
         player_sources = movie_player_sources(detail, tmdb_data)
         player_fallback_urls = get_vidsrc_embed_urls(detail)
+        detail["fallback_url"] = player_fallback_urls[0] if player_fallback_urls else ""
         dragon_runtime_watch_url = build_movie_runtime_watch_url(detail)
         playback_plan = prepare_playback_runtime(
             movie=detail,
@@ -26488,6 +26493,8 @@ def build_movie_runtime_watch_url(detail):
         ("movie_id", movie.get("entry_id") or movie.get("movie_id") or ""),
         ("entry_id", movie.get("entry_id") or ""),
         ("source_fingerprint", movie.get("source_fingerprint") or ""),
+        ("poster", movie.get("poster") or ""),
+        ("fallback_url", movie.get("fallback_url") or ""),
     ):
         text = str(value or "").strip()
         if text:
@@ -28755,6 +28762,9 @@ def watch_runtime_handoff():
     title = str(request.args.get("title") or request.args.get("name") or "Dragon runtime playback").strip() or "Dragon runtime playback"
     session_id = str(request.args.get("session_id") or "").strip()
     retry_requested = str(request.args.get("retry") or "").strip() == "1"
+    poster_url = str(request.args.get("poster") or "").strip()
+    fallback_url = str(request.args.get("fallback_url") or "").strip()
+    show_debug_details = bool(app.debug)
     source = {
         "magnet": magnet,
         "title": title,
@@ -28776,15 +28786,34 @@ def watch_runtime_handoff():
         except PlaybackRuntimeError as exc:
             if _runtime_request_wants_json(request):
                 return jsonify({"ok": False, "error": exc.message, "code": exc.code}), 400
+            retry_url = build_watch_retry_url(
+                magnet=magnet,
+                title=title,
+                movie_id=str(movie.get("movie_id") or ""),
+                entry_id=str(movie.get("entry_id") or ""),
+                source_fingerprint=str(source.get("source_fingerprint") or ""),
+                poster_url=poster_url,
+                fallback_url=fallback_url,
+            )
             return Response(
-                _watch_runtime_failure_page(
-                    code="runtime_unavailable",
-                    message="Dragon runtime is unavailable right now.",
-                    magnet=magnet,
-                    title=title,
-                    movie_id=str(movie.get("movie_id") or ""),
-                    entry_id=str(movie.get("entry_id") or ""),
-                    source_fingerprint=str(source.get("source_fingerprint") or ""),
+                render_template(
+                    "movie_player.html",
+                    **build_movie_player_page_context(
+                        page_title="Playback unavailable",
+                        page_heading="Runtime unavailable",
+                        page_state="failed",
+                        message="Dragon runtime is unavailable right now.",
+                        recommended_action="Retry playback in a moment.",
+                        movie_title=title,
+                        poster_url=poster_url,
+                        stream_url="",
+                        retry_url=retry_url,
+                        open_stream_url="",
+                        fallback_url=fallback_url,
+                        external_handoff_url="",
+                        show_debug_details=show_debug_details,
+                        debug_payload={"error": exc.to_dict()},
+                    ),
                 ),
                 status=200,
                 content_type="text/html; charset=utf-8",
@@ -28801,21 +28830,42 @@ def watch_runtime_handoff():
         except PlaybackRuntimeError as exc:
             if _runtime_request_wants_json(request):
                 return jsonify({"ok": False, "error": exc.message, "code": exc.code}), 400
+            source_quality = _runtime_source_quality_snapshot(
+                {"code": exc.code, "error": exc.message, "magnet": magnet},
+                error_code=exc.code,
+                error_message=exc.message,
+                magnet=magnet,
+                source_kind="magnet",
+            )
+            status_copy = build_watch_status_copy(runtime_state=exc.code, source_quality=source_quality)
+            retry_url = build_watch_retry_url(
+                magnet=magnet,
+                title=title,
+                movie_id=str(movie.get("movie_id") or ""),
+                entry_id=str(movie.get("entry_id") or ""),
+                source_fingerprint=str(source.get("source_fingerprint") or ""),
+                poster_url=poster_url,
+                fallback_url=fallback_url,
+            )
+            external_handoff_url = magnet if bool(source_quality.get("show_qbittorrent_fallback")) else ""
             return Response(
-                _watch_runtime_failure_page(
-                    code=exc.code,
-                    message=exc.message,
-                    magnet=magnet,
-                    title=title,
-                    movie_id=str(movie.get("movie_id") or ""),
-                    entry_id=str(movie.get("entry_id") or ""),
-                    source_fingerprint=str(source.get("source_fingerprint") or ""),
-                    source_quality=_runtime_source_quality_snapshot(
-                        {"code": exc.code, "error": exc.message, "magnet": magnet},
-                        error_code=exc.code,
-                        error_message=exc.message,
-                        magnet=magnet,
-                        source_kind="magnet",
+                render_template(
+                    "movie_player.html",
+                    **build_movie_player_page_context(
+                        page_title="Playback unavailable",
+                        page_heading=status_copy["label"] or "Playback unavailable",
+                        page_state="failed",
+                        message=status_copy["message"] or exc.message,
+                        recommended_action=status_copy["recommended_action"] or "Retry playback or try another source.",
+                        movie_title=title,
+                        poster_url=poster_url,
+                        stream_url="",
+                        retry_url=retry_url,
+                        open_stream_url="",
+                        fallback_url=fallback_url,
+                        external_handoff_url=external_handoff_url,
+                        show_debug_details=show_debug_details,
+                        debug_payload={"error": exc.to_dict(), "source_quality": source_quality},
                     ),
                 ),
                 status=400,
@@ -28852,15 +28902,40 @@ def watch_runtime_handoff():
     source_quality = dict(runtime_session.get("source_quality") or {})
     stream_url = str(runtime_session.get("stream_url") or f"{runtime_base_url.rstrip('/')}/stream/{session_id}").strip()
     elapsed_seconds = _watch_session_elapsed_seconds(runtime_session)
-    if runtime_state in {"ready"}:
-        emit_event(
-            "[playback-runtime-handoff]",
-            event="watch_redirect_to_stream",
-            session_id=session_id,
-            state=runtime_state,
-            stream_url=stream_url,
-        )
-        return redirect(stream_url, code=302)
+    stream_readiness = dict(runtime_session.get("stream_readiness") or {})
+    can_open_stream = bool(
+        source_quality.get("can_open_stream")
+        or stream_readiness.get("stream_openable")
+        or runtime_state in {"ready", "ready_to_play"}
+    )
+    status_copy = build_watch_status_copy(runtime_state=runtime_state, source_quality=source_quality)
+    retry_url = build_watch_retry_url(
+        magnet=magnet,
+        title=title,
+        movie_id=str(movie.get("movie_id") or ""),
+        entry_id=str(movie.get("entry_id") or ""),
+        source_fingerprint=str(source.get("source_fingerprint") or ""),
+        poster_url=poster_url,
+        fallback_url=fallback_url,
+    )
+    refresh_url = build_watch_refresh_url(
+        session_id=session_id,
+        magnet=magnet,
+        title=title,
+        movie_id=str(movie.get("movie_id") or ""),
+        entry_id=str(movie.get("entry_id") or ""),
+        source_fingerprint=str(source.get("source_fingerprint") or ""),
+        poster_url=poster_url,
+        fallback_url=fallback_url,
+    )
+    external_handoff_url = magnet if bool(source_quality.get("show_qbittorrent_fallback")) else ""
+    debug_payload = {
+        "session_id": session_id,
+        "runtime_state": runtime_state,
+        "source_quality": source_quality,
+        "runtime_session": runtime_session,
+        "watch_url": watch_url,
+    }
 
     quality_label = str(source_quality.get("label") or "").strip().lower()
     quality_code = str(source_quality.get("code") or "").strip()
@@ -28873,15 +28948,24 @@ def watch_runtime_handoff():
             stream_url=stream_url,
         )
         return Response(
-            _watch_runtime_failure_page(
-                code=quality_code or runtime_state or "runtime_unavailable",
-                message=str(source_quality.get("message") or "Dragon could not prepare playback for this source right now."),
-                magnet=magnet,
-                title=title,
-                movie_id=str(movie.get("movie_id") or ""),
-                entry_id=str(movie.get("entry_id") or ""),
-                source_fingerprint=str(source.get("source_fingerprint") or ""),
-                source_quality=source_quality,
+            render_template(
+                "movie_player.html",
+                **build_movie_player_page_context(
+                    page_title="Playback unavailable",
+                    page_heading=status_copy["label"] or "Playback unavailable",
+                    page_state="failed",
+                    message=status_copy["message"] or "Dragon could not prepare playback for this source right now.",
+                    recommended_action=status_copy["recommended_action"] or "Retry playback or try another source.",
+                    movie_title=title,
+                    poster_url=poster_url,
+                    stream_url=stream_url,
+                    retry_url=retry_url,
+                    open_stream_url=stream_url,
+                    fallback_url=fallback_url,
+                    external_handoff_url=external_handoff_url,
+                    show_debug_details=show_debug_details,
+                    debug_payload=debug_payload,
+                ),
             ),
             status=200,
             content_type="text/html; charset=utf-8",
@@ -28896,16 +28980,27 @@ def watch_runtime_handoff():
             stream_url=stream_url,
         )
         return Response(
-            _watch_runtime_timeout_page(
-                session_id=session_id,
-                state=runtime_state,
-                elapsed_seconds=elapsed_seconds,
-                magnet=magnet,
-                title=title,
-                movie_id=str(movie.get("movie_id") or ""),
-                entry_id=str(movie.get("entry_id") or ""),
-                source_fingerprint=str(source.get("source_fingerprint") or ""),
-                source_quality=source_quality,
+            render_template(
+                "movie_player.html",
+                **build_movie_player_page_context(
+                    page_title="Playback paused",
+                    page_heading="Playback paused",
+                    page_state="failed",
+                    message=status_copy["message"] or "Playback has not become ready yet.",
+                    recommended_action=status_copy["recommended_action"] or "Try a different source or hand off the magnet externally.",
+                    movie_title=title,
+                    poster_url=poster_url,
+                    stream_url=stream_url,
+                    retry_url=retry_url,
+                    retry_label="Retry with a fresh session",
+                    open_stream_url=stream_url,
+                    fallback_url=fallback_url,
+                    external_handoff_url=external_handoff_url,
+                    elapsed_seconds=elapsed_seconds,
+                    pause_notice="The page has paused auto-refresh so you can choose a fallback.",
+                    show_debug_details=show_debug_details,
+                    debug_payload=debug_payload,
+                ),
             ),
             status=200,
             content_type="text/html; charset=utf-8",
@@ -28913,15 +29008,24 @@ def watch_runtime_handoff():
 
     if str(source_quality.get("code") or "").strip() == "external_recommended" and not _runtime_request_wants_json(request):
         return Response(
-            _watch_runtime_failure_page(
-                code=str(source_quality.get("state") or runtime_state or "stream_unavailable"),
-                message=str(source_quality.get("message") or "Dragon cannot stream this source right now."),
-                magnet=magnet,
-                title=title,
-                movie_id=str(movie.get("movie_id") or ""),
-                entry_id=str(movie.get("entry_id") or ""),
-                source_fingerprint=str(source.get("source_fingerprint") or ""),
-                source_quality=source_quality,
+            render_template(
+                "movie_player.html",
+                **build_movie_player_page_context(
+                    page_title="Playback unavailable",
+                    page_heading=status_copy["label"] or "Playback unavailable",
+                    page_state="failed",
+                    message=status_copy["message"] or "Dragon cannot stream this source right now.",
+                    recommended_action=status_copy["recommended_action"] or "Try another source or use the external handoff.",
+                    movie_title=title,
+                    poster_url=poster_url,
+                    stream_url=stream_url,
+                    retry_url=retry_url,
+                    open_stream_url=stream_url,
+                    fallback_url=fallback_url,
+                    external_handoff_url=external_handoff_url,
+                    show_debug_details=show_debug_details,
+                    debug_payload=debug_payload,
+                ),
             ),
             status=200,
             content_type="text/html; charset=utf-8",
@@ -28935,9 +29039,9 @@ def watch_runtime_handoff():
     )
     emit_event(
         "[playback-runtime-handoff]",
-        event="watch_waiting_page_returned",
+        event="watch_player_page_returned",
         session_id=session_id,
-        state=runtime_state or "buffering",
+        state=runtime_state or ("ready" if can_open_stream else "buffering"),
         stream_url=stream_url,
     )
 
@@ -28954,17 +29058,31 @@ def watch_runtime_handoff():
             "source_quality": source_quality,
         })
     return Response(
-        _watch_runtime_waiting_page(
-            session_id=session_id,
-            state=runtime_state or "buffering",
-            stream_url=stream_url,
-            elapsed_seconds=elapsed_seconds,
-            magnet=magnet,
-            title=title,
-            movie_id=str(movie.get("movie_id") or ""),
-            entry_id=str(movie.get("entry_id") or ""),
-            source_fingerprint=str(source.get("source_fingerprint") or ""),
-            source_quality=source_quality,
+        render_template(
+            "movie_player.html",
+            **build_movie_player_page_context(
+                page_title=title if can_open_stream else "Playback status",
+                page_heading=status_copy["label"] or ("Ready" if can_open_stream else "Playback status"),
+                page_state="ready" if can_open_stream else "buffering",
+                message=status_copy["message"] or "Dragon is still waiting for playable bytes.",
+                recommended_action=(
+                    status_copy["recommended_action"]
+                    or ("Press play to start playback." if can_open_stream else "Retry the handoff or wait for the stream to become playable.")
+                ),
+                movie_title=title,
+                poster_url=poster_url,
+                stream_url=stream_url,
+                retry_url=retry_url,
+                open_stream_url=stream_url,
+                fallback_url=fallback_url,
+                external_handoff_url=external_handoff_url,
+                elapsed_seconds=elapsed_seconds,
+                auto_refresh_url="" if can_open_stream else refresh_url,
+                auto_refresh_seconds=0 if can_open_stream or elapsed_seconds >= WATCH_BUFFERING_TIMEOUT_SECONDS else 3,
+                show_video=can_open_stream,
+                show_debug_details=show_debug_details,
+                debug_payload=debug_payload,
+            ),
         ),
         status=200,
         content_type="text/html; charset=utf-8",

@@ -870,7 +870,7 @@ class RuntimeDiagnosticUiTests(unittest.TestCase):
         self.assertIn("Retry with a fresh session", html)
         self.assertNotIn("http-equiv=\"refresh\"", html)
 
-    def test_watch_existing_session_refreshes_and_redirects_when_ready(self):
+    def test_watch_existing_session_refreshes_and_renders_player_when_ready(self):
         buffering_session = {
             "session_id": "sess-1",
             "state": "buffering",
@@ -885,7 +885,7 @@ class RuntimeDiagnosticUiTests(unittest.TestCase):
             "status": "ready_to_play",
             "stream_url": "http://127.0.0.1:5000/api/runtime/stream/sess-1",
             "selected_file": {"name": "movie.mp4"},
-            "source_quality": {"state": "playable", "code": "playable"},
+            "source_quality": {"state": "playable", "code": "playable", "can_open_stream": True, "show_qbittorrent_fallback": True},
         }
 
         with patch.object(dragon_app.PLAYBACK_RUNTIME_MANAGER, "create_session", return_value=buffering_session) as create_session_mock, \
@@ -906,6 +906,8 @@ class RuntimeDiagnosticUiTests(unittest.TestCase):
                     "title": "Test Film",
                     "movie_id": "film-test",
                     "entry_id": "film-test",
+                    "poster": "https://image.tmdb.org/t/p/w342/test.jpg",
+                    "fallback_url": "https://fallback.example/embed/test",
                     "session_id": "sess-1",
                 },
                 follow_redirects=False,
@@ -915,8 +917,14 @@ class RuntimeDiagnosticUiTests(unittest.TestCase):
         self.assertIn("Buffering", first_response.get_data(as_text=True))
         create_session_mock.assert_called_once()
         get_session_mock.assert_called_once_with("sess-1", refresh=True)
-        self.assertEqual(second_response.status_code, 302)
-        self.assertEqual(second_response.headers["Location"], "http://127.0.0.1:5000/api/runtime/stream/sess-1")
+        self.assertEqual(second_response.status_code, 200)
+        second_html = second_response.get_data(as_text=True)
+        self.assertIn("Ready", second_html)
+        self.assertIn("<video", second_html)
+        self.assertIn("Open stream URL", second_html)
+        self.assertIn("Open fallback source", second_html)
+        self.assertIn("External magnet handoff", second_html)
+        self.assertIn("Test Film", second_html)
 
     def test_watch_existing_session_keeps_waiting_until_mp4_tail_is_ready(self):
         buffering_session = {
@@ -978,8 +986,8 @@ class RuntimeDiagnosticUiTests(unittest.TestCase):
 
         self.assertEqual(first_response.status_code, 200)
         self.assertIn("Buffering", first_response.get_data(as_text=True))
-        self.assertEqual(second_response.status_code, 302)
-        self.assertEqual(second_response.headers["Location"], "http://127.0.0.1:5000/api/runtime/stream/sess-1")
+        self.assertEqual(second_response.status_code, 200)
+        self.assertIn("<video", second_response.get_data(as_text=True))
         self.assertEqual(get_session_mock.call_count, 2)
         get_session_mock.assert_any_call("sess-1", refresh=True)
 

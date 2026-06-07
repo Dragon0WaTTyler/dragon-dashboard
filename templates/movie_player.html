@@ -1,0 +1,377 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  {% if auto_refresh_url and auto_refresh_seconds > 0 %}
+  <meta http-equiv="refresh" content="{{ auto_refresh_seconds }};url={{ auto_refresh_url }}">
+  {% endif %}
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ page_title }}</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --dragon-black: #000000;
+      --dragon-panel: #080808;
+      --dragon-panel-soft: #121212;
+      --dragon-border: rgba(255, 255, 255, 0.08);
+      --dragon-text: #f6f3ef;
+      --dragon-muted: #a79d97;
+      --dragon-red: #8f1014;
+      --dragon-red-soft: rgba(143, 16, 20, 0.24);
+      --dragon-red-bright: #d32a31;
+      --dragon-gold: #dfc7a2;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; background: var(--dragon-black); color: var(--dragon-text); }
+    body {
+      font-family: Arial, Helvetica, sans-serif;
+      background:
+        radial-gradient(circle at top, rgba(143, 16, 20, 0.18), transparent 34%),
+        linear-gradient(180deg, #030303 0%, #000000 100%);
+    }
+
+    a { color: inherit; }
+
+    .player-page {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px 14px 32px;
+    }
+
+    .player-shell {
+      width: 100%;
+      max-width: 1180px;
+      border: 1px solid var(--dragon-border);
+      background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)), var(--dragon-panel);
+      box-shadow: 0 22px 70px rgba(0, 0, 0, 0.58);
+      border-radius: 24px;
+      overflow: hidden;
+    }
+
+    .player-topbar {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 18px;
+      border-bottom: 1px solid var(--dragon-border);
+      background: linear-gradient(180deg, rgba(143, 16, 20, 0.16), rgba(143, 16, 20, 0.04));
+    }
+
+    .poster-thumb {
+      width: 72px;
+      height: 108px;
+      border-radius: 12px;
+      overflow: hidden;
+      background: #111111;
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      flex: 0 0 auto;
+    }
+
+    .poster-thumb img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    .player-meta {
+      min-width: 0;
+      flex: 1 1 auto;
+    }
+
+    .dragon-kicker {
+      font-size: 11px;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--dragon-gold);
+    }
+
+    .movie-title {
+      margin: 8px 0 0;
+      font-size: 30px;
+      line-height: 1.08;
+      font-weight: 700;
+      word-break: break-word;
+    }
+
+    .page-heading {
+      margin: 8px 0 0;
+      font-size: 18px;
+      color: var(--dragon-muted);
+    }
+
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 34px;
+      padding: 6px 14px;
+      border-radius: 999px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(255, 255, 255, 0.04);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    .status-pill.state-ready {
+      background: rgba(39, 114, 69, 0.26);
+      color: #d8f2df;
+    }
+
+    .status-pill.state-buffering {
+      background: var(--dragon-red-soft);
+      color: #ffe0e0;
+    }
+
+    .status-pill.state-failed {
+      background: rgba(255, 255, 255, 0.08);
+      color: #f1c2c2;
+    }
+
+    .player-stage {
+      padding: 18px;
+      display: flex;
+      justify-content: center;
+      background: #020202;
+    }
+
+    .video-frame {
+      width: 100%;
+      max-width: 1040px;
+      aspect-ratio: 16 / 9;
+      background: #000000;
+      border-radius: 18px;
+      overflow: hidden;
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+    }
+
+    .video-frame video {
+      width: 100%;
+      height: 100%;
+      display: block;
+      background: #000000;
+    }
+
+    .stage-copy {
+      width: 100%;
+      max-width: 720px;
+      text-align: center;
+      padding: 28px 20px;
+    }
+
+    .stage-copy h2 {
+      margin: 0;
+      font-size: 36px;
+      line-height: 1.05;
+    }
+
+    .stage-copy p {
+      margin: 14px 0 0;
+      line-height: 1.65;
+      color: var(--dragon-muted);
+      font-size: 16px;
+    }
+
+    .player-footer {
+      padding: 18px;
+      border-top: 1px solid var(--dragon-border);
+      background: linear-gradient(180deg, rgba(255,255,255,0.01), rgba(255,255,255,0.02));
+    }
+
+    .action-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .action-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 44px;
+      padding: 0 18px;
+      border-radius: 999px;
+      text-decoration: none;
+      border: 1px solid rgba(211, 42, 49, 0.45);
+      background: #100708;
+      color: var(--dragon-text);
+      font-weight: 700;
+    }
+
+    .action-btn.secondary {
+      background: transparent;
+      border-color: rgba(255, 255, 255, 0.12);
+      color: var(--dragon-muted);
+    }
+
+    .action-btn:hover,
+    .action-btn:focus {
+      background: var(--dragon-red);
+      border-color: var(--dragon-red-bright);
+      color: #ffffff;
+      outline: none;
+    }
+
+    .player-notes {
+      margin-top: 14px;
+      display: grid;
+      gap: 8px;
+      color: var(--dragon-muted);
+      font-size: 14px;
+      line-height: 1.55;
+    }
+
+    .pause-note {
+      color: #f1d3d3;
+    }
+
+    .debug-panel {
+      margin-top: 16px;
+      border-top: 1px solid var(--dragon-border);
+      padding-top: 16px;
+    }
+
+    .debug-panel summary {
+      cursor: pointer;
+      color: var(--dragon-gold);
+      font-weight: 700;
+    }
+
+    .debug-panel pre {
+      margin: 12px 0 0;
+      padding: 14px;
+      border-radius: 14px;
+      background: #050505;
+      border: 1px solid rgba(255,255,255,0.08);
+      overflow: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+      color: #d9d3cd;
+      font-size: 12px;
+      line-height: 1.5;
+    }
+
+    @supports not (aspect-ratio: 16 / 9) {
+      .video-frame {
+        height: 0;
+        padding-top: 56.25%;
+      }
+
+      .video-frame video,
+      .video-frame .stage-copy {
+        position: absolute;
+        inset: 0;
+      }
+    }
+
+    @media (max-width: 760px) {
+      .player-topbar {
+        align-items: flex-start;
+      }
+
+      .poster-thumb {
+        width: 56px;
+        height: 84px;
+      }
+
+      .movie-title {
+        font-size: 24px;
+      }
+
+      .stage-copy h2 {
+        font-size: 28px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="player-page">
+    <section class="player-shell">
+      <header class="player-topbar">
+        {% if poster_url %}
+        <div class="poster-thumb">
+          <img src="{{ poster_url }}" alt="{{ movie_title or page_title }}">
+        </div>
+        {% endif %}
+        <div class="player-meta">
+          <div class="dragon-kicker">Dragon Movie Player</div>
+          {% if movie_title %}
+          <h1 class="movie-title">{{ movie_title }}</h1>
+          {% endif %}
+          <div class="page-heading">{{ page_heading }}</div>
+        </div>
+        <div class="status-pill state-{{ page_state }}">{{ status_label }}</div>
+      </header>
+
+      <section class="player-stage">
+        <div class="video-frame">
+          {% if show_video %}
+          <video
+            controls
+            preload="metadata"
+            playsinline
+            webkit-playsinline
+            x-webkit-airplay="allow"
+            {% if poster_url %}poster="{{ poster_url }}"{% endif %}
+          >
+            <source src="{{ stream_url }}" type="video/mp4">
+          </video>
+          {% else %}
+          <div class="stage-copy">
+            <h2>{{ status_label }}</h2>
+            <p>{{ message }}</p>
+          </div>
+          {% endif %}
+        </div>
+      </section>
+
+      <footer class="player-footer">
+        <div class="action-row">
+          <a class="action-btn" href="{{ retry_url }}">{{ retry_label }}</a>
+          {% if open_stream_url %}
+          <a class="action-btn secondary" href="{{ open_stream_url }}">Open stream URL</a>
+          {% endif %}
+          {% if fallback_url %}
+          <a class="action-btn secondary" href="{{ fallback_url }}" target="_blank" rel="noopener noreferrer">Open fallback source</a>
+          {% endif %}
+          {% if external_handoff_url %}
+          <a class="action-btn secondary" href="{{ external_handoff_url }}">External magnet handoff</a>
+          {% endif %}
+        </div>
+
+        <div class="player-notes">
+          {% if message and show_video %}
+          <div>{{ message }}</div>
+          {% endif %}
+          {% if recommended_action %}
+          <div>{{ recommended_action }}</div>
+          {% endif %}
+          {% if elapsed_seconds %}
+          <div>Elapsed: {{ elapsed_seconds }}s</div>
+          {% endif %}
+          {% if pause_notice %}
+          <div class="pause-note">{{ pause_notice }}</div>
+          {% endif %}
+        </div>
+
+        {% if show_debug_details and debug_payload %}
+        <details class="debug-panel">
+          <summary>Developer details</summary>
+          <pre>{{ debug_payload | tojson(indent=2) }}</pre>
+        </details>
+        {% endif %}
+      </footer>
+    </section>
+  </main>
+</body>
+</html>
