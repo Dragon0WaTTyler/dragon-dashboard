@@ -50,10 +50,12 @@ class BooksService:
         snapshot_entries = snapshot.get("entries", [])
         snapshot_error = snapshot.get("error", "")
         snapshot_available = bool(snapshot.get("updated_at")) or self.books_snapshot_path.exists()
+        snapshot_has_entries = bool(snapshot_entries)
+        snapshot_has_error = bool(str(snapshot_error or "").strip())
         snapshot_age = self.snapshot_age_seconds(snapshot.get("updated_at", ""))
         snapshot_stale = snapshot_age is None or snapshot_age >= self.books_snapshot_ttl_seconds
 
-        if not force_refresh and snapshot_available:
+        if not force_refresh and snapshot_available and (not self.notion_books_database_id or (snapshot_has_entries and not snapshot_has_error)):
             result = self.update_entries_runtime_cache(
                 self.books_runtime.books_entries,
                 snapshot_entries,
