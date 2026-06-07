@@ -28629,7 +28629,7 @@ def watch_runtime_handoff():
     runtime_session = None
     session_was_created = False
     if session_id and not retry_requested:
-        runtime_session = PLAYBACK_RUNTIME_MANAGER.get_session(session_id, refresh=False)
+        runtime_session = PLAYBACK_RUNTIME_MANAGER.get_session(session_id, refresh=True)
     if runtime_session is None:
         try:
             runtime_session = PLAYBACK_RUNTIME_MANAGER.create_session(
