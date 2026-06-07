@@ -36,6 +36,7 @@ from domains.chess.runtime import (
     save_chess_data,
 )
 from domains.magnets.playback import (
+    MovieWatchProgressService,
     build_movie_player_page_context,
     build_playback_response_payload,
     build_watch_refresh_url,
@@ -97,6 +98,7 @@ from dragon.paths import (
     LICHESS_PUZZLE_SAMPLE_DATA_PATH,
     LICHESS_PUZZLE_SAMPLE_PATH,
     MISMATCH_CSV_PATH,
+    MOVIE_WATCH_PROGRESS_PATH,
     PLAYLISTS_PATH,
     READING_BACKUPS_DIR,
     READING_DATA_PATH,
@@ -205,6 +207,7 @@ def create_app():
 
 app = create_app()
 app.register_blueprint(api_v1_bp)
+MOVIE_WATCH_PROGRESS_SERVICE = MovieWatchProgressService(MOVIE_WATCH_PROGRESS_PATH)
 
 # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 #  CONFIGURATION
@@ -26492,6 +26495,7 @@ def build_movie_runtime_watch_url(detail):
         ("title", movie.get("title") or movie.get("name") or ""),
         ("movie_id", movie.get("entry_id") or movie.get("movie_id") or ""),
         ("entry_id", movie.get("entry_id") or ""),
+        ("tmdb_id", movie.get("tmdb_id") or ""),
         ("source_fingerprint", movie.get("source_fingerprint") or ""),
         ("poster", movie.get("poster") or ""),
         ("fallback_url", movie.get("fallback_url") or ""),
@@ -27828,6 +27832,23 @@ def _watch_session_elapsed_seconds(session):
 WATCH_BUFFERING_TIMEOUT_SECONDS = 90
 
 
+@app.get("/api/movies/watch-progress")
+def movie_watch_progress_get():
+    payload = MOVIE_WATCH_PROGRESS_SERVICE.load_progress(
+        movie_id=request.args.get("movie_id"),
+        tmdb_id=request.args.get("tmdb_id"),
+        title=request.args.get("title"),
+    )
+    return jsonify(payload)
+
+
+@app.post("/api/movies/watch-progress")
+def movie_watch_progress_post():
+    payload = request.get_json(silent=True)
+    result, status_code = MOVIE_WATCH_PROGRESS_SERVICE.save_progress(payload)
+    return jsonify(result), status_code
+
+
 def _watch_runtime_status_copy(*, runtime_state: str, source_quality: dict[str, object] | None = None) -> dict[str, str]:
     quality_payload = dict(source_quality or {})
     label = str(quality_payload.get("label") or "").strip()
@@ -28760,6 +28781,7 @@ def watch_runtime_handoff():
         return jsonify({"ok": False, "error": "magnet is required"}), 400
     runtime_base_url = resolve_runtime_base_url(request)
     title = str(request.args.get("title") or request.args.get("name") or "Dragon runtime playback").strip() or "Dragon runtime playback"
+    tmdb_id = str(request.args.get("tmdb_id") or "").strip()
     session_id = str(request.args.get("session_id") or "").strip()
     retry_requested = str(request.args.get("retry") or "").strip() == "1"
     poster_url = str(request.args.get("poster") or "").strip()
@@ -28775,6 +28797,7 @@ def watch_runtime_handoff():
     movie = {
         "movie_id": str(request.args.get("movie_id") or "").strip() or source["source_fingerprint"],
         "entry_id": str(request.args.get("entry_id") or "").strip() or source["source_fingerprint"],
+        "tmdb_id": tmdb_id,
         "title": title,
         "name": title,
     }
@@ -28791,6 +28814,7 @@ def watch_runtime_handoff():
                 title=title,
                 movie_id=str(movie.get("movie_id") or ""),
                 entry_id=str(movie.get("entry_id") or ""),
+                tmdb_id=tmdb_id,
                 source_fingerprint=str(source.get("source_fingerprint") or ""),
                 poster_url=poster_url,
                 fallback_url=fallback_url,
@@ -28805,6 +28829,8 @@ def watch_runtime_handoff():
                         message="Dragon runtime is unavailable right now.",
                         recommended_action="Retry playback in a moment.",
                         movie_title=title,
+                        movie_id=str(movie.get("movie_id") or ""),
+                        tmdb_id=tmdb_id,
                         poster_url=poster_url,
                         stream_url="",
                         retry_url=retry_url,
@@ -28843,6 +28869,7 @@ def watch_runtime_handoff():
                 title=title,
                 movie_id=str(movie.get("movie_id") or ""),
                 entry_id=str(movie.get("entry_id") or ""),
+                tmdb_id=tmdb_id,
                 source_fingerprint=str(source.get("source_fingerprint") or ""),
                 poster_url=poster_url,
                 fallback_url=fallback_url,
@@ -28858,6 +28885,8 @@ def watch_runtime_handoff():
                         message=status_copy["message"] or exc.message,
                         recommended_action=status_copy["recommended_action"] or "Retry playback or try another source.",
                         movie_title=title,
+                        movie_id=str(movie.get("movie_id") or ""),
+                        tmdb_id=tmdb_id,
                         poster_url=poster_url,
                         stream_url="",
                         retry_url=retry_url,
@@ -28914,6 +28943,7 @@ def watch_runtime_handoff():
         title=title,
         movie_id=str(movie.get("movie_id") or ""),
         entry_id=str(movie.get("entry_id") or ""),
+        tmdb_id=tmdb_id,
         source_fingerprint=str(source.get("source_fingerprint") or ""),
         poster_url=poster_url,
         fallback_url=fallback_url,
@@ -28924,6 +28954,7 @@ def watch_runtime_handoff():
         title=title,
         movie_id=str(movie.get("movie_id") or ""),
         entry_id=str(movie.get("entry_id") or ""),
+        tmdb_id=tmdb_id,
         source_fingerprint=str(source.get("source_fingerprint") or ""),
         poster_url=poster_url,
         fallback_url=fallback_url,
@@ -28957,6 +28988,8 @@ def watch_runtime_handoff():
                     message=status_copy["message"] or "Dragon could not prepare playback for this source right now.",
                     recommended_action=status_copy["recommended_action"] or "Retry playback or try another source.",
                     movie_title=title,
+                    movie_id=str(movie.get("movie_id") or ""),
+                    tmdb_id=tmdb_id,
                     poster_url=poster_url,
                     stream_url=stream_url,
                     retry_url=retry_url,
@@ -28989,6 +29022,8 @@ def watch_runtime_handoff():
                     message=status_copy["message"] or "Playback has not become ready yet.",
                     recommended_action=status_copy["recommended_action"] or "Try a different source or hand off the magnet externally.",
                     movie_title=title,
+                    movie_id=str(movie.get("movie_id") or ""),
+                    tmdb_id=tmdb_id,
                     poster_url=poster_url,
                     stream_url=stream_url,
                     retry_url=retry_url,
@@ -29017,6 +29052,8 @@ def watch_runtime_handoff():
                     message=status_copy["message"] or "Dragon cannot stream this source right now.",
                     recommended_action=status_copy["recommended_action"] or "Try another source or use the external handoff.",
                     movie_title=title,
+                    movie_id=str(movie.get("movie_id") or ""),
+                    tmdb_id=tmdb_id,
                     poster_url=poster_url,
                     stream_url=stream_url,
                     retry_url=retry_url,
@@ -29070,6 +29107,8 @@ def watch_runtime_handoff():
                     or ("Press play to start playback." if can_open_stream else "Retry the handoff or wait for the stream to become playable.")
                 ),
                 movie_title=title,
+                movie_id=str(movie.get("movie_id") or ""),
+                tmdb_id=tmdb_id,
                 poster_url=poster_url,
                 stream_url=stream_url,
                 retry_url=retry_url,

@@ -7,6 +7,7 @@ from .movie_player_page import (
     build_watch_retry_url,
     build_watch_status_copy,
 )
+from .watch_progress import MovieWatchProgressService
 from .external_runtime import build_external_runtime
 from .playback_session import build_playback_session_payload
 from .readiness_snapshot import build_playback_readiness_snapshot
@@ -31,6 +32,7 @@ __all__ = [
     "build_watch_refresh_url",
     "build_watch_retry_url",
     "build_watch_status_copy",
+    "MovieWatchProgressService",
     "build_runtime_fallbacks",
     "estimate_bandwidth_class",
     "estimate_startup_risk",

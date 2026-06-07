@@ -235,6 +235,22 @@
       color: #f1d3d3;
     }
 
+    .resume-indicator {
+      display: none;
+      margin-top: 14px;
+      padding: 10px 12px;
+      border-radius: 14px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: rgba(255, 255, 255, 0.03);
+      color: var(--dragon-gold);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .resume-indicator.is-visible {
+      display: block;
+    }
+
     .debug-panel {
       margin-top: 16px;
       border-top: 1px solid var(--dragon-border);
@@ -296,7 +312,14 @@
 </head>
 <body>
   <main class="player-page">
-    <section class="player-shell">
+    <section
+      class="player-shell"
+      data-watch-progress-endpoint="{{ url_for('movie_watch_progress_post') }}"
+      data-watch-progress-load-endpoint="{{ url_for('movie_watch_progress_get') }}"
+      data-movie-id="{{ movie_id }}"
+      data-tmdb-id="{{ tmdb_id }}"
+      data-movie-title="{{ movie_title or page_title }}"
+    >
       <header class="player-topbar">
         {% if poster_url %}
         <div class="poster-thumb">
@@ -364,6 +387,8 @@
           {% endif %}
         </div>
 
+        <div id="resumeStatus" class="resume-indicator" aria-live="polite"></div>
+
         {% if show_debug_details and debug_payload %}
         <details class="debug-panel">
           <summary>Developer details</summary>
@@ -373,5 +398,249 @@
       </footer>
     </section>
   </main>
+  <script>
+    (function() {
+      var shell = document.querySelector('.player-shell');
+      var video = document.querySelector('.video-frame video');
+      var resumeStatus = document.getElementById('resumeStatus');
+      if (!shell || !video) {
+        return;
+      }
+
+      var saveEndpoint = String(shell.getAttribute('data-watch-progress-endpoint') || '');
+      var loadEndpoint = String(shell.getAttribute('data-watch-progress-load-endpoint') || '');
+      var movieId = String(shell.getAttribute('data-movie-id') || '').trim();
+      var tmdbId = String(shell.getAttribute('data-tmdb-id') || '').trim();
+      var movieTitle = String(shell.getAttribute('data-movie-title') || '').trim();
+      var saveTimer = null;
+      var pendingResumeTime = null;
+      var resumeLoaded = false;
+      var lastSavedSecond = -1;
+      var saveInFlight = false;
+
+      function formatSeconds(totalSeconds) {
+        var safeSeconds = Math.max(0, Math.floor(Number(totalSeconds) || 0));
+        var hours = Math.floor(safeSeconds / 3600);
+        var minutes = Math.floor((safeSeconds % 3600) / 60);
+        var seconds = safeSeconds % 60;
+        function pad(value) {
+          return value < 10 ? '0' + String(value) : String(value);
+        }
+        if (hours > 0) {
+          return String(hours) + ':' + pad(minutes) + ':' + pad(seconds);
+        }
+        return String(minutes) + ':' + pad(seconds);
+      }
+
+      function showStatus(message) {
+        if (!resumeStatus) {
+          return;
+        }
+        var text = String(message || '').trim();
+        if (!text) {
+          resumeStatus.textContent = '';
+          resumeStatus.className = 'resume-indicator';
+          return;
+        }
+        resumeStatus.textContent = text;
+        resumeStatus.className = 'resume-indicator is-visible';
+      }
+
+      function buildQuery(params) {
+        var parts = [];
+        var key;
+        for (key in params) {
+          if (!Object.prototype.hasOwnProperty.call(params, key)) {
+            continue;
+          }
+          var value = String(params[key] || '').trim();
+          if (!value) {
+            continue;
+          }
+          parts.push(encodeURIComponent(key) + '=' + encodeURIComponent(value));
+        }
+        return parts.join('&');
+      }
+
+      function requestJson(url, options, callback) {
+        if (!url) {
+          callback(false, null);
+          return;
+        }
+        if (window.fetch) {
+          window.fetch(url, options).then(function(response) {
+            return response.json().then(function(payload) {
+              callback(response.ok, payload || {});
+            }).catch(function() {
+              callback(false, null);
+            });
+          }).catch(function() {
+            callback(false, null);
+          });
+          return;
+        }
+
+        try {
+          var xhr = new XMLHttpRequest();
+          xhr.open((options && options.method) || 'GET', url, true);
+          xhr.setRequestHeader('Accept', 'application/json');
+          if (options && options.body) {
+            xhr.setRequestHeader('Content-Type', 'application/json');
+          }
+          xhr.onreadystatechange = function() {
+            if (xhr.readyState !== 4) {
+              return;
+            }
+            try {
+              callback(xhr.status >= 200 && xhr.status < 300, JSON.parse(xhr.responseText || '{}'));
+            } catch (error) {
+              callback(false, null);
+            }
+          };
+          xhr.send(options && options.body ? options.body : null);
+        } catch (error) {
+          callback(false, null);
+        }
+      }
+
+      function saveProgress(completed, keepalive) {
+        if (!saveEndpoint || !movieId || !video || saveInFlight) {
+          return;
+        }
+        var duration = Number(video.duration || 0);
+        var currentTime = Number(video.currentTime || 0);
+        if (!duration || !isFinite(duration) || !isFinite(currentTime) || currentTime < 0) {
+          return;
+        }
+        var roundedSecond = Math.floor(currentTime);
+        if (!completed && roundedSecond === lastSavedSecond) {
+          return;
+        }
+        saveInFlight = !keepalive;
+        var payload = {
+          movie_id: movieId,
+          tmdb_id: tmdbId,
+          title: movieTitle,
+          current_time: currentTime,
+          duration: duration,
+          completed: !!completed
+        };
+        var requestOptions = {
+          method: 'POST',
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(payload)
+        };
+        if (keepalive) {
+          requestOptions.keepalive = true;
+        }
+        requestJson(saveEndpoint, requestOptions, function(ok, responsePayload) {
+          saveInFlight = false;
+          if (!ok || !responsePayload || responsePayload.ok === false) {
+            return;
+          }
+          lastSavedSecond = roundedSecond;
+          if (responsePayload.completed) {
+            showStatus('Completed locally');
+            return;
+          }
+          if (responsePayload.saved) {
+            showStatus('Progress saved');
+          }
+        });
+      }
+
+      function stopSaveTimer() {
+        if (saveTimer) {
+          window.clearInterval(saveTimer);
+          saveTimer = null;
+        }
+      }
+
+      function startSaveTimer() {
+        stopSaveTimer();
+        saveTimer = window.setInterval(function() {
+          saveProgress(false, false);
+        }, 12000);
+      }
+
+      function applyResumeIfReady() {
+        if (pendingResumeTime === null || resumeLoaded) {
+          return;
+        }
+        var duration = Number(video.duration || 0);
+        if (!duration || !isFinite(duration)) {
+          return;
+        }
+        var targetTime = Math.min(Number(pendingResumeTime || 0), Math.max(duration - 10, 0));
+        if (!(targetTime > 0)) {
+          resumeLoaded = true;
+          pendingResumeTime = null;
+          return;
+        }
+        try {
+          video.currentTime = targetTime;
+          showStatus('Resume from ' + formatSeconds(targetTime));
+        } catch (error) {
+        }
+        resumeLoaded = true;
+        pendingResumeTime = null;
+      }
+
+      function loadProgress() {
+        if (!loadEndpoint || !movieId) {
+          return;
+        }
+        var query = buildQuery({
+          movie_id: movieId,
+          tmdb_id: tmdbId,
+          title: movieTitle
+        });
+        requestJson(loadEndpoint + (query ? ('?' + query) : ''), { method: 'GET', headers: { 'Accept': 'application/json' } }, function(ok, payload) {
+          if (!ok || !payload || payload.ok === false || !payload.has_progress) {
+            return;
+          }
+          if (payload.completed) {
+            showStatus('Completed locally');
+            return;
+          }
+          if (payload.resume_available && Number(payload.resume_time || 0) >= 5) {
+            pendingResumeTime = Number(payload.resume_time || 0);
+            applyResumeIfReady();
+            if (pendingResumeTime !== null) {
+              showStatus('Resume from ' + formatSeconds(pendingResumeTime));
+            }
+          }
+        });
+      }
+
+      video.addEventListener('loadedmetadata', applyResumeIfReady);
+      video.addEventListener('play', function() {
+        startSaveTimer();
+      });
+      video.addEventListener('pause', function() {
+        stopSaveTimer();
+        saveProgress(false, false);
+      });
+      video.addEventListener('seeking', function() {
+        showStatus('Saving progress...');
+      });
+      video.addEventListener('seeked', function() {
+        saveProgress(false, false);
+      });
+      video.addEventListener('ended', function() {
+        stopSaveTimer();
+        saveProgress(true, false);
+      });
+      window.addEventListener('beforeunload', function() {
+        stopSaveTimer();
+        saveProgress(false, true);
+      });
+
+      loadProgress();
+    })();
+  </script>
 </body>
 </html>

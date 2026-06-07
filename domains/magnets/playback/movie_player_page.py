@@ -53,6 +53,7 @@ def build_watch_retry_url(
     movie_id: str,
     entry_id: str,
     source_fingerprint: str,
+    tmdb_id: str = "",
     poster_url: str = "",
     fallback_url: str = "",
 ) -> str:
@@ -62,6 +63,7 @@ def build_watch_retry_url(
         "title": str(title or "").strip(),
         "movie_id": str(movie_id or "").strip(),
         "entry_id": str(entry_id or "").strip(),
+        "tmdb_id": str(tmdb_id or "").strip(),
         "source_fingerprint": str(source_fingerprint or "").strip(),
     }
     poster_text = str(poster_url or "").strip()
@@ -81,6 +83,7 @@ def build_watch_refresh_url(
     movie_id: str,
     entry_id: str,
     source_fingerprint: str,
+    tmdb_id: str = "",
     poster_url: str = "",
     fallback_url: str = "",
 ) -> str:
@@ -90,6 +93,7 @@ def build_watch_refresh_url(
         "title": str(title or "").strip(),
         "movie_id": str(movie_id or "").strip(),
         "entry_id": str(entry_id or "").strip(),
+        "tmdb_id": str(tmdb_id or "").strip(),
         "source_fingerprint": str(source_fingerprint or "").strip(),
     }
     poster_text = str(poster_url or "").strip()
@@ -109,6 +113,8 @@ def build_movie_player_page_context(
     message: str,
     recommended_action: str,
     movie_title: str,
+    movie_id: str = "",
+    tmdb_id: str = "",
     poster_url: str,
     stream_url: str,
     retry_url: str,
@@ -137,6 +143,8 @@ def build_movie_player_page_context(
         "message": str(message or "").strip(),
         "recommended_action": str(recommended_action or "").strip(),
         "movie_title": str(movie_title or "").strip(),
+        "movie_id": str(movie_id or "").strip(),
+        "tmdb_id": str(tmdb_id or "").strip(),
         "poster_url": str(poster_url or "").strip(),
         "stream_url": str(stream_url or "").strip(),
         "retry_url": str(retry_url or "").strip(),

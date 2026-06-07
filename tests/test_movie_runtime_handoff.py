@@ -16,6 +16,7 @@ class MovieRuntimeHandoffTests(unittest.TestCase):
             "category": "movie",
             "poster": "https://image.tmdb.org/t/p/w342/test.jpg",
             "fallback_url": "https://fallback.example/embed/test",
+            "tmdb_id": "550",
             "torrent_hd": "https://example.com/test.torrent",
             "torrent_fhd": "",
             "magnet_hd": "magnet:?xt=urn:btih:1234567890ABCDEF1234567890ABCDEF12345678" if magnet else "",
@@ -34,6 +35,7 @@ class MovieRuntimeHandoffTests(unittest.TestCase):
         self.assertIn("magnet%3A%3Fxt%3Durn%3Abtih%3A1234567890ABCDEF1234567890ABCDEF12345678", url)
         self.assertIn("title=Test+Film", url)
         self.assertIn("entry_id=film-test", url)
+        self.assertIn("tmdb_id=550", url)
         self.assertIn("poster=https%3A%2F%2Fimage.tmdb.org%2Ft%2Fp%2Fw342%2Ftest.jpg", url)
         self.assertIn("fallback_url=https%3A%2F%2Ffallback.example%2Fembed%2Ftest", url)
 
