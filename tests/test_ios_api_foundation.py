@@ -510,3 +510,154 @@ class IOSApiFoundationTests(unittest.TestCase):
         self.assertEqual(payload["ok"], True)
         self.assertEqual(payload["items"], [])
         self.assertEqual(payload["count"], 0)
+
+    def test_chess_courses_endpoint_returns_ok_true(self):
+        with patch("domains.chess.api_projection.load_chess_courses_data", return_value={
+            "courses": [
+                {
+                    "id": "course-1",
+                    "title": "Opening Principles",
+                    "category": "opening",
+                    "source": "youtube",
+                    "url": "https://example.com/opening-principles",
+                    "related_opening_key": "c00|french defense",
+                    "related_opening_label": "French Defense",
+                    "level": "beginner",
+                    "status": "active",
+                    "notes": "Intro to core ideas.",
+                    "created_at": "2026-01-01",
+                    "updated_at": "2026-01-02",
+                },
+                {
+                    "id": "course-2",
+                    "title": "Endgame Basics",
+                    "category": "endgame",
+                    "source": "book",
+                    "url": "https://example.com/endgame-basics",
+                    "related_opening_key": "",
+                    "related_opening_label": "",
+                    "level": "",
+                    "status": "planned",
+                    "notes": "",
+                },
+            ],
+            "updated_at": "2026-01-02T00:00:00Z",
+        }):
+            response = self.client.get("/api/v1/chess/courses")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload["ok"], True)
+        self.assertEqual(payload["section"], "chess")
+        self.assertEqual(payload["title"], "Courses")
+        self.assertEqual(payload["count"], 2)
+        self.assertEqual(len(payload["items"]), 2)
+        first = payload["items"][0]
+        self.assertEqual(
+            set(first.keys()),
+            {
+                "id",
+                "title",
+                "category",
+                "source",
+                "url",
+                "related_opening_key",
+                "related_opening_label",
+                "level",
+                "status",
+                "notes",
+            },
+        )
+        body = response.get_data(as_text=True)
+        self.assertNotIn("path", body.lower())
+        self.assertNotIn("secret", body.lower())
+        self.assertNotIn("token", body.lower())
+        self.assertNotIn("api_key", body.lower())
+
+    def test_chess_courses_endpoint_caps_limit_and_filters_safely(self):
+        mocked_courses = []
+        for i in range(120):
+            mocked_courses.append(
+                {
+                    "id": f"course-{i}",
+                    "title": f"Course {i}",
+                    "category": "opening" if i % 2 == 0 else "endgame",
+                    "source": "youtube" if i % 3 == 0 else "book",
+                    "url": f"https://example.com/course-{i}",
+                    "related_opening_key": f"c{i:02d}|opening",
+                    "related_opening_label": f"Opening {i}",
+                    "level": "beginner" if i % 2 == 0 else "advanced",
+                    "status": "active" if i % 4 else "planned",
+                    "notes": f"Notes {i}",
+                }
+            )
+        with patch("domains.chess.api_projection.load_chess_courses_data", return_value={"courses": mocked_courses}):
+            response = self.client.get("/api/v1/chess/courses", query_string={"limit": 999, "category": "opening", "status": "active"})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload["ok"], True)
+        self.assertEqual(payload["count"], 30)
+        self.assertLessEqual(len(payload["items"]), 100)
+        self.assertTrue(all(item["category"] == "opening" for item in payload["items"]))
+        self.assertTrue(all(item["status"] == "active" for item in payload["items"]))
+
+    def test_chess_courses_endpoint_defaults_limit_to_fifty(self):
+        mocked_courses = [
+            {
+                "id": f"course-{i}",
+                "title": f"Course {i}",
+                "category": "opening",
+                "source": "youtube",
+                "url": f"https://example.com/course-{i}",
+                "related_opening_key": f"c{i:02d}|opening",
+                "related_opening_label": f"Opening {i}",
+                "level": "beginner",
+                "status": "active",
+                "notes": f"Notes {i}",
+            }
+            for i in range(80)
+        ]
+        with patch("domains.chess.api_projection.load_chess_courses_data", return_value={"courses": mocked_courses}):
+            response = self.client.get("/api/v1/chess/courses")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload["ok"], True)
+        self.assertEqual(payload["count"], 80)
+        self.assertEqual(len(payload["items"]), 50)
+
+    def test_chess_courses_endpoint_caps_limit_at_hundred(self):
+        mocked_courses = [
+            {
+                "id": f"course-{i}",
+                "title": f"Course {i}",
+                "category": "opening",
+                "source": "youtube",
+                "url": f"https://example.com/course-{i}",
+                "related_opening_key": f"c{i:02d}|opening",
+                "related_opening_label": f"Opening {i}",
+                "level": "beginner",
+                "status": "active",
+                "notes": f"Notes {i}",
+            }
+            for i in range(120)
+        ]
+        with patch("domains.chess.api_projection.load_chess_courses_data", return_value={"courses": mocked_courses}):
+            response = self.client.get("/api/v1/chess/courses", query_string={"limit": 999})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload["ok"], True)
+        self.assertEqual(payload["count"], 120)
+        self.assertEqual(len(payload["items"]), 100)
+
+    def test_chess_courses_endpoint_handles_missing_data(self):
+        with patch("domains.chess.api_projection.load_chess_courses_data", side_effect=FileNotFoundError("missing")):
+            response = self.client.get("/api/v1/chess/courses")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload["ok"], True)
+        self.assertEqual(payload["items"], [])
+        self.assertEqual(payload["count"], 0)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from urllib.parse import unquote
 from typing import Any
 
@@ -70,6 +71,10 @@ def _normalize_chess_result(value):
 def _safe_text(value, fallback=""):
     text = str(value or "").strip()
     return text if text else str(fallback or "").strip()
+
+
+def normalize_chess_opening_token(value):
+    return re.sub(r"\s+", " ", str(value or "").strip()).lower()
 
 
 def _project_chess_game_item(game):
@@ -226,6 +231,59 @@ def _project_chess_opening_item(summary):
         "draws": draws,
         "score_label": f"{round(score_percent, 1)}%",
         "needs_work": bool(payload.get("needs_work", False)),
+    }
+
+
+def _normalize_chess_course_category(value):
+    normalized = str(value or "").strip().lower()
+    if normalized in {"opening", "calculation", "endgame", "strategy", "other"}:
+        return normalized
+    return "other"
+
+
+def _normalize_chess_course_source(value):
+    normalized = str(value or "").strip().lower()
+    if normalized in {"youtube", "website", "book", "manual"}:
+        return normalized
+    return "manual"
+
+
+def _normalize_chess_course_status(value):
+    normalized = str(value or "").strip().lower()
+    if normalized in {"planned", "active", "finished"}:
+        return normalized
+    return "planned"
+
+
+def _normalize_chess_course_level(value):
+    normalized = str(value or "").strip().lower()
+    if normalized in {"beginner", "intermediate", "advanced"}:
+        return normalized
+    return ""
+
+
+def _project_chess_course_item(course):
+    payload = course if isinstance(course, dict) else {}
+    course_id = _safe_text(payload.get("id", ""), "")
+    title = re.sub(r"\s+", " ", str(payload.get("title", "") or "").strip()) or "Untitled course"
+    category = _normalize_chess_course_category(payload.get("category", ""))
+    source = _normalize_chess_course_source(payload.get("source", ""))
+    related_opening_key = normalize_chess_opening_token(payload.get("related_opening_key", ""))
+    related_opening_label = str(payload.get("related_opening_label", "") or "").strip() or related_opening_key
+    level = _normalize_chess_course_level(payload.get("level", ""))
+    status = _normalize_chess_course_status(payload.get("status", ""))
+    notes = str(payload.get("notes", "") or "").strip()
+    return {
+        "id": course_id,
+        "title": title,
+        "category": category,
+        "source": source,
+        "url": _safe_text(payload.get("url", ""), ""),
+        "related_opening_key": related_opening_key,
+        "related_opening_label": related_opening_label,
+        "level": level,
+        "status": status,
+        "notes": notes,
     }
 
 
@@ -477,5 +535,32 @@ def build_chess_openings_projection(*, limit=50, offset=0, side=None, needs_work
         "section": "chess",
         "title": "Openings",
         "items": [_project_chess_opening_item(item) for item in paged_items],
+        "count": len(projected),
+    }
+
+
+def build_chess_courses_projection(*, limit=50, offset=0, category=None, status=None):
+    chess_courses_data = _safe_load(load_chess_courses_data, default_chess_courses)
+    payload = chess_courses_data if isinstance(chess_courses_data, dict) else default_chess_courses()
+    courses = [dict(item) for item in (payload.get("courses", []) or []) if isinstance(item, dict)]
+    category_filter = _normalize_chess_course_category(category) if category else ""
+    status_filter = _normalize_chess_course_status(status) if status else ""
+    projected = []
+    for course in courses:
+        item = _project_chess_course_item(course)
+        if category_filter and item["category"] != category_filter:
+            continue
+        if status_filter and item["status"] != status_filter:
+            continue
+        projected.append(item)
+    projected.sort(key=lambda item: (str(item.get("status", "") or ""), str(item.get("category", "") or ""), str(item.get("title", "") or "").lower()))
+    safe_limit = max(0, min(int(limit or 50), 100))
+    safe_offset = max(0, int(offset or 0))
+    paged_items = projected[safe_offset:safe_offset + safe_limit] if safe_limit else []
+    return {
+        "ok": True,
+        "section": "chess",
+        "title": "Courses",
+        "items": paged_items,
         "count": len(projected),
     }

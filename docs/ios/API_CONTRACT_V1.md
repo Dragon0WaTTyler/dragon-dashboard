@@ -16,6 +16,7 @@ The current backend foundation exposes safe, read-only endpoints for:
 - Chess home summary
 - Chess games list
 - Chess game detail shell
+- Chess courses list
 
 The contract is intentionally minimal so the native iOS app can be built against stable JSON before any SwiftUI screens exist.
 
@@ -261,6 +262,48 @@ Notes:
 - It is derived from normalized chess game data only.
 - No raw PGN, moves, or `raw_source` are returned.
 
+### `GET /api/v1/chess/courses`
+
+Purpose: course list for the future iOS courses screen.
+
+Query parameters:
+
+- `limit` default `50`, max `100`
+- `offset` default `0`
+- `category` optional `opening`, `calculation`, `endgame`, `strategy`, or `other`
+- `status` optional `planned`, `active`, or `finished`
+
+Example response:
+
+```json
+{
+  "ok": true,
+  "section": "chess",
+  "title": "Courses",
+  "items": [
+    {
+      "id": "course-1",
+      "title": "Opening Principles",
+      "category": "opening",
+      "source": "youtube",
+      "url": "https://example.com/opening-principles",
+      "related_opening_key": "c00|french defense",
+      "related_opening_label": "French Defense",
+      "level": "beginner",
+      "status": "active",
+      "notes": "Intro to core ideas."
+    }
+  ],
+  "count": 1
+}
+```
+
+Notes:
+
+- The endpoint is read-only and safe.
+- It uses stored course URLs only and does not fetch anything remotely.
+- If course data is missing or empty, it still returns `ok: true` with an empty `items` array.
+
 ## Safety Rules
 
 The iOS API foundation must remain safe by default.
@@ -309,6 +352,16 @@ Goal:
 - Show the high-level game metadata
 - Indicate whether PGN and moves exist
 - Leave room for richer detail in later backend versions
+
+### Courses List
+
+Use `GET /api/v1/chess/courses`.
+
+Goal:
+
+- Show a paginated list of chess courses
+- Support category and status filtering
+- Keep the row design compact and scan-friendly
 
 ## Suggested Swift Models
 

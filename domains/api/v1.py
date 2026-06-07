@@ -7,6 +7,7 @@ from flask import Blueprint, current_app, jsonify, request, session
 from domains.chess.api_projection import (
     build_chess_game_detail_projection,
     build_chess_games_projection,
+    build_chess_courses_projection,
     build_chess_home_projection,
     build_chess_openings_projection,
     build_chess_train_today_projection,
@@ -75,5 +76,17 @@ def api_v1_chess_openings():
             offset=request.args.get("offset", 0),
             side=request.args.get("side", ""),
             needs_work=request.args.get("needs_work", ""),
+        )
+    )
+
+
+@api_v1_bp.get("/api/v1/chess/courses")
+def api_v1_chess_courses():
+    return jsonify(
+        build_chess_courses_projection(
+            limit=request.args.get("limit", 50),
+            offset=request.args.get("offset", 0),
+            category=request.args.get("category", ""),
+            status=request.args.get("status", ""),
         )
     )
