@@ -384,10 +384,10 @@ def _build_movies_response(limit):
 def _youtube_entries_from_payload(payload):
     entries = []
 
-    def visit(node, group_name="", channel_name=""):
+    def visit(node, group_name="", section_name="", source_hint="unknown"):
         if isinstance(node, list):
             for item in node:
-                visit(item, group_name=group_name, channel_name=channel_name)
+                visit(item, group_name=group_name, section_name=section_name, source_hint=source_hint)
             return
 
         if not isinstance(node, dict):
@@ -403,27 +403,36 @@ def _youtube_entries_from_payload(payload):
                     if not isinstance(item, dict):
                         continue
                     augmented = dict(item)
-                    if group_name and not _youtube_text(augmented, "group"):
+                    if group_name and not _youtube_text(augmented, "group", "group_name"):
                         augmented["group"] = group_name
-                    if channel_name and not _youtube_text(augmented, "channel"):
-                        augmented["channel"] = channel_name
-                    if group_name or channel_name:
+                    if section_name and not _youtube_text(augmented, "section", "section_name"):
+                        augmented["section"] = section_name
+                    if source_hint == "pockettube":
                         augmented["_youtube_context"] = "pockettube"
+                    elif source_hint == "watchlater":
+                        augmented["_youtube_context"] = "watchlater"
+                    else:
+                        explicit_source = _youtube_explicit_source(augmented)
+                        if explicit_source != "unknown":
+                            augmented["_youtube_context"] = explicit_source
                     entries.append(augmented)
 
         groups = node.get("groups")
         if isinstance(groups, dict):
             containers_found = True
             for name, group in groups.items():
-                next_group = _youtube_text(group, "group", default=str(name))
-                visit(group, group_name=next_group, channel_name=channel_name)
+                next_group = _youtube_text(group, "group_name", "group", default=str(name))
+                next_section = _youtube_text(group, "section_name", "section", default="")
+                visit(group, group_name=next_group, section_name=next_section, source_hint="pockettube")
 
-        channels = node.get("channels")
-        if isinstance(channels, dict):
-            containers_found = True
-            for name, channel in channels.items():
-                next_channel = _youtube_text(channel, "channel", default=str(name))
-                visit(channel, group_name=group_name, channel_name=next_channel)
+        for key in ("watchlater", "watch_later", "watchLater"):
+            value = node.get(key)
+            if isinstance(value, list):
+                containers_found = True
+                visit(value, source_hint="watchlater")
+            elif isinstance(value, dict):
+                containers_found = True
+                visit(value, source_hint="watchlater")
 
         if not containers_found and any(
             key in node
@@ -442,12 +451,15 @@ def _youtube_entries_from_payload(payload):
             )
         ):
             augmented = dict(node)
-            if group_name and not _youtube_text(augmented, "group"):
+            if group_name and not _youtube_text(augmented, "group", "group_name"):
                 augmented["group"] = group_name
-            if channel_name and not _youtube_text(augmented, "channel"):
-                augmented["channel"] = channel_name
-            if group_name or channel_name:
+            if section_name and not _youtube_text(augmented, "section", "section_name"):
+                augmented["section"] = section_name
+            explicit_source = _youtube_explicit_source(augmented)
+            if source_hint == "pockettube" or explicit_source == "pockettube":
                 augmented["_youtube_context"] = "pockettube"
+            elif source_hint == "watchlater" or explicit_source == "watchlater":
+                augmented["_youtube_context"] = "watchlater"
             entries.append(augmented)
 
     visit(payload)
@@ -483,26 +495,78 @@ def _youtube_sort_datetime(entry):
     return None
 
 
-def _youtube_is_watchlater(entry):
+def _youtube_normalized_text(value):
+    text = str(value or "").strip().lower()
+    text = text.replace("_", " ").replace("-", " ")
+    text = " ".join(text.split())
+    return text
+
+
+def _youtube_text_contains(value, needles):
+    text = _youtube_normalized_text(value)
+    if not text:
+        return False
+    for needle in needles:
+        if needle in text:
+            return True
+    return False
+
+
+def _youtube_has_pockettube_markers(entry):
     item = entry if isinstance(entry, dict) else {}
     if str(item.get("_youtube_context", "")).strip().lower() == "pockettube":
-        return False
+        return True
 
-    for key in ("playlist", "section", "group", "title", "channel", "url", "thumbnail"):
-        text = _youtube_text(item, key).lower()
-        if "watch later" in text or "watchlater" in text:
+    for key in ("group_key", "group_name", "group_names", "group", "section_key", "section_name", "section", "source_name", "reason_tags"):
+        if _youtube_text_contains(item.get(key), ("pockettube",)):
             return True
+
+    if _youtube_text(item, "group_name", "group", "section_name", "section"):
+        return True
 
     return False
 
 
-def _youtube_detect_source(entry):
+def _youtube_has_watchlater_markers(entry):
     item = entry if isinstance(entry, dict) else {}
-    if str(item.get("_youtube_context", "")).strip().lower() == "pockettube":
+    if str(item.get("_youtube_context", "")).strip().lower() == "watchlater":
+        return True
+
+    watchlater_fields = (
+        "playlist",
+        "playlist_title",
+        "source",
+        "source_name",
+        "state_key",
+        "watch_key",
+        "section_name",
+        "section",
+        "group_name",
+        "group",
+        "group_names",
+        "reason_tags",
+    )
+    for key in watchlater_fields:
+        if _youtube_text_contains(item.get(key), ("watch later", "watchlater")):
+            return True
+    return False
+
+
+def _youtube_explicit_source(entry):
+    item = entry if isinstance(entry, dict) else {}
+    if _youtube_has_pockettube_markers(item):
         return "pockettube"
-    if _youtube_is_watchlater(item):
+    if _youtube_has_watchlater_markers(item):
         return "watchlater"
     return "unknown"
+
+
+def _youtube_detect_source(entry):
+    item = entry if isinstance(entry, dict) else {}
+    explicit = str(item.get("_youtube_context", "")).strip().lower()
+    if explicit in ("pockettube", "watchlater"):
+        return explicit
+    return _youtube_explicit_source(item)
 
 
 def _youtube_normalize_source_filter(value):
@@ -524,7 +588,7 @@ def _youtube_matches_section(entry, section_name):
         return True
     item = entry if isinstance(entry, dict) else {}
     normalized = section_name.strip().lower()
-    for key in ("section", "group", "playlist"):
+    for key in ("section", "section_name", "group", "group_name", "playlist", "playlist_title"):
         if _youtube_text(item, key).strip().lower() == normalized:
             return True
     return False
@@ -537,6 +601,10 @@ def _project_youtube_item(entry):
     if not url and video_id:
         url = f"https://www.youtube.com/watch?v={video_id}"
 
+    group_value = _youtube_text(item, "group", "group_name")
+    section_value = _youtube_text(item, "section", "section_name")
+    playlist_value = _youtube_text(item, "playlist", "playlist_title")
+
     return {
         "id": _youtube_text(item, "id", default=video_id),
         "video_id": video_id,
@@ -547,9 +615,9 @@ def _project_youtube_item(entry):
         "published_at": _youtube_text(item, "published_at", "publishedAt"),
         "saved_at": _youtube_text(item, "saved_at", "savedAt"),
         "duration": _youtube_text(item, "duration", "length"),
-        "section": _youtube_text(item, "section"),
-        "group": _youtube_text(item, "group"),
-        "playlist": _youtube_text(item, "playlist", "playlist_title"),
+        "section": section_value,
+        "group": group_value,
+        "playlist": playlist_value,
         "source": _youtube_detect_source(item),
     }
 
@@ -609,7 +677,7 @@ def _youtube_sections_from_entries(entries):
             key = "watchlater"
             label = "Watch Later"
         else:
-            label = _youtube_text(entry, "group", "section", "playlist")
+            label = _youtube_text(entry, "section_name", "section", "group_name", "group", "playlist_title", "playlist")
             if not label:
                 continue
             key = label

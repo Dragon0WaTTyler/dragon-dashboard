@@ -492,6 +492,22 @@ class IOSApiFoundationTests(unittest.TestCase):
             self.assertEqual(response.status_code, 200)
             self.assertEqual(response.get_json(), {"ok": True, "api_version": "v1", "items": [], "count": 0})
 
+    def test_youtube_sections_endpoint_returns_empty_sections_for_missing_or_malformed_data(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_dir = Path(temp_dir)
+            missing_path = temp_dir / "missing_youtube.json"
+            malformed_path = temp_dir / "malformed_youtube.json"
+            malformed_path.write_text("{not-json", encoding="utf-8")
+
+            with patch("domains.api.v1.YOUTUBE_LATEST_SNAPSHOT_PATH", missing_path):
+                missing_response = self.client.get("/api/v1/youtube/sections")
+            with patch("domains.api.v1.YOUTUBE_LATEST_SNAPSHOT_PATH", malformed_path):
+                malformed_response = self.client.get("/api/v1/youtube/sections")
+
+        for response in (missing_response, malformed_response):
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.get_json(), {"ok": True, "api_version": "v1", "sections": []})
+
     def test_youtube_endpoint_does_not_leak_unsafe_fields(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_dir = Path(temp_dir)
@@ -616,6 +632,93 @@ class IOSApiFoundationTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.get_json()
         self.assertEqual(payload["items"][0]["url"], "https://www.youtube.com/watch?v=abc123")
+
+    def test_youtube_endpoint_separates_watchlater_and_pockettube_sources(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_dir = Path(temp_dir)
+            youtube_path = temp_dir / "youtube_latest_snapshot.json"
+            youtube_path.write_text(
+                json.dumps(
+                    {
+                        "videos": [
+                            {
+                                "id": "wl-1",
+                                "video_id": "watch1",
+                                "title": "Explicit Watch Later",
+                                "channel": "Later Channel",
+                                "thumbnail": "",
+                                "playlist": "Watch Later",
+                                "source_name": "Watch Later",
+                                "state_key": "watch_later",
+                            },
+                            {
+                                "id": "unknown-1",
+                                "video_id": "generic1",
+                                "title": "Generic Latest",
+                                "channel": "Generic Channel",
+                                "thumbnail": "",
+                            },
+                        ],
+                        "groups": {
+                            "Tech": {
+                                "section_name": "Tech",
+                                "group_name": "Tech",
+                                "videos": [
+                                    {
+                                        "id": "tech-1",
+                                        "video_id": "tech1",
+                                        "title": "Tech One",
+                                        "channel": "Tech Channel",
+                                        "thumbnail": "",
+                                    },
+                                    {
+                                        "id": "tech-2",
+                                        "video_id": "tech2",
+                                        "title": "Tech Two",
+                                        "channel": "Tech Channel",
+                                        "thumbnail": "",
+                                    },
+                                ],
+                            }
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with patch("domains.api.v1.YOUTUBE_LATEST_SNAPSHOT_PATH", youtube_path):
+                watchlater_response = self.client.get("/api/v1/youtube", query_string={"source": "watchlater", "limit": 5})
+                pockettube_response = self.client.get("/api/v1/youtube", query_string={"source": "pockettube", "limit": 5})
+                section_response = self.client.get("/api/v1/youtube", query_string={"source": "pockettube", "section": "Tech"})
+                sections_list_response = self.client.get("/api/v1/youtube/sections")
+
+        self.assertEqual(watchlater_response.status_code, 200)
+        watchlater_payload = watchlater_response.get_json()
+        self.assertEqual(watchlater_payload["count"], 1)
+        self.assertEqual([item["id"] for item in watchlater_payload["items"]], ["wl-1"])
+        self.assertTrue(all(item["source"] == "watchlater" for item in watchlater_payload["items"]))
+        self.assertNotIn("unknown-1", [item["id"] for item in watchlater_payload["items"]])
+
+        self.assertEqual(pockettube_response.status_code, 200)
+        pockettube_payload = pockettube_response.get_json()
+        self.assertEqual(pockettube_payload["count"], 2)
+        self.assertEqual([item["id"] for item in pockettube_payload["items"]], ["tech-1", "tech-2"])
+        self.assertTrue(all(item["source"] == "pockettube" for item in pockettube_payload["items"]))
+
+        self.assertEqual(section_response.status_code, 200)
+        section_payload = section_response.get_json()
+        self.assertEqual(section_payload["count"], 2)
+        self.assertEqual([item["id"] for item in section_payload["items"]], ["tech-1", "tech-2"])
+        self.assertTrue(all(item["group"] == "Tech" for item in section_payload["items"]))
+
+        self.assertEqual(sections_list_response.status_code, 200)
+        sections_payload = sections_list_response.get_json()
+        self.assertEqual(sections_payload["ok"], True)
+        self.assertEqual(sections_payload["api_version"], "v1")
+        sections = {item["key"]: item for item in sections_payload["sections"]}
+        self.assertIn("Tech", sections)
+        self.assertEqual(sections["Tech"]["count"], 2)
+        self.assertEqual(sections["watchlater"]["count"], 1)
 
     def test_youtube_endpoint_filters_pockettube_grouped_items(self):
         with tempfile.TemporaryDirectory() as temp_dir:
