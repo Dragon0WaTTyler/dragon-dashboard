@@ -178,6 +178,106 @@ def _build_articles_response(limit):
     }
 
 
+def _book_entries_from_payload(payload):
+    if isinstance(payload, list):
+        return [dict(entry) for entry in payload if isinstance(entry, dict)]
+    if not isinstance(payload, dict):
+        return None
+    for key in ("entries", "books", "items"):
+        value = payload.get(key)
+        if isinstance(value, list):
+            return [dict(entry) for entry in value if isinstance(entry, dict)]
+    return None
+
+
+def _book_text(entry, *keys, default=""):
+    item = entry if isinstance(entry, dict) else {}
+    for key in keys:
+        text = str(item.get(key, "") or "").strip()
+        if text:
+            return text
+    return str(default or "").strip()
+
+
+def _book_authors(entry):
+    item = entry if isinstance(entry, dict) else {}
+    raw_authors = item.get("authors", [])
+    authors = []
+    if isinstance(raw_authors, list):
+        authors = [str(author).strip() for author in raw_authors if str(author).strip()]
+    elif isinstance(raw_authors, str) and raw_authors.strip():
+        authors = [raw_authors.strip()]
+    if not authors:
+        fallback = _book_text(item, "author", "authors_display")
+        if fallback:
+            authors = [fallback]
+    return authors
+
+
+def _book_sort_datetime(entry):
+    item = entry if isinstance(entry, dict) else {}
+    for key in ("updated_at", "saved_at", "last_edited_time", "created_time", "date_finished"):
+        parsed = _parse_article_datetime(item.get(key, ""))
+        if parsed is not None:
+            return parsed
+    return None
+
+
+def _project_book_item(entry):
+    item = entry if isinstance(entry, dict) else {}
+    authors = _book_authors(item)
+    cover = _book_text(item, "cover", "cover_url", "cover_source")
+    if not cover:
+        cover = ""
+    return {
+        "id": _book_text(item, "id"),
+        "title": _book_text(item, "title", default="Untitled book"),
+        "author": _book_text(item, "author", "authors_display"),
+        "authors": authors,
+        "cover": cover,
+        "year": _book_text(item, "year"),
+        "status": _book_text(item, "status", "status_label"),
+        "score": _book_text(item, "score", "rating"),
+        "excerpt": _book_text(item, "excerpt"),
+    }
+
+
+def _load_book_entries():
+    payload = _load_local_json(BOOKS_SNAPSHOT_PATH)
+    entries = _book_entries_from_payload(payload)
+    if entries is None:
+        return None
+    return entries
+
+
+def _build_books_response(limit):
+    entries = _load_book_entries()
+    if entries is None:
+        return {"ok": True, "api_version": "v1", "items": [], "count": 0}
+
+    sort_keys = [_book_sort_datetime(entry) for entry in entries]
+    if any(value is not None for value in sort_keys):
+        entries = [
+            item
+            for _, item in sorted(
+                enumerate(entries),
+                key=lambda pair: (
+                    0 if _book_sort_datetime(pair[1]) is not None else 1,
+                    -_book_sort_datetime(pair[1]).timestamp() if _book_sort_datetime(pair[1]) is not None else 0,
+                    pair[0],
+                ),
+            )
+        ]
+
+    items = [_project_book_item(entry) for entry in entries[:limit]]
+    return {
+        "ok": True,
+        "api_version": "v1",
+        "items": items,
+        "count": len(items),
+    }
+
+
 @api_v1_bp.get("/api/v1/home")
 def api_v1_home():
     reading_payload = _load_local_json(READING_DATA_PATH)
@@ -228,6 +328,12 @@ def api_v1_home():
 def api_v1_articles():
     limit = _normalize_limit(request.args.get("limit", 20))
     return jsonify(_build_articles_response(limit))
+
+
+@api_v1_bp.get("/api/v1/books")
+def api_v1_books():
+    limit = _normalize_limit(request.args.get("limit", 20))
+    return jsonify(_build_books_response(limit))
 
 
 @api_v1_bp.get("/api/v1/me")

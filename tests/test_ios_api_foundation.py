@@ -187,6 +187,104 @@ class IOSApiFoundationTests(unittest.TestCase):
             payload = response.get_json()
             self.assertEqual(payload, {"ok": True, "api_version": "v1", "items": [], "count": 0})
 
+    def test_books_endpoint_limits_and_projects_local_entries(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_dir = Path(temp_dir)
+            books_path = temp_dir / "books_snapshot.json"
+            books_path.write_text(
+                json.dumps(
+                    {
+                        "entries": [
+                            {
+                                "id": f"book-{i}",
+                                "title": f"Book {i}",
+                                "author": f"Author {i}",
+                                "authors": [f"Author {i}", f"Coauthor {i}"],
+                                "cover": f"https://example.com/cover-{i}.jpg",
+                                "year": str(2000 + i),
+                                "status": "reading",
+                                "score": str(10 - i),
+                                "excerpt": f"Excerpt {i}",
+                            }
+                            for i in range(6)
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with patch("domains.api.v1.BOOKS_SNAPSHOT_PATH", books_path):
+                response = self.client.get("/api/v1/books", query_string={"limit": 5})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload["ok"], True)
+        self.assertEqual(payload["api_version"], "v1")
+        self.assertEqual(payload["count"], 5)
+        self.assertEqual(len(payload["items"]), 5)
+        self.assertEqual([item["id"] for item in payload["items"]], [f"book-{i}" for i in range(5)])
+        self.assertEqual(payload["items"][0]["authors"], ["Author 0", "Coauthor 0"])
+        self.assertEqual(payload["items"][0]["title"], "Book 0")
+
+    def test_books_endpoint_returns_empty_payload_for_missing_or_malformed_data(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_dir = Path(temp_dir)
+            missing_path = temp_dir / "missing_books.json"
+            malformed_path = temp_dir / "malformed_books.json"
+            malformed_path.write_text("{not-json", encoding="utf-8")
+
+            with patch("domains.api.v1.BOOKS_SNAPSHOT_PATH", missing_path):
+                missing_response = self.client.get("/api/v1/books")
+            with patch("domains.api.v1.BOOKS_SNAPSHOT_PATH", malformed_path):
+                malformed_response = self.client.get("/api/v1/books")
+
+        for response in (missing_response, malformed_response):
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.get_json(), {"ok": True, "api_version": "v1", "items": [], "count": 0})
+
+    def test_books_endpoint_does_not_leak_private_or_large_fields(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_dir = Path(temp_dir)
+            books_path = temp_dir / "books_snapshot.json"
+            books_path.write_text(
+                json.dumps(
+                    {
+                        "entries": [
+                            {
+                                "id": "book-1",
+                                "title": "Safe Book",
+                                "author": "Author",
+                                "authors": ["Author"],
+                                "cover": "https://example.com/cover.jpg",
+                                "year": "2026",
+                                "status": "reading",
+                                "score": "9",
+                                "excerpt": "Short excerpt",
+                                "notes": "secret notes",
+                                "quotes": ["huge quote"],
+                                "raw": {"secret": True},
+                                "content_text": "hidden",
+                                "content_html": "<p>hidden</p>",
+                                "notion_payload": {"secret": True},
+                            }
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with patch("domains.api.v1.BOOKS_SNAPSHOT_PATH", books_path):
+                response = self.client.get("/api/v1/books", query_string={"limit": 1})
+
+        self.assertEqual(response.status_code, 200)
+        body = response.get_data(as_text=True).lower()
+        self.assertNotIn("notes", body)
+        self.assertNotIn("quotes", body)
+        self.assertNotIn("raw", body)
+        self.assertNotIn("content_text", body)
+        self.assertNotIn("content_html", body)
+        self.assertNotIn("notion_payload", body)
+
     def test_me_endpoint_reports_auth_state_without_leaking_secrets(self):
         dragon_app.app.config["SESSION_COOKIE_SECURE"] = True
         with self.client.session_transaction() as session:
