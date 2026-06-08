@@ -381,6 +381,250 @@ def _build_movies_response(limit):
     }
 
 
+def _youtube_entries_from_payload(payload):
+    entries = []
+
+    def visit(node, group_name="", channel_name=""):
+        if isinstance(node, list):
+            for item in node:
+                visit(item, group_name=group_name, channel_name=channel_name)
+            return
+
+        if not isinstance(node, dict):
+            return
+
+        containers_found = False
+
+        for key in ("videos", "items"):
+            value = node.get(key)
+            if isinstance(value, list):
+                containers_found = True
+                for item in value:
+                    if not isinstance(item, dict):
+                        continue
+                    augmented = dict(item)
+                    if group_name and not _youtube_text(augmented, "group"):
+                        augmented["group"] = group_name
+                    if channel_name and not _youtube_text(augmented, "channel"):
+                        augmented["channel"] = channel_name
+                    if group_name or channel_name:
+                        augmented["_youtube_context"] = "pockettube"
+                    entries.append(augmented)
+
+        groups = node.get("groups")
+        if isinstance(groups, dict):
+            containers_found = True
+            for name, group in groups.items():
+                next_group = _youtube_text(group, "group", default=str(name))
+                visit(group, group_name=next_group, channel_name=channel_name)
+
+        channels = node.get("channels")
+        if isinstance(channels, dict):
+            containers_found = True
+            for name, channel in channels.items():
+                next_channel = _youtube_text(channel, "channel", default=str(name))
+                visit(channel, group_name=group_name, channel_name=next_channel)
+
+        if not containers_found and any(
+            key in node
+            for key in (
+                "video_id",
+                "videoId",
+                "youtube_id",
+                "title",
+                "url",
+                "thumbnail",
+                "published_at",
+                "saved_at",
+                "duration",
+                "section",
+                "playlist",
+            )
+        ):
+            augmented = dict(node)
+            if group_name and not _youtube_text(augmented, "group"):
+                augmented["group"] = group_name
+            if channel_name and not _youtube_text(augmented, "channel"):
+                augmented["channel"] = channel_name
+            if group_name or channel_name:
+                augmented["_youtube_context"] = "pockettube"
+            entries.append(augmented)
+
+    visit(payload)
+    return entries
+
+
+def _youtube_text(entry, *keys, default=""):
+    item = entry if isinstance(entry, dict) else {}
+    for key in keys:
+        text = str(item.get(key, "") or "").strip()
+        if text:
+            return text
+    return str(default or "").strip()
+
+
+def _youtube_sort_datetime(entry):
+    item = entry if isinstance(entry, dict) else {}
+    for key in (
+        "published_at",
+        "publishedAt",
+        "saved_at",
+        "savedAt",
+        "date",
+        "date_published",
+        "updated_at",
+        "created_at",
+        "uploaded_at",
+        "upload_date",
+    ):
+        parsed = _parse_article_datetime(item.get(key, ""))
+        if parsed is not None:
+            return parsed
+    return None
+
+
+def _youtube_is_watchlater(entry):
+    item = entry if isinstance(entry, dict) else {}
+    if str(item.get("_youtube_context", "")).strip().lower() == "pockettube":
+        return False
+
+    for key in ("playlist", "section", "group", "title", "channel", "url", "thumbnail"):
+        text = _youtube_text(item, key).lower()
+        if "watch later" in text or "watchlater" in text:
+            return True
+
+    return False
+
+
+def _youtube_detect_source(entry):
+    item = entry if isinstance(entry, dict) else {}
+    if str(item.get("_youtube_context", "")).strip().lower() == "pockettube":
+        return "pockettube"
+    if _youtube_is_watchlater(item):
+        return "watchlater"
+    return "unknown"
+
+
+def _youtube_normalize_source_filter(value):
+    source = str(value or "").strip().lower()
+    if source in ("all", "watchlater", "pockettube"):
+        return source
+    return "all"
+
+
+def _youtube_matches_requested_source(entry, requested_source):
+    source = _youtube_detect_source(entry)
+    if requested_source == "all":
+        return True
+    return source == requested_source
+
+
+def _youtube_matches_section(entry, section_name):
+    if not section_name:
+        return True
+    item = entry if isinstance(entry, dict) else {}
+    normalized = section_name.strip().lower()
+    for key in ("section", "group", "playlist"):
+        if _youtube_text(item, key).strip().lower() == normalized:
+            return True
+    return False
+
+
+def _project_youtube_item(entry):
+    item = entry if isinstance(entry, dict) else {}
+    video_id = _youtube_text(item, "video_id", "videoId", "youtube_id")
+    url = _youtube_text(item, "url")
+    if not url and video_id:
+        url = f"https://www.youtube.com/watch?v={video_id}"
+
+    return {
+        "id": _youtube_text(item, "id", default=video_id),
+        "video_id": video_id,
+        "title": _youtube_text(item, "title", default="Untitled video"),
+        "channel": _youtube_text(item, "channel", "channel_title"),
+        "thumbnail": _youtube_text(item, "thumbnail", "thumbnail_url", "thumb", "thumbnailUrl"),
+        "url": url,
+        "published_at": _youtube_text(item, "published_at", "publishedAt"),
+        "saved_at": _youtube_text(item, "saved_at", "savedAt"),
+        "duration": _youtube_text(item, "duration", "length"),
+        "section": _youtube_text(item, "section"),
+        "group": _youtube_text(item, "group"),
+        "playlist": _youtube_text(item, "playlist", "playlist_title"),
+        "source": _youtube_detect_source(item),
+    }
+
+
+def _load_youtube_entries():
+    payload = _load_local_json(YOUTUBE_LATEST_SNAPSHOT_PATH)
+    entries = _youtube_entries_from_payload(payload)
+    if entries is None:
+        return None
+    return entries
+
+
+def _build_youtube_response(limit, source="all", section=""):
+    entries = _load_youtube_entries()
+    if entries is None:
+        return {"ok": True, "api_version": "v1", "items": [], "count": 0}
+
+    requested_source = _youtube_normalize_source_filter(source)
+    requested_section = _youtube_text({"section": section}, "section")
+
+    entries = [
+        entry
+        for entry in entries
+        if _youtube_matches_requested_source(entry, requested_source)
+        and _youtube_matches_section(entry, requested_section)
+    ]
+
+    sort_keys = [_youtube_sort_datetime(entry) for entry in entries]
+    if any(value is not None for value in sort_keys):
+        entries = [
+            item
+            for _, item in sorted(
+                enumerate(entries),
+                key=lambda pair: (
+                    0 if _youtube_sort_datetime(pair[1]) is not None else 1,
+                    -_youtube_sort_datetime(pair[1]).timestamp() if _youtube_sort_datetime(pair[1]) is not None else 0,
+                    pair[0],
+                ),
+            )
+        ]
+
+    items = [_project_youtube_item(entry) for entry in entries[:limit]]
+    return {
+        "ok": True,
+        "api_version": "v1",
+        "items": items,
+        "count": len(items),
+    }
+
+
+def _youtube_sections_from_entries(entries):
+    counts = {}
+
+    for entry in entries:
+        source = _youtube_detect_source(entry)
+        if source == "watchlater":
+            key = "watchlater"
+            label = "Watch Later"
+        else:
+            label = _youtube_text(entry, "group", "section", "playlist")
+            if not label:
+                continue
+            key = label
+
+        current = counts.get(key)
+        if current is None:
+            counts[key] = {"key": key, "label": label, "count": 1}
+        else:
+            current["count"] += 1
+
+    sections = list(counts.values())
+    sections.sort(key=lambda item: (0 if item["key"] == "watchlater" else 1, item["label"].lower(), item["key"].lower()))
+    return sections
+
+
 @api_v1_bp.get("/api/v1/home")
 def api_v1_home():
     reading_payload = _load_local_json(READING_DATA_PATH)
@@ -443,6 +687,29 @@ def api_v1_books():
 def api_v1_movies():
     limit = _normalize_limit(request.args.get("limit", 20))
     return jsonify(_build_movies_response(limit))
+
+
+@api_v1_bp.get("/api/v1/youtube")
+def api_v1_youtube():
+    limit = _normalize_limit(request.args.get("limit", 20))
+    source = request.args.get("source", "all")
+    section = request.args.get("section", "")
+    return jsonify(_build_youtube_response(limit, source=source, section=section))
+
+
+@api_v1_bp.get("/api/v1/youtube/sections")
+def api_v1_youtube_sections():
+    entries = _load_youtube_entries()
+    if entries is None:
+        return jsonify({"ok": True, "api_version": "v1", "sections": []})
+
+    return jsonify(
+        {
+            "ok": True,
+            "api_version": "v1",
+            "sections": _youtube_sections_from_entries(entries),
+        }
+    )
 
 
 @api_v1_bp.get("/api/v1/me")

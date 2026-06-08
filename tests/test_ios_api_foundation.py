@@ -434,6 +434,337 @@ class IOSApiFoundationTests(unittest.TestCase):
         payload = response.get_json()
         self.assertEqual(len(payload["items"][0]["overview"]), 280)
 
+    def test_youtube_endpoint_limits_and_projects_local_entries(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_dir = Path(temp_dir)
+            youtube_path = temp_dir / "youtube_latest_snapshot.json"
+            youtube_path.write_text(
+                json.dumps(
+                    {
+                        "videos": [
+                            {
+                                "id": f"item-{i}",
+                                "video_id": f"video-{i}",
+                                "title": f"Video {i}",
+                                "channel": f"Channel {i}",
+                                "thumbnail": f"https://example.com/thumb-{i}.jpg",
+                                "url": f"https://www.youtube.com/watch?v=video-{i}",
+                                "published_at": "2026-01-01T10:00:00Z",
+                                "saved_at": "2026-01-01T11:00:00Z",
+                                "duration": "12:34",
+                                "section": "watch-later",
+                                "group": "favorites",
+                                "playlist": "playlist-a",
+                            }
+                            for i in range(6)
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with patch("domains.api.v1.YOUTUBE_LATEST_SNAPSHOT_PATH", youtube_path):
+                response = self.client.get("/api/v1/youtube", query_string={"limit": 5})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload["ok"], True)
+        self.assertEqual(payload["api_version"], "v1")
+        self.assertEqual(payload["count"], 5)
+        self.assertEqual(len(payload["items"]), 5)
+        self.assertEqual([item["video_id"] for item in payload["items"]], [f"video-{i}" for i in range(5)])
+        self.assertEqual(payload["items"][0]["title"], "Video 0")
+        self.assertIn("source", payload["items"][0])
+
+    def test_youtube_endpoint_returns_empty_payload_for_missing_or_malformed_data(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_dir = Path(temp_dir)
+            missing_path = temp_dir / "missing_youtube.json"
+            malformed_path = temp_dir / "malformed_youtube.json"
+            malformed_path.write_text("{not-json", encoding="utf-8")
+
+            with patch("domains.api.v1.YOUTUBE_LATEST_SNAPSHOT_PATH", missing_path):
+                missing_response = self.client.get("/api/v1/youtube")
+            with patch("domains.api.v1.YOUTUBE_LATEST_SNAPSHOT_PATH", malformed_path):
+                malformed_response = self.client.get("/api/v1/youtube")
+
+        for response in (missing_response, malformed_response):
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.get_json(), {"ok": True, "api_version": "v1", "items": [], "count": 0})
+
+    def test_youtube_endpoint_does_not_leak_unsafe_fields(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_dir = Path(temp_dir)
+            youtube_path = temp_dir / "youtube_latest_snapshot.json"
+            youtube_path.write_text(
+                json.dumps(
+                    {
+                        "videos": [
+                            {
+                                "id": "video-1",
+                                "video_id": "abc123",
+                                "title": "Safe Video",
+                                "channel": "Channel",
+                                "thumbnail": "https://example.com/thumb.jpg",
+                                "duration": "10:00",
+                                "section": "watch-later",
+                                "group": "favorites",
+                                "playlist": "playlist-a",
+                                "access_token": "hidden",
+                                "refresh_token": "hidden",
+                                "token": "hidden",
+                                "raw": {"hidden": True},
+                                "raw_payload": {"hidden": True},
+                                "youtube_payload": {"hidden": True},
+                                "transcript": "hidden",
+                                "captions": "hidden",
+                                "notes": "hidden",
+                                "private_notes": "hidden",
+                                "content_text": "hidden",
+                                "content_html": "<p>hidden</p>",
+                                "oauth": {"hidden": True},
+                                "credentials": {"hidden": True},
+                            }
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with patch("domains.api.v1.YOUTUBE_LATEST_SNAPSHOT_PATH", youtube_path):
+                response = self.client.get("/api/v1/youtube", query_string={"limit": 1})
+
+        self.assertEqual(response.status_code, 200)
+        body = response.get_data(as_text=True).lower()
+        self.assertNotIn("access_token", body)
+        self.assertNotIn("refresh_token", body)
+        self.assertNotIn("token", body)
+        self.assertNotIn("raw", body)
+        self.assertNotIn("raw_payload", body)
+        self.assertNotIn("youtube_payload", body)
+        self.assertNotIn("transcript", body)
+        self.assertNotIn("captions", body)
+        self.assertNotIn("notes", body)
+        self.assertNotIn("private_notes", body)
+        self.assertNotIn("content_text", body)
+        self.assertNotIn("content_html", body)
+        self.assertNotIn("oauth", body)
+        self.assertNotIn("credentials", body)
+
+    def test_youtube_endpoint_flattens_groups_and_preserves_group_name(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_dir = Path(temp_dir)
+            youtube_path = temp_dir / "youtube_latest_snapshot.json"
+            youtube_path.write_text(
+                json.dumps(
+                    {
+                        "groups": {
+                            "group-a": {
+                                "videos": [
+                                    {
+                                        "id": "video-1",
+                                        "video_id": "abc123",
+                                        "title": "Grouped Video",
+                                        "channel": "",
+                                    }
+                                ]
+                            }
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with patch("domains.api.v1.YOUTUBE_LATEST_SNAPSHOT_PATH", youtube_path):
+                response = self.client.get("/api/v1/youtube")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload["count"], 1)
+        self.assertEqual(payload["items"][0]["group"], "group-a")
+
+    def test_youtube_endpoint_builds_watch_url_from_video_id(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_dir = Path(temp_dir)
+            youtube_path = temp_dir / "youtube_latest_snapshot.json"
+            youtube_path.write_text(
+                json.dumps(
+                    {
+                        "items": [
+                            {
+                                "id": "video-1",
+                                "video_id": "abc123",
+                                "title": "URL Builder",
+                                "channel": "Channel",
+                                "thumbnail": "",
+                                "published_at": "2026-01-01T10:00:00Z",
+                                "saved_at": "2026-01-01T11:00:00Z",
+                                "duration": "05:00",
+                                "section": "watch-later",
+                                "group": "favorites",
+                                "playlist": "playlist-a",
+                            }
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with patch("domains.api.v1.YOUTUBE_LATEST_SNAPSHOT_PATH", youtube_path):
+                response = self.client.get("/api/v1/youtube")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload["items"][0]["url"], "https://www.youtube.com/watch?v=abc123")
+
+    def test_youtube_endpoint_filters_pockettube_grouped_items(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_dir = Path(temp_dir)
+            youtube_path = temp_dir / "youtube_latest_snapshot.json"
+            youtube_path.write_text(
+                json.dumps(
+                    {
+                        "groups": {
+                            "Tech": {
+                                "videos": [
+                                    {"id": "tech-1", "video_id": "tech1", "title": "Tech One", "channel": "Tech Channel"},
+                                    {"id": "tech-2", "video_id": "tech2", "title": "Tech Two", "channel": "Tech Channel"},
+                                ]
+                            },
+                            "Music": {
+                                "videos": [
+                                    {"id": "music-1", "video_id": "music1", "title": "Music One", "channel": "Music Channel"}
+                                ]
+                            },
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with patch("domains.api.v1.YOUTUBE_LATEST_SNAPSHOT_PATH", youtube_path):
+                response = self.client.get("/api/v1/youtube", query_string={"source": "pockettube"})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload["count"], 3)
+        self.assertTrue(all(item["source"] == "pockettube" for item in payload["items"]))
+
+    def test_youtube_endpoint_filters_watchlater_items(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_dir = Path(temp_dir)
+            youtube_path = temp_dir / "youtube_latest_snapshot.json"
+            youtube_path.write_text(
+                json.dumps(
+                    [
+                        {
+                            "id": "wl-1",
+                            "video_id": "watch1",
+                            "title": "Watch Later One",
+                            "playlist": "Watch Later",
+                            "thumbnail": "",
+                        },
+                        {
+                            "id": "wl-2",
+                            "video_id": "watch2",
+                            "title": "Watch Later Two",
+                            "playlist": "watch later queue",
+                            "thumbnail": "",
+                        },
+                        {
+                            "id": "pt-1",
+                            "video_id": "tech1",
+                            "title": "PocketTube Video",
+                            "group": "Tech",
+                            "channel": "Tech Channel",
+                        },
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            with patch("domains.api.v1.YOUTUBE_LATEST_SNAPSHOT_PATH", youtube_path):
+                response = self.client.get("/api/v1/youtube", query_string={"source": "watchlater"})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload["count"], 2)
+        self.assertTrue(all(item["source"] == "watchlater" for item in payload["items"]))
+
+    def test_youtube_endpoint_filters_by_section(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_dir = Path(temp_dir)
+            youtube_path = temp_dir / "youtube_latest_snapshot.json"
+            youtube_path.write_text(
+                json.dumps(
+                    {
+                        "groups": {
+                            "Tech": {
+                                "videos": [
+                                    {"id": "tech-1", "video_id": "tech1", "title": "Tech One", "channel": "Tech Channel"},
+                                ]
+                            },
+                            "Music": {
+                                "videos": [
+                                    {"id": "music-1", "video_id": "music1", "title": "Music One", "channel": "Music Channel"},
+                                ]
+                            },
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with patch("domains.api.v1.YOUTUBE_LATEST_SNAPSHOT_PATH", youtube_path):
+                response = self.client.get("/api/v1/youtube", query_string={"section": "Tech"})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload["count"], 1)
+        self.assertEqual(payload["items"][0]["group"], "Tech")
+
+    def test_youtube_sections_endpoint_returns_labels_and_counts(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_dir = Path(temp_dir)
+            youtube_path = temp_dir / "youtube_latest_snapshot.json"
+            youtube_path.write_text(
+                json.dumps(
+                    {
+                        "groups": {
+                            "Tech": {
+                                "videos": [
+                                    {"id": "tech-1", "video_id": "tech1", "title": "Tech One"},
+                                    {"id": "tech-2", "video_id": "tech2", "title": "Tech Two"},
+                                ]
+                            },
+                            "Music": {
+                                "videos": [
+                                    {"id": "music-1", "video_id": "music1", "title": "Music One"},
+                                ]
+                            },
+                        },
+                        "videos": [
+                            {"id": "wl-1", "video_id": "watch1", "title": "Watch Later One", "playlist": "Watch Later"},
+                            {"id": "wl-2", "video_id": "watch2", "title": "Watch Later Two", "playlist": "Watch Later"},
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with patch("domains.api.v1.YOUTUBE_LATEST_SNAPSHOT_PATH", youtube_path):
+                response = self.client.get("/api/v1/youtube/sections")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload["ok"], True)
+        self.assertEqual(payload["api_version"], "v1")
+        sections = {item["key"]: item for item in payload["sections"]}
+        self.assertEqual(sections["watchlater"]["label"], "Watch Later")
+        self.assertEqual(sections["watchlater"]["count"], 2)
+        self.assertEqual(sections["Tech"]["count"], 2)
+        self.assertEqual(sections["Music"]["count"], 1)
+
     def test_me_endpoint_reports_auth_state_without_leaking_secrets(self):
         dragon_app.app.config["SESSION_COOKIE_SECURE"] = True
         with self.client.session_transaction() as session:
