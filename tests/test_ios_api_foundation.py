@@ -1,5 +1,8 @@
+import json
+import tempfile
 import unittest
 from urllib.parse import quote
+from pathlib import Path
 from unittest.mock import patch
 
 import app as dragon_app
@@ -26,6 +29,163 @@ class IOSApiFoundationTests(unittest.TestCase):
                 "api_version": "v1",
             },
         )
+
+    def test_home_endpoint_reads_local_snapshots(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_dir = Path(temp_dir)
+            reading_path = temp_dir / "reading_data.json"
+            chess_path = temp_dir / "chess_data.json"
+            books_path = temp_dir / "books_snapshot.json"
+            exports_dir = temp_dir / "exports"
+            youtube_path = temp_dir / "youtube_latest_snapshot.json"
+            exports_dir.mkdir(parents=True, exist_ok=True)
+
+            reading_path.write_text(json.dumps({"entries": [{"id": "a"}, {"id": "b"}]}), encoding="utf-8")
+            chess_path.write_text(json.dumps({"games": [{"id": "g1"}]}), encoding="utf-8")
+            books_path.write_text(json.dumps({"entries": [{"id": "book-1"}]}), encoding="utf-8")
+            (exports_dir / "movies_export.json").write_text(json.dumps([{"id": "m1"}, {"id": "m2"}, {"id": "m3"}, {"id": "m4"}]), encoding="utf-8")
+            youtube_path.write_text(
+                json.dumps(
+                    {
+                        "groups": {
+                            "group-a": {"videos": [{"id": "v1"}, {"id": "v2"}]},
+                            "group-b": {"videos": [{"id": "v3"}]},
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with patch("domains.api.v1.READING_DATA_PATH", reading_path), patch("domains.api.v1.CHESS_DATA_PATH", chess_path), patch(
+                "domains.api.v1.BOOKS_SNAPSHOT_PATH", books_path
+            ), patch("domains.api.v1.EXPORTS_DIR", exports_dir), patch("domains.api.v1.YOUTUBE_LATEST_SNAPSHOT_PATH", youtube_path):
+                response = self.client.get("/api/v1/home")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(
+            payload,
+            {
+                "ok": True,
+                "service": "dragon",
+                "api_version": "v1",
+                "sections": [
+                    {"key": "articles", "label": "Articles", "status": "available", "count": 2},
+                    {"key": "movies", "label": "Movies", "status": "available", "count": 4},
+                    {"key": "books", "label": "Books", "status": "available", "count": 1},
+                    {"key": "youtube", "label": "YouTube", "status": "available", "count": 3},
+                    {"key": "chess", "label": "Chess", "status": "available", "count": 1},
+                ],
+            },
+        )
+
+    def test_home_endpoint_handles_missing_snapshot_files(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_dir = Path(temp_dir)
+            missing_exports_dir = temp_dir / "exports"
+            with patch("domains.api.v1.READING_DATA_PATH", temp_dir / "missing_reading.json"), patch(
+                "domains.api.v1.CHESS_DATA_PATH", temp_dir / "missing_chess.json"
+            ), patch("domains.api.v1.BOOKS_SNAPSHOT_PATH", temp_dir / "missing_books.json"), patch(
+                "domains.api.v1.EXPORTS_DIR", missing_exports_dir
+            ), patch(
+                "domains.api.v1.YOUTUBE_LATEST_SNAPSHOT_PATH", temp_dir / "missing_youtube.json"
+            ):
+                response = self.client.get("/api/v1/home")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(
+            payload["sections"],
+            [
+                {"key": "articles", "label": "Articles", "status": "unknown", "count": None},
+                {"key": "movies", "label": "Movies", "status": "unknown", "count": None},
+                {"key": "books", "label": "Books", "status": "unknown", "count": None},
+                {"key": "youtube", "label": "YouTube", "status": "unknown", "count": None},
+                {"key": "chess", "label": "Chess", "status": "unknown", "count": None},
+            ],
+        )
+
+    def test_articles_endpoint_limits_and_sorts_local_entries(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_dir = Path(temp_dir)
+            reading_path = temp_dir / "reading_data.json"
+            reading_path.write_text(
+                json.dumps(
+                    {
+                        "entries": [
+                            {
+                                "id": "older",
+                                "title": "Older item",
+                                "source": "source-a",
+                                "url": "https://example.com/older",
+                                "published_at": "2026-01-01T10:00:00Z",
+                                "saved_at": "2026-01-01T10:05:00Z",
+                                "excerpt": "Older excerpt",
+                                "content_html": "<p>hidden</p>",
+                                "content_text": "hidden",
+                            },
+                            {
+                                "id": "newer",
+                                "title": "Newer item",
+                                "source": "source-b",
+                                "url": "https://example.com/newer",
+                                "published_at": "2026-01-02T10:00:00Z",
+                                "saved_at": "2026-01-02T10:05:00Z",
+                                "excerpt": "Newer excerpt",
+                            },
+                            {
+                                "id": "middle",
+                                "title": "Middle item",
+                                "source": "source-c",
+                                "url": "https://example.com/middle",
+                                "saved_at": "2026-01-01T12:00:00Z",
+                                "excerpt": "Middle excerpt",
+                            },
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with patch("domains.api.v1.READING_DATA_PATH", reading_path):
+                response = self.client.get("/api/v1/articles", query_string={"limit": 5})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload["ok"], True)
+        self.assertEqual(payload["api_version"], "v1")
+        self.assertEqual(payload["count"], 3)
+        self.assertEqual([item["id"] for item in payload["items"]], ["newer", "middle", "older"])
+        self.assertEqual(len(payload["items"]), 3)
+        self.assertEqual(payload["items"][0], {
+            "id": "newer",
+            "title": "Newer item",
+            "source": "source-b",
+            "url": "https://example.com/newer",
+            "published_at": "2026-01-02T10:00:00Z",
+            "saved_at": "2026-01-02T10:05:00Z",
+            "excerpt": "Newer excerpt",
+        })
+        body = response.get_data(as_text=True)
+        self.assertNotIn("content_html", body.lower())
+        self.assertNotIn("content_text", body.lower())
+
+    def test_articles_endpoint_returns_empty_payload_for_missing_or_malformed_data(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_dir = Path(temp_dir)
+            missing_path = temp_dir / "missing_reading.json"
+            malformed_path = temp_dir / "malformed_reading.json"
+            malformed_path.write_text("{not-json", encoding="utf-8")
+
+            with patch("domains.api.v1.READING_DATA_PATH", missing_path):
+                missing_response = self.client.get("/api/v1/articles")
+            with patch("domains.api.v1.READING_DATA_PATH", malformed_path):
+                malformed_response = self.client.get("/api/v1/articles")
+
+        for response in (missing_response, malformed_response):
+            self.assertEqual(response.status_code, 200)
+            payload = response.get_json()
+            self.assertEqual(payload, {"ok": True, "api_version": "v1", "items": [], "count": 0})
 
     def test_me_endpoint_reports_auth_state_without_leaking_secrets(self):
         dragon_app.app.config["SESSION_COOKIE_SECURE"] = True
