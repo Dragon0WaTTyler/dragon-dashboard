@@ -285,6 +285,155 @@ class IOSApiFoundationTests(unittest.TestCase):
         self.assertNotIn("content_html", body)
         self.assertNotIn("notion_payload", body)
 
+    def test_movies_endpoint_limits_and_projects_local_entries(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_dir = Path(temp_dir)
+            exports_dir = temp_dir / "exports"
+            exports_dir.mkdir(parents=True, exist_ok=True)
+            movies_path = exports_dir / "movies_export.json"
+            movies_path.write_text(
+                json.dumps(
+                    {
+                        "items": [
+                            {
+                                "id": f"movie-{i}",
+                                "title": f"Movie {i}",
+                                "year": str(2000 + i),
+                                "poster": f"https://example.com/poster-{i}.jpg",
+                                "status": "watched",
+                                "score": i,
+                                "type": "movie",
+                                "overview": f"Overview {i}",
+                            }
+                            for i in range(6)
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with patch("domains.api.v1.EXPORTS_DIR", exports_dir):
+                response = self.client.get("/api/v1/movies", query_string={"limit": 5})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload["ok"], True)
+        self.assertEqual(payload["api_version"], "v1")
+        self.assertEqual(payload["count"], 5)
+        self.assertEqual(len(payload["items"]), 5)
+        self.assertEqual([item["id"] for item in payload["items"]], [f"movie-{i}" for i in range(5)])
+        self.assertEqual(payload["items"][0]["score"], 0)
+        self.assertEqual(payload["items"][0]["title"], "Movie 0")
+
+    def test_movies_endpoint_returns_empty_payload_for_missing_or_malformed_data(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_dir = Path(temp_dir)
+            exports_dir = temp_dir / "exports"
+            exports_dir.mkdir(parents=True, exist_ok=True)
+            malformed_path = exports_dir / "movies_export.json"
+            malformed_path.write_text("{not-json", encoding="utf-8")
+
+            with patch("domains.api.v1.EXPORTS_DIR", temp_dir / "missing-exports"):
+                missing_response = self.client.get("/api/v1/movies")
+            with patch("domains.api.v1.EXPORTS_DIR", exports_dir):
+                malformed_response = self.client.get("/api/v1/movies")
+
+        for response in (missing_response, malformed_response):
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.get_json(), {"ok": True, "api_version": "v1", "items": [], "count": 0})
+
+    def test_movies_endpoint_does_not_leak_unsafe_fields(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_dir = Path(temp_dir)
+            exports_dir = temp_dir / "exports"
+            exports_dir.mkdir(parents=True, exist_ok=True)
+            movies_path = exports_dir / "movies_export.json"
+            movies_path.write_text(
+                json.dumps(
+                    [
+                        {
+                            "id": "movie-1",
+                            "title": "Safe Movie",
+                            "year": "2026",
+                            "poster": "https://example.com/poster.jpg",
+                            "status": "watching",
+                            "score": 8.5,
+                            "type": "movie",
+                            "overview": "Short overview",
+                            "magnet": "magnet:?xt=urn:btih:secret",
+                            "torrent": {"url": "secret"},
+                            "stream_url": "https://stream.example.com",
+                            "playback_url": "https://play.example.com",
+                            "providers": ["hidden"],
+                            "sources": [{"secret": True}],
+                            "runtime": {"state": "hidden"},
+                            "session": {"id": "hidden"},
+                            "private_notes": "secret",
+                            "notes": "secret",
+                            "raw": {"secret": True},
+                            "tmdb_payload": {"secret": True},
+                            "notion_payload": {"secret": True},
+                            "content_text": "hidden",
+                            "content_html": "<p>hidden</p>",
+                        }
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            with patch("domains.api.v1.EXPORTS_DIR", exports_dir):
+                response = self.client.get("/api/v1/movies", query_string={"limit": 1})
+
+        self.assertEqual(response.status_code, 200)
+        body = response.get_data(as_text=True).lower()
+        self.assertNotIn("magnet", body)
+        self.assertNotIn("torrent", body)
+        self.assertNotIn("stream_url", body)
+        self.assertNotIn("playback_url", body)
+        self.assertNotIn("providers", body)
+        self.assertNotIn("sources", body)
+        self.assertNotIn("runtime", body)
+        self.assertNotIn("session", body)
+        self.assertNotIn("private_notes", body)
+        self.assertNotIn("notes", body)
+        self.assertNotIn("raw", body)
+        self.assertNotIn("tmdb_payload", body)
+        self.assertNotIn("notion_payload", body)
+        self.assertNotIn("content_text", body)
+        self.assertNotIn("content_html", body)
+
+    def test_movies_endpoint_truncates_long_overview(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_dir = Path(temp_dir)
+            exports_dir = temp_dir / "exports"
+            exports_dir.mkdir(parents=True, exist_ok=True)
+            long_overview = "x" * 500
+            movies_path = exports_dir / "movies_export.json"
+            movies_path.write_text(
+                json.dumps(
+                    [
+                        {
+                            "id": "movie-long",
+                            "title": "Long Movie",
+                            "year": "2026",
+                            "poster": "",
+                            "status": "queued",
+                            "score": "9",
+                            "type": "movie",
+                            "overview": long_overview,
+                        }
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            with patch("domains.api.v1.EXPORTS_DIR", exports_dir):
+                response = self.client.get("/api/v1/movies", query_string={"limit": 1})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(len(payload["items"][0]["overview"]), 280)
+
     def test_me_endpoint_reports_auth_state_without_leaking_secrets(self):
         dragon_app.app.config["SESSION_COOKIE_SECURE"] = True
         with self.client.session_transaction() as session:

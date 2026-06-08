@@ -278,6 +278,109 @@ def _build_books_response(limit):
     }
 
 
+def _movie_entries_from_payload(payload):
+    if isinstance(payload, list):
+        return [dict(entry) for entry in payload if isinstance(entry, dict)]
+    if not isinstance(payload, dict):
+        return None
+    for key in ("entries", "movies", "items"):
+        value = payload.get(key)
+        if isinstance(value, list):
+            return [dict(entry) for entry in value if isinstance(entry, dict)]
+    return None
+
+
+def _movie_text(entry, *keys, default=""):
+    item = entry if isinstance(entry, dict) else {}
+    for key in keys:
+        text = str(item.get(key, "") or "").strip()
+        if text:
+            return text
+    return str(default or "").strip()
+
+
+def _movie_score(entry):
+    item = entry if isinstance(entry, dict) else {}
+    value = item.get("score", item.get("rating", ""))
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return value
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    try:
+        if "." in text:
+            return float(text)
+        return int(text)
+    except Exception:
+        return text
+
+
+def _movie_overview(entry):
+    overview = _movie_text(entry, "overview", "summary", "excerpt")
+    if len(overview) > 280:
+        return overview[:280]
+    return overview
+
+
+def _movie_sort_datetime(entry):
+    item = entry if isinstance(entry, dict) else {}
+    for key in ("updated_at", "saved_at", "last_edited_time", "created_time", "date"):
+        parsed = _parse_article_datetime(item.get(key, ""))
+        if parsed is not None:
+            return parsed
+    return None
+
+
+def _project_movie_item(entry):
+    item = entry if isinstance(entry, dict) else {}
+    return {
+        "id": _movie_text(item, "id"),
+        "title": _movie_text(item, "title", default="Untitled movie"),
+        "year": _movie_text(item, "year"),
+        "poster": _movie_text(item, "poster", "poster_url", "cover"),
+        "status": _movie_text(item, "status", "state", "watch_status"),
+        "score": _movie_score(item),
+        "type": _movie_text(item, "type", "media_type", default=""),
+        "overview": _movie_overview(item),
+    }
+
+
+def _load_movie_entries():
+    payload = _load_local_json(EXPORTS_DIR / "movies_export.json")
+    entries = _movie_entries_from_payload(payload)
+    if entries is None:
+        return None
+    return entries
+
+
+def _build_movies_response(limit):
+    entries = _load_movie_entries()
+    if entries is None:
+        return {"ok": True, "api_version": "v1", "items": [], "count": 0}
+
+    sort_keys = [_movie_sort_datetime(entry) for entry in entries]
+    if any(value is not None for value in sort_keys):
+        entries = [
+            item
+            for _, item in sorted(
+                enumerate(entries),
+                key=lambda pair: (
+                    0 if _movie_sort_datetime(pair[1]) is not None else 1,
+                    -_movie_sort_datetime(pair[1]).timestamp() if _movie_sort_datetime(pair[1]) is not None else 0,
+                    pair[0],
+                ),
+            )
+        ]
+
+    items = [_project_movie_item(entry) for entry in entries[:limit]]
+    return {
+        "ok": True,
+        "api_version": "v1",
+        "items": items,
+        "count": len(items),
+    }
+
+
 @api_v1_bp.get("/api/v1/home")
 def api_v1_home():
     reading_payload = _load_local_json(READING_DATA_PATH)
@@ -334,6 +437,12 @@ def api_v1_articles():
 def api_v1_books():
     limit = _normalize_limit(request.args.get("limit", 20))
     return jsonify(_build_books_response(limit))
+
+
+@api_v1_bp.get("/api/v1/movies")
+def api_v1_movies():
+    limit = _normalize_limit(request.args.get("limit", 20))
+    return jsonify(_build_movies_response(limit))
 
 
 @api_v1_bp.get("/api/v1/me")
