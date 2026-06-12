@@ -83,6 +83,20 @@ def _section_status_and_count(count):
     return {"status": "available", "count": count}
 
 
+def _server_time_iso():
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _section_payload(*, key, label, count, href):
+    return {
+        "key": key,
+        "label": label,
+        "href": href,
+        "api_path": href,
+        **_section_status_and_count(count),
+    }
+
+
 def _parse_article_datetime(value):
     text = str(value or "").strip()
     if not text:
@@ -622,11 +636,30 @@ def _project_youtube_item(entry):
     }
 
 
+def _project_youtube_video_item(entry, section_value=""):
+    item = entry if isinstance(entry, dict) else {}
+    video_id = _youtube_text(item, "video_id", "videoId", "youtube_id")
+    url = _youtube_text(item, "url")
+    if not url and video_id:
+        url = f"https://www.youtube.com/watch?v={video_id}"
+
+    return {
+        "id": _youtube_text(item, "id", default=video_id),
+        "title": _youtube_text(item, "title", default="Untitled video"),
+        "channel": _youtube_text(item, "channel", "channel_title"),
+        "url": url,
+        "thumbnail": _youtube_text(item, "thumbnail", "thumbnail_url", "thumb", "thumbnailUrl"),
+        "published_at": _youtube_text(item, "published_at", "publishedAt"),
+        "duration": _youtube_text(item, "duration", "length"),
+        "section": section_value,
+    }
+
+
 def _load_youtube_entries():
     payload = _load_local_json(YOUTUBE_LATEST_SNAPSHOT_PATH)
-    entries = _youtube_entries_from_payload(payload)
-    if entries is None:
+    if payload is None:
         return None
+    entries = _youtube_entries_from_payload(payload)
     return entries
 
 
@@ -668,6 +701,66 @@ def _build_youtube_response(limit, source="all", section=""):
     }
 
 
+def _youtube_exact_section_value(entry):
+    item = entry if isinstance(entry, dict) else {}
+    for key in ("section", "section_name", "group", "group_name", "playlist", "playlist_title"):
+        text = _youtube_text(item, key)
+        if text:
+            return text
+    return ""
+
+
+def _youtube_matches_exact_section(entry, section_name):
+    requested = _youtube_text({"section": section_name}, "section")
+    if not requested:
+        return True
+
+    item = entry if isinstance(entry, dict) else {}
+    for key in ("section", "section_name", "group", "group_name", "playlist", "playlist_title"):
+        if _youtube_text(item, key) == requested:
+            return True
+    return False
+
+
+def _build_youtube_videos_response(limit, section=""):
+    entries = _load_youtube_entries()
+    requested_section = _youtube_text({"section": section}, "section")
+    if entries is None:
+        return {
+            "ok": True,
+            "api_version": "v1",
+            "section": requested_section,
+            "count": 0,
+            "items": [],
+        }
+
+    if requested_section:
+        entries = [entry for entry in entries if _youtube_matches_exact_section(entry, requested_section)]
+
+    sort_keys = [_youtube_sort_datetime(entry) for entry in entries]
+    if any(value is not None for value in sort_keys):
+        entries = [
+            item
+            for _, item in sorted(
+                enumerate(entries),
+                key=lambda pair: (
+                    0 if _youtube_sort_datetime(pair[1]) is not None else 1,
+                    -_youtube_sort_datetime(pair[1]).timestamp() if _youtube_sort_datetime(pair[1]) is not None else 0,
+                    pair[0],
+                ),
+            )
+        ]
+
+    items = [_project_youtube_video_item(entry, section_value=requested_section or _youtube_exact_section_value(entry)) for entry in entries[:limit]]
+    return {
+        "ok": True,
+        "api_version": "v1",
+        "section": requested_section,
+        "count": len(items),
+        "items": items,
+    }
+
+
 def _youtube_sections_from_entries(entries):
     counts = {}
 
@@ -696,44 +789,41 @@ def _youtube_sections_from_entries(entries):
 @api_v1_bp.get("/api/v1/home")
 def api_v1_home():
     reading_payload = _load_local_json(READING_DATA_PATH)
-    movies_payload = _load_local_json(EXPORTS_DIR / "movies_export.json")
+    movie_entries = _load_movie_entries()
     chess_payload = _load_local_json(CHESS_DATA_PATH)
-    books_payload = _load_local_json(BOOKS_SNAPSHOT_PATH)
-    youtube_payload = _load_local_json(YOUTUBE_LATEST_SNAPSHOT_PATH)
+    book_entries = _load_book_entries()
+    youtube_entries = _load_youtube_entries()
 
     sections = [
-        {
-            "key": "articles",
-            "label": "Articles",
-            **_section_status_and_count(_count_list_items(reading_payload, "entries")),
-        },
-        {
-            "key": "movies",
-            "label": "Movies",
-            **_section_status_and_count(len(movies_payload) if isinstance(movies_payload, list) else None),
-        },
-        {
-            "key": "books",
-            "label": "Books",
-            **_section_status_and_count(_count_list_items(books_payload, "entries")),
-        },
-        {
-            "key": "youtube",
-            "label": "YouTube",
-            **_section_status_and_count(_count_youtube_items(youtube_payload)),
-        },
-        {
-            "key": "chess",
-            "label": "Chess",
-            **_section_status_and_count(_count_list_items(chess_payload, "games")),
-        },
+        _section_payload(key="movies", label="Movies", count=len(movie_entries) if movie_entries is not None else None, href="/api/v1/movies"),
+        _section_payload(
+            key="youtube",
+            label="YouTube",
+            count=len(youtube_entries) if youtube_entries is not None else None,
+            href="/api/v1/youtube/sections",
+        ),
+        _section_payload(
+            key="articles",
+            label="Articles",
+            count=_count_list_items(reading_payload, "entries"),
+            href="/api/v1/articles",
+        ),
+        _section_payload(key="books", label="Books", count=len(book_entries) if book_entries is not None else None, href="/api/v1/books"),
+        _section_payload(
+            key="chess",
+            label="Chess",
+            count=_count_list_items(chess_payload, "games"),
+            href="/api/v1/chess/home",
+        ),
     ]
 
     return jsonify(
         {
             "ok": True,
+            "app_name": "Dragon",
             "service": "dragon",
             "api_version": "v1",
+            "server_time": _server_time_iso(),
             "sections": sections,
         }
     )
@@ -763,6 +853,13 @@ def api_v1_youtube():
     source = request.args.get("source", "all")
     section = request.args.get("section", "")
     return jsonify(_build_youtube_response(limit, source=source, section=section))
+
+
+@api_v1_bp.get("/api/v1/youtube/videos")
+def api_v1_youtube_videos():
+    limit = _normalize_limit(request.args.get("limit", 50), default=50, maximum=200)
+    section = request.args.get("section", "")
+    return jsonify(_build_youtube_videos_response(limit, section=section))
 
 
 @api_v1_bp.get("/api/v1/youtube/sections")

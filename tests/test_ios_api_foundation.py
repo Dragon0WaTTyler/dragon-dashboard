@@ -63,20 +63,55 @@ class IOSApiFoundationTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         payload = response.get_json()
+        self.assertEqual(payload["ok"], True)
+        self.assertEqual(payload["app_name"], "Dragon")
+        self.assertEqual(payload["service"], "dragon")
+        self.assertEqual(payload["api_version"], "v1")
+        self.assertTrue(payload["server_time"].endswith("Z"))
         self.assertEqual(
-            payload,
-            {
-                "ok": True,
-                "service": "dragon",
-                "api_version": "v1",
-                "sections": [
-                    {"key": "articles", "label": "Articles", "status": "available", "count": 2},
-                    {"key": "movies", "label": "Movies", "status": "available", "count": 4},
-                    {"key": "books", "label": "Books", "status": "available", "count": 1},
-                    {"key": "youtube", "label": "YouTube", "status": "available", "count": 3},
-                    {"key": "chess", "label": "Chess", "status": "available", "count": 1},
-                ],
-            },
+            payload["sections"],
+            [
+                {
+                    "key": "movies",
+                    "label": "Movies",
+                    "status": "available",
+                    "count": 4,
+                    "href": "/api/v1/movies",
+                    "api_path": "/api/v1/movies",
+                },
+                {
+                    "key": "youtube",
+                    "label": "YouTube",
+                    "status": "available",
+                    "count": 3,
+                    "href": "/api/v1/youtube/sections",
+                    "api_path": "/api/v1/youtube/sections",
+                },
+                {
+                    "key": "articles",
+                    "label": "Articles",
+                    "status": "available",
+                    "count": 2,
+                    "href": "/api/v1/articles",
+                    "api_path": "/api/v1/articles",
+                },
+                {
+                    "key": "books",
+                    "label": "Books",
+                    "status": "available",
+                    "count": 1,
+                    "href": "/api/v1/books",
+                    "api_path": "/api/v1/books",
+                },
+                {
+                    "key": "chess",
+                    "label": "Chess",
+                    "status": "available",
+                    "count": 1,
+                    "href": "/api/v1/chess/home",
+                    "api_path": "/api/v1/chess/home",
+                },
+            ],
         )
 
     def test_home_endpoint_handles_missing_snapshot_files(self):
@@ -97,11 +132,46 @@ class IOSApiFoundationTests(unittest.TestCase):
         self.assertEqual(
             payload["sections"],
             [
-                {"key": "articles", "label": "Articles", "status": "unknown", "count": None},
-                {"key": "movies", "label": "Movies", "status": "unknown", "count": None},
-                {"key": "books", "label": "Books", "status": "unknown", "count": None},
-                {"key": "youtube", "label": "YouTube", "status": "unknown", "count": None},
-                {"key": "chess", "label": "Chess", "status": "unknown", "count": None},
+                {
+                    "key": "movies",
+                    "label": "Movies",
+                    "status": "unknown",
+                    "count": None,
+                    "href": "/api/v1/movies",
+                    "api_path": "/api/v1/movies",
+                },
+                {
+                    "key": "youtube",
+                    "label": "YouTube",
+                    "status": "unknown",
+                    "count": None,
+                    "href": "/api/v1/youtube/sections",
+                    "api_path": "/api/v1/youtube/sections",
+                },
+                {
+                    "key": "articles",
+                    "label": "Articles",
+                    "status": "unknown",
+                    "count": None,
+                    "href": "/api/v1/articles",
+                    "api_path": "/api/v1/articles",
+                },
+                {
+                    "key": "books",
+                    "label": "Books",
+                    "status": "unknown",
+                    "count": None,
+                    "href": "/api/v1/books",
+                    "api_path": "/api/v1/books",
+                },
+                {
+                    "key": "chess",
+                    "label": "Chess",
+                    "status": "unknown",
+                    "count": None,
+                    "href": "/api/v1/chess/home",
+                    "api_path": "/api/v1/chess/home",
+                },
             ],
         )
 
@@ -867,6 +937,138 @@ class IOSApiFoundationTests(unittest.TestCase):
         self.assertEqual(sections["watchlater"]["count"], 2)
         self.assertEqual(sections["Tech"]["count"], 2)
         self.assertEqual(sections["Music"]["count"], 1)
+
+    def test_youtube_videos_endpoint_returns_section_items(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_dir = Path(temp_dir)
+            youtube_path = temp_dir / "youtube_latest_snapshot.json"
+            youtube_path.write_text(
+                json.dumps(
+                    {
+                        "groups": {
+                            "tech": {
+                                "videos": [
+                                    {
+                                        "id": "tech-1",
+                                        "video_id": "tech1",
+                                        "title": "Tech One",
+                                        "channel": "Tech Channel",
+                                        "thumbnail": "https://example.com/thumb-1.jpg",
+                                        "published_at": "2026-01-02T10:00:00Z",
+                                        "duration": "10:00",
+                                        "section": "tech",
+                                    },
+                                    {
+                                        "id": "tech-2",
+                                        "video_id": "tech2",
+                                        "title": "Tech Two",
+                                        "channel": "Tech Channel",
+                                        "thumbnail": "https://example.com/thumb-2.jpg",
+                                        "published_at": "2026-01-01T10:00:00Z",
+                                        "duration": "11:00",
+                                        "section": "tech",
+                                    },
+                                ]
+                            }
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with patch("domains.api.v1.YOUTUBE_LATEST_SNAPSHOT_PATH", youtube_path):
+                response = self.client.get("/api/v1/youtube/videos", query_string={"section": "tech"})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload["ok"], True)
+        self.assertEqual(payload["api_version"], "v1")
+        self.assertEqual(payload["section"], "tech")
+        self.assertEqual(payload["count"], 2)
+        self.assertEqual([item["id"] for item in payload["items"]], ["tech-1", "tech-2"])
+        self.assertEqual(payload["items"][0]["title"], "Tech One")
+        self.assertEqual(payload["items"][0]["channel"], "Tech Channel")
+        self.assertEqual(payload["items"][0]["thumbnail"], "https://example.com/thumb-1.jpg")
+        self.assertEqual(payload["items"][0]["published_at"], "2026-01-02T10:00:00Z")
+        self.assertEqual(payload["items"][0]["duration"], "10:00")
+        self.assertEqual(payload["items"][0]["section"], "tech")
+
+    def test_youtube_videos_endpoint_respects_limit(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_dir = Path(temp_dir)
+            youtube_path = temp_dir / "youtube_latest_snapshot.json"
+            youtube_path.write_text(
+                json.dumps(
+                    {
+                        "groups": {
+                            "tech": {
+                                "videos": [
+                                    {
+                                        "id": f"tech-{i}",
+                                        "video_id": f"tech{i}",
+                                        "title": f"Tech {i}",
+                                        "channel": "Tech Channel",
+                                        "section": "tech",
+                                    }
+                                    for i in range(5)
+                                ]
+                            }
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with patch("domains.api.v1.YOUTUBE_LATEST_SNAPSHOT_PATH", youtube_path):
+                response = self.client.get("/api/v1/youtube/videos", query_string={"section": "tech", "limit": 3})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload["count"], 3)
+        self.assertEqual(len(payload["items"]), 3)
+        self.assertEqual([item["id"] for item in payload["items"]], ["tech-0", "tech-1", "tech-2"])
+
+    def test_youtube_videos_endpoint_returns_safe_empty_for_unknown_section(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_dir = Path(temp_dir)
+            youtube_path = temp_dir / "youtube_latest_snapshot.json"
+            youtube_path.write_text(
+                json.dumps(
+                    {
+                        "groups": {
+                            "tech": {
+                                "videos": [
+                                    {"id": "tech-1", "video_id": "tech1", "title": "Tech One", "channel": "Tech Channel", "section": "tech"}
+                                ]
+                            }
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            with patch("domains.api.v1.YOUTUBE_LATEST_SNAPSHOT_PATH", youtube_path):
+                response = self.client.get("/api/v1/youtube/videos", query_string={"section": "unknown"})
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.get_json()
+        self.assertEqual(payload, {"ok": True, "api_version": "v1", "section": "unknown", "count": 0, "items": []})
+
+    def test_youtube_videos_endpoint_returns_empty_payload_for_missing_or_malformed_data(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_dir = Path(temp_dir)
+            missing_path = temp_dir / "missing_youtube.json"
+            malformed_path = temp_dir / "malformed_youtube.json"
+            malformed_path.write_text("{not-json", encoding="utf-8")
+
+            with patch("domains.api.v1.YOUTUBE_LATEST_SNAPSHOT_PATH", missing_path):
+                missing_response = self.client.get("/api/v1/youtube/videos", query_string={"section": "tech"})
+            with patch("domains.api.v1.YOUTUBE_LATEST_SNAPSHOT_PATH", malformed_path):
+                malformed_response = self.client.get("/api/v1/youtube/videos", query_string={"section": "tech"})
+
+        for response in (missing_response, malformed_response):
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.get_json(), {"ok": True, "api_version": "v1", "section": "tech", "count": 0, "items": []})
 
     def test_me_endpoint_reports_auth_state_without_leaking_secrets(self):
         dragon_app.app.config["SESSION_COOKIE_SECURE"] = True
