@@ -166,6 +166,25 @@ def _normalize_offset(value, default=0, minimum=0):
     return offset
 
 
+def _normalize_search_query(value):
+    return str(value or "").strip()
+
+
+def _normalized_search_text(value):
+    return str(value or "").strip().lower()
+
+
+def _matches_search_query(values, query):
+    normalized_query = _normalized_search_text(query)
+    if not normalized_query:
+        return True
+
+    for value in values:
+        if normalized_query in _normalized_search_text(value):
+            return True
+    return False
+
+
 def _paginate_items(items, limit, offset):
     total = len(items)
     safe_offset = min(max(int(offset or 0), 0), total)
@@ -295,7 +314,20 @@ def _load_book_entries():
     return entries
 
 
-def _build_books_response(limit, offset):
+def _book_search_values(entry):
+    item = entry if isinstance(entry, dict) else {}
+    authors = _book_authors(item)
+    values = [
+        _book_text(item, "title"),
+        _book_text(item, "author", "authors_display"),
+        " ".join(authors),
+        _book_text(item, "description", "excerpt", "summary"),
+        _book_text(item, "isbn", "isbn13", "isbn10"),
+    ]
+    return values + authors
+
+
+def _build_books_response(limit, offset, query=""):
     entries = _load_book_entries()
     if entries is None:
         page = _paginate_items([], limit, offset)
@@ -303,6 +335,9 @@ def _build_books_response(limit, offset):
             "ok": True,
             "api_version": "v1",
             **page,
+            "meta": {
+                "search_query": _normalize_search_query(query),
+            },
         }
 
     sort_keys = [_book_sort_datetime(entry) for entry in entries]
@@ -319,6 +354,10 @@ def _build_books_response(limit, offset):
             )
         ]
 
+    normalized_query = _normalize_search_query(query)
+    if normalized_query:
+        entries = [entry for entry in entries if _matches_search_query(_book_search_values(entry), normalized_query)]
+
     page = _paginate_items(entries, limit, offset)
     items = [_project_book_item(entry) for entry in page["items"]]
     return {
@@ -331,6 +370,9 @@ def _build_books_response(limit, offset):
         "offset": page["offset"],
         "has_more": page["has_more"],
         "next_offset": page["next_offset"],
+        "meta": {
+            "search_query": normalized_query,
+        },
     }
 
 
@@ -896,17 +938,32 @@ def _load_youtube_entries():
     return state["entries"]
 
 
-def _build_youtube_response(limit, offset, source="all", section=""):
+def _youtube_search_values(entry):
+    item = entry if isinstance(entry, dict) else {}
+    return [
+        _youtube_text(item, "title"),
+        _youtube_text(item, "channel", "channel_title", "channel_name"),
+        _youtube_text(item, "section", "section_name"),
+        _youtube_text(item, "group", "group_name"),
+        _youtube_text(item, "playlist", "playlist_title"),
+        _youtube_text(item, "url"),
+        _youtube_text(item, "video_id", "videoId", "youtube_id", "id"),
+    ]
+
+
+def _build_youtube_response(limit, offset, source="all", section="", query=""):
     started_at = time.monotonic()
     requested_source = _youtube_normalize_source_filter(source)
     youtube_state = _load_youtube_entries_state(requested_source)
     entries = youtube_state["entries"]
     requested_section = _youtube_text({"section": section}, "section")
+    normalized_query = _normalize_search_query(query)
     if entries is None:
         page = _paginate_items([], limit, offset)
         meta = {
             "source": requested_source,
             "section": requested_section,
+            "search_query": normalized_query,
             "count": page["count"],
             "total": page["total"],
             "limit": page["limit"],
@@ -937,6 +994,9 @@ def _build_youtube_response(limit, offset, source="all", section=""):
         and _youtube_matches_section(entry, requested_section)
     ]
 
+    if normalized_query:
+        entries = [entry for entry in entries if _matches_search_query(_youtube_search_values(entry), normalized_query)]
+
     sort_keys = [_youtube_sort_datetime(entry) for entry in entries]
     if any(value is not None for value in sort_keys):
         entries = [
@@ -956,6 +1016,7 @@ def _build_youtube_response(limit, offset, source="all", section=""):
     meta = {
         "source": requested_source,
         "section": requested_section,
+        "search_query": normalized_query,
         "count": page["count"],
         "total": page["total"],
         "limit": page["limit"],
@@ -1135,7 +1196,8 @@ def api_v1_articles():
 def api_v1_books():
     limit = _normalize_limit(request.args.get("limit", 50), default=50)
     offset = _normalize_offset(request.args.get("offset", 0))
-    return jsonify(_build_books_response(limit, offset))
+    query = request.args.get("q", "")
+    return jsonify(_build_books_response(limit, offset, query=query))
 
 
 @api_v1_bp.get("/api/v1/movies")
@@ -1150,7 +1212,8 @@ def api_v1_youtube():
     offset = _normalize_offset(request.args.get("offset", 0))
     source = request.args.get("source", "all")
     section = request.args.get("section", "")
-    return jsonify(_build_youtube_response(limit, offset, source=source, section=section))
+    query = request.args.get("q", "")
+    return jsonify(_build_youtube_response(limit, offset, source=source, section=section, query=query))
 
 
 @api_v1_bp.get("/api/v1/youtube/videos")
