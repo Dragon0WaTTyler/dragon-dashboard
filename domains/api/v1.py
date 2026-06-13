@@ -131,8 +131,14 @@ def _article_text(entry, *keys):
     return ""
 
 
+def _article_image(entry):
+    item = entry if isinstance(entry, dict) else {}
+    return _article_text(item, "lead_image_url", "image_url")
+
+
 def _project_article_item(entry):
     item = entry if isinstance(entry, dict) else {}
+    image = _article_image(item)
     return {
         "id": _article_text(item, "id"),
         "title": _article_text(item, "title"),
@@ -141,6 +147,8 @@ def _project_article_item(entry):
         "published_at": _article_text(item, "published_at"),
         "saved_at": _article_text(item, "saved_at"),
         "excerpt": _article_text(item, "excerpt"),
+        "image": image,
+        "thumbnail": image,
     }
 
 

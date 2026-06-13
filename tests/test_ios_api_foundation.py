@@ -191,6 +191,7 @@ class IOSApiFoundationTests(unittest.TestCase):
                                 "published_at": "2026-01-01T10:00:00Z",
                                 "saved_at": "2026-01-01T10:05:00Z",
                                 "excerpt": "Older excerpt",
+                                "image_url": "https://example.com/older-image.jpg",
                                 "content_html": "<p>hidden</p>",
                                 "content_text": "hidden",
                             },
@@ -202,6 +203,8 @@ class IOSApiFoundationTests(unittest.TestCase):
                                 "published_at": "2026-01-02T10:00:00Z",
                                 "saved_at": "2026-01-02T10:05:00Z",
                                 "excerpt": "Newer excerpt",
+                                "image_url": "https://example.com/newer-image.jpg",
+                                "lead_image_url": "https://example.com/newer-lead.jpg",
                             },
                             {
                                 "id": "middle",
@@ -235,7 +238,13 @@ class IOSApiFoundationTests(unittest.TestCase):
             "published_at": "2026-01-02T10:00:00Z",
             "saved_at": "2026-01-02T10:05:00Z",
             "excerpt": "Newer excerpt",
+            "image": "https://example.com/newer-lead.jpg",
+            "thumbnail": "https://example.com/newer-lead.jpg",
         })
+        self.assertEqual(payload["items"][1]["image"], "")
+        self.assertEqual(payload["items"][1]["thumbnail"], "")
+        self.assertEqual(payload["items"][2]["image"], "https://example.com/older-image.jpg")
+        self.assertEqual(payload["items"][2]["thumbnail"], "https://example.com/older-image.jpg")
         body = response.get_data(as_text=True)
         self.assertNotIn("content_html", body.lower())
         self.assertNotIn("content_text", body.lower())
