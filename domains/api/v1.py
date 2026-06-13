@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+import time
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 from flask import Blueprint, current_app, jsonify, request, session
 
@@ -17,7 +19,7 @@ from domains.chess.api_projection import (
     build_chess_progress_projection,
     build_chess_train_today_projection,
 )
-from dragon.paths import BOOKS_SNAPSHOT_PATH, CHESS_DATA_PATH, EXPORTS_DIR, READING_DATA_PATH, YOUTUBE_LATEST_SNAPSHOT_PATH
+from dragon.paths import BOOKS_SNAPSHOT_PATH, CACHE_DATA_PATH, CHESS_DATA_PATH, EXPORTS_DIR, PLAYLISTS_PATH, READING_DATA_PATH, YOUTUBE_LATEST_SNAPSHOT_PATH
 
 api_v1_bp = Blueprint("api_v1", __name__)
 
@@ -154,6 +156,35 @@ def _normalize_limit(value, default=20, minimum=1, maximum=100):
     return limit
 
 
+def _normalize_offset(value, default=0, minimum=0):
+    try:
+        offset = int(str(value).strip() or default)
+    except Exception:
+        return default
+    if offset < minimum:
+        return minimum
+    return offset
+
+
+def _paginate_items(items, limit, offset):
+    total = len(items)
+    safe_offset = min(max(int(offset or 0), 0), total)
+    safe_limit = max(int(limit or 0), 0)
+    paged_items = items[safe_offset:safe_offset + safe_limit]
+    count = len(paged_items)
+    next_offset = safe_offset + count
+    has_more = next_offset < total
+    return {
+        "items": paged_items,
+        "count": count,
+        "total": total,
+        "limit": safe_limit,
+        "offset": safe_offset,
+        "has_more": has_more,
+        "next_offset": next_offset if has_more else None,
+    }
+
+
 def _load_article_entries():
     payload = _load_local_json(READING_DATA_PATH)
     if not isinstance(payload, dict):
@@ -264,10 +295,15 @@ def _load_book_entries():
     return entries
 
 
-def _build_books_response(limit):
+def _build_books_response(limit, offset):
     entries = _load_book_entries()
     if entries is None:
-        return {"ok": True, "api_version": "v1", "items": [], "count": 0}
+        page = _paginate_items([], limit, offset)
+        return {
+            "ok": True,
+            "api_version": "v1",
+            **page,
+        }
 
     sort_keys = [_book_sort_datetime(entry) for entry in entries]
     if any(value is not None for value in sort_keys):
@@ -283,12 +319,18 @@ def _build_books_response(limit):
             )
         ]
 
-    items = [_project_book_item(entry) for entry in entries[:limit]]
+    page = _paginate_items(entries, limit, offset)
+    items = [_project_book_item(entry) for entry in page["items"]]
     return {
         "ok": True,
         "api_version": "v1",
         "items": items,
-        "count": len(items),
+        "count": page["count"],
+        "total": page["total"],
+        "limit": page["limit"],
+        "offset": page["offset"],
+        "has_more": page["has_more"],
+        "next_offset": page["next_offset"],
     }
 
 
@@ -657,25 +699,120 @@ def _project_youtube_video_item(entry, section_value=""):
     }
 
 
-def _load_watchlater_entries():
+def _parse_iso_datetime(value):
+    text = str(value or "").strip()
+    if not text:
+        return None
+    normalized = text.replace("Z", "+00:00")
     try:
-        from app import get_all_playlist_videos, get_section_playlists
+        parsed = datetime.fromisoformat(normalized)
     except Exception:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed
+
+
+def _cache_entry_is_stale(entry, max_age_seconds=24 * 60 * 60):
+    item = entry if isinstance(entry, dict) else {}
+    timestamp = _parse_iso_datetime(item.get("updated_at", ""))
+    if timestamp is None:
+        return True
+    return (datetime.now(timezone.utc) - timestamp.astimezone(timezone.utc)).total_seconds() > max_age_seconds
+
+
+def _playlist_id_from_value(value):
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    if "://" not in text and "list=" not in text:
+        return text
+    parsed = urlparse(text)
+    query_values = parse_qs(parsed.query).get("list", [])
+    for candidate in query_values:
+        playlist_id = str(candidate or "").strip()
+        if playlist_id:
+            return playlist_id
+    return ""
+
+
+def _load_watchlater_playlists():
+    payload = _load_local_json(PLAYLISTS_PATH)
+    if not isinstance(payload, dict):
         return []
+
+    raw_playlists = payload.get("YouTube Watch Later")
+    if not isinstance(raw_playlists, list):
+        return []
+
+    playlists = []
+    for entry in raw_playlists:
+        if not isinstance(entry, dict):
+            continue
+        playlist_id = _playlist_id_from_value(entry.get("id", "") or entry.get("url", ""))
+        if not playlist_id:
+            continue
+        playlists.append(
+            {
+                "id": playlist_id,
+                "name": str(entry.get("name", "") or entry.get("title", "") or "YouTube Watch Later").strip() or "YouTube Watch Later",
+            }
+        )
+    return playlists
+
+
+def _load_watchlater_entries():
+    state = _load_watchlater_cache_state()
+    return state["entries"]
+
+
+def _load_watchlater_cache_state():
+    started_at = time.monotonic()
+    base_meta = {
+        "data_source": "watchlater_playlist_cache",
+        "cache_status": "unavailable",
+        "warning": "",
+    }
 
     entries = []
     seen_keys = set()
     section_name = "YouTube Watch Later"
+    playlists = _load_watchlater_playlists()
+    playlist_ids = []
+    stale_playlist_count = 0
+    cached_playlist_count = 0
+    missing_playlist_ids = []
 
-    for playlist in get_section_playlists(section_name):
+    cache_data = _load_local_json(CACHE_DATA_PATH)
+    playlist_cache = cache_data.get("youtube_playlists", {}) if isinstance(cache_data, dict) else {}
+    if not isinstance(playlist_cache, dict):
+        playlist_cache = {}
+
+    for playlist in playlists:
         if not isinstance(playlist, dict):
             continue
         playlist_id = str(playlist.get("id", "") or "").strip()
         if not playlist_id:
             continue
+        if playlist_id not in playlist_ids:
+            playlist_ids.append(playlist_id)
 
         playlist_label = str(playlist.get("name", "") or playlist.get("title", "") or section_name).strip() or section_name
-        videos = get_all_playlist_videos(playlist_id, allow_global_invalidation=False) or []
+        playlist_entry = playlist_cache.get(playlist_id)
+        if not isinstance(playlist_entry, dict):
+            missing_playlist_ids.append(playlist_id)
+            continue
+
+        cached_videos = playlist_entry.get("data", [])
+        if not isinstance(cached_videos, list):
+            missing_playlist_ids.append(playlist_id)
+            continue
+
+        cached_playlist_count += 1
+        if _cache_entry_is_stale(playlist_entry):
+            stale_playlist_count += 1
+
+        videos = [dict(item) for item in cached_videos if isinstance(item, dict)]
 
         for item in videos:
             if not isinstance(item, dict):
@@ -700,37 +837,98 @@ def _load_watchlater_entries():
             augmented["source"] = "watchlater"
             entries.append(augmented)
 
-    return entries
+    meta = dict(base_meta)
+    meta.update(
+        {
+            "playlist_count": len(playlist_ids),
+            "cached_playlist_count": cached_playlist_count,
+            "missing_playlist_count": len(missing_playlist_ids),
+            "elapsed_ms": round((time.monotonic() - started_at) * 1000, 2),
+        }
+    )
+
+    if entries or cached_playlist_count:
+        meta["cache_status"] = "stale" if stale_playlist_count or missing_playlist_ids else "fresh"
+        if meta["cache_status"] == "stale":
+            if stale_playlist_count and missing_playlist_ids:
+                meta["warning"] = "Returning cached Watch Later data; some playlist caches are stale or missing."
+            elif stale_playlist_count:
+                meta["warning"] = "Returning stale cached Watch Later data."
+            else:
+                meta["warning"] = "Returning partial cached Watch Later data; some playlist caches are missing."
+        return {"entries": entries, "available": True, "meta": meta}
+
+    meta.update(
+        {
+            "data_source": "watchlater_cache_unavailable",
+            "cache_status": "unavailable",
+            "warning": "No cached Watch Later playlist data is available.",
+        }
+    )
+    return {"entries": [], "available": False, "meta": meta}
+
+
+def _load_youtube_entries_state(source="all"):
+    requested_source = _youtube_normalize_source_filter(source)
+    include_snapshot_entries = requested_source in {"all", "pockettube"}
+    include_watchlater_entries = requested_source in {"all", "watchlater"}
+
+    payload = _load_local_json(YOUTUBE_LATEST_SNAPSHOT_PATH) if include_snapshot_entries else None
+    snapshot_entries = _youtube_entries_from_payload(payload) if payload is not None else []
+    watchlater_state = (
+        _load_watchlater_cache_state()
+        if include_watchlater_entries
+        else {"entries": [], "available": False, "meta": {}}
+    )
+    watchlater_entries = watchlater_state["entries"]
+
+    if payload is None and not watchlater_state["available"] and not watchlater_entries:
+        return {"entries": None, "watchlater_meta": watchlater_state["meta"]}
+
+    return {
+        "entries": snapshot_entries + watchlater_entries,
+        "watchlater_meta": watchlater_state["meta"],
+    }
 
 
 def _load_youtube_entries():
-    payload = _load_local_json(YOUTUBE_LATEST_SNAPSHOT_PATH)
-    snapshot_entries = _youtube_entries_from_payload(payload) if payload is not None else []
-    watchlater_entries = _load_watchlater_entries()
-
-    if payload is None and not watchlater_entries:
-        return None
-
-    return snapshot_entries + watchlater_entries
+    state = _load_youtube_entries_state()
+    return state["entries"]
 
 
-def _build_youtube_response(limit, source="all", section=""):
-    entries = _load_youtube_entries()
+def _build_youtube_response(limit, offset, source="all", section=""):
+    started_at = time.monotonic()
+    requested_source = _youtube_normalize_source_filter(source)
+    youtube_state = _load_youtube_entries_state(requested_source)
+    entries = youtube_state["entries"]
+    requested_section = _youtube_text({"section": section}, "section")
     if entries is None:
+        page = _paginate_items([], limit, offset)
+        meta = {
+            "source": requested_source,
+            "section": requested_section,
+            "count": page["count"],
+            "total": page["total"],
+            "limit": page["limit"],
+            "offset": page["offset"],
+            "has_more": page["has_more"],
+            "next_offset": page["next_offset"],
+            "elapsed_ms": round((time.monotonic() - started_at) * 1000, 2),
+        }
+        if requested_source == "watchlater":
+            meta.update(youtube_state["watchlater_meta"])
         return {
             "ok": True,
             "api_version": "v1",
             "items": [],
-            "count": 0,
-            "meta": {
-                "source": _youtube_normalize_source_filter(source),
-                "section": _youtube_text({"section": section}, "section"),
-                "count": 0,
-            },
+            "count": page["count"],
+            "total": page["total"],
+            "limit": page["limit"],
+            "offset": page["offset"],
+            "has_more": page["has_more"],
+            "next_offset": page["next_offset"],
+            "meta": meta,
         }
-
-    requested_source = _youtube_normalize_source_filter(source)
-    requested_section = _youtube_text({"section": section}, "section")
 
     entries = [
         entry
@@ -753,17 +951,32 @@ def _build_youtube_response(limit, source="all", section=""):
             )
         ]
 
-    items = [_project_youtube_item(entry) for entry in entries[:limit]]
+    page = _paginate_items(entries, limit, offset)
+    items = [_project_youtube_item(entry) for entry in page["items"]]
+    meta = {
+        "source": requested_source,
+        "section": requested_section,
+        "count": page["count"],
+        "total": page["total"],
+        "limit": page["limit"],
+        "offset": page["offset"],
+        "has_more": page["has_more"],
+        "next_offset": page["next_offset"],
+        "elapsed_ms": round((time.monotonic() - started_at) * 1000, 2),
+    }
+    if requested_source == "watchlater":
+        meta.update(youtube_state["watchlater_meta"])
     return {
         "ok": True,
         "api_version": "v1",
         "items": items,
-        "count": len(items),
-        "meta": {
-            "source": requested_source,
-            "section": requested_section,
-            "count": len(items),
-        },
+        "count": page["count"],
+        "total": page["total"],
+        "limit": page["limit"],
+        "offset": page["offset"],
+        "has_more": page["has_more"],
+        "next_offset": page["next_offset"],
+        "meta": meta,
     }
 
 
@@ -790,15 +1003,21 @@ def _youtube_matches_exact_section(entry, section_name):
     return False
 
 
-def _build_youtube_videos_response(limit, section=""):
+def _build_youtube_videos_response(limit, offset, section=""):
     entries = _load_youtube_entries()
     requested_section = _youtube_text({"section": section}, "section")
     if entries is None:
+        page = _paginate_items([], limit, offset)
         return {
             "ok": True,
             "api_version": "v1",
             "section": requested_section,
-            "count": 0,
+            "count": page["count"],
+            "total": page["total"],
+            "limit": page["limit"],
+            "offset": page["offset"],
+            "has_more": page["has_more"],
+            "next_offset": page["next_offset"],
             "items": [],
         }
 
@@ -819,12 +1038,21 @@ def _build_youtube_videos_response(limit, section=""):
             )
         ]
 
-    items = [_project_youtube_video_item(entry, section_value=requested_section or _youtube_exact_section_value(entry)) for entry in entries[:limit]]
+    page = _paginate_items(entries, limit, offset)
+    items = [
+        _project_youtube_video_item(entry, section_value=requested_section or _youtube_exact_section_value(entry))
+        for entry in page["items"]
+    ]
     return {
         "ok": True,
         "api_version": "v1",
         "section": requested_section,
-        "count": len(items),
+        "count": page["count"],
+        "total": page["total"],
+        "limit": page["limit"],
+        "offset": page["offset"],
+        "has_more": page["has_more"],
+        "next_offset": page["next_offset"],
         "items": items,
     }
 
@@ -905,8 +1133,9 @@ def api_v1_articles():
 
 @api_v1_bp.get("/api/v1/books")
 def api_v1_books():
-    limit = _normalize_limit(request.args.get("limit", 20))
-    return jsonify(_build_books_response(limit))
+    limit = _normalize_limit(request.args.get("limit", 50), default=50)
+    offset = _normalize_offset(request.args.get("offset", 0))
+    return jsonify(_build_books_response(limit, offset))
 
 
 @api_v1_bp.get("/api/v1/movies")
@@ -917,17 +1146,19 @@ def api_v1_movies():
 
 @api_v1_bp.get("/api/v1/youtube")
 def api_v1_youtube():
-    limit = _normalize_limit(request.args.get("limit", 20))
+    limit = _normalize_limit(request.args.get("limit", 50), default=50)
+    offset = _normalize_offset(request.args.get("offset", 0))
     source = request.args.get("source", "all")
     section = request.args.get("section", "")
-    return jsonify(_build_youtube_response(limit, source=source, section=section))
+    return jsonify(_build_youtube_response(limit, offset, source=source, section=section))
 
 
 @api_v1_bp.get("/api/v1/youtube/videos")
 def api_v1_youtube_videos():
     limit = _normalize_limit(request.args.get("limit", 50), default=50, maximum=200)
+    offset = _normalize_offset(request.args.get("offset", 0))
     section = request.args.get("section", "")
-    return jsonify(_build_youtube_videos_response(limit, section=section))
+    return jsonify(_build_youtube_videos_response(limit, offset, section=section))
 
 
 @api_v1_bp.get("/api/v1/youtube/sections")
