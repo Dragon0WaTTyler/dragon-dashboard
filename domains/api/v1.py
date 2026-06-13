@@ -602,6 +602,8 @@ def _youtube_matches_section(entry, section_name):
         return True
     item = entry if isinstance(entry, dict) else {}
     normalized = section_name.strip().lower()
+    if normalized == "last" and _youtube_detect_source(item) == "watchlater":
+        return True
     for key in ("section", "section_name", "group", "group_name", "playlist", "playlist_title"):
         if _youtube_text(item, key).strip().lower() == normalized:
             return True
@@ -655,18 +657,77 @@ def _project_youtube_video_item(entry, section_value=""):
     }
 
 
+def _load_watchlater_entries():
+    try:
+        from app import get_all_playlist_videos, get_section_playlists
+    except Exception:
+        return []
+
+    entries = []
+    seen_keys = set()
+    section_name = "YouTube Watch Later"
+
+    for playlist in get_section_playlists(section_name):
+        if not isinstance(playlist, dict):
+            continue
+        playlist_id = str(playlist.get("id", "") or "").strip()
+        if not playlist_id:
+            continue
+
+        playlist_label = str(playlist.get("name", "") or playlist.get("title", "") or section_name).strip() or section_name
+        videos = get_all_playlist_videos(playlist_id, allow_global_invalidation=False) or []
+
+        for item in videos:
+            if not isinstance(item, dict):
+                continue
+
+            playlist_item_id = _youtube_text(item, "playlist_item_id")
+            video_id = _youtube_text(item, "video_id", "videoId", "youtube_id")
+            dedupe_key = playlist_item_id or f"{playlist_id}:{video_id}"
+            if dedupe_key and dedupe_key in seen_keys:
+                continue
+            if dedupe_key:
+                seen_keys.add(dedupe_key)
+
+            augmented = dict(item)
+            augmented["_youtube_context"] = "watchlater"
+            augmented["section"] = _youtube_text(augmented, "section", default=section_name) or section_name
+            augmented["section_name"] = _youtube_text(augmented, "section_name", default=section_name) or section_name
+            augmented["playlist"] = _youtube_text(augmented, "playlist", default=playlist_label) or playlist_label
+            augmented["playlist_title"] = _youtube_text(augmented, "playlist_title", default=playlist_label) or playlist_label
+            augmented["channel_title"] = _youtube_text(augmented, "channel_title", "channel_name")
+            augmented["thumbnail"] = _youtube_text(augmented, "thumbnail", "thumbnail_url", "thumb")
+            augmented["source"] = "watchlater"
+            entries.append(augmented)
+
+    return entries
+
+
 def _load_youtube_entries():
     payload = _load_local_json(YOUTUBE_LATEST_SNAPSHOT_PATH)
-    if payload is None:
+    snapshot_entries = _youtube_entries_from_payload(payload) if payload is not None else []
+    watchlater_entries = _load_watchlater_entries()
+
+    if payload is None and not watchlater_entries:
         return None
-    entries = _youtube_entries_from_payload(payload)
-    return entries
+
+    return snapshot_entries + watchlater_entries
 
 
 def _build_youtube_response(limit, source="all", section=""):
     entries = _load_youtube_entries()
     if entries is None:
-        return {"ok": True, "api_version": "v1", "items": [], "count": 0}
+        return {
+            "ok": True,
+            "api_version": "v1",
+            "items": [],
+            "count": 0,
+            "meta": {
+                "source": _youtube_normalize_source_filter(source),
+                "section": _youtube_text({"section": section}, "section"),
+                "count": 0,
+            },
+        }
 
     requested_source = _youtube_normalize_source_filter(source)
     requested_section = _youtube_text({"section": section}, "section")
@@ -698,6 +759,11 @@ def _build_youtube_response(limit, source="all", section=""):
         "api_version": "v1",
         "items": items,
         "count": len(items),
+        "meta": {
+            "source": requested_source,
+            "section": requested_section,
+            "count": len(items),
+        },
     }
 
 
@@ -716,6 +782,8 @@ def _youtube_matches_exact_section(entry, section_name):
         return True
 
     item = entry if isinstance(entry, dict) else {}
+    if requested.strip().lower() == "last" and _youtube_detect_source(item) == "watchlater":
+        return True
     for key in ("section", "section_name", "group", "group_name", "playlist", "playlist_title"):
         if _youtube_text(item, key) == requested:
             return True
