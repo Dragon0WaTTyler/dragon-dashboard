@@ -250,6 +250,79 @@ def _build_articles_response(limit):
     }
 
 
+def _load_reading_api_helpers():
+    from app import (
+        build_reading_article_fulltext_status,
+        normalize_reading_entry,
+        reading_article_fulltext_load,
+        reading_article_fulltext_request_load,
+        reading_article_url_candidates,
+        sanitize_reading_article_html,
+    )
+
+    return {
+        "build_reading_article_fulltext_status": build_reading_article_fulltext_status,
+        "normalize_reading_entry": normalize_reading_entry,
+        "reading_article_fulltext_load": reading_article_fulltext_load,
+        "reading_article_fulltext_request_load": reading_article_fulltext_request_load,
+        "reading_article_url_candidates": reading_article_url_candidates,
+        "sanitize_reading_article_html": sanitize_reading_article_html,
+    }
+
+
+def _find_article_entry(article_id):
+    normalized_article_id = str(article_id or "").strip()
+    if not normalized_article_id:
+        return None
+    entries = _load_article_entries()
+    if entries is None:
+        return None
+    for entry in entries:
+        if _article_text(entry, "id") == normalized_article_id:
+            return dict(entry)
+    return None
+
+
+def _article_read_state(entry):
+    item = entry if isinstance(entry, dict) else {}
+    return "read" if bool(item.get("read")) else "unread"
+
+
+def _project_article_detail_item(entry):
+    item = entry if isinstance(entry, dict) else {}
+    helpers = _load_reading_api_helpers()
+    normalized_entry = helpers["normalize_reading_entry"](item, include_body_image_scan=False)
+    base_item = _project_article_item(item)
+    article_url = (helpers["reading_article_url_candidates"](normalized_entry) or [""])[0]
+    cache_record = helpers["reading_article_fulltext_load"](article_url)
+    request_record = helpers["reading_article_fulltext_request_load"](_article_text(item, "id"))
+    fulltext_status = helpers["build_reading_article_fulltext_status"](
+        normalized_entry,
+        cache_record=cache_record,
+        request_record=request_record,
+    )
+    content_text = ""
+    content_html = ""
+    if isinstance(cache_record, dict) and fulltext_status.get("status") == "cached":
+        content_text = str(cache_record.get("content_text", "") or "").strip()
+        content_html = helpers["sanitize_reading_article_html"](
+            cache_record.get("content_html", ""),
+            base_url=normalized_entry.get("original_url", "") or normalized_entry.get("url", ""),
+            hero_image="",
+            author_image="",
+        )
+        if not content_text:
+            content_html = ""
+    return {
+        **base_item,
+        "status": str(normalized_entry.get("status", "") or "").strip(),
+        "read_state": _article_read_state(normalized_entry),
+        "fulltext_status": fulltext_status,
+        "content_text": content_text,
+        "content_html": content_html,
+    }
+
+
 def _book_entries_from_payload(payload):
     if isinstance(payload, list):
         return [dict(entry) for entry in payload if isinstance(entry, dict)]
@@ -1198,6 +1271,20 @@ def api_v1_home():
 def api_v1_articles():
     limit = _normalize_limit(request.args.get("limit", 20))
     return jsonify(_build_articles_response(limit))
+
+
+@api_v1_bp.get("/api/v1/articles/<article_id>")
+def api_v1_article_detail(article_id):
+    entry = _find_article_entry(article_id)
+    if entry is None:
+        return jsonify({"ok": False, "api_version": "v1", "error": "Article not found."}), 404
+    return jsonify(
+        {
+            "ok": True,
+            "api_version": "v1",
+            "item": _project_article_detail_item(entry),
+        }
+    )
 
 
 @api_v1_bp.get("/api/v1/books")
