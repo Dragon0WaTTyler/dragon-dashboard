@@ -553,10 +553,20 @@ def _load_movie_entries():
     return entries
 
 
-def _build_movies_response(limit):
+def _build_movies_response(limit, offset):
     entries = _load_movie_entries()
     if entries is None:
-        return {"ok": True, "api_version": "v1", "items": [], "count": 0}
+        return {
+            "ok": True,
+            "api_version": "v1",
+            "items": [],
+            "count": 0,
+            "total": 0,
+            "limit": limit,
+            "offset": offset,
+            "next_offset": None,
+            "has_more": False,
+        }
 
     sort_keys = [_movie_sort_datetime(entry) for entry in entries]
     if any(value is not None for value in sort_keys):
@@ -572,12 +582,18 @@ def _build_movies_response(limit):
             )
         ]
 
-    items = [_project_movie_item(entry) for entry in entries[:limit]]
+    page = _paginate_items(entries, limit, offset)
+    items = [_project_movie_item(entry) for entry in page["items"]]
     return {
         "ok": True,
         "api_version": "v1",
         "items": items,
         "count": len(items),
+        "total": page["total"],
+        "limit": page["limit"],
+        "offset": page["offset"],
+        "next_offset": page["next_offset"],
+        "has_more": page["has_more"],
     }
 
 
@@ -1319,7 +1335,8 @@ def api_v1_books():
 @api_v1_bp.get("/api/v1/movies")
 def api_v1_movies():
     limit = _normalize_limit(request.args.get("limit", 20))
-    return jsonify(_build_movies_response(limit))
+    offset = _normalize_offset(request.args.get("offset", 0))
+    return jsonify(_build_movies_response(limit, offset))
 
 
 @api_v1_bp.get("/api/v1/youtube")
