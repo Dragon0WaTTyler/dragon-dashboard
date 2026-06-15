@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -478,6 +479,26 @@ def _movie_text(entry, *keys, default=""):
     return str(default or "").strip()
 
 
+def _movie_slugify(value):
+    text = re.sub(r"[^a-z0-9]+", "-", str(value or "").strip().lower()).strip("-")
+    return text or "entry"
+
+
+def _movie_title(entry):
+    return _movie_text(entry, "title", "name", default="Untitled movie")
+
+
+def _movie_id(entry):
+    explicit_id = _movie_text(entry, "id")
+    if explicit_id:
+        return explicit_id
+
+    title = _movie_text(entry, "title", "name")
+    if not title:
+        return ""
+    return f"film-{_movie_slugify(title)}"
+
+
 def _movie_score(entry):
     item = entry if isinstance(entry, dict) else {}
     value = item.get("score", item.get("rating", ""))
@@ -513,13 +534,13 @@ def _movie_sort_datetime(entry):
 def _project_movie_item(entry):
     item = entry if isinstance(entry, dict) else {}
     return {
-        "id": _movie_text(item, "id"),
-        "title": _movie_text(item, "title", default="Untitled movie"),
+        "id": _movie_id(item),
+        "title": _movie_title(item),
         "year": _movie_text(item, "year"),
         "poster": _movie_text(item, "poster", "poster_url", "cover"),
         "status": _movie_text(item, "status", "state", "watch_status"),
         "score": _movie_score(item),
-        "type": _movie_text(item, "type", "media_type", default=""),
+        "type": _movie_text(item, "type", "category", "media_type", default=""),
         "overview": _movie_overview(item),
     }
 
