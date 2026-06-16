@@ -30,7 +30,8 @@ DRAGON_CORE_SNAPSHOT_LIMITS = {
     "books": 500,
     "articles": 500,
     "movies": 500,
-    "youtube_videos": 500,
+    "youtube_watchlater_videos": 500,
+    "youtube_pockettube_videos": 500,
 }
 
 
@@ -1333,7 +1334,16 @@ def build_dragon_core_snapshot():
     articles_response = _build_articles_response(DRAGON_CORE_SNAPSHOT_LIMITS["articles"])
     books_response = _build_books_response(DRAGON_CORE_SNAPSHOT_LIMITS["books"], 0)
     movies_response = _build_movies_response(DRAGON_CORE_SNAPSHOT_LIMITS["movies"], 0)
-    youtube_videos_response = _build_youtube_response(DRAGON_CORE_SNAPSHOT_LIMITS["youtube_videos"], 0)
+    youtube_watchlater_response = _build_youtube_response(
+        DRAGON_CORE_SNAPSHOT_LIMITS["youtube_watchlater_videos"],
+        0,
+        source="watchlater",
+    )
+    youtube_pockettube_response = _build_youtube_response(
+        DRAGON_CORE_SNAPSHOT_LIMITS["youtube_pockettube_videos"],
+        0,
+        source="pockettube",
+    )
     youtube_sections_response = _build_youtube_sections_response()
 
     if _load_article_entries() is None:
@@ -1381,7 +1391,8 @@ def build_dragon_core_snapshot():
         },
         "youtube": {
             "sections": youtube_sections_response.get("sections", []) or [],
-            "videos": youtube_videos_response.get("items", []) or [],
+            "videos": (youtube_watchlater_response.get("items", []) or [])
+            + (youtube_pockettube_response.get("items", []) or []),
         },
     }
 

@@ -119,8 +119,40 @@ class DragonCoreSnapshotExportTests(unittest.TestCase):
                 }
             },
         )
-        self._write_json(paths["playlists_path"], {})
-        self._write_json(paths["cache_data_path"], {})
+        self._write_json(
+            paths["playlists_path"],
+            {
+                "YouTube Watch Later": [
+                    {
+                        "id": "PLA9RaIVS6nz25rdZd3SihId_AsAA06nPP",
+                        "name": "My YouTube Watch Later",
+                    }
+                ]
+            },
+        )
+        self._write_json(
+            paths["cache_data_path"],
+            {
+                "youtube_playlists": {
+                    "PLA9RaIVS6nz25rdZd3SihId_AsAA06nPP": {
+                        "updated_at": "2026-06-11T11:30:00Z",
+                        "data": [
+                            {
+                                "playlist_item_id": "pli-1",
+                                "video_id": "wl-video-1",
+                                "title": "Watch Later Video",
+                                "channel_title": "Dragon Later",
+                                "thumbnail_url": "https://example.com/watchlater.jpg",
+                                "url": "https://www.youtube.com/watch?v=wl-video-1",
+                                "published_at": "2026-06-11T09:00:00Z",
+                                "saved_at": "2026-06-11T11:00:00Z",
+                                "duration": "05:43",
+                            }
+                        ],
+                    }
+                }
+            },
+        )
 
     def test_snapshot_contains_required_top_level_keys(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -237,8 +269,25 @@ class DragonCoreSnapshotExportTests(unittest.TestCase):
         self.assertEqual(summary["books_count"], 1)
         self.assertEqual(summary["articles_count"], 1)
         self.assertEqual(summary["movies_count"], 1)
-        self.assertEqual(summary["youtube_sections_count"], 1)
-        self.assertEqual(summary["youtube_videos_count"], 1)
+        self.assertEqual(summary["youtube_sections_count"], 2)
+        self.assertEqual(summary["youtube_videos_count"], 2)
+
+    def test_snapshot_keeps_watchlater_and_pockettube_videos_separate(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            paths = self._temp_paths(temp_dir)
+            self._write_valid_sources(paths)
+            with self._patch_paths(paths):
+                snapshot = api_v1.build_dragon_core_snapshot()
+
+        videos = snapshot["youtube"]["videos"]
+        watchlater_videos = [video for video in videos if str(video.get("source", "")).lower() == "watchlater"]
+        pockettube_videos = [video for video in videos if str(video.get("source", "")).lower() == "pockettube"]
+
+        self.assertEqual(len(watchlater_videos), 1)
+        self.assertEqual(len(pockettube_videos), 1)
+        self.assertEqual(watchlater_videos[0]["section"], "YouTube Watch Later")
+        self.assertEqual(watchlater_videos[0]["playlist"], "My YouTube Watch Later")
+        self.assertEqual(pockettube_videos[0]["section"], "Favorites")
 
 
 if __name__ == "__main__":
