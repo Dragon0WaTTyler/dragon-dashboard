@@ -1,0 +1,305 @@
+name: Export Dragon Core Snapshot
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 3 * * *"
+
+permissions:
+  contents: write
+
+jobs:
+  export-dragon-core-snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    concurrency:
+      group: export-dragon-core-snapshot-${{ github.ref }}
+      cancel-in-progress: false
+    env:
+      PYTHONUNBUFFERED: "1"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.ref_name }}
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Compile snapshot exporter paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m py_compile app.py domains/api/v1.py scripts/export_dragon_core_snapshot.py
+
+      - name: Run focused snapshot tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m unittest tests.test_dragon_core_snapshot_export
+
+      - name: Export Dragon Core snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/export_dragon_core_snapshot.py
+
+      - name: Validate snapshot structure and counts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          snapshot_path = Path("exports/dragon_core_snapshot.json")
+          if not snapshot_path.is_file():
+              raise SystemExit(f"Snapshot file missing: {snapshot_path}")
+
+          size_bytes = snapshot_path.stat().st_size
+          if size_bytes < 5 * 1024:
+              raise SystemExit(f"Snapshot file is suspiciously small: {size_bytes} bytes")
+
+          try:
+              snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
+          except json.JSONDecodeError as exc:
+              raise SystemExit(f"Snapshot is not valid JSON: {exc}") from exc
+
+          required_top_level_keys = {
+              "schema_version",
+              "generated_at",
+              "producer",
+              "status",
+              "home",
+              "books",
+              "articles",
+              "movies",
+              "youtube",
+          }
+          missing_top_level_keys = sorted(required_top_level_keys - set(snapshot))
+          if missing_top_level_keys:
+              raise SystemExit(f"Snapshot missing top-level keys: {missing_top_level_keys}")
+
+          if snapshot.get("schema_version") != "dragon-core-snapshot.v1":
+              raise SystemExit(
+                  "Unexpected schema_version: "
+                  f"{snapshot.get('schema_version')!r}"
+              )
+
+          container_paths = [
+              ("books.items", snapshot.get("books", {}).get("items")),
+              ("articles.items", snapshot.get("articles", {}).get("items")),
+              ("movies.items", snapshot.get("movies", {}).get("items")),
+              ("youtube.sections", snapshot.get("youtube", {}).get("sections")),
+              ("youtube.videos", snapshot.get("youtube", {}).get("videos")),
+          ]
+          missing_or_invalid_containers = [
+              path for path, value in container_paths if not isinstance(value, list)
+          ]
+          if missing_or_invalid_containers:
+              raise SystemExit(
+                  f"Snapshot missing expected list containers: {missing_or_invalid_containers}"
+              )
+
+          books_items = snapshot["books"]["items"]
+          articles_items = snapshot["articles"]["items"]
+          movies_items = snapshot["movies"]["items"]
+          youtube_sections = snapshot["youtube"]["sections"]
+          youtube_videos = snapshot["youtube"]["videos"]
+
+          print(f"snapshot_path={snapshot_path}")
+          print(f"snapshot_size_bytes={size_bytes}")
+          print(f"books total={snapshot['books'].get('total', 0)} items={len(books_items)}")
+          print(f"articles total={snapshot['articles'].get('total', 0)} items={len(articles_items)}")
+          print(f"movies total={snapshot['movies'].get('total', 0)} items={len(movies_items)}")
+          print(f"youtube sections={len(youtube_sections)} videos={len(youtube_videos)}")
+
+          if not any((books_items, articles_items, movies_items, youtube_videos)):
+              raise SystemExit("All major snapshot item lists are empty.")
+          PY
+
+      - name: Audit snapshot for leaks
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import re
+          from pathlib import Path
+
+          snapshot_path = Path("exports/dragon_core_snapshot.json")
+          snapshot = json.loads(snapshot_path.read_text(encoding="utf-8"))
+
+          forbidden_key_indicators = {
+              "token",
+              "secret",
+              "oauth",
+              "notion_payload",
+              "cache_path",
+              "local_path",
+              "runtime_path",
+              "magnet",
+              "torrent",
+              "session_id",
+              "stream_url",
+              "playback_url",
+              "traceback",
+              ".env",
+              "google_client_secret",
+              "notion_token",
+              "github_token",
+          }
+          suspicious_value_markers = {
+              ".env",
+              "google_client_secret",
+              "notion_token",
+              "github_token",
+              "notion_payload",
+              "cache_path",
+              "local_path",
+              "runtime_path",
+              "stream_url",
+              "playback_url",
+              "session_id",
+          }
+          path_like_re = re.compile(
+              r"(^|[\s:=])("
+              r"~\/|\/Users\/|\/home\/|\/tmp\/|\/var\/|\/private\/|\/etc\/|"
+              r"[A-Za-z]:\\\\|\.{1,2}\/"
+              r")"
+          )
+          tokenized_url_re = re.compile(
+              r"https?://\S+[?&](?:access_token|token|secret|oauth|session(?:_id)?|client_secret|key)=",
+              re.IGNORECASE,
+          )
+          traceback_re = re.compile(
+              r"Traceback \(most recent call last\):|File \".+\", line \d+",
+              re.IGNORECASE,
+          )
+          credential_re = re.compile(
+              r"\b(?:ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|ya29\.[A-Za-z0-9._-]+|AIza[0-9A-Za-z_-]{20,})\b"
+          )
+          session_re = re.compile(r"\bsession[_-]?id\s*[:=]\s*[A-Za-z0-9._-]{6,}\b", re.IGNORECASE)
+          oauth_assignment_re = re.compile(
+              r"\b(?:oauth|token|secret)\b\s*[:=]\s*\S+",
+              re.IGNORECASE,
+          )
+
+          key_hits = []
+          value_hits = []
+          counters = {
+              "keys": 0,
+              "strings": 0,
+          }
+
+          def walk(value, path):
+              if isinstance(value, dict):
+                  for key, child in value.items():
+                      counters["keys"] += 1
+                      key_text = str(key)
+                      key_normalized = key_text.strip().lower()
+                      if any(indicator in key_normalized for indicator in forbidden_key_indicators):
+                          key_hits.append(f"{path}.{key_text}")
+                      walk(child, f"{path}.{key_text}")
+                  return
+
+              if isinstance(value, list):
+                  for index, child in enumerate(value):
+                      walk(child, f"{path}[{index}]")
+                  return
+
+              if not isinstance(value, str):
+                  return
+
+              counters["strings"] += 1
+              text = value.strip()
+              text_lower = text.lower()
+
+              if "magnet:?" in text_lower or ".torrent" in text_lower:
+                  value_hits.append(f"{path}: transport/runtime value detected")
+                  return
+              if tokenized_url_re.search(text):
+                  value_hits.append(f"{path}: tokenized URL detected")
+                  return
+              if path_like_re.search(text):
+                  value_hits.append(f"{path}: filesystem path detected")
+                  return
+              if traceback_re.search(text):
+                  value_hits.append(f"{path}: traceback content detected")
+                  return
+              if credential_re.search(text):
+                  value_hits.append(f"{path}: credential-like token detected")
+                  return
+              if session_re.search(text):
+                  value_hits.append(f"{path}: session identifier detected")
+                  return
+              if oauth_assignment_re.search(text):
+                  value_hits.append(f"{path}: inline oauth/token assignment detected")
+                  return
+              if any(marker in text_lower for marker in suspicious_value_markers):
+                  value_hits.append(f"{path}: forbidden internal marker detected")
+
+          walk(snapshot, "snapshot")
+
+          print(
+              "Leak audit summary: "
+              f"scanned_keys={counters['keys']} "
+              f"scanned_strings={counters['strings']} "
+              f"forbidden_key_hits={len(key_hits)} "
+              f"suspicious_value_hits={len(value_hits)}"
+          )
+
+          if key_hits or value_hits:
+              if key_hits:
+                  print("Forbidden keys:")
+                  for hit in key_hits[:50]:
+                      print(f"  - {hit}")
+              if value_hits:
+                  print("Suspicious values:")
+                  for hit in value_hits[:50]:
+                      print(f"  - {hit}")
+              raise SystemExit("Snapshot leak audit failed.")
+          PY
+
+      - name: Upload snapshot artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dragon_core_snapshot
+          path: exports/dragon_core_snapshot.json
+          if-no-files-found: error
+
+      - name: Commit snapshot changes
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          snapshot_path="exports/dragon_core_snapshot.json"
+          if [ ! -f "$snapshot_path" ]; then
+            echo "Snapshot file missing: $snapshot_path"
+            exit 1
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add -f "$snapshot_path"
+
+          if git diff --cached --quiet -- "$snapshot_path"; then
+            echo "No snapshot changes to commit."
+            exit 0
+          fi
+
+          git commit -m "Update Dragon core snapshot [skip ci]"
+          git pull --rebase origin "${GITHUB_REF_NAME}"
+          git push origin HEAD:"${GITHUB_REF_NAME}"

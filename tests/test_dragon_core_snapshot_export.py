@@ -319,6 +319,51 @@ class DragonCoreSnapshotExportTests(unittest.TestCase):
         self.assertEqual(watchlater_videos[0]["playlist"], "My YouTube Watch Later")
         self.assertEqual(pockettube_videos[0]["section"], "Favorites")
 
+    def test_snapshot_strips_signed_media_query_parameters(self):
+        signed_url = (
+            "https://cdn.example.com/media/image.jpg"
+            "?X-Amz-Algorithm=AWS4-HMAC-SHA256"
+            "&X-Amz-Security-Token=secret-token"
+            "&X-Amz-Signature=abcdef123456"
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            paths = self._temp_paths(temp_dir)
+            self._write_valid_sources(paths)
+
+            reading_payload = json.loads(paths["reading_path"].read_text(encoding="utf-8"))
+            reading_payload["entries"][0]["lead_image_url"] = signed_url
+            self._write_json(paths["reading_path"], reading_payload)
+
+            books_payload = json.loads(paths["books_path"].read_text(encoding="utf-8"))
+            books_payload["entries"][0]["cover"] = signed_url
+            self._write_json(paths["books_path"], books_payload)
+
+            movies_payload = json.loads(paths["cache_data_path"].read_text(encoding="utf-8"))
+            movies_payload["films"]["all"]["data"][0]["poster"] = signed_url
+            self._write_json(paths["cache_data_path"], movies_payload)
+
+            youtube_payload = json.loads(paths["youtube_path"].read_text(encoding="utf-8"))
+            youtube_payload["groups"]["Favorites"]["videos"][0]["thumbnail"] = signed_url
+            self._write_json(paths["youtube_path"], youtube_payload)
+
+            watchlater_payload = json.loads(paths["cache_data_path"].read_text(encoding="utf-8"))
+            watchlater_payload["youtube_playlists"]["PLA9RaIVS6nz25rdZd3SihId_AsAA06nPP"]["data"][0]["thumbnail_url"] = signed_url
+            self._write_json(paths["cache_data_path"], watchlater_payload)
+
+            with self._patch_paths(paths):
+                snapshot = api_v1.build_dragon_core_snapshot()
+
+        expected_url = "https://cdn.example.com/media/image.jpg"
+        self.assertEqual(snapshot["articles"]["items"][0]["image"], expected_url)
+        self.assertEqual(snapshot["books"]["items"][0]["cover"], expected_url)
+        self.assertEqual(snapshot["movies"]["items"][0]["poster"], expected_url)
+        self.assertEqual(snapshot["youtube"]["videos"][0]["thumbnail"], expected_url)
+        self.assertEqual(snapshot["youtube"]["videos"][1]["thumbnail"], expected_url)
+        serialized = json.dumps(snapshot, ensure_ascii=False)
+        self.assertNotIn("X-Amz-", serialized)
+        self.assertNotIn("secret-token", serialized)
+
 
 if __name__ == "__main__":
     unittest.main()

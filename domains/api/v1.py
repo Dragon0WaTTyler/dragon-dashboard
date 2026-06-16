@@ -142,9 +142,34 @@ def _article_text(entry, *keys):
     return ""
 
 
+def _snapshot_public_media_url(value):
+    text = str(value or "").strip()
+    if not text:
+        return ""
+
+    parsed = urlparse(text)
+    if parsed.scheme.lower() not in {"http", "https"} or not parsed.netloc:
+        return text
+
+    query_text = parsed.query.lower()
+    sensitive_query_markers = (
+        "x-amz-",
+        "access_token",
+        "token=",
+        "secret=",
+        "oauth",
+        "session_id",
+        "client_secret",
+        "signature=",
+    )
+    if any(marker in query_text for marker in sensitive_query_markers):
+        return parsed._replace(query="", fragment="").geturl()
+    return text
+
+
 def _article_image(entry):
     item = entry if isinstance(entry, dict) else {}
-    return _article_text(item, "lead_image_url", "image_url")
+    return _snapshot_public_media_url(_article_text(item, "lead_image_url", "image_url"))
 
 
 def _project_article_item(entry):
@@ -382,7 +407,7 @@ def _book_sort_datetime(entry):
 def _project_book_item(entry):
     item = entry if isinstance(entry, dict) else {}
     authors = _book_authors(item)
-    cover = _book_text(item, "cover", "cover_url", "cover_source")
+    cover = _snapshot_public_media_url(_book_text(item, "cover", "cover_url", "cover_source"))
     if not cover:
         cover = ""
     return {
@@ -547,7 +572,7 @@ def _project_movie_item(entry):
         "id": _movie_id(item),
         "title": _movie_title(item),
         "year": _movie_text(item, "year"),
-        "poster": _movie_text(item, "poster", "poster_url", "cover"),
+        "poster": _snapshot_public_media_url(_movie_text(item, "poster", "poster_url", "cover")),
         "status": _movie_text(item, "status", "state", "watch_status"),
         "score": _movie_score(item),
         "type": _movie_text(item, "type", "category", "media_type", default=""),
@@ -856,7 +881,9 @@ def _project_youtube_item(entry):
         "video_id": video_id,
         "title": _youtube_text(item, "title", default="Untitled video"),
         "channel": _youtube_text(item, "channel", "channel_title"),
-        "thumbnail": _youtube_text(item, "thumbnail", "thumbnail_url", "thumb", "thumbnailUrl"),
+        "thumbnail": _snapshot_public_media_url(
+            _youtube_text(item, "thumbnail", "thumbnail_url", "thumb", "thumbnailUrl")
+        ),
         "url": url,
         "published_at": _youtube_text(item, "published_at", "publishedAt"),
         "saved_at": _youtube_text(item, "saved_at", "savedAt"),
@@ -880,7 +907,9 @@ def _project_youtube_video_item(entry, section_value=""):
         "title": _youtube_text(item, "title", default="Untitled video"),
         "channel": _youtube_text(item, "channel", "channel_title"),
         "url": url,
-        "thumbnail": _youtube_text(item, "thumbnail", "thumbnail_url", "thumb", "thumbnailUrl"),
+        "thumbnail": _snapshot_public_media_url(
+            _youtube_text(item, "thumbnail", "thumbnail_url", "thumb", "thumbnailUrl")
+        ),
         "published_at": _youtube_text(item, "published_at", "publishedAt"),
         "duration": _youtube_text(item, "duration", "length"),
         "section": section_value,
