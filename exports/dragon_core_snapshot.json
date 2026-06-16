@@ -1,6 +1,6 @@
 {
   "schema_version": "dragon-core-snapshot.v1",
-  "generated_at": "2026-06-16T19:06:25.769195Z",
+  "generated_at": "2026-06-16T21:04:59.136037Z",
   "producer": {
     "kind": "flask_dashboard",
     "version": "v1",
@@ -13,29 +13,29 @@
     ],
     "sources": {
       "articles": {
-        "source_kind": "reading_data_json",
-        "state": "primary",
+        "source_kind": "existing_dragon_core_snapshot",
+        "state": "fallback_snapshot",
         "item_count": 88
       },
       "books": {
-        "source_kind": "books_snapshot_json",
-        "state": "primary",
+        "source_kind": "existing_dragon_core_snapshot",
+        "state": "fallback_snapshot",
         "item_count": 142
       },
       "movies": {
-        "source_kind": "notion_export",
-        "state": "primary",
+        "source_kind": "committed_snapshot_fallback",
+        "state": "fallback_snapshot",
         "item_count": 300
       },
       "youtube": {
         "source_kind": "combined_youtube_sources",
-        "state": "primary",
+        "state": "mixed",
         "item_count": 1000,
         "section_count": 15,
         "pockettube_source": "youtube_latest_snapshot_json",
         "pockettube_state": "primary",
-        "watchlater_source": "watchlater_playlist_cache",
-        "watchlater_state": "primary"
+        "watchlater_source": "existing_dragon_core_snapshot",
+        "watchlater_state": "fallback_snapshot"
       }
     }
   },
@@ -80,8 +80,8 @@
         "label": "Chess",
         "href": "/api/v1/chess/home",
         "api_path": "/api/v1/chess/home",
-        "status": "available",
-        "count": 163
+        "status": "unknown",
+        "count": null
       }
     ]
   },
