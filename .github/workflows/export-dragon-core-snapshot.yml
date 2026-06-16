@@ -117,6 +117,9 @@ jobs:
           movies_items = snapshot["movies"]["items"]
           youtube_sections = snapshot["youtube"]["sections"]
           youtube_videos = snapshot["youtube"]["videos"]
+          partial_flag = bool((snapshot.get("status") or {}).get("partial"))
+          warnings = (snapshot.get("status") or {}).get("warnings") or []
+          sources = (snapshot.get("status") or {}).get("sources") or {}
 
           print(f"snapshot_path={snapshot_path}")
           print(f"snapshot_size_bytes={size_bytes}")
@@ -124,9 +127,20 @@ jobs:
           print(f"articles total={snapshot['articles'].get('total', 0)} items={len(articles_items)}")
           print(f"movies total={snapshot['movies'].get('total', 0)} items={len(movies_items)}")
           print(f"youtube sections={len(youtube_sections)} videos={len(youtube_videos)}")
+          print(f"partial={partial_flag}")
+          print(f"warnings={warnings}")
+          print(f"sources={sources}")
 
-          if not any((books_items, articles_items, movies_items, youtube_videos)):
-              raise SystemExit("All major snapshot item lists are empty.")
+          if partial_flag:
+              raise SystemExit("Snapshot status.partial is true.")
+          if not books_items:
+              raise SystemExit("books.items is empty.")
+          if not articles_items:
+              raise SystemExit("articles.items is empty.")
+          if not movies_items:
+              raise SystemExit("movies.items is empty.")
+          if not youtube_videos:
+              raise SystemExit("youtube.videos is empty.")
           PY
 
       - name: Audit snapshot for leaks
@@ -159,6 +173,9 @@ jobs:
               "google_client_secret",
               "notion_token",
               "github_token",
+              "x-amz-security-token",
+              "x-amz-credential",
+              "x-amz-signature",
           }
           suspicious_value_markers = {
               ".env",
@@ -172,6 +189,9 @@ jobs:
               "stream_url",
               "playback_url",
               "session_id",
+              "x-amz-security-token",
+              "x-amz-credential",
+              "x-amz-signature",
           }
           path_like_re = re.compile(
               r"(^|[\s:=])("
@@ -180,7 +200,7 @@ jobs:
               r")"
           )
           tokenized_url_re = re.compile(
-              r"https?://\S+[?&](?:access_token|token|secret|oauth|session(?:_id)?|client_secret|key)=",
+              r"https?://\S+[?&](?:access_token|token|secret|oauth|session(?:_id)?|client_secret|key|x-amz-security-token|x-amz-credential|x-amz-signature)=",
               re.IGNORECASE,
           )
           traceback_re = re.compile(

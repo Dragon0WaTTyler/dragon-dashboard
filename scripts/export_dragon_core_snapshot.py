@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -25,7 +26,9 @@ def main(argv: list[str] | None = None) -> int:
     print(f"movies_count={summary['movies_count']}")
     print(f"youtube_sections_count={summary['youtube_sections_count']}")
     print(f"youtube_videos_count={summary['youtube_videos_count']}")
+    print(f"partial={summary['snapshot']['status']['partial']}")
     print(f"warnings={summary['warnings']}")
+    print(f"sources={json.dumps(summary['snapshot']['status'].get('sources', {}), ensure_ascii=False, sort_keys=True)}")
     return 0
 
 

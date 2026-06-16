@@ -34,6 +34,7 @@ class DragonCoreSnapshotExportTests(unittest.TestCase):
             BOOKS_SNAPSHOT_PATH=paths["books_path"],
             CHESS_DATA_PATH=paths["chess_path"],
             EXPORTS_DIR=paths["exports_dir"],
+            DRAGON_CORE_SNAPSHOT_PATH=paths["exports_dir"] / "dragon_core_snapshot.json",
             YOUTUBE_LATEST_SNAPSHOT_PATH=paths["youtube_path"],
             PLAYLISTS_PATH=paths["playlists_path"],
             CACHE_DATA_PATH=paths["cache_data_path"],
@@ -245,6 +246,139 @@ class DragonCoreSnapshotExportTests(unittest.TestCase):
         self.assertEqual(snapshot["movies"], {"total": 0, "items": []})
         self.assertEqual(snapshot["youtube"]["sections"], [])
         self.assertEqual(snapshot["youtube"]["videos"], [])
+
+    def test_missing_primary_sources_fall_back_to_existing_snapshot(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            paths = self._temp_paths(temp_dir)
+            fallback_snapshot_path = paths["exports_dir"] / "dragon_core_snapshot.json"
+            self._write_json(
+                fallback_snapshot_path,
+                {
+                    "schema_version": api_v1.DRAGON_CORE_SNAPSHOT_SCHEMA_VERSION,
+                    "generated_at": "2026-06-16T00:00:00Z",
+                    "producer": {
+                        "kind": "flask_dashboard",
+                        "version": "v1",
+                        "source": "local_exports_and_snapshots",
+                    },
+                    "status": {
+                        "partial": False,
+                        "warnings": [],
+                    },
+                    "home": {
+                        "app_name": "Dragon",
+                        "service": "dragon",
+                        "sections": [],
+                    },
+                    "books": {
+                        "total": 1,
+                        "items": [
+                            {
+                                "id": "book-1",
+                                "title": "Book One",
+                                "author": "Author One",
+                                "authors": ["Author One"],
+                                "cover": "https://example.com/book.jpg",
+                                "year": "2024",
+                                "status": "reading",
+                                "score": "9",
+                                "excerpt": "Book excerpt",
+                            }
+                        ],
+                    },
+                    "articles": {
+                        "total": 1,
+                        "items": [
+                            {
+                                "id": "article-1",
+                                "title": "Article One",
+                                "source": "Example Source",
+                                "url": "https://example.com/articles/1",
+                                "published_at": "2026-06-10T10:00:00Z",
+                                "saved_at": "2026-06-10T11:00:00Z",
+                                "excerpt": "Article excerpt",
+                                "image": "https://example.com/article.jpg",
+                                "thumbnail": "https://example.com/article.jpg",
+                            }
+                        ],
+                    },
+                    "movies": {
+                        "total": 1,
+                        "items": [
+                            {
+                                "id": "film-movie-one",
+                                "title": "Movie One",
+                                "year": "2025",
+                                "poster": "https://example.com/movie.jpg",
+                                "status": "Finished",
+                                "score": 8,
+                                "type": "movie",
+                                "overview": "Movie overview",
+                            }
+                        ],
+                    },
+                    "youtube": {
+                        "sections": [
+                            {
+                                "key": "watchlater",
+                                "label": "Watch Later",
+                                "count": 1,
+                            },
+                            {
+                                "key": "Favorites",
+                                "label": "Favorites",
+                                "count": 1,
+                            }
+                        ],
+                        "videos": [
+                            {
+                                "id": "video-1",
+                                "video_id": "video-1",
+                                "title": "Video One",
+                                "channel": "Dragon",
+                                "thumbnail": "https://example.com/video.jpg",
+                                "url": "https://www.youtube.com/watch?v=video-1",
+                                "published_at": "2026-06-11T10:00:00Z",
+                                "saved_at": "2026-06-11T11:00:00Z",
+                                "duration": "12:34",
+                                "section": "YouTube Watch Later",
+                                "group": "",
+                                "playlist": "Watch Later",
+                                "source": "watchlater",
+                            },
+                            {
+                                "id": "video-2",
+                                "video_id": "video-2",
+                                "title": "Video Two",
+                                "channel": "Dragon Two",
+                                "thumbnail": "https://example.com/video-2.jpg",
+                                "url": "https://www.youtube.com/watch?v=video-2",
+                                "published_at": "2026-06-11T12:00:00Z",
+                                "saved_at": "2026-06-11T12:30:00Z",
+                                "duration": "09:12",
+                                "section": "Favorites",
+                                "group": "Favorites",
+                                "playlist": "",
+                                "source": "pockettube",
+                            }
+                        ],
+                    },
+                },
+            )
+
+            with self._patch_paths(paths):
+                snapshot = api_v1.build_dragon_core_snapshot()
+
+        self.assertFalse(snapshot["status"]["partial"])
+        self.assertEqual(snapshot["status"]["warnings"], ["youtube_source_stale"])
+        self.assertEqual(snapshot["status"]["sources"]["books"]["state"], "fallback_snapshot")
+        self.assertEqual(snapshot["status"]["sources"]["articles"]["state"], "fallback_snapshot")
+        self.assertEqual(snapshot["status"]["sources"]["movies"]["state"], "fallback_snapshot")
+        self.assertEqual(snapshot["status"]["sources"]["youtube"]["state"], "fallback_snapshot")
+        self.assertEqual(snapshot["books"]["total"], 1)
+        self.assertEqual(snapshot["articles"]["total"], 1)
+        self.assertEqual(snapshot["movies"]["total"], 1)
+        self.assertEqual(len(snapshot["youtube"]["videos"]), 2)
 
     def test_movies_use_current_projected_fields(self):
         with tempfile.TemporaryDirectory() as temp_dir:

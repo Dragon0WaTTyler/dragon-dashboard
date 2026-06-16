@@ -589,21 +589,7 @@ def _load_movie_entries():
 
 
 def _load_snapshot_movie_entries():
-    cache_payload = _load_local_json(CACHE_DATA_PATH)
-    films = cache_payload.get("films", {}) if isinstance(cache_payload, dict) else {}
-    if isinstance(films, dict):
-        for key in ("all", "want_to_union"):
-            entry = films.get(key)
-            if not isinstance(entry, dict):
-                continue
-            data = entry.get("data", [])
-            if not isinstance(data, list):
-                continue
-            entries = [dict(item) for item in data if isinstance(item, dict)]
-            if entries or data == []:
-                return entries
-
-    return _load_movie_entries()
+    return _load_snapshot_movie_entries_state()["entries"]
 
 
 def _build_movies_response(limit, offset):
@@ -1374,18 +1360,204 @@ def _snapshot_warning(message):
     return text if text else ""
 
 
+def _load_existing_dragon_core_snapshot():
+    payload = _load_local_json(DRAGON_CORE_SNAPSHOT_PATH)
+    if not isinstance(payload, dict):
+        return None
+    if str(payload.get("schema_version", "") or "").strip() != DRAGON_CORE_SNAPSHOT_SCHEMA_VERSION:
+        return None
+    return payload
+
+
+def _snapshot_total_from_items(payload, items):
+    if isinstance(payload, dict):
+        value = payload.get("total")
+        if isinstance(value, int):
+            return value
+        try:
+            return int(str(value).strip())
+        except Exception:
+            pass
+    return len(items)
+
+
+def _fallback_snapshot_domain(payload, key):
+    if not isinstance(payload, dict):
+        return None
+    domain = payload.get(key)
+    if not isinstance(domain, dict):
+        return None
+    raw_items = domain.get("items")
+    if not isinstance(raw_items, list):
+        return None
+    items = [dict(item) for item in raw_items if isinstance(item, dict)]
+    if not items:
+        return None
+    return {
+        "total": _snapshot_total_from_items(domain, items),
+        "items": items,
+    }
+
+
+def _fallback_snapshot_youtube(payload, source="all"):
+    if not isinstance(payload, dict):
+        return None
+    youtube = payload.get("youtube")
+    if not isinstance(youtube, dict):
+        return None
+
+    raw_sections = youtube.get("sections")
+    raw_videos = youtube.get("videos")
+    if not isinstance(raw_sections, list) or not isinstance(raw_videos, list):
+        return None
+
+    sections = [dict(item) for item in raw_sections if isinstance(item, dict)]
+    videos = [dict(item) for item in raw_videos if isinstance(item, dict)]
+    if source != "all":
+        videos = [
+            item
+            for item in videos
+            if str(item.get("source", "") or "").strip().lower() == str(source or "").strip().lower()
+        ]
+
+    if not videos and not sections:
+        return None
+
+    return {
+        "sections": sections,
+        "videos": videos,
+    }
+
+
+def _source_status(kind, state, item_count=0, **extra):
+    payload = {
+        "source_kind": kind,
+        "state": state,
+        "item_count": int(item_count or 0),
+    }
+    for key, value in extra.items():
+        if value is None:
+            continue
+        payload[key] = value
+    return payload
+
+
+def _load_snapshot_movie_entries_state():
+    cache_payload = _load_local_json(CACHE_DATA_PATH)
+    films = cache_payload.get("films", {}) if isinstance(cache_payload, dict) else {}
+    if isinstance(films, dict):
+        for key in ("all", "want_to_union"):
+            entry = films.get(key)
+            if not isinstance(entry, dict):
+                continue
+            data = entry.get("data", [])
+            if not isinstance(data, list):
+                continue
+            entries = [dict(item) for item in data if isinstance(item, dict)]
+            if entries or data == []:
+                return {
+                    "entries": entries,
+                    "source_kind": f"cache_data_films_{key}",
+                }
+
+    movie_entries = _load_movie_entries()
+    if movie_entries is not None:
+        return {
+            "entries": movie_entries,
+            "source_kind": "movies_export_json",
+        }
+
+    return {
+        "entries": None,
+        "source_kind": "unavailable",
+    }
+
+
 def build_dragon_core_snapshot():
     warnings = []
+    sources = {}
+    partial_domains = set()
 
+    existing_snapshot = _load_existing_dragon_core_snapshot()
     home_response = _build_home_response()
-    articles_response = _build_articles_response(DRAGON_CORE_SNAPSHOT_LIMITS["articles"])
-    books_response = _build_books_response(DRAGON_CORE_SNAPSHOT_LIMITS["books"], 0)
-    snapshot_movie_entries = _load_snapshot_movie_entries()
-    movies_response = _build_movies_response_from_entries(
-        snapshot_movie_entries,
-        DRAGON_CORE_SNAPSHOT_LIMITS["movies"],
-        0,
-    )
+
+    article_entries = _load_article_entries()
+    if article_entries is not None:
+        articles_response = _build_articles_response(DRAGON_CORE_SNAPSHOT_LIMITS["articles"])
+        articles_items = articles_response.get("items", []) or []
+        articles_domain = {
+            "total": len(articles_items),
+            "items": articles_items,
+        }
+        sources["articles"] = _source_status("reading_data_json", "primary", len(articles_items))
+    else:
+        articles_domain = _fallback_snapshot_domain(existing_snapshot, "articles")
+        if articles_domain is not None:
+            sources["articles"] = _source_status(
+                "existing_dragon_core_snapshot",
+                "fallback_snapshot",
+                len(articles_domain["items"]),
+            )
+        else:
+            articles_domain = {"total": 0, "items": []}
+            sources["articles"] = _source_status("reading_data_json", "missing", 0)
+            partial_domains.add("articles")
+            warnings.append(_snapshot_warning("articles_source_missing"))
+
+    book_entries = _load_book_entries()
+    if book_entries is not None:
+        books_response = _build_books_response(DRAGON_CORE_SNAPSHOT_LIMITS["books"], 0)
+        books_items = books_response.get("items", []) or []
+        books_domain = {
+            "total": len(books_items),
+            "items": books_items,
+        }
+        sources["books"] = _source_status("books_snapshot_json", "primary", len(books_items))
+    else:
+        books_domain = _fallback_snapshot_domain(existing_snapshot, "books")
+        if books_domain is not None:
+            sources["books"] = _source_status(
+                "existing_dragon_core_snapshot",
+                "fallback_snapshot",
+                len(books_domain["items"]),
+            )
+        else:
+            books_domain = {"total": 0, "items": []}
+            sources["books"] = _source_status("books_snapshot_json", "missing", 0)
+            partial_domains.add("books")
+            warnings.append(_snapshot_warning("books_source_missing"))
+
+    movie_source_state = _load_snapshot_movie_entries_state()
+    snapshot_movie_entries = movie_source_state["entries"]
+    if snapshot_movie_entries is not None:
+        movies_response = _build_movies_response_from_entries(
+            snapshot_movie_entries,
+            DRAGON_CORE_SNAPSHOT_LIMITS["movies"],
+            0,
+        )
+        movies_domain = {
+            "total": movies_response.get("total", len(movies_response.get("items", []) or [])) or 0,
+            "items": movies_response.get("items", []) or [],
+        }
+        sources["movies"] = _source_status(
+            movie_source_state["source_kind"],
+            "primary",
+            movies_domain["total"],
+        )
+    else:
+        movies_domain = _fallback_snapshot_domain(existing_snapshot, "movies")
+        if movies_domain is not None:
+            sources["movies"] = _source_status(
+                "existing_dragon_core_snapshot",
+                "fallback_snapshot",
+                len(movies_domain["items"]),
+            )
+        else:
+            movies_domain = {"total": 0, "items": []}
+            sources["movies"] = _source_status("snapshot_movie_entries", "missing", 0)
+            partial_domains.add("movies")
+            warnings.append(_snapshot_warning("movies_source_missing"))
+
     youtube_watchlater_response = _build_youtube_response(
         DRAGON_CORE_SNAPSHOT_LIMITS["youtube_watchlater_videos"],
         0,
@@ -1397,27 +1569,96 @@ def build_dragon_core_snapshot():
         source="pockettube",
     )
     youtube_sections_response = _build_youtube_sections_response()
-
-    if _load_article_entries() is None:
-        warnings.append(_snapshot_warning("Articles source missing or malformed."))
-    if _load_book_entries() is None:
-        warnings.append(_snapshot_warning("Books source missing or malformed."))
-    if snapshot_movie_entries is None:
-        warnings.append(_snapshot_warning("Movies source missing or malformed."))
-
     youtube_state = _load_youtube_entries_state("all")
-    if youtube_state.get("entries") is None:
-        warnings.append(_snapshot_warning("YouTube sources missing or malformed."))
+
+    youtube_watchlater_items = youtube_watchlater_response.get("items", []) or []
+    youtube_pockettube_items = youtube_pockettube_response.get("items", []) or []
+    youtube_sections = youtube_sections_response.get("sections", []) or []
+
+    if not youtube_watchlater_items:
+        fallback_watchlater = _fallback_snapshot_youtube(existing_snapshot, source="watchlater")
+        if fallback_watchlater and fallback_watchlater.get("videos"):
+            youtube_watchlater_items = fallback_watchlater["videos"]
+            watchlater_state = "fallback_snapshot"
+            watchlater_kind = "existing_dragon_core_snapshot"
+        else:
+            watchlater_meta = youtube_state.get("watchlater_meta", {}) or {}
+            watchlater_state = "missing"
+            watchlater_kind = str(watchlater_meta.get("data_source", "") or "watchlater_playlist_cache")
+            partial_domains.add("youtube")
+            warnings.append(_snapshot_warning("youtube_watchlater_source_missing"))
+    else:
+        watchlater_meta = youtube_watchlater_response.get("meta", {}) or {}
+        watchlater_state = "primary"
+        watchlater_kind = str(watchlater_meta.get("data_source", "") or "watchlater_playlist_cache")
+
+    if not youtube_pockettube_items:
+        fallback_pockettube = _fallback_snapshot_youtube(existing_snapshot, source="pockettube")
+        if fallback_pockettube and fallback_pockettube.get("videos"):
+            youtube_pockettube_items = fallback_pockettube["videos"]
+            pockettube_state = "fallback_snapshot"
+            pockettube_kind = "existing_dragon_core_snapshot"
+        else:
+            pockettube_state = "missing"
+            pockettube_kind = "youtube_latest_snapshot_json"
+            partial_domains.add("youtube")
+            warnings.append(_snapshot_warning("youtube_pockettube_source_missing"))
+    else:
+        pockettube_state = "primary"
+        pockettube_kind = "youtube_latest_snapshot_json"
+
+    youtube_videos = youtube_watchlater_items + youtube_pockettube_items
+    if youtube_videos:
+        youtube_sections = _youtube_sections_from_entries(youtube_videos)
+        youtube_state_value = "primary"
+        if "fallback_snapshot" in (watchlater_state, pockettube_state):
+            youtube_state_value = "mixed"
+        if watchlater_state == "fallback_snapshot" and pockettube_state == "fallback_snapshot":
+            youtube_state_value = "fallback_snapshot"
+        sources["youtube"] = _source_status(
+            "combined_youtube_sources",
+            youtube_state_value,
+            len(youtube_videos),
+            section_count=len(youtube_sections),
+            pockettube_source=pockettube_kind,
+            pockettube_state=pockettube_state,
+            watchlater_source=watchlater_kind,
+            watchlater_state=watchlater_state,
+        )
+    else:
+        youtube_fallback = _fallback_snapshot_youtube(existing_snapshot, source="all")
+        if youtube_fallback and youtube_fallback.get("videos"):
+            youtube_videos = youtube_fallback["videos"]
+            youtube_sections = youtube_fallback.get("sections", []) or _youtube_sections_from_entries(youtube_videos)
+            sources["youtube"] = _source_status(
+                "existing_dragon_core_snapshot",
+                "fallback_snapshot",
+                len(youtube_videos),
+                section_count=len(youtube_sections),
+            )
+        else:
+            youtube_sections = []
+            sources["youtube"] = _source_status("youtube_sources", "missing", 0, section_count=0)
+            partial_domains.add("youtube")
+            warnings.append(_snapshot_warning("youtube_source_missing"))
+
     youtube_warning = _snapshot_warning((youtube_state.get("watchlater_meta", {}) or {}).get("warning", ""))
     if youtube_warning:
-        warnings.append(youtube_warning)
+        warnings.append(_snapshot_warning("youtube_source_stale"))
 
     home_sections = []
-    movie_total = movies_response.get("total", 0) or 0
+    section_counts = {
+        "books": books_domain["total"],
+        "articles": articles_domain["total"],
+        "movies": movies_domain["total"],
+        "youtube": len(youtube_videos),
+    }
     for section in home_response["sections"]:
-        if isinstance(section, dict) and str(section.get("key", "")).lower() == "movies":
+        if isinstance(section, dict) and str(section.get("key", "")).lower() in section_counts:
             updated_section = dict(section)
-            updated_section["count"] = movie_total
+            section_key = str(updated_section.get("key", "")).lower()
+            updated_section["count"] = section_counts[section_key]
+            updated_section["status"] = "available" if section_counts[section_key] else "unknown"
             home_sections.append(updated_section)
         else:
             home_sections.append(section)
@@ -1431,30 +1672,21 @@ def build_dragon_core_snapshot():
             "source": "local_exports_and_snapshots",
         },
         "status": {
-            "partial": bool(warnings),
+            "partial": bool(partial_domains),
             "warnings": warnings,
+            "sources": sources,
         },
         "home": {
             "app_name": home_response["app_name"],
             "service": home_response["service"],
             "sections": home_sections,
         },
-        "books": {
-            "total": len(books_response.get("items", []) or []),
-            "items": books_response.get("items", []) or [],
-        },
-        "articles": {
-            "total": len(articles_response.get("items", []) or []),
-            "items": articles_response.get("items", []) or [],
-        },
-        "movies": {
-            "total": movies_response.get("total", len(movies_response.get("items", []) or [])) or 0,
-            "items": movies_response.get("items", []) or [],
-        },
+        "books": books_domain,
+        "articles": articles_domain,
+        "movies": movies_domain,
         "youtube": {
-            "sections": youtube_sections_response.get("sections", []) or [],
-            "videos": (youtube_watchlater_response.get("items", []) or [])
-            + (youtube_pockettube_response.get("items", []) or []),
+            "sections": youtube_sections,
+            "videos": youtube_videos,
         },
     }
 
