@@ -24,6 +24,15 @@ from dragon.paths import BOOKS_SNAPSHOT_PATH, CACHE_DATA_PATH, CHESS_DATA_PATH, 
 
 api_v1_bp = Blueprint("api_v1", __name__)
 
+DRAGON_CORE_SNAPSHOT_SCHEMA_VERSION = "dragon-core-snapshot.v1"
+DRAGON_CORE_SNAPSHOT_PATH = EXPORTS_DIR / "dragon_core_snapshot.json"
+DRAGON_CORE_SNAPSHOT_LIMITS = {
+    "books": 500,
+    "articles": 500,
+    "movies": 500,
+    "youtube_videos": 500,
+}
+
 
 @api_v1_bp.get("/api/v1/health")
 def api_v1_health():
@@ -1261,8 +1270,7 @@ def _youtube_sections_from_entries(entries):
     return sections
 
 
-@api_v1_bp.get("/api/v1/home")
-def api_v1_home():
+def _build_home_response():
     reading_payload = _load_local_json(READING_DATA_PATH)
     movie_entries = _load_movie_entries()
     chess_payload = _load_local_json(CHESS_DATA_PATH)
@@ -1292,16 +1300,112 @@ def api_v1_home():
         ),
     ]
 
-    return jsonify(
-        {
-            "ok": True,
-            "app_name": "Dragon",
-            "service": "dragon",
-            "api_version": "v1",
-            "server_time": _server_time_iso(),
-            "sections": sections,
-        }
-    )
+    return {
+        "ok": True,
+        "app_name": "Dragon",
+        "service": "dragon",
+        "api_version": "v1",
+        "server_time": _server_time_iso(),
+        "sections": sections,
+    }
+
+
+def _build_youtube_sections_response():
+    entries = _load_youtube_entries()
+    if entries is None:
+        return {"ok": True, "api_version": "v1", "sections": []}
+    return {
+        "ok": True,
+        "api_version": "v1",
+        "sections": _youtube_sections_from_entries(entries),
+    }
+
+
+def _snapshot_warning(message):
+    text = str(message or "").strip()
+    return text if text else ""
+
+
+def build_dragon_core_snapshot():
+    warnings = []
+
+    home_response = _build_home_response()
+    articles_response = _build_articles_response(DRAGON_CORE_SNAPSHOT_LIMITS["articles"])
+    books_response = _build_books_response(DRAGON_CORE_SNAPSHOT_LIMITS["books"], 0)
+    movies_response = _build_movies_response(DRAGON_CORE_SNAPSHOT_LIMITS["movies"], 0)
+    youtube_videos_response = _build_youtube_response(DRAGON_CORE_SNAPSHOT_LIMITS["youtube_videos"], 0)
+    youtube_sections_response = _build_youtube_sections_response()
+
+    if _load_article_entries() is None:
+        warnings.append(_snapshot_warning("Articles source missing or malformed."))
+    if _load_book_entries() is None:
+        warnings.append(_snapshot_warning("Books source missing or malformed."))
+    if _load_movie_entries() is None:
+        warnings.append(_snapshot_warning("Movies source missing or malformed."))
+
+    youtube_state = _load_youtube_entries_state("all")
+    if youtube_state.get("entries") is None:
+        warnings.append(_snapshot_warning("YouTube sources missing or malformed."))
+    youtube_warning = _snapshot_warning((youtube_state.get("watchlater_meta", {}) or {}).get("warning", ""))
+    if youtube_warning:
+        warnings.append(youtube_warning)
+
+    return {
+        "schema_version": DRAGON_CORE_SNAPSHOT_SCHEMA_VERSION,
+        "generated_at": _server_time_iso(),
+        "producer": {
+            "kind": "flask_dashboard",
+            "version": "v1",
+            "source": "local_exports_and_snapshots",
+        },
+        "status": {
+            "partial": bool(warnings),
+            "warnings": warnings,
+        },
+        "home": {
+            "app_name": home_response["app_name"],
+            "service": home_response["service"],
+            "sections": home_response["sections"],
+        },
+        "books": {
+            "total": len(books_response.get("items", []) or []),
+            "items": books_response.get("items", []) or [],
+        },
+        "articles": {
+            "total": len(articles_response.get("items", []) or []),
+            "items": articles_response.get("items", []) or [],
+        },
+        "movies": {
+            "total": len(movies_response.get("items", []) or []),
+            "items": movies_response.get("items", []) or [],
+        },
+        "youtube": {
+            "sections": youtube_sections_response.get("sections", []) or [],
+            "videos": youtube_videos_response.get("items", []) or [],
+        },
+    }
+
+
+def export_dragon_core_snapshot(output_path: Path | None = None):
+    snapshot = build_dragon_core_snapshot()
+    destination = Path(output_path or DRAGON_CORE_SNAPSHOT_PATH)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_text(json.dumps(snapshot, indent=2, ensure_ascii=False), encoding="utf-8")
+    return {
+        "output_path": str(destination),
+        "books_count": snapshot["books"]["total"],
+        "articles_count": snapshot["articles"]["total"],
+        "movies_count": snapshot["movies"]["total"],
+        "youtube_sections_count": len(snapshot["youtube"]["sections"]),
+        "youtube_videos_count": len(snapshot["youtube"]["videos"]),
+        "warnings": list(snapshot["status"]["warnings"]),
+        "snapshot": snapshot,
+    }
+
+
+@api_v1_bp.get("/api/v1/home")
+def api_v1_home():
+    return jsonify(_build_home_response())
 
 
 @api_v1_bp.get("/api/v1/articles")
@@ -1359,17 +1463,7 @@ def api_v1_youtube_videos():
 
 @api_v1_bp.get("/api/v1/youtube/sections")
 def api_v1_youtube_sections():
-    entries = _load_youtube_entries()
-    if entries is None:
-        return jsonify({"ok": True, "api_version": "v1", "sections": []})
-
-    return jsonify(
-        {
-            "ok": True,
-            "api_version": "v1",
-            "sections": _youtube_sections_from_entries(entries),
-        }
-    )
+    return jsonify(_build_youtube_sections_response())
 
 
 @api_v1_bp.get("/api/v1/me")
