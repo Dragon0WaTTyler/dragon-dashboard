@@ -133,6 +133,33 @@ class DragonCoreSnapshotExportTests(unittest.TestCase):
         self._write_json(
             paths["cache_data_path"],
             {
+                "films": {
+                    "all": {
+                        "updated_at": "2026-06-11T11:30:00Z",
+                        "data": [
+                            {
+                                "notion_page_id": "movie-one",
+                                "name": "Movie One",
+                                "category": "movie",
+                                "status": "Finished",
+                                "score": "8",
+                                "poster": "https://example.com/movie.jpg",
+                                "year": "2025",
+                                "overview": "Movie overview",
+                            },
+                            {
+                                "notion_page_id": "movie-two",
+                                "name": "Movie Two",
+                                "category": "movie",
+                                "status": "Watching",
+                                "score": "7",
+                                "poster": "https://example.com/movie-2.jpg",
+                                "year": "2024",
+                                "overview": "Movie overview two",
+                            },
+                        ],
+                    }
+                },
                 "youtube_playlists": {
                     "PLA9RaIVS6nz25rdZd3SihId_AsAA06nPP": {
                         "updated_at": "2026-06-11T11:30:00Z",
@@ -150,7 +177,7 @@ class DragonCoreSnapshotExportTests(unittest.TestCase):
                             }
                         ],
                     }
-                }
+                },
             },
         )
 
@@ -265,12 +292,15 @@ class DragonCoreSnapshotExportTests(unittest.TestCase):
             written = json.loads(output_path.read_text(encoding="utf-8"))
 
         self.assertEqual(written["schema_version"], api_v1.DRAGON_CORE_SNAPSHOT_SCHEMA_VERSION)
+        self.assertEqual(written["movies"]["total"], 2)
         self.assertEqual(summary["output_path"], str(output_path))
         self.assertEqual(summary["books_count"], 1)
         self.assertEqual(summary["articles_count"], 1)
-        self.assertEqual(summary["movies_count"], 1)
+        self.assertEqual(summary["movies_count"], 2)
         self.assertEqual(summary["youtube_sections_count"], 2)
         self.assertEqual(summary["youtube_videos_count"], 2)
+        home_movies_section = next(section for section in written["home"]["sections"] if section["key"] == "movies")
+        self.assertEqual(home_movies_section["count"], 2)
 
     def test_snapshot_keeps_watchlater_and_pockettube_videos_separate(self):
         with tempfile.TemporaryDirectory() as temp_dir:

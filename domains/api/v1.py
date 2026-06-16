@@ -563,6 +563,24 @@ def _load_movie_entries():
     return entries
 
 
+def _load_snapshot_movie_entries():
+    cache_payload = _load_local_json(CACHE_DATA_PATH)
+    films = cache_payload.get("films", {}) if isinstance(cache_payload, dict) else {}
+    if isinstance(films, dict):
+        for key in ("all", "want_to_union"):
+            entry = films.get(key)
+            if not isinstance(entry, dict):
+                continue
+            data = entry.get("data", [])
+            if not isinstance(data, list):
+                continue
+            entries = [dict(item) for item in data if isinstance(item, dict)]
+            if entries or data == []:
+                return entries
+
+    return _load_movie_entries()
+
+
 def _build_movies_response(limit, offset):
     entries = _load_movie_entries()
     if entries is None:
@@ -1333,7 +1351,12 @@ def build_dragon_core_snapshot():
     home_response = _build_home_response()
     articles_response = _build_articles_response(DRAGON_CORE_SNAPSHOT_LIMITS["articles"])
     books_response = _build_books_response(DRAGON_CORE_SNAPSHOT_LIMITS["books"], 0)
-    movies_response = _build_movies_response(DRAGON_CORE_SNAPSHOT_LIMITS["movies"], 0)
+    snapshot_movie_entries = _load_snapshot_movie_entries()
+    movies_response = _build_movies_response_from_entries(
+        snapshot_movie_entries,
+        DRAGON_CORE_SNAPSHOT_LIMITS["movies"],
+        0,
+    )
     youtube_watchlater_response = _build_youtube_response(
         DRAGON_CORE_SNAPSHOT_LIMITS["youtube_watchlater_videos"],
         0,
@@ -1350,7 +1373,7 @@ def build_dragon_core_snapshot():
         warnings.append(_snapshot_warning("Articles source missing or malformed."))
     if _load_book_entries() is None:
         warnings.append(_snapshot_warning("Books source missing or malformed."))
-    if _load_movie_entries() is None:
+    if snapshot_movie_entries is None:
         warnings.append(_snapshot_warning("Movies source missing or malformed."))
 
     youtube_state = _load_youtube_entries_state("all")
@@ -1359,6 +1382,16 @@ def build_dragon_core_snapshot():
     youtube_warning = _snapshot_warning((youtube_state.get("watchlater_meta", {}) or {}).get("warning", ""))
     if youtube_warning:
         warnings.append(youtube_warning)
+
+    home_sections = []
+    movie_total = movies_response.get("total", 0) or 0
+    for section in home_response["sections"]:
+        if isinstance(section, dict) and str(section.get("key", "")).lower() == "movies":
+            updated_section = dict(section)
+            updated_section["count"] = movie_total
+            home_sections.append(updated_section)
+        else:
+            home_sections.append(section)
 
     return {
         "schema_version": DRAGON_CORE_SNAPSHOT_SCHEMA_VERSION,
@@ -1375,7 +1408,7 @@ def build_dragon_core_snapshot():
         "home": {
             "app_name": home_response["app_name"],
             "service": home_response["service"],
-            "sections": home_response["sections"],
+            "sections": home_sections,
         },
         "books": {
             "total": len(books_response.get("items", []) or []),
@@ -1386,7 +1419,7 @@ def build_dragon_core_snapshot():
             "items": articles_response.get("items", []) or [],
         },
         "movies": {
-            "total": len(movies_response.get("items", []) or []),
+            "total": movies_response.get("total", len(movies_response.get("items", []) or [])) or 0,
             "items": movies_response.get("items", []) or [],
         },
         "youtube": {
@@ -1394,6 +1427,49 @@ def build_dragon_core_snapshot():
             "videos": (youtube_watchlater_response.get("items", []) or [])
             + (youtube_pockettube_response.get("items", []) or []),
         },
+    }
+
+
+def _build_movies_response_from_entries(entries, limit, offset):
+    if entries is None:
+        return {
+            "ok": True,
+            "api_version": "v1",
+            "items": [],
+            "count": 0,
+            "total": 0,
+            "limit": limit,
+            "offset": offset,
+            "next_offset": None,
+            "has_more": False,
+        }
+
+    sort_keys = [_movie_sort_datetime(entry) for entry in entries]
+    if any(value is not None for value in sort_keys):
+        entries = [
+            item
+            for _, item in sorted(
+                enumerate(entries),
+                key=lambda pair: (
+                    0 if _movie_sort_datetime(pair[1]) is not None else 1,
+                    -_movie_sort_datetime(pair[1]).timestamp() if _movie_sort_datetime(pair[1]) is not None else 0,
+                    pair[0],
+                ),
+            )
+        ]
+
+    page = _paginate_items(entries, limit, offset)
+    items = [_project_movie_item(entry) for entry in page["items"]]
+    return {
+        "ok": True,
+        "api_version": "v1",
+        "items": items,
+        "count": len(items),
+        "total": page["total"],
+        "limit": page["limit"],
+        "offset": page["offset"],
+        "next_offset": page["next_offset"],
+        "has_more": page["has_more"],
     }
 
 
