@@ -2,6 +2,7 @@
 
 This workflow generates the backend Dragon Core snapshot with the existing exporter and publishes `exports/dragon_core_snapshot.json`.
 When local-only source files are absent in GitHub Actions, the exporter falls back to the last committed complete Dragon Core snapshot instead of publishing empty major domains.
+For movies, the canonical source is the semantic library export at `exports/movies_export.json`, not the broader runtime/discovery cache in `cache_data.json`.
 
 Manual run:
 - GitHub Actions -> `Export Dragon Core Snapshot` -> `Run workflow`
@@ -16,6 +17,7 @@ What it does:
 - runs `tests.test_dragon_core_snapshot_export`
 - exports the snapshot
 - validates schema, required containers, counts, and minimum size
+- verifies the movies domain came from the semantic export path or the last committed safe snapshot fallback
 - fails the run if books, articles, movies, or YouTube videos are empty, or if the snapshot is still partial
 - audits the JSON for secrets, tokens, runtime paths, tracebacks, and transport/runtime leaks
 - commits only `exports/dragon_core_snapshot.json` when it changed

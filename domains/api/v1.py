@@ -1443,33 +1443,16 @@ def _source_status(kind, state, item_count=0, **extra):
 
 
 def _load_snapshot_movie_entries_state():
-    cache_payload = _load_local_json(CACHE_DATA_PATH)
-    films = cache_payload.get("films", {}) if isinstance(cache_payload, dict) else {}
-    if isinstance(films, dict):
-        for key in ("all", "want_to_union"):
-            entry = films.get(key)
-            if not isinstance(entry, dict):
-                continue
-            data = entry.get("data", [])
-            if not isinstance(data, list):
-                continue
-            entries = [dict(item) for item in data if isinstance(item, dict)]
-            if entries or data == []:
-                return {
-                    "entries": entries,
-                    "source_kind": f"cache_data_films_{key}",
-                }
-
     movie_entries = _load_movie_entries()
     if movie_entries is not None:
         return {
             "entries": movie_entries,
-            "source_kind": "movies_export_json",
+            "source_kind": "notion_export",
         }
 
     return {
         "entries": None,
-        "source_kind": "unavailable",
+        "source_kind": "missing",
     }
 
 
@@ -1548,13 +1531,13 @@ def build_dragon_core_snapshot():
         movies_domain = _fallback_snapshot_domain(existing_snapshot, "movies")
         if movies_domain is not None:
             sources["movies"] = _source_status(
-                "existing_dragon_core_snapshot",
+                "committed_snapshot_fallback",
                 "fallback_snapshot",
                 len(movies_domain["items"]),
             )
         else:
             movies_domain = {"total": 0, "items": []}
-            sources["movies"] = _source_status("snapshot_movie_entries", "missing", 0)
+            sources["movies"] = _source_status("missing", "missing", 0)
             partial_domains.add("movies")
             warnings.append(_snapshot_warning("movies_source_missing"))
 

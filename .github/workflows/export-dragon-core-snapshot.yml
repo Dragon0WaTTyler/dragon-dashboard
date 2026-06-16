@@ -120,6 +120,7 @@ jobs:
           partial_flag = bool((snapshot.get("status") or {}).get("partial"))
           warnings = (snapshot.get("status") or {}).get("warnings") or []
           sources = (snapshot.get("status") or {}).get("sources") or {}
+          movie_source_kind = str((sources.get("movies") or {}).get("source_kind") or "")
 
           print(f"snapshot_path={snapshot_path}")
           print(f"snapshot_size_bytes={size_bytes}")
@@ -133,6 +134,8 @@ jobs:
 
           if partial_flag:
               raise SystemExit("Snapshot status.partial is true.")
+          if movie_source_kind not in {"notion_export", "committed_snapshot_fallback"}:
+              raise SystemExit(f"Unexpected movies source_kind: {movie_source_kind!r}")
           if not books_items:
               raise SystemExit("books.items is empty.")
           if not articles_items:

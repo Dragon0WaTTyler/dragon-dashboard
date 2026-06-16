@@ -387,6 +387,9 @@ class DragonCoreSnapshotExportTests(unittest.TestCase):
             with self._patch_paths(paths):
                 snapshot = api_v1.build_dragon_core_snapshot()
 
+        self.assertEqual(snapshot["status"]["sources"]["movies"]["source_kind"], "notion_export")
+        self.assertEqual(snapshot["status"]["sources"]["movies"]["state"], "primary")
+        self.assertEqual(snapshot["movies"]["total"], 1)
         self.assertEqual(
             snapshot["movies"]["items"][0],
             {
@@ -426,15 +429,15 @@ class DragonCoreSnapshotExportTests(unittest.TestCase):
             written = json.loads(output_path.read_text(encoding="utf-8"))
 
         self.assertEqual(written["schema_version"], api_v1.DRAGON_CORE_SNAPSHOT_SCHEMA_VERSION)
-        self.assertEqual(written["movies"]["total"], 2)
+        self.assertEqual(written["movies"]["total"], 1)
         self.assertEqual(summary["output_path"], str(output_path))
         self.assertEqual(summary["books_count"], 1)
         self.assertEqual(summary["articles_count"], 1)
-        self.assertEqual(summary["movies_count"], 2)
+        self.assertEqual(summary["movies_count"], 1)
         self.assertEqual(summary["youtube_sections_count"], 2)
         self.assertEqual(summary["youtube_videos_count"], 2)
         home_movies_section = next(section for section in written["home"]["sections"] if section["key"] == "movies")
-        self.assertEqual(home_movies_section["count"], 2)
+        self.assertEqual(home_movies_section["count"], 1)
 
     def test_snapshot_keeps_watchlater_and_pockettube_videos_separate(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -473,9 +476,9 @@ class DragonCoreSnapshotExportTests(unittest.TestCase):
             books_payload["entries"][0]["cover"] = signed_url
             self._write_json(paths["books_path"], books_payload)
 
-            movies_payload = json.loads(paths["cache_data_path"].read_text(encoding="utf-8"))
-            movies_payload["films"]["all"]["data"][0]["poster"] = signed_url
-            self._write_json(paths["cache_data_path"], movies_payload)
+            movies_payload = json.loads(paths["movies_path"].read_text(encoding="utf-8"))
+            movies_payload[0]["poster"] = signed_url
+            self._write_json(paths["movies_path"], movies_payload)
 
             youtube_payload = json.loads(paths["youtube_path"].read_text(encoding="utf-8"))
             youtube_payload["groups"]["Favorites"]["videos"][0]["thumbnail"] = signed_url
@@ -497,6 +500,60 @@ class DragonCoreSnapshotExportTests(unittest.TestCase):
         serialized = json.dumps(snapshot, ensure_ascii=False)
         self.assertNotIn("X-Amz-", serialized)
         self.assertNotIn("secret-token", serialized)
+
+    def test_movies_snapshot_ignores_runtime_cache_when_export_is_missing(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            paths = self._temp_paths(temp_dir)
+            self._write_valid_sources(paths)
+            paths["movies_path"].unlink()
+            fallback_snapshot_path = paths["exports_dir"] / "dragon_core_snapshot.json"
+            self._write_json(
+                fallback_snapshot_path,
+                {
+                    "schema_version": api_v1.DRAGON_CORE_SNAPSHOT_SCHEMA_VERSION,
+                    "generated_at": "2026-06-16T00:00:00Z",
+                    "producer": {
+                        "kind": "flask_dashboard",
+                        "version": "v1",
+                        "source": "local_exports_and_snapshots",
+                    },
+                    "status": {
+                        "partial": False,
+                        "warnings": [],
+                    },
+                    "home": {
+                        "app_name": "Dragon",
+                        "service": "dragon",
+                        "sections": [],
+                    },
+                    "books": {"total": 0, "items": []},
+                    "articles": {"total": 0, "items": []},
+                    "movies": {
+                        "total": 1,
+                        "items": [
+                            {
+                                "id": "film-fallback-movie",
+                                "title": "Fallback Movie",
+                                "year": "1999",
+                                "poster": "https://example.com/fallback.jpg",
+                                "status": "Finished",
+                                "score": 9,
+                                "type": "movie",
+                                "overview": "Fallback overview",
+                            }
+                        ],
+                    },
+                    "youtube": {"sections": [], "videos": []},
+                },
+            )
+
+            with self._patch_paths(paths):
+                snapshot = api_v1.build_dragon_core_snapshot()
+
+        self.assertEqual(snapshot["status"]["sources"]["movies"]["source_kind"], "committed_snapshot_fallback")
+        self.assertEqual(snapshot["status"]["sources"]["movies"]["state"], "fallback_snapshot")
+        self.assertEqual(snapshot["movies"]["total"], 1)
+        self.assertEqual(snapshot["movies"]["items"][0]["title"], "Fallback Movie")
 
 
 if __name__ == "__main__":
