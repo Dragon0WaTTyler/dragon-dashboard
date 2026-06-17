@@ -1,45 +1,231 @@
 ﻿{% extends "base.html" %}
+{% block title %}Movies{% endblock %}
 {% block content %}
 <style>
-.movies-hero-actions{
-    margin-top:18px;
+.dragon-movies-page{
+    display:grid;
+    gap:22px;
 }
-.filter-form .filter-submit{
-    background:var(--solid-button-bg);
-    border:1px solid var(--solid-button-border);
-    color:var(--solid-button-text);
-    box-shadow:none;
-    padding:13px 16px;
-}
-.filter-form .filter-submit:hover,
-.filter-form .filter-submit:focus-visible{
-    background:var(--solid-button-bg);
-    border-color:var(--button-hover-border);
-    color:var(--solid-button-text);
-    box-shadow:none;
-}
-.movie-filters-card{
+.dragon-movies-hero{
     position:relative;
-    overflow:visible;
-    z-index:6;
-    margin-top:0;
-    margin-bottom:18px;
+    overflow:hidden;
+    padding:0;
 }
-.search-field{
+.dragon-movies-hero-inner{
     position:relative;
-    z-index:8;
+    display:grid;
+    grid-template-columns:minmax(0, 1.4fr) minmax(240px, 320px);
+    gap:24px;
+    min-height:460px;
 }
-.search-field input{
+.dragon-movies-hero-media{
+    position:absolute;
+    inset:0;
+    background:
+        linear-gradient(90deg, rgba(0,0,0,.92) 0%, rgba(0,0,0,.82) 36%, rgba(0,0,0,.5) 100%),
+        linear-gradient(180deg, rgba(0,0,0,.08) 0%, rgba(0,0,0,.7) 100%);
+}
+.dragon-movies-hero-media.has-poster{
+    background-image:
+        linear-gradient(90deg, rgba(0,0,0,.94) 0%, rgba(0,0,0,.86) 34%, rgba(0,0,0,.58) 64%, rgba(0,0,0,.88) 100%),
+        linear-gradient(180deg, rgba(20,0,0,.22) 0%, rgba(0,0,0,.86) 100%),
+        var(--hero-poster);
+    background-size:auto, auto, cover;
+    background-position:center;
+}
+.dragon-movies-hero-glow{
+    position:absolute;
+    inset:auto -10% -35% auto;
+    width:420px;
+    height:420px;
+    border-radius:50%;
+    background:radial-gradient(circle, rgba(255,0,0,.18) 0%, rgba(255,0,0,0) 70%);
+    pointer-events:none;
+}
+.dragon-movies-hero-copy,
+.dragon-movies-hero-poster{
+    position:relative;
+    z-index:1;
+}
+.dragon-movies-hero-copy{
+    display:grid;
+    gap:18px;
+    padding:34px 34px 30px;
+    align-content:start;
+}
+.dragon-hero-meta{
+    display:flex;
+    flex-wrap:wrap;
+    gap:10px;
+    align-items:center;
+    color:var(--text-2);
+    font-size:.8rem;
+    letter-spacing:.08em;
+    text-transform:uppercase;
+}
+.dragon-hero-kicker{
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+    padding:7px 12px;
+    border-radius:999px;
+    background:rgba(255,0,0,.14);
+    border:1px solid rgba(255,0,0,.22);
+    color:#fff;
+}
+.dragon-movies-hero-copy h2{
+    margin:0;
+    font-size:clamp(3rem, 6vw, 5.6rem);
+    line-height:.88;
+    letter-spacing:-.045em;
+}
+.dragon-hero-summary{
+    max-width:760px;
+    color:rgba(255,255,255,.84);
+    font-size:1rem;
+    line-height:1.72;
+}
+.dragon-hero-facts,
+.dragon-filter-chip-row,
+.dragon-hero-actions,
+.dragon-utility-actions,
+.dragon-card-actions,
+.dragon-card-chips{
+    display:flex;
+    flex-wrap:wrap;
+    gap:10px;
+    align-items:center;
+}
+.dragon-hero-fact,
+.dragon-filter-chip,
+.dragon-card-chip{
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+    min-height:36px;
+    padding:9px 12px;
+    border-radius:999px;
+    border:1px solid rgba(255,255,255,.1);
+    background:rgba(255,255,255,.04);
+    color:var(--text);
+    font-size:.82rem;
+    line-height:1;
+}
+.dragon-filter-chip{
+    color:var(--text-2);
+    background:rgba(255,255,255,.03);
+}
+.dragon-hero-actions .btn,
+.dragon-utility-actions .btn,
+.dragon-card-actions .btn{
+    min-height:46px;
+}
+.dragon-movies-hero-poster{
+    display:grid;
+    gap:14px;
+    align-content:end;
+    padding:34px 34px 30px 0;
+}
+.dragon-hero-poster-card{
+    margin-left:auto;
+    width:min(100%, 280px);
+    padding:16px;
+    border-radius:28px;
+    border:1px solid rgba(255,255,255,.1);
+    background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.025));
+    backdrop-filter:blur(18px);
+    box-shadow:0 18px 44px rgba(0,0,0,.38);
+}
+.dragon-hero-poster-frame{
+    position:relative;
+    width:100%;
+    aspect-ratio:2 / 3;
+    border-radius:22px;
+    overflow:hidden;
+    background:rgba(255,255,255,.05);
+}
+.dragon-hero-poster-frame img,
+.dragon-movie-card-poster img,
+.dragon-continue-poster img,
+.dragon-browse-card-poster img{
+    width:100%;
+    height:100%;
+    object-fit:cover;
+    display:block;
+}
+.dragon-poster-fallback{
+    position:absolute;
+    inset:0;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:16px;
+    background:linear-gradient(180deg, rgba(255,255,255,.035), rgba(255,255,255,.01));
+    color:rgba(255,255,255,.58);
+    text-align:center;
+    font-size:.8rem;
+    line-height:1.5;
+    letter-spacing:.08em;
+    text-transform:uppercase;
+}
+.dragon-hero-poster-copy{
+    margin-top:14px;
+    display:grid;
+    gap:8px;
+}
+.dragon-hero-poster-copy strong{
+    font-size:1rem;
+    color:var(--heading);
+}
+.dragon-hero-poster-copy .card-meta{
+    line-height:1.55;
+}
+.dragon-movies-utility,
+.dragon-movies-controls{
+    display:grid;
+    gap:16px;
+}
+.dragon-movies-utility-header{
+    display:flex;
+    align-items:flex-start;
+    justify-content:space-between;
+    gap:14px;
+    flex-wrap:wrap;
+}
+.dragon-movies-utility-copy{
+    display:grid;
+    gap:6px;
+}
+.dragon-movies-utility-copy h3,
+.dragon-movies-controls h3,
+.dragon-rail-header h3,
+.dragon-browse-header h3{
+    margin:0;
+    font-size:2rem;
+}
+.dragon-movies-controls .muted{
+    max-width:760px;
+    line-height:1.65;
+}
+.dragon-filters-form{
+    display:grid;
+    grid-template-columns:repeat(auto-fit, minmax(140px, 1fr));
+    gap:14px;
+    align-items:end;
+}
+.dragon-filters-form .field-wide{
+    grid-column:span 2;
+}
+.dragon-filters-form .search-field{
+    position:relative;
+}
+.dragon-filters-form input,
+.dragon-filters-form select{
     background:var(--select-bg);
     border-color:var(--border);
-    box-shadow:none;
 }
-.search-field input:hover,
-.search-field input:focus{
-    background:var(--select-bg);
-    border-color:var(--border);
-    box-shadow:none;
-    outline:none;
+.dragon-filters-form .filter-submit{
+    min-height:48px;
 }
 .movie-search-suggestions{
     position:absolute;
@@ -47,359 +233,664 @@
     left:0;
     right:0;
     display:none;
-    padding:0;
-    border-radius:10px;
+    border-radius:14px;
     border:1px solid var(--border);
     background:var(--select-bg);
-    backdrop-filter:none;
-    box-shadow:none;
-    z-index:12;
     overflow:hidden;
+    z-index:9;
 }
 .movie-search-suggestions.is-open{
     display:block;
 }
-.filter-form .movie-search-suggestion{
+.dragon-filters-form .movie-search-suggestion{
     width:100%;
-    display:block;
-    padding:10px 12px;
     border:0;
     border-radius:0;
+    padding:11px 13px;
+    text-align:left;
     background:transparent;
     color:var(--text);
-    text-align:left;
     cursor:pointer;
-    box-shadow:none;
-    transform:none;
-    backdrop-filter:none;
-    font-weight:400;
 }
-.filter-form .movie-search-suggestion + .movie-search-suggestion{
+.dragon-filters-form .movie-search-suggestion + .movie-search-suggestion{
     border-top:1px solid rgba(255,255,255,.06);
 }
-.filter-form .movie-search-suggestion:hover,
-.filter-form .movie-search-suggestion:focus,
-.filter-form .movie-search-suggestion:focus-visible,
-.filter-form .movie-search-suggestion.is-active{
+.dragon-filters-form .movie-search-suggestion:hover,
+.dragon-filters-form .movie-search-suggestion:focus,
+.dragon-filters-form .movie-search-suggestion:focus-visible,
+.dragon-filters-form .movie-search-suggestion.is-active{
     background:rgba(255,255,255,.05);
-    color:var(--text);
-    border-color:transparent;
-    box-shadow:none;
-    outline:none;
-    transform:none;
-}
-.movie-country-meta{
-    margin-top:-6px;
-    color:rgba(239,239,239,.72);
-}
-.movie-genre-meta{
-    margin-top:-6px;
-    color:var(--text-2);
-}
-.movie-genre-link{
-    color:inherit;
-    text-decoration:none;
-    cursor:pointer;
-}
-.movie-genre-link:hover,
-.movie-genre-link:focus,
-.movie-genre-link:focus-visible{
-    color:var(--text);
     outline:none;
 }
-.movie-card-footer{
-    margin-top:auto;
-    display:flex;
-    flex-direction:column;
-    gap:12px;
-}
-.movie-library-card{
-    cursor:pointer;
-}
-.continue-watching-grid{
+.dragon-continue-section,
+.dragon-rail-section,
+.dragon-browse-section{
     display:grid;
-    grid-template-columns:repeat(auto-fit, minmax(220px, 1fr));
     gap:16px;
 }
-.continue-watching-card{
+.dragon-rail-header,
+.dragon-browse-header{
+    display:flex;
+    align-items:flex-end;
+    justify-content:space-between;
+    gap:14px;
+    flex-wrap:wrap;
+}
+.dragon-rail-shell{
+    position:relative;
+    overflow:hidden;
+}
+.dragon-rail-track,
+.dragon-continue-track{
     display:flex;
     gap:14px;
-    align-items:flex-start;
+    overflow-x:auto;
+    overflow-y:hidden;
+    padding:6px 4px 8px;
+    scroll-snap-type:x proximity;
+    -webkit-overflow-scrolling:touch;
+    scrollbar-width:none;
 }
-.continue-watching-poster{
-    width:72px;
-    height:108px;
+.dragon-rail-track::-webkit-scrollbar,
+.dragon-continue-track::-webkit-scrollbar{
+    display:none;
+}
+.dragon-movie-card,
+.dragon-continue-card{
     flex:0 0 auto;
-    border-radius:12px;
+    scroll-snap-align:start;
+}
+.dragon-movie-card{
+    width:clamp(160px, 18vw, 208px);
+    display:grid;
+    gap:12px;
+}
+.dragon-movie-card-poster,
+.dragon-browse-card-poster{
+    position:relative;
+    display:block;
+    width:100%;
+    aspect-ratio:2 / 3;
+    border-radius:18px;
+    overflow:hidden;
+    background:rgba(255,255,255,.05);
+    border:1px solid rgba(255,255,255,.08);
+}
+.dragon-movie-card-copy,
+.dragon-browse-card-copy{
+    display:grid;
+    gap:9px;
+}
+.dragon-movie-card-title,
+.dragon-browse-card-title{
+    margin:0;
+    font-size:.98rem;
+    line-height:1.42;
+    color:var(--heading);
+}
+.dragon-card-meta{
+    color:var(--text-2);
+    font-size:.78rem;
+    line-height:1.55;
+}
+.dragon-card-genre-links{
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px;
+}
+.dragon-card-genre-link{
+    color:var(--text-2);
+    text-decoration:none;
+    font-size:.76rem;
+}
+.dragon-card-genre-link:hover,
+.dragon-card-genre-link:focus,
+.dragon-card-genre-link:focus-visible{
+    color:var(--text);
+    outline:none;
+}
+.dragon-card-actions .btn{
+    min-height:38px;
+    padding:9px 14px;
+    font-size:.82rem;
+}
+.dragon-score-pill{
+    color:#fff;
+    border-color:rgba(255,255,255,.08);
+    background:rgba(255,255,255,.06);
+}
+.dragon-continue-card{
+    width:min(100%, 350px);
+    display:grid;
+    grid-template-columns:84px minmax(0, 1fr);
+    gap:14px;
+    align-items:start;
+    padding:14px;
+}
+.dragon-continue-poster{
+    position:relative;
+    width:84px;
+    aspect-ratio:2 / 3;
+    overflow:hidden;
+    border-radius:14px;
+    background:rgba(255,255,255,.05);
+}
+.dragon-continue-copy{
+    display:grid;
+    gap:8px;
+    min-width:0;
+}
+.dragon-browse-grid{
+    display:grid;
+    grid-template-columns:repeat(auto-fit, minmax(170px, 1fr));
+    gap:16px;
+}
+.dragon-browse-card{
+    display:grid;
+    gap:12px;
+    padding:14px;
+}
+.dragon-browse-card .dragon-card-actions{
+    margin-top:auto;
+}
+.dragon-pagination-wrap{
+    padding-top:6px;
+}
+.dragon-empty-state{
+    padding:34px 20px;
+}
+#movieRecommendationPanel{
+    display:none;
+}
+#movieRecommendationPanel.is-open{
+    display:block;
+}
+#movieRecommendationResults{
+    display:none;
+    margin-top:16px;
+}
+.dragon-recommendation-card{
+    display:grid;
+    grid-template-columns:minmax(180px, 220px) minmax(0, 1fr);
+    gap:18px;
+    align-items:start;
+}
+.dragon-recommendation-poster{
+    position:relative;
+    width:100%;
+    aspect-ratio:2 / 3;
+    border-radius:20px;
     overflow:hidden;
     background:rgba(255,255,255,.05);
 }
-.continue-watching-poster img{
-    width:100%;
-    height:100%;
-    object-fit:cover;
-    display:block;
+.dragon-recommendation-copy{
+    display:grid;
+    gap:12px;
 }
-.continue-watching-copy{
-    min-width:0;
-    flex:1 1 auto;
-}
-.continue-watching-copy strong{
-    display:block;
-    color:var(--heading);
+.dragon-recommendation-copy h4{
+    margin:0;
+    font-size:1.6rem;
+    line-height:1;
 }
 
-@media (max-width:700px){
-    .movies-hero-actions{
-        flex-direction:column;
-        align-items:stretch;
+@supports not (aspect-ratio: 2 / 3){
+    .dragon-hero-poster-frame,
+    .dragon-movie-card-poster,
+    .dragon-browse-card-poster,
+    .dragon-continue-poster,
+    .dragon-recommendation-poster{
+        height:0;
+        padding-top:150%;
     }
-
-    .movies-hero-actions .btn{
-        width:100%;
+    .dragon-hero-poster-frame img,
+    .dragon-movie-card-poster img,
+    .dragon-browse-card-poster img,
+    .dragon-continue-poster img,
+    .dragon-recommendation-poster img{
+        position:absolute;
+        inset:0;
     }
+}
 
-    .filter-form{
+@media (max-width:1080px){
+    .dragon-movies-hero-inner{
+        grid-template-columns:1fr;
+        min-height:auto;
+    }
+    .dragon-movies-hero-copy{
+        padding-bottom:18px;
+    }
+    .dragon-movies-hero-poster{
+        padding:0 34px 30px;
+    }
+    .dragon-hero-poster-card{
+        margin-left:0;
+        width:min(100%, 320px);
+    }
+}
+
+@media (max-width:820px){
+    .dragon-movies-hero-copy,
+    .dragon-movies-hero-poster{
+        padding:24px 20px 22px;
+    }
+    .dragon-movies-hero-copy h2{
+        font-size:clamp(2.5rem, 10vw, 4rem);
+    }
+    .dragon-filters-form{
         grid-template-columns:1fr;
     }
-
-    #movieRecommendationResults .detail-grid{
-        grid-template-columns:1fr !important;
-        gap:14px !important;
+    .dragon-filters-form .field-wide{
+        grid-column:span 1;
     }
-
-    #movieRecommendationResults .detail-grid > div{
-        min-width:0;
+    .dragon-recommendation-card{
+        grid-template-columns:1fr;
     }
+}
 
-    #movieRecommendationResults .content-card.media-card{
-        width:100% !important;
-        max-width:100% !important;
+@media (max-width:640px){
+    .dragon-movie-card{
+        width:152px;
     }
-
-    #movieRecommendationResults .surface-card.section-card{
-        padding:16px !important;
+    .dragon-continue-card{
+        width:min(100%, 300px);
+        grid-template-columns:72px minmax(0, 1fr);
     }
-
-    #movieRecommendationResults .info-stack{
-        margin-top:12px !important;
+    .dragon-continue-poster{
+        width:72px;
     }
-
-    #movieRecommendationResults .hero-meta{
-        gap:8px;
+    .dragon-browse-grid{
+        grid-template-columns:repeat(2, minmax(0, 1fr));
     }
+}
 
-    #movieRecommendationResults .card-title,
-    #movieRecommendationResults .card-meta{
-        overflow-wrap:anywhere;
-        word-break:break-word;
+@media (max-width:480px){
+    .dragon-movies-hero-copy,
+    .dragon-movies-hero-poster{
+        padding:20px 16px 18px;
+    }
+    .dragon-movie-card{
+        width:142px;
+    }
+    .dragon-hero-actions .btn,
+    .dragon-utility-actions .btn{
+        width:100%;
+        justify-content:center;
+    }
+    .dragon-browse-grid{
+        grid-template-columns:1fr;
     }
 }
 </style>
-<section class="surface-card section-card movie-filters-card">
-    <form method="get" class="filter-form">
-        {% if current_filters.genre %}
-        <input type="hidden" name="genre" value="{{ current_filters.genre }}">
-        {% endif %}
-        {% if current_filters.genre_id %}
-        <input type="hidden" name="genre_id" value="{{ current_filters.genre_id }}">
-        {% endif %}
-        {% if current_filters.director %}
-        <input type="hidden" name="director" value="{{ current_filters.director }}">
-        {% endif %}
-        {% if current_filters.director_id %}
-        <input type="hidden" name="director_id" value="{{ current_filters.director_id }}">
-        {% endif %}
-        <div class="field-wide search-field">
-            <input type="text" name="search" placeholder="Search by title..." value="{{ current_filters.search }}">
-            <div id="movieSearchSuggestions" class="movie-search-suggestions" role="listbox" aria-label="Movie title suggestions"></div>
-        </div>
-        <select name="category">
-            {% for cat in categories %}
-            <option value="{{ cat }}" {% if cat == current_filters.category %}selected{% endif %}>{{ cat }}</option>
-            {% endfor %}
-        </select>
-        <select name="status">
-            {% for st in statuses %}
-            <option value="{{ st }}" {% if st == current_filters.status %}selected{% endif %}>{{ st }}</option>
-            {% endfor %}
-        </select>
-        <select name="source">
-            {% for src in sources %}
-            <option value="{{ src }}" {% if src == current_filters.source %}selected{% endif %}>{{ src }}</option>
-            {% endfor %}
-        </select>
-        <select name="score">
-            {% for sc in scores %}
-            <option value="{{ sc }}" {% if sc == current_filters.score %}selected{% endif %}>{{ sc }}</option>
-            {% endfor %}
-        </select>
-        <select name="sort">
-            {% for sort_value, sort_label in [
-                ('Score â†“', 'Score Desc'),
-                ('Score â†‘', 'Score Asc'),
-                ('Title Aâ€“Z', 'Title A-Z'),
-                ('Title Zâ€“A', 'Title Z-A'),
-                ('Date Watched â†“', 'Date Watched Newest'),
-                ('Date Watched â†‘', 'Date Watched Oldest')
-            ] %}
-            <option value="{{ sort_value }}" {% if sort_value == current_filters.sort %}selected{% endif %}>{{ sort_label }}</option>
-            {% endfor %}
-        </select>
-        <select name="per_page">
-            {% for n in [10,20,50,100] %}
-            <option value="{{ n }}" {% if n == per_page %}selected{% endif %}>{{ n }} / page</option>
-            {% endfor %}
-        </select>
-        <button type="submit" class="filter-submit"><i data-lucide="sliders-horizontal"></i>Apply</button>
-    </form>
-</section>
 
-<section class="page-hero">
-    <div class="hero-meta">
-        <span class="hero-badge">Movies</span>
-        {% if current_filters.genre_label %}
-        <span>Genre: {{ current_filters.genre_label }}</span>
-        {% endif %}
-        {% if current_filters.director_label %}
-        <span>Director: {{ current_filters.director_label }}</span>
-        {% endif %}
-        <span>{{ total }} entries</span>
-    </div>
-    <h2>Movies</h2>
-    <p class="subhead">
-        Filter your archive, open detail pages for trailers and related titles, and keep the whole collection feeling more like a polished media workspace than a simple list.
-    </p>
-    <div class="detail-controls movies-hero-actions">
-        <button type="button" class="btn section-refresh-btn" onclick="dragonRefreshSection('movies')" data-default-label="Refresh" data-loading-label="Refreshing..."><i data-lucide="refresh-cw"></i>Refresh</button>
-        <button type="button" class="btn section-refresh-btn" onclick="dragonSyncSection('movies')" data-default-label="Sync" data-loading-label="Syncing..."><i data-lucide="refresh-cw"></i>Sync</button>
-        <button type="button" class="btn" id="movieRecommendationButton"><i data-lucide="sparkles"></i>What should I watch?</button>
-        <button type="button" class="btn" id="movieRecommendationShuffleButton" style="display:none;"><i data-lucide="shuffle"></i>Try Another</button>
-    </div>
-</section>
-
-<section class="surface-card section-card movie-filters-card" style="margin-top:-6px;">
-    <div id="movieRecommendationPanel" style="display:none;">
-        <div id="movieRecommendationStatus" class="muted" style="display:none;">Ready to suggest from your library.</div>
-        <div id="movieRecommendationResults" style="display:none; margin-top:18px;"></div>
-    </div>
-</section>
-
-{% if continue_watching and continue_watching["items"] %}
-<section class="surface-card section-card">
-    <div class="detail-header">
-        <div>
-            <div class="hero-meta">
-                <span class="hero-badge">Continue Watching</span>
-                <span>Recent local movie progress</span>
-            </div>
-            <h3 style="font-size:2rem; margin-top:12px;">Pick up where you left off</h3>
-        </div>
-        <div class="muted">{{ continue_watching["count"] }} saved item{% if continue_watching["count"] != 1 %}s{% endif %}</div>
-    </div>
-    <div class="continue-watching-grid" style="margin-top:18px;">
-        {% for item in continue_watching["items"] %}
-        <article class="surface-card continue-watching-card" style="padding:14px;">
-            <div class="continue-watching-poster">
-                {% if item.poster %}
-                <img src="{{ item.poster }}" alt="{{ item.title }}">
-                {% else %}
-                <div class="poster-placeholder">No Poster</div>
-                {% endif %}
-            </div>
-            <div class="continue-watching-copy">
-                <strong>{{ item.title }}</strong>
-                <div class="card-meta" style="margin-top:6px;">{{ item.resume_label }}</div>
-                {% if item.progress_percent_label %}
-                <div class="card-meta">{{ item.progress_percent_label }} watched</div>
-                {% endif %}
-                {% if item.year or item.source %}
-                <div class="card-meta">{{ item.year }}{% if item.year and item.source %} | {% endif %}{{ item.source }}</div>
-                {% endif %}
-                <div class="detail-controls" style="margin-top:12px;">
-                    {% if item.resume_watch_url %}
-                    <a class="btn" href="{{ item.resume_watch_url }}" data-scroll-top="true"><i data-lucide="play"></i>Resume</a>
+<div class="dragon-movies-page">
+    {% set has_active_filters = current_filters.search or current_filters.genre_label or current_filters.director_label or current_filters.category != 'All' or current_filters.status != 'All Status' or current_filters.source != 'All sources' or current_filters.score != 'All Scores' %}
+    {% if featured_movie %}
+    <section class="page-hero dragon-movies-hero">
+        <div class="dragon-movies-hero-inner">
+            <div class="dragon-movies-hero-media{% if featured_movie.poster %} has-poster{% endif %}"{% if featured_movie.poster %} style="--hero-poster:url('{{ featured_movie.poster }}');"{% endif %}></div>
+            <div class="dragon-movies-hero-glow"></div>
+            <div class="dragon-movies-hero-copy">
+                <div class="dragon-hero-meta">
+                    <span class="dragon-hero-kicker">{{ featured_movie_label or 'Library Spotlight' }}</span>
+                    <span>{{ total }} matching titles</span>
+                    <span>{{ library_total }} in Dragon</span>
+                </div>
+                <h2>{{ featured_movie.name or 'Movies' }}</h2>
+                <p class="dragon-hero-summary">
+                    {{ featured_movie.overview_short or 'A curated Dragon movie shelf built from your Notion-first library, keeping your own score and metadata front and center.' }}
+                </p>
+                <div class="dragon-hero-facts">
+                    {% if featured_movie.year_label %}
+                    <span class="dragon-hero-fact">{{ featured_movie.year_label }}</span>
                     {% endif %}
-                    {% if item.detail_url %}
-                    <a class="btn" href="{{ item.detail_url }}" data-scroll-top="true"><i data-lucide="arrow-up-right"></i>Open Detail</a>
+                    {% if featured_movie.category %}
+                    <span class="dragon-hero-fact">{{ featured_movie.category }}</span>
+                    {% endif %}
+                    {% if featured_movie.status %}
+                    <span class="dragon-hero-fact">{{ featured_movie.status }}</span>
+                    {% endif %}
+                    {% if featured_movie.source_label %}
+                    <span class="dragon-hero-fact">{{ featured_movie.source_label }}</span>
+                    {% endif %}
+                    <span class="dragon-hero-fact dragon-score-pill" style="color: {{ featured_movie.score_color }};">{{ featured_movie.score_label }}</span>
+                </div>
+                {% if has_active_filters %}
+                <div class="dragon-filter-chip-row">
+                    {% if current_filters.search %}
+                    <span class="dragon-filter-chip">Search: {{ current_filters.search }}</span>
+                    {% endif %}
+                    {% if current_filters.genre_label %}
+                    <span class="dragon-filter-chip">Genre: {{ current_filters.genre_label }}</span>
+                    {% endif %}
+                    {% if current_filters.director_label %}
+                    <span class="dragon-filter-chip">Director: {{ current_filters.director_label }}</span>
+                    {% endif %}
+                    {% if current_filters.category != 'All' %}
+                    <span class="dragon-filter-chip">Category: {{ current_filters.category }}</span>
+                    {% endif %}
+                    {% if current_filters.status != 'All Status' %}
+                    <span class="dragon-filter-chip">Status: {{ current_filters.status }}</span>
+                    {% endif %}
+                    {% if current_filters.source != 'All sources' %}
+                    <span class="dragon-filter-chip">Source: {{ current_filters.source }}</span>
+                    {% endif %}
+                    {% if current_filters.score != 'All Scores' %}
+                    <span class="dragon-filter-chip">Score: {{ current_filters.score }}</span>
+                    {% endif %}
+                </div>
+                {% endif %}
+                <div class="dragon-hero-actions">
+                    {% if featured_movie.watch_url %}
+                    <a class="btn" href="{{ featured_movie.watch_url }}" data-scroll-top="true"><i data-lucide="play"></i>Play</a>
+                    {% endif %}
+                    {% if featured_movie.detail_url %}
+                    <a class="btn" href="{{ featured_movie.detail_url }}" data-scroll-top="true"><i data-lucide="arrow-up-right"></i>Details</a>
+                    {% endif %}
+                    {% if extra_torrent_url(featured_movie) != '#' %}
+                    <a class="btn" href="{{ extra_torrent_url(featured_movie) }}" target="_blank" rel="noopener"><i data-lucide="download"></i>Library Source</a>
                     {% endif %}
                 </div>
             </div>
-        </article>
-        {% endfor %}
-    </div>
-</section>
-{% endif %}
-
-{% if films %}
-<section class="movie-grid">
-    {% for film in films %}
-        <article class="content-card media-card movie-library-card" data-href="{{ url_for('video_detail', entry_id=film.entry_id) }}" data-scroll-top="true" tabindex="0" role="link">
-        <div class="media-poster movie-poster-frame">
-            {% if film.poster %}
-            <img src="{{ film.poster }}" alt="{{ film.name }}" loading="eager" decoding="async">
-            {% else %}
-            <div class="poster-placeholder">No Poster</div>
-            {% endif %}
+            <div class="dragon-movies-hero-poster">
+                <div class="dragon-hero-poster-card">
+                    <div class="dragon-hero-poster-frame">
+                        {% if featured_movie.poster %}
+                        <img src="{{ featured_movie.poster }}" alt="{{ featured_movie.name }}" loading="eager" decoding="async">
+                        {% else %}
+                        <div class="dragon-poster-fallback">No Poster</div>
+                        {% endif %}
+                    </div>
+                    <div class="dragon-hero-poster-copy">
+                        <strong>{{ featured_movie.name }}</strong>
+                        <div class="card-meta">{{ featured_movie.category }}{% if featured_movie.category and featured_movie.source_label %} • {% endif %}{{ featured_movie.source_label }}</div>
+                        {% if featured_movie.genre_entries %}
+                        <div class="card-meta">
+                            {% for genre in featured_movie.genre_entries[:3] %}
+                            {{ genre.name }}{% if not loop.last %} • {% endif %}
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+                        {% if featured_movie.country_display %}
+                        <div class="card-meta">{{ featured_movie.country_display }}</div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
         </div>
-        <div class="card-title">{{ film.name }}</div>
-        {% set card_meta_parts = [] %}
-        {% if film.category %}
-            {% set _ = card_meta_parts.append(film.category) %}
-        {% endif %}
-        {% if film.source %}
-            {% set _ = card_meta_parts.append(film.source) %}
-        {% endif %}
-        <div class="card-meta">{{ card_meta_parts|join(' | ') }}</div>
-        {% if film.genre_entries %}
-        <div class="card-meta movie-genre-meta">
-            {% for genre in film.genre_entries[:2] %}
-            <span class="movie-genre-link" data-href="{{ genre.detail_url }}" tabindex="0" role="link">{{ genre.name }}</span>{% if not loop.last %} | {% endif %}
+    </section>
+    {% endif %}
+
+    <section class="surface-card section-card dragon-movies-utility">
+        <div class="dragon-movies-utility-header">
+            <div class="dragon-movies-utility-copy">
+                <div class="hero-meta">
+                    <span class="hero-badge">Controls</span>
+                    <span>Secondary tools stay available without taking over the page</span>
+                </div>
+                <h3>Library Actions</h3>
+            </div>
+            <div class="dragon-utility-actions">
+                <button type="button" class="btn section-refresh-btn" onclick="dragonRefreshSection('movies')" data-default-label="Refresh" data-loading-label="Refreshing..."><i data-lucide="refresh-cw"></i>Refresh</button>
+                <button type="button" class="btn section-refresh-btn" onclick="dragonSyncSection('movies')" data-default-label="Sync" data-loading-label="Syncing..."><i data-lucide="refresh-cw"></i>Sync</button>
+                <button type="button" class="btn" id="movieRecommendationButton"><i data-lucide="sparkles"></i>What should I watch?</button>
+                <button type="button" class="btn" id="movieRecommendationShuffleButton" style="display:none;"><i data-lucide="shuffle"></i>Try Another</button>
+                <a class="btn" href="{{ url_for('movies_review') }}" data-scroll-top="true"><i data-lucide="list-checks"></i>Review Queue</a>
+            </div>
+        </div>
+        <div id="movieRecommendationPanel">
+            <div id="movieRecommendationStatus" class="muted" style="display:none;">Ready to suggest from your library.</div>
+            <div id="movieRecommendationResults"></div>
+        </div>
+    </section>
+
+    <section class="surface-card section-card dragon-movies-controls">
+        <div class="dragon-movies-utility-copy">
+            <div class="hero-meta">
+                <span class="hero-badge">Browse</span>
+                <span>{{ total }} results in this view</span>
+            </div>
+            <h3>Filter the Library</h3>
+            <p class="muted">Search, narrow, and sort the catalog without losing the cinematic layout.</p>
+        </div>
+        <form method="get" class="dragon-filters-form filter-form">
+            {% if current_filters.genre %}
+            <input type="hidden" name="genre" value="{{ current_filters.genre }}">
+            {% endif %}
+            {% if current_filters.genre_id %}
+            <input type="hidden" name="genre_id" value="{{ current_filters.genre_id }}">
+            {% endif %}
+            {% if current_filters.director %}
+            <input type="hidden" name="director" value="{{ current_filters.director }}">
+            {% endif %}
+            {% if current_filters.director_id %}
+            <input type="hidden" name="director_id" value="{{ current_filters.director_id }}">
+            {% endif %}
+            <div class="field-wide search-field">
+                <input type="text" name="search" placeholder="Search by title..." value="{{ current_filters.search }}">
+                <div id="movieSearchSuggestions" class="movie-search-suggestions" role="listbox" aria-label="Movie title suggestions"></div>
+            </div>
+            <select name="category">
+                {% for cat in categories %}
+                <option value="{{ cat }}" {% if cat == current_filters.category %}selected{% endif %}>{{ cat }}</option>
+                {% endfor %}
+            </select>
+            <select name="status">
+                {% for st in statuses %}
+                <option value="{{ st }}" {% if st == current_filters.status %}selected{% endif %}>{{ st }}</option>
+                {% endfor %}
+            </select>
+            <select name="source">
+                {% for src in sources %}
+                <option value="{{ src }}" {% if src == current_filters.source %}selected{% endif %}>{{ src }}</option>
+                {% endfor %}
+            </select>
+            <select name="score">
+                {% for sc in scores %}
+                <option value="{{ sc }}" {% if sc == current_filters.score %}selected{% endif %}>{{ sc }}</option>
+                {% endfor %}
+            </select>
+            <select name="sort">
+                {% for sort_value, sort_label in [
+                    ('Score â†“', 'Score Desc'),
+                    ('Score â†‘', 'Score Asc'),
+                    ('Title Aâ€“Z', 'Title A-Z'),
+                    ('Title Zâ€“A', 'Title Z-A'),
+                    ('Date Watched â†“', 'Date Watched Newest'),
+                    ('Date Watched â†‘', 'Date Watched Oldest')
+                ] %}
+                <option value="{{ sort_value }}" {% if sort_value == current_filters.sort %}selected{% endif %}>{{ sort_label }}</option>
+                {% endfor %}
+            </select>
+            <select name="per_page">
+                {% for n in [10,20,50,100] %}
+                <option value="{{ n }}" {% if n == per_page %}selected{% endif %}>{{ n }} / page</option>
+                {% endfor %}
+            </select>
+            <button type="submit" class="filter-submit"><i data-lucide="sliders-horizontal"></i>Apply Filters</button>
+        </form>
+    </section>
+
+    {% if continue_watching and continue_watching["items"] %}
+    <section class="surface-card section-card dragon-continue-section">
+        <div class="dragon-rail-header">
+            <div>
+                <div class="hero-meta">
+                    <span class="hero-badge">Continue Watching</span>
+                    <span>Recent local progress</span>
+                </div>
+                <h3>Keep Going</h3>
+            </div>
+            <div class="muted">{{ continue_watching["count"] }} saved item{% if continue_watching["count"] != 1 %}s{% endif %}</div>
+        </div>
+        <div class="dragon-continue-track">
+            {% for item in continue_watching["items"] %}
+            <article class="surface-card dragon-continue-card">
+                <div class="dragon-continue-poster">
+                    {% if item.poster %}
+                    <img src="{{ item.poster }}" alt="{{ item.title }}" loading="lazy" decoding="async">
+                    {% else %}
+                    <div class="dragon-poster-fallback">No Poster</div>
+                    {% endif %}
+                </div>
+                <div class="dragon-continue-copy">
+                    <strong>{{ item.title }}</strong>
+                    <div class="card-meta">{{ item.resume_label }}</div>
+                    {% if item.progress_percent_label %}
+                    <div class="card-meta">{{ item.progress_percent_label }} watched</div>
+                    {% endif %}
+                    {% if item.year or item.source %}
+                    <div class="card-meta">{{ item.year }}{% if item.year and item.source %} • {% endif %}{{ item.source }}</div>
+                    {% endif %}
+                    <div class="dragon-card-actions">
+                        {% if item.resume_watch_url %}
+                        <a class="btn" href="{{ item.resume_watch_url }}" data-scroll-top="true"><i data-lucide="play"></i>Resume</a>
+                        {% endif %}
+                        {% if item.detail_url %}
+                        <a class="btn" href="{{ item.detail_url }}" data-scroll-top="true"><i data-lucide="arrow-up-right"></i>Details</a>
+                        {% endif %}
+                    </div>
+                </div>
+            </article>
             {% endfor %}
         </div>
-        {% endif %}
-        {% if film.country_display %}
-        <div class="card-meta movie-country-meta">{{ film.country_display }}</div>
-        {% endif %}
-        <div class="movie-card-footer">
-            <div class="score-pill" style="color: {{ score_color.get(film.score, '#777') }};">
-                {{ score_display.get(film.score, 'Not Rated') }}
-            </div>
-            <a href="{{ extra_torrent_url(film) }}" target="_blank" class="btn btn-sm btn-outline-warning" title="Download torrent from Extra-Torrent">
-                ⬇ Extra-Torrent
-            </a>
-            <div class="card-meta">Open detail page</div>
-        </div>
-    </article>
-    {% endfor %}
-</section>
+    </section>
+    {% endif %}
 
-{% if total_pages > 1 %}
-<section class="surface-card section-card">
-    <div class="pagination">
-        {% if page > 1 %}
-        <a href="{{ build_query_url(request.args, page=1) }}" class="pagination-button pagination-nav" data-scroll-top="true">First</a>
-        <a href="{{ build_query_url(request.args, page=page-1) }}" class="pagination-button pagination-nav" data-scroll-top="true">Previous</a>
+    {% for shelf in movie_shelves %}
+    {% if shelf["items"] %}
+    <section class="surface-card section-card dragon-rail-section">
+        <div class="dragon-rail-header">
+            <div>
+                <div class="hero-meta">
+                    <span class="hero-badge">{{ shelf.title }}</span>
+                    <span>{{ shelf.kicker }}</span>
+                </div>
+                <h3>{{ shelf.title }}</h3>
+            </div>
+            <div class="muted">{{ shelf["items"]|length }} titles shown</div>
+        </div>
+        <div class="dragon-rail-shell">
+            <div class="dragon-rail-track">
+                {% for film in shelf["items"] %}
+                <article class="dragon-movie-card">
+                    <a class="dragon-movie-card-poster" href="{{ film.detail_url }}" data-scroll-top="true">
+                        {% if film.poster %}
+                        <img src="{{ film.poster }}" alt="{{ film.name }}" loading="lazy" decoding="async">
+                        {% else %}
+                        <div class="dragon-poster-fallback">No Poster</div>
+                        {% endif %}
+                    </a>
+                    <div class="dragon-movie-card-copy">
+                        <h4 class="dragon-movie-card-title">{{ film.name }}</h4>
+                        <div class="dragon-card-meta">{{ film.year_label }}{% if film.year_label and film.category %} • {% endif %}{{ film.category }}</div>
+                        <div class="dragon-card-meta">{{ film.status }}{% if film.status and film.source_label %} • {% endif %}{{ film.source_label }}</div>
+                        {% if film.genre_entries %}
+                        <div class="dragon-card-genre-links">
+                            {% for genre in film.genre_entries[:2] %}
+                            <a class="dragon-card-genre-link" href="{{ genre.detail_url }}" data-scroll-top="true">{{ genre.name }}</a>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+                        <div class="dragon-card-chips">
+                            <span class="dragon-card-chip dragon-score-pill" style="color: {{ film.score_color }};">{{ film.score_label }}</span>
+                            {% if film.country_display %}
+                            <span class="dragon-card-chip">{{ film.country_display }}</span>
+                            {% endif %}
+                        </div>
+                        <div class="dragon-card-actions">
+                            {% if film.watch_url %}
+                            <a class="btn" href="{{ film.watch_url }}" data-scroll-top="true"><i data-lucide="play"></i>Play</a>
+                            {% endif %}
+                            <a class="btn" href="{{ film.detail_url }}" data-scroll-top="true"><i data-lucide="arrow-up-right"></i>Details</a>
+                        </div>
+                    </div>
+                </article>
+                {% endfor %}
+            </div>
+        </div>
+    </section>
+    {% endif %}
+    {% endfor %}
+
+    {% if films %}
+    <section class="surface-card section-card dragon-browse-section">
+        <div class="dragon-browse-header">
+            <div>
+                <div class="hero-meta">
+                    <span class="hero-badge">Browse All</span>
+                    <span>Paginated library index</span>
+                </div>
+                <h3>All Matching Titles</h3>
+            </div>
+            <div class="muted">Page {{ page }} of {{ total_pages }}</div>
+        </div>
+        <div class="dragon-browse-grid">
+            {% for film in films %}
+            <article class="content-card dragon-browse-card">
+                <a class="dragon-browse-card-poster" href="{{ film.detail_url }}" data-scroll-top="true">
+                    {% if film.poster %}
+                    <img src="{{ film.poster }}" alt="{{ film.name }}" loading="lazy" decoding="async">
+                    {% else %}
+                    <div class="dragon-poster-fallback">No Poster</div>
+                    {% endif %}
+                </a>
+                <div class="dragon-browse-card-copy">
+                    <h4 class="dragon-browse-card-title">{{ film.name }}</h4>
+                    <div class="dragon-card-meta">{{ film.year_label }}{% if film.year_label and film.category %} • {% endif %}{{ film.category }}</div>
+                    <div class="dragon-card-meta">{{ film.status }}{% if film.status and film.source_label %} • {% endif %}{{ film.source_label }}</div>
+                    {% if film.genre_entries %}
+                    <div class="dragon-card-genre-links">
+                        {% for genre in film.genre_entries[:2] %}
+                        <a class="dragon-card-genre-link" href="{{ genre.detail_url }}" data-scroll-top="true">{{ genre.name }}</a>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                    <div class="dragon-card-chips">
+                        <span class="dragon-card-chip dragon-score-pill" style="color: {{ film.score_color }};">{{ film.score_label }}</span>
+                        {% if film.country_display %}
+                        <span class="dragon-card-chip">{{ film.country_display }}</span>
+                        {% endif %}
+                    </div>
+                    <div class="dragon-card-actions">
+                        {% if film.watch_url %}
+                        <a class="btn" href="{{ film.watch_url }}" data-scroll-top="true"><i data-lucide="play"></i>Play</a>
+                        {% endif %}
+                        <a class="btn" href="{{ film.detail_url }}" data-scroll-top="true"><i data-lucide="arrow-up-right"></i>Details</a>
+                    </div>
+                </div>
+            </article>
+            {% endfor %}
+        </div>
+
+        {% if total_pages > 1 %}
+        <div class="dragon-pagination-wrap">
+            <div class="pagination">
+                {% if page > 1 %}
+                <a href="{{ build_query_url(request.args, page=1) }}" class="pagination-button pagination-nav" data-scroll-top="true">First</a>
+                <a href="{{ build_query_url(request.args, page=page-1) }}" class="pagination-button pagination-nav" data-scroll-top="true">Previous</a>
+                {% endif %}
+                {% for item in pagination_numbers %}
+                    {% if item == '...' %}
+                    <span class="pagination-ellipsis">...</span>
+                    {% elif item == page %}
+                    <span class="pagination-button pagination-index active">{{ item }}</span>
+                    {% else %}
+                    <a href="{{ build_query_url(request.args, page=item) }}" class="pagination-button pagination-index" data-scroll-top="true">{{ item }}</a>
+                    {% endif %}
+                {% endfor %}
+                {% if page < total_pages %}
+                <a href="{{ build_query_url(request.args, page=page+1) }}" class="pagination-button pagination-nav" data-scroll-top="true">Next</a>
+                <a href="{{ build_query_url(request.args, page=total_pages) }}" class="pagination-button pagination-nav" data-scroll-top="true">Last</a>
+                {% endif %}
+            </div>
+        </div>
         {% endif %}
-        {% for item in pagination_numbers %}
-            {% if item == '...' %}
-            <span class="pagination-ellipsis">...</span>
-            {% elif item == page %}
-            <span class="pagination-button pagination-index active">{{ item }}</span>
-            {% else %}
-            <a href="{{ build_query_url(request.args, page=item) }}" class="pagination-button pagination-index" data-scroll-top="true">{{ item }}</a>
-            {% endif %}
-        {% endfor %}
-        {% if page < total_pages %}
-        <a href="{{ build_query_url(request.args, page=page+1) }}" class="pagination-button pagination-nav" data-scroll-top="true">Next</a>
-        <a href="{{ build_query_url(request.args, page=total_pages) }}" class="pagination-button pagination-nav" data-scroll-top="true">Last</a>
-        {% endif %}
-    </div>
-</section>
-{% endif %}
-{% else %}
-<div class="empty-state">No movies match your current filters.</div>
-{% endif %}
+    </section>
+    {% else %}
+    <div class="surface-card section-card empty-state dragon-empty-state">No movies match your current filters.</div>
+    {% endif %}
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -417,7 +908,7 @@
     var recommendationPool = [];
     var lastRenderedSignature = '';
     var sessionSeenTitles = {};
-    var searchInput = document.querySelector('.filter-form input[name="search"]');
+    var searchInput = document.querySelector('.dragon-filters-form input[name="search"]');
     var searchSuggestions = document.getElementById('movieSearchSuggestions');
     var activeSuggestionIndex = -1;
 
@@ -526,7 +1017,10 @@
         if (item && item.source) {
             parts.push(String(item.source));
         }
-        return parts.join(' | ');
+        if (item && item.status) {
+            parts.push(String(item.status));
+        }
+        return parts.join(' • ');
     }
 
     function getRecommendationExplanation(item) {
@@ -563,7 +1057,6 @@
     function chooseRecommendationSet() {
         var availablePool = [];
         var fallbackPool = [];
-        var seenCount = 0;
         var poolIndex;
         var item;
         if (!recommendationPool.length) return [];
@@ -575,8 +1068,6 @@
             fallbackPool.push(item);
             if (!sessionSeenTitles[item.name]) {
                 availablePool.push(item);
-            } else {
-                seenCount += 1;
             }
         }
 
@@ -612,68 +1103,43 @@
         }
     }
 
-    function cardHtml(item, isMain) {
-        var explanation = getRecommendationExplanation(item);
-        var poster = item.poster || placeholderPoster;
-        return (
-            '<a class="content-card media-card" href="' + escapeHtml(item.detail_url || ('/video/' + (item.entry_id || ''))) + '" data-scroll-top="true" style="max-width:' + (isMain ? '260px' : '220px') + ';">' +
-                 '<div class="media-poster movie-poster-frame">' +
-                    '<img src="' + escapeHtml(poster) + '" alt="' + escapeHtml(item.name || 'Untitled') + '" onerror="this.onerror=null;this.src=\'' + escapeHtml(placeholderPoster) + '\';">' +
-                '</div>' +
-                '<div class="card-title">' + escapeHtml(item.name || 'Untitled') + '</div>' +
-                '<div class="card-meta">' + escapeHtml(buildMovieMeta(item)) + '</div>' +
-                '<div class="card-meta" style="color:var(--text);">Why this pick: ' + escapeHtml(explanation.summary) + '</div>' +
-                (explanation.detail ? '<div class="card-meta">' + escapeHtml(explanation.detail) + '</div>' : '') +
-                '<div class="card-meta">Open detail page</div>' +
-            '</a>'
-        );
-    }
-
     function renderResults(items) {
+        var mainPick;
+        var explanation;
+        var poster;
+        var actions;
         if (!items || !items.length) {
-            if (panel) panel.style.display = 'block';
+            if (panel) panel.className = '';
             if (status) status.style.display = 'block';
-            results.style.display = 'none';
+            if (results) results.style.display = 'none';
             status.textContent = 'No recommendation candidates were returned for this filter.';
             if (shuffleButton) shuffleButton.style.display = 'none';
             return;
         }
 
-        var mainPick = items[0];
-
+        mainPick = items[0];
+        explanation = getRecommendationExplanation(mainPick);
+        poster = mainPick.poster || placeholderPoster;
+        actions = '';
+        if (mainPick.detail_url || mainPick.entry_id) {
+            actions += '<a class="btn" href="' + escapeHtml(mainPick.detail_url || ('/video/' + (mainPick.entry_id || ''))) + '" data-scroll-top="true"><i data-lucide="arrow-up-right"></i>Details</a>';
+        }
         results.innerHTML =
-            '<div class="detail-grid" style="grid-template-columns:minmax(0,280px) minmax(0,1fr); gap:18px;">' +
-                '<div>' +
-                    '<div class="hero-meta" style="margin-bottom:12px;">' +
-                        '<span class="hero-badge">Main Pick</span>' +
-                        '<span>Backend-ranked from your curated pool</span>' +
-                    '</div>' +
-                    cardHtml(mainPick, true) +
+            '<div class="dragon-recommendation-card">' +
+                '<div class="dragon-recommendation-poster">' +
+                    '<img src="' + escapeHtml(poster) + '" alt="' + escapeHtml(mainPick.name || 'Untitled') + '" onerror="this.onerror=null;this.src=\'' + escapeHtml(placeholderPoster) + '\';">' +
                 '</div>' +
-                '<div class="surface-card section-card" style="padding:18px;">' +
-                    '<div class="hero-meta">' +
-                        '<span class="hero-badge matte-tag">Why this pick</span>' +
-                        '<span>Backend curation result</span>' +
-                    '</div>' +
-                    '<div class="info-stack" style="margin-top:16px;">' +
-                        '<div class="info-row"><span>Title</span><strong>' + escapeHtml(mainPick.name || 'Untitled') + '</strong></div>' +
-                        '<div class="info-row"><span>Category</span><strong>' + escapeHtml(mainPick.category || 'Uncategorized') + '</strong></div>' +
-                        '<div class="info-row"><span>Status</span><strong>' + escapeHtml(mainPick.status || 'Unknown') + '</strong></div>' +
-                        '<div class="info-row"><span>Source</span><strong>' + escapeHtml(mainPick.source || 'Unknown source') + '</strong></div>' +
-                        '<div class="info-row"><span>Pool</span><strong>' + escapeHtml(mainPick.pool || 'secondary') + '</strong></div>' +
-                    '</div>' +
-                    (function() {
-                        var explanation = getRecommendationExplanation(mainPick);
-                        var html = '<p class="subhead" style="margin-top:16px; max-width:none;">' + escapeHtml(explanation.summary) + '</p>';
-                        if (explanation.detail) {
-                            html += '<div class="card-meta" style="margin-top:-6px;">' + escapeHtml(explanation.detail) + '</div>';
-                        }
-                        return html;
-                    }()) +
+                '<div class="dragon-recommendation-copy">' +
+                    '<div class="hero-meta"><span class="hero-badge">Main Pick</span><span>Backend-ranked from your current library slice</span></div>' +
+                    '<h4>' + escapeHtml(mainPick.name || 'Untitled') + '</h4>' +
+                    '<div class="card-meta">' + escapeHtml(buildMovieMeta(mainPick)) + '</div>' +
+                    '<p class="dragon-hero-summary" style="max-width:none;">' + escapeHtml(explanation.summary) + '</p>' +
+                    (explanation.detail ? '<div class="card-meta">' + escapeHtml(explanation.detail) + '</div>' : '') +
+                    '<div class="dragon-card-actions">' + actions + '</div>' +
                 '</div>' +
             '</div>';
-        if (panel) panel.style.display = 'block';
-        results.style.display = 'block';
+        if (panel) panel.className = 'is-open';
+        if (results) results.style.display = 'block';
         if (status) status.style.display = 'block';
         lastRenderedSignature = buildSignature(items);
         markRecommendationSeen(items);
@@ -689,18 +1155,20 @@
     function shuffleRecommendations() {
         var selection = chooseRecommendationSet();
         if (!selection.length) {
-            status.textContent = 'Load recommendations first.';
+            if (status) status.textContent = 'Load recommendations first.';
             return;
         }
         renderResults(selection);
-        status.textContent = categoryFilter && categoryFilter !== 'All'
-            ? ('Shuffling inside the curated watch-next pool for "' + categoryFilter + '".')
-            : 'Shuffling inside your curated watch-next movie pool.';
+        if (status) {
+            status.textContent = categoryFilter && categoryFilter !== 'All'
+                ? ('Shuffling inside the curated watch-next pool for "' + categoryFilter + '".')
+                : 'Shuffling inside your curated watch-next movie pool.';
+        }
     }
 
     function requestRecommendations() {
         var request = new XMLHttpRequest();
-        if (panel) panel.style.display = 'block';
+        if (panel) panel.className = 'is-open';
         if (status) status.style.display = 'block';
         request.open('GET', buildRecommendationUrl(), true);
         request.onreadystatechange = function() {
@@ -744,55 +1212,12 @@
     if (shuffleButton) {
         shuffleButton.addEventListener('click', shuffleRecommendations);
     }
-    document.addEventListener('click', function(event) {
-        var card = event.target && event.target.closest ? event.target.closest('.movie-library-card') : null;
-        var href = '';
-        if (!card) return;
-        if (event.target && event.target.closest && event.target.closest('a, button')) return;
-        if (event.target && event.target.closest && event.target.closest('.movie-genre-link')) return;
-        href = card.getAttribute('data-href') || '';
-        if (!href) return;
-        window.location.href = href;
-    });
-    document.addEventListener('keydown', function(event) {
-        var card = event.target && event.target.closest ? event.target.closest('.movie-library-card') : null;
-        var href = '';
-        if (!card) return;
-        if (event.target && event.target.closest && event.target.closest('a, button')) return;
-        if (event.target && event.target.closest && event.target.closest('.movie-genre-link')) return;
-        if (event.key !== 'Enter' && event.key !== ' ') return;
-        href = card.getAttribute('data-href') || '';
-        if (!href) return;
-        event.preventDefault();
-        window.location.href = href;
-    });
-    document.addEventListener('click', function(event) {
-        var target = event.target;
-        var href = '';
-        if (!target || !target.classList || !target.classList.contains('movie-genre-link')) return;
-        href = target.getAttribute('data-href') || '';
-        if (!href) return;
-        event.preventDefault();
-        event.stopPropagation();
-        window.location.href = href;
-    });
-    document.addEventListener('keydown', function(event) {
-        var target = event.target;
-        var href = '';
-        if (!target || !target.classList || !target.classList.contains('movie-genre-link')) return;
-        if (event.key !== 'Enter' && event.key !== ' ') return;
-        href = target.getAttribute('data-href') || '';
-        if (!href) return;
-        event.preventDefault();
-        event.stopPropagation();
-        window.location.href = href;
-    });
     if (searchInput && searchSuggestions) {
         searchInput.setAttribute('autocomplete', 'off');
         searchInput.addEventListener('input', updateSearchSuggestions);
         searchInput.addEventListener('keydown', function(event) {
             var items;
-            if (!searchSuggestions.classList.contains('is-open')) return;
+            if (searchSuggestions.className.indexOf('is-open') === -1) return;
             items = searchSuggestions.querySelectorAll('.movie-search-suggestion');
             if (!items.length) return;
             if (event.key === 'ArrowDown') {
@@ -816,7 +1241,7 @@
             applySuggestion(target.getAttribute('data-title') || '');
         });
         document.addEventListener('click', function(event) {
-            if (!searchSuggestions.classList.contains('is-open')) return;
+            if (searchSuggestions.className.indexOf('is-open') === -1) return;
             if (event.target === searchInput || searchSuggestions.contains(event.target)) return;
             closeSearchSuggestions();
         });

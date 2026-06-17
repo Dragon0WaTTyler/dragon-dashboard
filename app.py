@@ -27973,6 +27973,206 @@ def build_continue_watching_context(films, limit=6):
     return {"items": items, "count": len(items)}
 
 
+def build_movie_library_card_context(film):
+    item = dict(film or {})
+    entry_id = str(item.get("entry_id") or item.get("movie_id") or "").strip()
+    detail_url = str(item.get("detail_url") or "").strip()
+    if not detail_url and entry_id:
+        try:
+            detail_url = url_for("video_detail", entry_id=entry_id)
+        except RuntimeError:
+            detail_url = f"/video/{entry_id}"
+    item["detail_url"] = detail_url
+    item["watch_url"] = build_movie_runtime_watch_url(item)
+    item["score_label"] = SCORE_DISPLAY.get(item.get("score", ""), "Not Rated")
+    item["score_color"] = SCORE_COLOR.get(item.get("score", ""), SCORE_COLOR.get("", "#3a3a3a"))
+    item["overview_short"] = str(item.get("overview") or "").strip()
+    item["year_label"] = str(item.get("year") or "").strip()
+    item["status_normalized"] = normalize_movie_status(item.get("status", ""))
+    item["source_label"] = normalize_movie_source(item.get("source", "")) or str(item.get("source") or "").strip()
+    item["country_display"] = movie_library_country_display(item)
+    return item
+
+
+def movie_library_identity_key(item):
+    return (
+        compact_notion_id((item or {}).get("notion_page_id"))
+        or str((item or {}).get("entry_id") or (item or {}).get("movie_id") or "").strip()
+        or normalized_match_key((item or {}).get("name") or (item or {}).get("title") or "")
+    )
+
+
+def movie_library_country_display(item):
+    existing = str((item or {}).get("country_display") or "").strip()
+    if existing:
+        return existing
+
+    origin_countries = list((item or {}).get("origin_countries", []) or [])
+    if origin_countries:
+        return format_origin_country_display(origin_countries, limit=2)
+
+    cached_country = str((item or {}).get("country") or "").strip()
+    if cached_country:
+        return cached_country
+
+    normalized_title = normalize_movie_title((item or {}).get("name") or (item or {}).get("title") or "")
+    if not normalized_title:
+        return ""
+
+    media_type = tmdb_media_type_for_category((item or {}).get("category", ""))
+    preferred_year = normalize_year_value((item or {}).get("year"))
+    cache_key = f"{media_type}|{normalized_title.lower()}|{preferred_year}"
+    tmdb_data = TMDB_RUNTIME.lookup_cache.get(cache_key)
+    countries = list((tmdb_data or {}).get("origin_countries", []) or []) if isinstance(tmdb_data, dict) else []
+    if not countries:
+        return ""
+    return format_origin_country_display(countries, limit=2)
+
+
+def build_movie_library_context_rows(films, context_cache=None):
+    shared_cache = context_cache if isinstance(context_cache, dict) else {}
+    rows = []
+    for film in films or []:
+        cache_key = movie_library_identity_key(film)
+        cached_row = shared_cache.get(cache_key) if cache_key else None
+        if cached_row is not None:
+            rows.append(cached_row)
+            continue
+        row = build_movie_library_card_context(film)
+        if cache_key:
+            shared_cache[cache_key] = row
+        rows.append(row)
+    return rows
+
+
+def build_movie_library_showcase(filtered_films, filtered_films_unsorted, continue_watching):
+    decorated = list(filtered_films or [])
+    decorated_unsorted = list(filtered_films_unsorted or filtered_films or [])
+
+    def _identity(item):
+        return movie_library_identity_key(item)
+
+    def _unique(items, limit=12):
+        results = []
+        seen = set()
+        for item in items:
+            key = _identity(item)
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            results.append(item)
+            if len(results) >= limit:
+                break
+        return results
+
+    watch_next_items = sorted(
+        [item for item in decorated if item.get("status_normalized") in PRIMARY_WATCH_NEXT_STATUSES],
+        key=lambda item: (
+            -int(item.get("score_num", 0) or 0),
+            str(item.get("name") or "").lower(),
+        ),
+    )
+    finished_items = sorted(
+        [item for item in decorated if is_watched_film_status(item)],
+        key=lambda item: (
+            str(item.get("watch_date") or item.get("finish_date") or ""),
+            int(item.get("score_num", 0) or 0),
+            str(item.get("name") or "").lower(),
+        ),
+        reverse=True,
+    )
+    top_rated_items = sorted(
+        [item for item in decorated if int(item.get("score_num", 0) or 0) >= 7],
+        key=lambda item: (
+            -int(item.get("score_num", 0) or 0),
+            str(item.get("name") or "").lower(),
+        ),
+    )
+    if not top_rated_items:
+        top_rated_items = sorted(
+            [item for item in decorated if int(item.get("score_num", 0) or 0) >= 5],
+            key=lambda item: (
+                -int(item.get("score_num", 0) or 0),
+                str(item.get("name") or "").lower(),
+            ),
+        )
+
+    recent_candidates = [item for item in decorated_unsorted if str(item.get("watch_date") or item.get("finish_date") or "").strip()]
+    if recent_candidates:
+        recent_items = sorted(
+            recent_candidates,
+            key=lambda item: (
+                str(item.get("watch_date") or item.get("finish_date") or ""),
+                str(item.get("name") or "").lower(),
+            ),
+            reverse=True,
+        )
+        recent_title = "Recently Watched"
+        recent_kicker = "Latest dates from your current movie slice"
+    else:
+        recent_items = list(decorated_unsorted)
+        recent_title = "Fresh in Dragon"
+        recent_kicker = "Current library order from your filtered collection"
+
+    shelves = []
+    if watch_next_items:
+        shelves.append({
+            "key": "watch-next",
+            "title": "Watch Next",
+            "kicker": "Queued titles from your Notion watchlist",
+            "items": _unique(watch_next_items, limit=14),
+        })
+    if finished_items:
+        shelves.append({
+            "key": "finished",
+            "title": "Finished / Watched",
+            "kicker": "Completed titles with your Dragon score intact",
+            "items": _unique(finished_items, limit=14),
+        })
+    if top_rated_items:
+        shelves.append({
+            "key": "top-rated",
+            "title": "Top Rated / God Mode",
+            "kicker": "Your strongest personal signals, never replaced by TMDb",
+            "items": _unique(top_rated_items, limit=14),
+        })
+    if recent_items:
+        shelves.append({
+            "key": "recent",
+            "title": recent_title,
+            "kicker": recent_kicker,
+            "items": _unique(recent_items, limit=14),
+        })
+
+    featured = None
+    featured_label = "Library Spotlight"
+    if watch_next_items:
+        featured = watch_next_items[0]
+        featured_label = "Watch Next"
+    elif continue_watching and continue_watching.get("items"):
+        continue_title = str((continue_watching.get("items") or [])[0].get("title") or "").strip().lower()
+        featured = next((item for item in decorated if str(item.get("name") or "").strip().lower() == continue_title), None)
+        if featured is not None:
+            featured_label = "Continue Watching"
+    if featured is None and top_rated_items:
+        featured = top_rated_items[0]
+        featured_label = "Top Rated"
+    if featured is None and finished_items:
+        featured = finished_items[0]
+        featured_label = "Finished Favorite"
+    if featured is None and decorated:
+        featured = decorated[0]
+
+    return {
+        "featured": featured,
+        "featured_label": featured_label,
+        "shelves": shelves,
+        "watch_next_count": len(watch_next_items),
+        "finished_count": len(finished_items),
+        "top_rated_count": len(top_rated_items),
+    }
+
+
 def _watch_runtime_status_copy(*, runtime_state: str, source_quality: dict[str, object] | None = None) -> dict[str, str]:
     quality_payload = dict(source_quality or {})
     label = str(quality_payload.get("label") or "").strip()
@@ -29956,6 +30156,7 @@ def library():
     if status != "All Status": filtered = [f for f in filtered if f["status"] == status]
     if source != "All sources": filtered = [f for f in filtered if movie_matches_source_filter(f, source)]
     if score != "All Scores": filtered = [f for f in filtered if f["score"] == score]
+    filtered_unsorted = list(filtered)
     if sort == "Score â†“": filtered.sort(key=lambda x: -x["score_num"])
     elif sort == "Score â†‘": filtered.sort(key=lambda x: x["score_num"])
     elif sort == "Title Aâ€“Z": filtered.sort(key=lambda x: x["name"].lower())
@@ -29975,20 +30176,12 @@ def library():
     else:
         per_page = int(request.args.get("per_page", 50))
     page = int(request.args.get("page", 1))
-    pagination = paginate_items(filtered, page, per_page)
-    for film in pagination["items"]:
-        film["country_display"] = ""
-        try:
-            tmdb_data = fetch_tmdb_enrichment(
-                film.get("name", ""),
-                category=film.get("category", ""),
-                year=film.get("year", "")
-            )
-        except Exception:
-            tmdb_data = None
-        countries = list((tmdb_data or {}).get("origin_countries", []) or [])
-        if countries:
-            film["country_display"] = format_origin_country_display(countries, limit=2)
+    library_context_cache = {}
+    decorated_filtered_unsorted = build_movie_library_context_rows(filtered_unsorted, context_cache=library_context_cache)
+    decorated_filtered = build_movie_library_context_rows(filtered, context_cache=library_context_cache)
+    pagination = paginate_items(decorated_filtered, page, per_page)
+    featured_context = build_movie_library_showcase(decorated_filtered, decorated_filtered_unsorted, continue_watching)
+    paged_films = pagination["items"]
     categories = ["All"] + sorted({f["category"] for f in films if f["category"]})
     statuses = ["All Status"] + sorted({f["status"] for f in films if f["status"]})
     sources = SOURCE_FILTER_OPTIONS
@@ -30004,11 +30197,18 @@ def library():
             continue
         seen_suggestion_titles.add(normalized_title)
         suggestion_titles.append(title)
-    return render_template("library.html", films=pagination["items"], total=pagination["total"], page=pagination["page"],
+    return render_template("library.html", films=paged_films, total=pagination["total"], page=pagination["page"],
                            total_pages=pagination["total_pages"], per_page=per_page,
                            pagination_numbers=pagination["pagination"],
                            categories=categories, statuses=statuses, sources=sources, scores=scores,
                            continue_watching=continue_watching,
+                           featured_movie=featured_context["featured"],
+                           featured_movie_label=featured_context["featured_label"],
+                           movie_shelves=featured_context["shelves"],
+                           movie_watch_next_count=featured_context["watch_next_count"],
+                           movie_finished_count=featured_context["finished_count"],
+                           movie_top_rated_count=featured_context["top_rated_count"],
+                           library_total=len(films),
                            suggestion_titles=suggestion_titles,
                            current_filters={"search": raw_search, "category": cat,
                                             "status": status, "source": source, "score": score, "sort": sort,
@@ -34310,4 +34510,3 @@ if __name__ == "__main__":
     port = int(config_value("PORT", "5000") or "5000")
     print(f"Running on http://127.0.0.1:{port}")
     app.run(host="0.0.0.0", port=port, debug=debug_enabled)
-
