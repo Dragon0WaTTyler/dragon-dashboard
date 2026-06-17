@@ -29,7 +29,7 @@ DRAGON_CORE_SNAPSHOT_PATH = EXPORTS_DIR / "dragon_core_snapshot.json"
 DRAGON_CORE_SNAPSHOT_LIMITS = {
     "books": 500,
     "articles": 500,
-    "movies": 500,
+    "movies": 1000,
     "youtube_watchlater_videos": 500,
     "youtube_pockettube_videos": 500,
 }
@@ -150,6 +150,10 @@ def _snapshot_public_media_url(value):
     parsed = urlparse(text)
     if parsed.scheme.lower() not in {"http", "https"} or not parsed.netloc:
         return text
+
+    normalized_host = parsed.netloc.lower()
+    if normalized_host in {"www.themoviedb.org", "themoviedb.org"} and parsed.path.startswith("/t/p/"):
+        return parsed._replace(scheme="https", netloc="image.tmdb.org", query="", fragment="").geturl()
 
     query_text = parsed.query.lower()
     sensitive_query_markers = (
@@ -586,6 +590,23 @@ def _load_movie_entries():
     if entries is None:
         return None
     return entries
+
+
+def _load_movie_library_cache_entries():
+    cache_payload = _load_local_json(CACHE_DATA_PATH)
+    films = cache_payload.get("films", {}) if isinstance(cache_payload, dict) else {}
+    if not isinstance(films, dict):
+        return None
+
+    entry = films.get("all")
+    if not isinstance(entry, dict):
+        return None
+
+    data = entry.get("data")
+    if not isinstance(data, list):
+        return None
+
+    return [dict(item) for item in data if isinstance(item, dict)]
 
 
 def _load_snapshot_movie_entries():
@@ -1306,7 +1327,7 @@ def _youtube_sections_from_entries(entries):
 
 def _build_home_response():
     reading_payload = _load_local_json(READING_DATA_PATH)
-    movie_entries = _load_movie_entries()
+    movie_entries = _load_snapshot_movie_entries_state()["entries"]
     chess_payload = _load_local_json(CHESS_DATA_PATH)
     book_entries = _load_book_entries()
     youtube_entries = _load_youtube_entries()
@@ -1443,16 +1464,43 @@ def _source_status(kind, state, item_count=0, **extra):
 
 
 def _load_snapshot_movie_entries_state():
+    candidates = []
+
     movie_entries = _load_movie_entries()
     if movie_entries is not None:
+        candidates.append(
+            {
+                "entries": movie_entries,
+                "source_kind": "notion_export",
+                "source_name": "movies_export_json",
+            }
+        )
+
+    cached_movie_entries = _load_movie_library_cache_entries()
+    if cached_movie_entries is not None:
+        candidates.append(
+            {
+                "entries": cached_movie_entries,
+                "source_kind": "notion_export",
+                "source_name": "cache_data_films_all",
+            }
+        )
+
+    if candidates:
+        best_candidate = max(
+            enumerate(candidates),
+            key=lambda pair: (len(pair[1]["entries"]), -pair[0]),
+        )[1]
         return {
-            "entries": movie_entries,
-            "source_kind": "notion_export",
+            "entries": best_candidate["entries"],
+            "source_kind": best_candidate["source_kind"],
+            "source_name": best_candidate["source_name"],
         }
 
     return {
         "entries": None,
         "source_kind": "missing",
+        "source_name": "missing",
     }
 
 
@@ -1526,6 +1574,7 @@ def build_dragon_core_snapshot():
             movie_source_state["source_kind"],
             "primary",
             movies_domain["total"],
+            source_name=movie_source_state.get("source_name"),
         )
     else:
         movies_domain = _fallback_snapshot_domain(existing_snapshot, "movies")
@@ -1534,10 +1583,11 @@ def build_dragon_core_snapshot():
                 "committed_snapshot_fallback",
                 "fallback_snapshot",
                 len(movies_domain["items"]),
+                source_name="existing_dragon_core_snapshot",
             )
         else:
             movies_domain = {"total": 0, "items": []}
-            sources["movies"] = _source_status("missing", "missing", 0)
+            sources["movies"] = _source_status("missing", "missing", 0, source_name="missing")
             partial_domains.add("movies")
             warnings.append(_snapshot_warning("movies_source_missing"))
 
