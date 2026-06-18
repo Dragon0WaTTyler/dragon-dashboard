@@ -465,6 +465,349 @@
     .movie-watch-error a {
         color: rgba(255,255,255,.78);
     }
+    body:has(.movie-detail-streaming-shell){
+        background:#000 !important;
+        overflow-x:hidden !important;
+    }
+    html:has(.movie-detail-streaming-shell){
+        background:#000 !important;
+        overflow-x:hidden !important;
+    }
+    body:has(.movie-detail-streaming-shell) .app-shell,
+    body:has(.movie-detail-streaming-shell) .workspace-pane{
+        display:block !important;
+        width:100% !important;
+        min-height:100vh;
+        overflow-x:hidden !important;
+    }
+    body:has(.movie-detail-streaming-shell) .workspace-sidebar,
+    body:has(.movie-detail-streaming-shell) .top-tabs,
+    body:has(.movie-detail-streaming-shell) .ai-sidebar,
+    body:has(.movie-detail-streaming-shell) .ai-sidebar-toggle{
+        display:none !important;
+    }
+    body:has(.movie-detail-streaming-shell) .workspace-main,
+    body:has(.movie-detail-streaming-shell) .page-shell{
+        display:block !important;
+        width:100% !important;
+        max-width:none !important;
+        min-width:0 !important;
+        padding:0 !important;
+        margin:0 !important;
+        background:#000 !important;
+    }
+    .movie-detail-streaming-shell{
+        --movie-edge:clamp(18px,4vw,58px);
+        width:100%;
+        max-width:100%;
+        min-height:100vh;
+        overflow-x:hidden;
+        background:#000;
+        color:#fff;
+        font-family:Inter, Manrope, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    .movie-detail-streaming-nav{
+        position:fixed;
+        inset:0 0 auto 0;
+        z-index:70;
+        height:76px;
+        display:flex;
+        align-items:center;
+        gap:28px;
+        padding:16px var(--movie-edge) 24px;
+        background:linear-gradient(180deg, rgba(0,0,0,.96), rgba(0,0,0,.72) 58%, rgba(0,0,0,0));
+    }
+    .movie-detail-streaming-brand{
+        display:inline-flex;
+        align-items:center;
+        gap:10px;
+        min-width:max-content;
+        color:#fff;
+        text-decoration:none;
+        font-weight:800;
+        letter-spacing:.02em;
+        text-transform:uppercase;
+    }
+    .movie-detail-streaming-brand::before{
+        content:"";
+        width:9px;
+        height:26px;
+        border-radius:2px;
+        background:#e50914;
+        box-shadow:10px 0 0 rgba(229,9,20,.55);
+    }
+    .movie-detail-streaming-links{
+        display:flex;
+        align-items:center;
+        gap:2px;
+        min-width:0;
+        overflow-x:auto;
+        overflow-y:hidden;
+        scrollbar-width:none;
+        -webkit-overflow-scrolling:touch;
+    }
+    .movie-detail-streaming-links::-webkit-scrollbar{
+        display:none;
+    }
+    .movie-detail-streaming-link{
+        flex:0 0 auto;
+        display:inline-flex;
+        align-items:center;
+        min-height:34px;
+        padding:8px 11px;
+        border-radius:4px;
+        color:rgba(255,255,255,.78);
+        text-decoration:none;
+        font-size:.88rem;
+        font-weight:600;
+        white-space:nowrap;
+    }
+    .movie-detail-streaming-link:hover,
+    .movie-detail-streaming-link:focus-visible{
+        color:#fff;
+        background:rgba(255,255,255,.08);
+        outline:none;
+    }
+    .movie-detail-hero{
+        position:relative;
+        min-height:clamp(560px,78vh,820px);
+        overflow:hidden;
+        display:flex;
+        align-items:flex-end;
+        padding:120px var(--movie-edge) clamp(72px,12vh,130px);
+        background:#000;
+    }
+    .movie-detail-hero::before{
+        content:"";
+        position:absolute;
+        inset:0;
+        z-index:1;
+        background:
+            linear-gradient(90deg, #000 0%, rgba(0,0,0,.9) 23%, rgba(0,0,0,.48) 58%, rgba(0,0,0,.82) 100%),
+            linear-gradient(180deg, rgba(0,0,0,.72), rgba(0,0,0,.12) 40%, #000 100%);
+        pointer-events:none;
+    }
+    .movie-detail-hero-bg{
+        position:absolute;
+        inset:-24px;
+        background:#000;
+        background-size:cover;
+        background-position:center;
+        transform:scale(1.04);
+        filter:saturate(1.08);
+    }
+    .movie-detail-hero-bg.has-art{
+        background-image:var(--movie-detail-art);
+    }
+    .movie-detail-hero-content{
+        position:relative;
+        z-index:2;
+        display:grid;
+        gap:16px;
+        width:min(760px,100%);
+    }
+    .movie-detail-kicker{
+        color:#fff;
+        font-size:.82rem;
+        font-weight:850;
+        letter-spacing:.12em;
+        text-transform:uppercase;
+    }
+    .movie-detail-hero-title{
+        margin:0;
+        color:#fff;
+        font-size:clamp(3.2rem,7vw,6.8rem);
+        line-height:.9;
+        font-weight:900;
+        letter-spacing:0;
+        text-shadow:0 5px 28px rgba(0,0,0,.62);
+    }
+    .movie-detail-meta-row{
+        display:flex;
+        flex-wrap:wrap;
+        gap:8px 14px;
+        color:rgba(255,255,255,.8);
+        font-size:.95rem;
+        font-weight:650;
+    }
+    .movie-detail-meta-row span + span::before{
+        content:"";
+        display:inline-block;
+        width:4px;
+        height:4px;
+        margin:0 12px 2px 0;
+        border-radius:50%;
+        background:rgba(255,255,255,.48);
+    }
+    .movie-detail-overview{
+        max-width:650px;
+        margin:0;
+        color:rgba(255,255,255,.84);
+        font-size:clamp(.98rem,1.25vw,1.18rem);
+        line-height:1.58;
+        text-shadow:0 2px 18px rgba(0,0,0,.75);
+    }
+    .movie-detail-hero-actions{
+        display:flex;
+        flex-wrap:wrap;
+        gap:12px;
+        margin-top:4px;
+    }
+    .movie-detail-action-btn,
+    .movie-detail-streaming-shell .btn{
+        display:inline-flex;
+        align-items:center;
+        justify-content:center;
+        gap:9px;
+        min-height:44px;
+        padding:0 18px;
+        border:0;
+        border-radius:4px;
+        background:rgba(109,109,110,.72);
+        color:#fff;
+        box-shadow:none;
+        text-decoration:none;
+        font-weight:800;
+        transition:opacity .18s ease, background .18s ease;
+    }
+    .movie-detail-action-btn.is-primary{
+        min-height:48px;
+        padding:0 24px;
+        background:#fff;
+        color:#000;
+    }
+    .movie-detail-action-btn:hover,
+    .movie-detail-action-btn:focus-visible,
+    .movie-detail-streaming-shell .btn:hover,
+    .movie-detail-streaming-shell .btn:focus-visible{
+        opacity:.86;
+        background:rgba(109,109,110,.88);
+        transform:none;
+        outline:none;
+    }
+    .movie-detail-action-btn.is-primary:hover,
+    .movie-detail-action-btn.is-primary:focus-visible{
+        background:#fff;
+    }
+    .movie-detail-action-btn.is-primary::before{
+        content:"";
+        width:0;
+        height:0;
+        border-top:7px solid transparent;
+        border-bottom:7px solid transparent;
+        border-left:11px solid currentColor;
+    }
+    .movie-detail-main{
+        padding:0 var(--movie-edge) 70px;
+        background:#000;
+    }
+    .movie-detail-streaming-shell .movie-detail-shell{
+        margin:0 auto;
+        max-width:1360px;
+        border:0 !important;
+        border-radius:0 !important;
+        background:#000 !important;
+        box-shadow:none !important;
+        backdrop-filter:none !important;
+    }
+    .movie-detail-streaming-shell .movie-detail-grid{
+        grid-template-columns:minmax(180px,260px) minmax(0,1fr) !important;
+        gap:clamp(20px,3vw,42px) !important;
+    }
+    .movie-detail-streaming-shell .movie-detail-poster-wrap,
+    .movie-detail-streaming-shell .movie-watch-card,
+    .movie-detail-streaming-shell .movie-detail-card{
+        border:1px solid rgba(255,255,255,.1) !important;
+        border-radius:6px !important;
+        background:#111 !important;
+        box-shadow:none !important;
+        backdrop-filter:none !important;
+    }
+    .movie-detail-streaming-shell .movie-detail-poster-wrap{
+        overflow:hidden;
+    }
+    .movie-detail-streaming-shell .movie-detail-poster-wrap img{
+        width:100%;
+        height:100%;
+        object-fit:cover;
+    }
+    .movie-detail-streaming-shell .movie-watch-card{
+        max-width:none;
+        padding:10px;
+    }
+    .movie-detail-streaming-shell .movie-detail-title{
+        color:#fff;
+        font-family:Inter, Manrope, system-ui, sans-serif;
+        font-size:clamp(1.9rem,3vw,3rem);
+        font-weight:900;
+        letter-spacing:0;
+    }
+    .movie-detail-streaming-shell .hero-badge{
+        background:#2a2a2a !important;
+        border-color:#2a2a2a !important;
+    }
+    .movie-detail-streaming-shell .score-pill{
+        border:0 !important;
+        border-radius:3px !important;
+        background:#1f1f1f !important;
+        color:#fff !important;
+    }
+    .movie-detail-streaming-shell .subhead,
+    .movie-detail-streaming-shell .card-meta,
+    .movie-detail-streaming-shell .muted{
+        color:rgba(255,255,255,.62) !important;
+    }
+    .movie-detail-streaming-shell .info-row{
+        border-color:rgba(255,255,255,.08);
+    }
+    .movie-detail-streaming-shell .info-row strong{
+        color:#fff;
+    }
+    .movie-detail-streaming-shell .torrent-links{
+        border-top-color:rgba(255,255,255,.1) !important;
+        color:#fff;
+    }
+    .movie-detail-streaming-shell .movie-cast-card{
+        border-radius:6px !important;
+        border-color:rgba(255,255,255,.1) !important;
+        background:#111 !important;
+    }
+    @media (max-width: 820px) {
+        .movie-detail-streaming-nav{
+            height:70px;
+            gap:16px;
+            padding:12px var(--movie-edge) 22px;
+        }
+        .movie-detail-streaming-brand span{
+            display:none;
+        }
+        .movie-detail-streaming-link{
+            padding-inline:9px;
+            font-size:.82rem;
+        }
+        .movie-detail-hero{
+            min-height:560px;
+            padding-top:106px;
+            padding-bottom:62px;
+        }
+        .movie-detail-hero-title{
+            font-size:clamp(2.45rem,13vw,4.2rem);
+        }
+        .movie-detail-overview{
+            display:-webkit-box;
+            -webkit-line-clamp:4;
+            -webkit-box-orient:vertical;
+            overflow:hidden;
+        }
+        .movie-detail-streaming-shell .movie-detail-grid{
+            grid-template-columns:1fr !important;
+        }
+        .movie-detail-poster-column{
+            max-width:320px;
+            width:100%;
+            margin:0 auto;
+        }
+    }
     @media (max-width: 640px) {
         .video-detail-page .selected-video-controls,
         .video-detail-page .selected-video-actions-card {
@@ -661,21 +1004,63 @@
     {% endif %}
 </section>
 {% elif entry_type == 'film' %}
-<section class="page-hero">
-    <div class="hero-meta">
-        <span class="hero-badge">{{ 'Movie Detail' }}</span>
-        <span>{{ entry.category or 'Library Entry' }}</span>
-    </div>
-    <h2 class="title-scaled">{{ entry.title or entry.name }}</h2>
-    <p class="subhead">A more intentional film page for your library entry, centered on the poster, metadata, overview, and the related shelf below.</p>
-</section>
 {% set detail_title = entry.title or entry.name %}
 {% set detail_category = entry.category or category %}
 {% set embed_urls = vidsrc_embed_urls(entry) if vidsrc_embed_urls is defined else [] %}
 {% set vidsrc_url = vidsrc_embed_url(entry) if vidsrc_embed_url is defined else (embed_urls[0] if embed_urls else '') %}
 {% set detail_watch_title = detail_title ~ (' (' ~ entry.year ~ ')' if entry.year else '') %}
+{% set detail_art = entry.backdrop or entry.backdrop_url or entry.backdrop_path or entry.poster %}
+{% set detail_play_url = dragon_runtime_watch_url or (movie_resume.resume_watch_url if movie_resume and movie_resume.resume_watch_url else '') %}
 
+<div class="movie-detail-streaming-shell">
+    <nav class="movie-detail-streaming-nav" aria-label="Movie navigation">
+        <a class="movie-detail-streaming-brand" href="{{ url_for('movies') }}" data-scroll-top="true"><span>Dragon Cinema</span></a>
+        <div class="movie-detail-streaming-links">
+            <a class="movie-detail-streaming-link" href="{{ url_for('movies') }}" data-scroll-top="true">Home</a>
+            <a class="movie-detail-streaming-link" href="{{ url_for('movies') }}#watch-next" data-scroll-top="true">Watch Next</a>
+            <a class="movie-detail-streaming-link" href="{{ url_for('movies') }}#continue-watching" data-scroll-top="true">Continue</a>
+            <a class="movie-detail-streaming-link" href="{{ url_for('movies') }}#finished" data-scroll-top="true">Finished</a>
+            <a class="movie-detail-streaming-link" href="{{ url_for('movies') }}#top-rated" data-scroll-top="true">Top Rated</a>
+        </div>
+    </nav>
 
+    <section class="movie-detail-hero">
+        <div class="movie-detail-hero-bg{% if detail_art %} has-art{% endif %}"{% if detail_art %} style="--movie-detail-art:url('{{ detail_art }}');"{% endif %}></div>
+        <div class="movie-detail-hero-content">
+            <div class="movie-detail-kicker">Dragon Cinema</div>
+            <h2 class="movie-detail-hero-title">{{ detail_title }}</h2>
+            <div class="movie-detail-meta-row">
+                {% if entry.year %}<span>{{ entry.year }}</span>{% endif %}
+                {% if entry.runtime %}<span>{{ entry.runtime }} min</span>{% endif %}
+                <span style="color: {{ score_color.get(entry.score, '#74d36a') }};">{{ score_display.get(entry.score, 'Not Rated') }}</span>
+                {% if entry.status %}<span>{{ entry.status }}</span>{% endif %}
+                {% if entry.director_entries %}
+                <span>{% for director in entry.director_entries[:2] %}{{ director.name }}{% if not loop.last %}, {% endif %}{% endfor %}</span>
+                {% elif entry.director %}
+                <span>{{ entry.director }}</span>
+                {% endif %}
+                {% if entry.genre_entries %}
+                <span>{% for genre in entry.genre_entries[:2] %}{{ genre.name }}{% if not loop.last %} / {% endif %}{% endfor %}</span>
+                {% elif entry.genres %}
+                <span>{{ entry.genres }}</span>
+                {% endif %}
+            </div>
+            {% if entry.overview %}
+            <p class="movie-detail-overview">{{ entry.overview }}</p>
+            {% endif %}
+            <div class="movie-detail-hero-actions">
+                {% if detail_play_url %}
+                <a class="movie-detail-action-btn is-primary" href="{{ detail_play_url }}" data-scroll-top="true">Play</a>
+                {% endif %}
+                <a class="movie-detail-action-btn" href="{{ url_for('movies') }}" data-scroll-top="true">Back to Movies</a>
+                {% if vidsrc_url %}
+                <a class="movie-detail-action-btn" href="#vidsrc-overlay">Preview</a>
+                {% endif %}
+            </div>
+        </div>
+    </section>
+
+<div class="movie-detail-main">
 <section class="surface-card section-card movie-detail-shell" style="padding:28px;">
     <div class="movie-detail-grid" style="display:grid; grid-template-columns:minmax(220px,280px) minmax(0,1fr); gap:26px; align-items:start;">
         <div class="movie-detail-poster-column" style="display:grid; gap:16px;">
@@ -1100,6 +1485,8 @@
         </div>
     </div>
 </section>
+</div>
+</div>
 {% endif %}
 {% endif %}
 
@@ -1582,5 +1969,3 @@
 })();
 </script>
 {% endblock %}
-
-

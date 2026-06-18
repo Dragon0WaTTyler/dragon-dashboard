@@ -304,7 +304,189 @@
       }
     }
 
+    .movie-player-nav {
+      position: fixed;
+      inset: 0 0 auto 0;
+      z-index: 30;
+      height: 76px;
+      display: flex;
+      align-items: center;
+      gap: 28px;
+      padding: 16px clamp(18px, 4vw, 58px) 24px;
+      background: linear-gradient(180deg, rgba(0,0,0,.96), rgba(0,0,0,.72) 58%, rgba(0,0,0,0));
+    }
+
+    .movie-player-brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      min-width: max-content;
+      color: #fff;
+      text-decoration: none;
+      font-weight: 800;
+      letter-spacing: .02em;
+      text-transform: uppercase;
+    }
+
+    .movie-player-brand::before {
+      content: "";
+      width: 9px;
+      height: 26px;
+      border-radius: 2px;
+      background: #e50914;
+      box-shadow: 10px 0 0 rgba(229,9,20,.55);
+    }
+
+    .movie-player-links {
+      display: flex;
+      align-items: center;
+      gap: 2px;
+      min-width: 0;
+      overflow-x: auto;
+      overflow-y: hidden;
+      scrollbar-width: none;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .movie-player-links::-webkit-scrollbar {
+      display: none;
+    }
+
+    .movie-player-link {
+      flex: 0 0 auto;
+      display: inline-flex;
+      align-items: center;
+      min-height: 34px;
+      padding: 8px 11px;
+      border-radius: 4px;
+      color: rgba(255,255,255,.78);
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .movie-player-link:hover,
+    .movie-player-link:focus-visible {
+      color: #fff;
+      background: rgba(255,255,255,.08);
+      outline: none;
+    }
+
+    .player-page {
+      display: block;
+      padding: 92px clamp(12px, 2.4vw, 34px) 34px;
+      background: #000;
+    }
+
+    .player-shell {
+      max-width: none;
+      min-height: calc(100vh - 126px);
+      border: 0;
+      border-radius: 0;
+      background: #000;
+      box-shadow: none;
+    }
+
+    .player-topbar {
+      padding: 0 0 16px;
+      border-bottom: 0;
+      background: transparent;
+    }
+
+    .dragon-kicker {
+      color: rgba(255,255,255,.62);
+    }
+
+    .movie-title {
+      font-size: clamp(1.7rem, 3vw, 3.1rem);
+      font-weight: 900;
+      letter-spacing: 0;
+    }
+
+    .page-heading {
+      color: rgba(255,255,255,.62);
+    }
+
+    .status-pill {
+      border: 0;
+      border-radius: 4px;
+      background: #222;
+      color: #fff;
+    }
+
+    .player-stage {
+      padding: 0;
+      background: #000;
+    }
+
+    .video-frame {
+      max-width: none;
+      border-radius: 6px;
+      border-color: rgba(255,255,255,.08);
+      box-shadow: 0 24px 70px rgba(0,0,0,.58);
+    }
+
+    .player-footer {
+      margin-top: 18px;
+      padding: 18px;
+      border: 1px solid rgba(255,255,255,.1);
+      border-radius: 6px;
+      background: #101010;
+    }
+
+    .action-btn {
+      border: 0;
+      border-radius: 4px;
+      background: #fff;
+      color: #000;
+    }
+
+    .action-btn.secondary {
+      background: rgba(109,109,110,.72);
+      border: 0;
+      color: #fff;
+    }
+
+    .action-btn:hover,
+    .action-btn:focus {
+      background: rgba(255,255,255,.82);
+      border-color: transparent;
+      color: #000;
+    }
+
+    .action-btn.secondary:hover,
+    .action-btn.secondary:focus {
+      background: rgba(109,109,110,.88);
+      color: #fff;
+    }
+
     @media (max-width: 760px) {
+      .movie-player-nav {
+        height: 70px;
+        gap: 16px;
+        padding: 12px 16px 22px;
+      }
+
+      .movie-player-brand span {
+        display: none;
+      }
+
+      .movie-player-brand::before {
+        width: 7px;
+        height: 22px;
+        box-shadow: 8px 0 0 rgba(229,9,20,.55);
+      }
+
+      .movie-player-link {
+        padding-inline: 9px;
+        font-size: 13px;
+      }
+
+      .player-page {
+        padding: 82px 10px 22px;
+      }
+
       .player-topbar {
         align-items: flex-start;
       }
@@ -325,6 +507,16 @@
   </style>
 </head>
 <body>
+  <nav class="movie-player-nav" aria-label="Movie navigation">
+    <a class="movie-player-brand" href="{{ url_for('movies') }}"><span>Dragon Cinema</span></a>
+    <div class="movie-player-links">
+      <a class="movie-player-link" href="{{ url_for('movies') }}">Home</a>
+      <a class="movie-player-link" href="{{ url_for('movies') }}#watch-next">Watch Next</a>
+      <a class="movie-player-link" href="{{ url_for('movies') }}#continue-watching">Continue</a>
+      <a class="movie-player-link" href="{{ url_for('movies') }}#finished">Finished</a>
+      <a class="movie-player-link" href="{{ url_for('movies') }}#top-rated">Top Rated</a>
+    </div>
+  </nav>
   <main class="player-page">
     <section
       class="player-shell"

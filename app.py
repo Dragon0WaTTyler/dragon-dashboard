@@ -28065,6 +28065,20 @@ def build_movie_library_showcase(filtered_films, filtered_films_unsorted, contin
                 break
         return results
 
+    def _rotating_featured(items):
+        candidates = _unique(items, limit=24)
+        if not candidates:
+            return None
+        art_candidates = [
+            item for item in candidates
+            if str(item.get("backdrop") or item.get("backdrop_url") or item.get("backdrop_path") or item.get("poster") or "").strip()
+        ]
+        pool = art_candidates or candidates
+        if len(pool) <= 1:
+            return pool[0]
+        bucket = int(time.time() // (17 * 60))
+        return pool[bucket % len(pool)]
+
     watch_next_items = sorted(
         [item for item in decorated if item.get("status_normalized") in PRIMARY_WATCH_NEXT_STATUSES],
         key=lambda item: (
@@ -28147,7 +28161,7 @@ def build_movie_library_showcase(filtered_films, filtered_films_unsorted, contin
     featured = None
     featured_label = "Library Spotlight"
     if watch_next_items:
-        featured = watch_next_items[0]
+        featured = _rotating_featured(watch_next_items)
         featured_label = "Watch Next"
     elif continue_watching and continue_watching.get("items"):
         continue_title = str((continue_watching.get("items") or [])[0].get("title") or "").strip().lower()
@@ -28155,13 +28169,13 @@ def build_movie_library_showcase(filtered_films, filtered_films_unsorted, contin
         if featured is not None:
             featured_label = "Continue Watching"
     if featured is None and top_rated_items:
-        featured = top_rated_items[0]
+        featured = _rotating_featured(top_rated_items)
         featured_label = "Top Rated"
     if featured is None and finished_items:
-        featured = finished_items[0]
+        featured = _rotating_featured(finished_items)
         featured_label = "Finished Favorite"
     if featured is None and decorated:
-        featured = decorated[0]
+        featured = _rotating_featured(decorated)
 
     return {
         "featured": featured,
