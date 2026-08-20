@@ -1,6 +1,6 @@
 {
   "schema_version": "dragon-core-snapshot.v1",
-  "generated_at": "2026-08-19T03:57:24.031848Z",
+  "generated_at": "2026-08-20T03:57:08.982219Z",
   "producer": {
     "kind": "flask_dashboard",
     "version": "v1",
@@ -30,11 +30,11 @@
       },
       "youtube": {
         "source_kind": "combined_youtube_sources",
-        "state": "mixed",
+        "state": "fallback_snapshot",
         "item_count": 1000,
         "section_count": 14,
-        "pockettube_source": "youtube_latest_snapshot_json",
-        "pockettube_state": "primary",
+        "pockettube_source": "existing_dragon_core_snapshot",
+        "pockettube_state": "fallback_snapshot",
         "watchlater_source": "existing_dragon_core_snapshot",
         "watchlater_state": "fallback_snapshot"
       }
