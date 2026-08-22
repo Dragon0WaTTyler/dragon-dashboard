@@ -1,7 +1,7 @@
 {
   "version": 2,
-  "generated_at": "2026-08-22T01:56:26+00:00",
-  "synced_at": "2026-08-22T01:56:26+00:00",
+  "generated_at": "2026-08-22T07:05:27+00:00",
+  "synced_at": "2026-08-22T07:05:27+00:00",
   "group_video_limit": 200,
   "all_feed_video_limit": 200,
   "warnings": [],
@@ -6116,8 +6116,8 @@
           "UUznXI4BkOD2eVNe4CqpRY-g"
         ],
         "errors": [],
-        "generated_at": "2026-08-22T01:52:10+00:00",
-        "synced_at": "2026-08-22T01:52:10+00:00"
+        "generated_at": "2026-08-22T07:01:14+00:00",
+        "synced_at": "2026-08-22T07:01:14+00:00"
       }
     },
     "booktube": {
@@ -15159,8 +15159,8 @@
           "UUyxFog2shPTW4R9irohYruQ"
         ],
         "errors": [],
-        "generated_at": "2026-08-22T01:52:30+00:00",
-        "synced_at": "2026-08-22T01:52:30+00:00"
+        "generated_at": "2026-08-22T07:01:35+00:00",
+        "synced_at": "2026-08-22T07:01:35+00:00"
       }
     },
     "entertainment": {
@@ -17046,7 +17046,7 @@
           ],
           "group_key": "entertainment",
           "latest_video": {
-            "title": "مابقتش حمل قصص الناجحين",
+            "title": "تعبنا من قصص الناجحين",
             "entry_id": "yt-VVVFSHZhWjMzNnU3VElzVVEyYzZTQWVRLmNmRDB2d1RqVHpz",
             "video_id": "cfD0vwTjTzs",
             "watch_key": "cfD0vwTjTzs",
@@ -22397,7 +22397,7 @@
           ]
         },
         {
-          "title": "مابقتش حمل قصص الناجحين",
+          "title": "تعبنا من قصص الناجحين",
           "entry_id": "yt-VVVFSHZhWjMzNnU3VElzVVEyYzZTQWVRLmNmRDB2d1RqVHpz",
           "video_id": "cfD0vwTjTzs",
           "watch_key": "cfD0vwTjTzs",
@@ -27319,8 +27319,8 @@
         "errors": [
           "UC0qw9m7rxmT_ajCwzPQwq3g: no_upload_playlist - relatedPlaylists.uploads missing from channels.list response"
         ],
-        "generated_at": "2026-08-22T01:53:10+00:00",
-        "synced_at": "2026-08-22T01:53:10+00:00"
+        "generated_at": "2026-08-22T07:02:16+00:00",
+        "synced_at": "2026-08-22T07:02:16+00:00"
       }
     },
     "islamicknowledge": {
@@ -27333,22 +27333,22 @@
       "channel_count": 89,
       "latest_video_count": 200,
       "latest_video": {
-        "title": "فاتحة الفاتحة | مهندس أمجد سمير #الباش_محفظ #السعودية #الكويت #قطر #كندا #مصر #فلسطين #غزة #ترند",
-        "entry_id": "yt-VVU5b3hpOVVtS3NvSVdDbDRYRW54R21nLm9nOEFyVTRvLU5J",
-        "video_id": "og8ArU4o-NI",
-        "watch_key": "og8ArU4o-NI",
-        "state_key": "og8ArU4o-NI",
-        "channel_id": "UC9oxi9UmKsoIWCl4XEnxGmg",
-        "channel_name": "الباش محفظ",
-        "channel_title": "الباش محفظ",
-        "published_at": "2026-08-22T00:27:37Z",
-        "published_display": "Aug 22, 2026 00:27",
-        "thumbnail": "https://i.ytimg.com/vi/og8ArU4o-NI/maxresdefault.jpg",
-        "thumbnail_url": "https://i.ytimg.com/vi/og8ArU4o-NI/maxresdefault.jpg",
-        "image_url": "https://i.ytimg.com/vi/og8ArU4o-NI/maxresdefault.jpg",
-        "thumb": "https://i.ytimg.com/vi/og8ArU4o-NI/maxresdefault.jpg",
-        "detail_url": "/video/yt-VVU5b3hpOVVtS3NvSVdDbDRYRW54R21nLm9nOEFyVTRvLU5J",
-        "url": "https://www.youtube.com/watch?v=og8ArU4o-NI&list=UU9oxi9UmKsoIWCl4XEnxGmg",
+        "title": "كيف تتخلص من السحر؟ _ من أروع حلقات الدكتور مصطفى محمود رحمه الله",
+        "entry_id": "yt-VVVHNnRXWWw1WmI0OTBQa1NBakUyaVJnLmctc3lHM2otdjZB",
+        "video_id": "g-syG3j-v6A",
+        "watch_key": "g-syG3j-v6A",
+        "state_key": "g-syG3j-v6A",
+        "channel_id": "UCG6tWYl5Zb490PkSAjE2iRg",
+        "channel_name": "القناة الرسمية للدكتور مصطفى محمود",
+        "channel_title": "القناة الرسمية للدكتور مصطفى محمود",
+        "published_at": "2026-08-22T07:00:08Z",
+        "published_display": "Aug 22, 2026 07:00",
+        "thumbnail": "https://i.ytimg.com/vi/g-syG3j-v6A/maxresdefault_live.jpg",
+        "thumbnail_url": "https://i.ytimg.com/vi/g-syG3j-v6A/maxresdefault_live.jpg",
+        "image_url": "https://i.ytimg.com/vi/g-syG3j-v6A/maxresdefault_live.jpg",
+        "thumb": "https://i.ytimg.com/vi/g-syG3j-v6A/maxresdefault_live.jpg",
+        "detail_url": "/video/yt-VVVHNnRXWWw1WmI0OTBQa1NBakUyaVJnLmctc3lHM2otdjZB",
+        "url": "https://www.youtube.com/watch?v=g-syG3j-v6A&list=UUG6tWYl5Zb490PkSAjE2iRg",
         "group_name": "islamic knowledge",
         "group_key": "islamicknowledge",
         "group_names": [
@@ -27550,22 +27550,22 @@
           ],
           "group_key": "islamicknowledge",
           "latest_video": {
-            "title": "All the Christians Need to Believe in Prophet Muhammad (pbuh), who is Mentioned in the Bible",
-            "entry_id": "yt-VVUzWW1QN25xZjUxNEkxemgxZVZienJBLnhkVFgtN285OXdF",
-            "video_id": "xdTX-7o99wE",
-            "watch_key": "xdTX-7o99wE",
-            "state_key": "xdTX-7o99wE",
+            "title": "Scientific and Logical Reasons for Prohibiting Alcohol in Islam - Dr Zakir Naik",
+            "entry_id": "yt-VVUzWW1QN25xZjUxNEkxemgxZVZienJBLnFyLVZTXzdyS3NF",
+            "video_id": "qr-VS_7rKsE",
+            "watch_key": "qr-VS_7rKsE",
+            "state_key": "qr-VS_7rKsE",
             "channel_id": "UC3YmP7nqf514I1zh1eVbzrA",
             "channel_name": "Dr Zakir Naik",
             "channel_title": "Dr Zakir Naik",
-            "published_at": "2026-08-21T13:30:35Z",
-            "published_display": "Aug 21, 2026 13:30",
-            "thumbnail": "https://i.ytimg.com/vi/xdTX-7o99wE/maxresdefault.jpg",
-            "thumbnail_url": "https://i.ytimg.com/vi/xdTX-7o99wE/maxresdefault.jpg",
-            "image_url": "https://i.ytimg.com/vi/xdTX-7o99wE/maxresdefault.jpg",
-            "thumb": "https://i.ytimg.com/vi/xdTX-7o99wE/maxresdefault.jpg",
-            "detail_url": "/video/yt-VVUzWW1QN25xZjUxNEkxemgxZVZienJBLnhkVFgtN285OXdF",
-            "url": "https://www.youtube.com/watch?v=xdTX-7o99wE&list=UU3YmP7nqf514I1zh1eVbzrA",
+            "published_at": "2026-08-22T05:30:20Z",
+            "published_display": "Aug 22, 2026 05:30",
+            "thumbnail": "https://i.ytimg.com/vi/qr-VS_7rKsE/maxresdefault.jpg",
+            "thumbnail_url": "https://i.ytimg.com/vi/qr-VS_7rKsE/maxresdefault.jpg",
+            "image_url": "https://i.ytimg.com/vi/qr-VS_7rKsE/maxresdefault.jpg",
+            "thumb": "https://i.ytimg.com/vi/qr-VS_7rKsE/maxresdefault.jpg",
+            "detail_url": "/video/yt-VVUzWW1QN25xZjUxNEkxemgxZVZienJBLnFyLVZTXzdyS3NF",
+            "url": "https://www.youtube.com/watch?v=qr-VS_7rKsE&list=UU3YmP7nqf514I1zh1eVbzrA",
             "group_name": "islamic knowledge",
             "group_key": "islamicknowledge",
             "group_names": [
@@ -27578,11 +27578,11 @@
               "cached-latest"
             ]
           },
-          "latest_video_id": "xdTX-7o99wE",
-          "published_at": "2026-08-21T13:30:35Z",
-          "published_display": "Aug 21, 2026 13:30",
-          "thumbnail": "https://i.ytimg.com/vi/xdTX-7o99wE/maxresdefault.jpg",
-          "url": "https://www.youtube.com/watch?v=xdTX-7o99wE&list=UU3YmP7nqf514I1zh1eVbzrA",
+          "latest_video_id": "qr-VS_7rKsE",
+          "published_at": "2026-08-22T05:30:20Z",
+          "published_display": "Aug 22, 2026 05:30",
+          "thumbnail": "https://i.ytimg.com/vi/qr-VS_7rKsE/maxresdefault.jpg",
+          "url": "https://www.youtube.com/watch?v=qr-VS_7rKsE&list=UU3YmP7nqf514I1zh1eVbzrA",
           "reason_tags": [
             "source-diverse",
             "cached-empty",
@@ -28288,22 +28288,22 @@
           ],
           "group_key": "islamicknowledge",
           "latest_video": {
-            "title": "سقوط وشيك لحجارة من السماء في 3 دول",
-            "entry_id": "yt-VVVDRmNsdkl6SS1vcWR6UWNKLU9PaEVnLkhHVW16LUlrVWw0",
-            "video_id": "HGUmz-IkUl4",
-            "watch_key": "HGUmz-IkUl4",
-            "state_key": "HGUmz-IkUl4",
+            "title": "هذا ما فعله المسلمون عند عزل خالد بن الوليد",
+            "entry_id": "yt-VVVDRmNsdkl6SS1vcWR6UWNKLU9PaEVnLjB3LW5PTHNXbWtz",
+            "video_id": "0w-nOLsWmks",
+            "watch_key": "0w-nOLsWmks",
+            "state_key": "0w-nOLsWmks",
             "channel_id": "UCCFclvIzI-oqdzQcJ-OOhEg",
             "channel_name": "الدكتور راغب السرجاني",
             "channel_title": "الدكتور راغب السرجاني",
-            "published_at": "2026-08-21T21:00:38Z",
-            "published_display": "Aug 21, 2026 21:00",
-            "thumbnail": "https://i.ytimg.com/vi/HGUmz-IkUl4/maxresdefault.jpg",
-            "thumbnail_url": "https://i.ytimg.com/vi/HGUmz-IkUl4/maxresdefault.jpg",
-            "image_url": "https://i.ytimg.com/vi/HGUmz-IkUl4/maxresdefault.jpg",
-            "thumb": "https://i.ytimg.com/vi/HGUmz-IkUl4/maxresdefault.jpg",
-            "detail_url": "/video/yt-VVVDRmNsdkl6SS1vcWR6UWNKLU9PaEVnLkhHVW16LUlrVWw0",
-            "url": "https://www.youtube.com/watch?v=HGUmz-IkUl4&list=UUCFclvIzI-oqdzQcJ-OOhEg",
+            "published_at": "2026-08-22T06:00:28Z",
+            "published_display": "Aug 22, 2026 06:00",
+            "thumbnail": "https://i.ytimg.com/vi/0w-nOLsWmks/maxresdefault.jpg",
+            "thumbnail_url": "https://i.ytimg.com/vi/0w-nOLsWmks/maxresdefault.jpg",
+            "image_url": "https://i.ytimg.com/vi/0w-nOLsWmks/maxresdefault.jpg",
+            "thumb": "https://i.ytimg.com/vi/0w-nOLsWmks/maxresdefault.jpg",
+            "detail_url": "/video/yt-VVVDRmNsdkl6SS1vcWR6UWNKLU9PaEVnLjB3LW5PTHNXbWtz",
+            "url": "https://www.youtube.com/watch?v=0w-nOLsWmks&list=UUCFclvIzI-oqdzQcJ-OOhEg",
             "group_name": "islamic knowledge",
             "group_key": "islamicknowledge",
             "group_names": [
@@ -28316,11 +28316,11 @@
               "cached-latest"
             ]
           },
-          "latest_video_id": "HGUmz-IkUl4",
-          "published_at": "2026-08-21T21:00:38Z",
-          "published_display": "Aug 21, 2026 21:00",
-          "thumbnail": "https://i.ytimg.com/vi/HGUmz-IkUl4/maxresdefault.jpg",
-          "url": "https://www.youtube.com/watch?v=HGUmz-IkUl4&list=UUCFclvIzI-oqdzQcJ-OOhEg",
+          "latest_video_id": "0w-nOLsWmks",
+          "published_at": "2026-08-22T06:00:28Z",
+          "published_display": "Aug 22, 2026 06:00",
+          "thumbnail": "https://i.ytimg.com/vi/0w-nOLsWmks/maxresdefault.jpg",
+          "url": "https://www.youtube.com/watch?v=0w-nOLsWmks&list=UUCFclvIzI-oqdzQcJ-OOhEg",
           "reason_tags": [
             "source-diverse",
             "cached-empty",
@@ -28764,8 +28764,8 @@
             "channel_id": "UCG6tWYl5Zb490PkSAjE2iRg",
             "channel_name": "القناة الرسمية للدكتور مصطفى محمود",
             "channel_title": "القناة الرسمية للدكتور مصطفى محمود",
-            "published_at": "2026-08-21T19:08:59Z",
-            "published_display": "Aug 21, 2026 19:08",
+            "published_at": "2026-08-22T07:00:08Z",
+            "published_display": "Aug 22, 2026 07:00",
             "thumbnail": "https://i.ytimg.com/vi/g-syG3j-v6A/maxresdefault_live.jpg",
             "thumbnail_url": "https://i.ytimg.com/vi/g-syG3j-v6A/maxresdefault_live.jpg",
             "image_url": "https://i.ytimg.com/vi/g-syG3j-v6A/maxresdefault_live.jpg",
@@ -28785,8 +28785,8 @@
             ]
           },
           "latest_video_id": "g-syG3j-v6A",
-          "published_at": "2026-08-21T19:08:59Z",
-          "published_display": "Aug 21, 2026 19:08",
+          "published_at": "2026-08-22T07:00:08Z",
+          "published_display": "Aug 22, 2026 07:00",
           "thumbnail": "https://i.ytimg.com/vi/g-syG3j-v6A/maxresdefault_live.jpg",
           "url": "https://www.youtube.com/watch?v=g-syG3j-v6A&list=UUG6tWYl5Zb490PkSAjE2iRg",
           "reason_tags": [
@@ -29344,22 +29344,22 @@
           ],
           "group_key": "islamicknowledge",
           "latest_video": {
-            "title": "بث مباشر لاستقبال الاقتراحات و الاسئلة ( ٢ ) 🌱⚘️",
-            "entry_id": "yt-VVVseXRZaEw3dmtUaWlXY2F1eTNmWEt3LmdXUklCWGp0R044",
-            "video_id": "gWRIBXjtGN8",
-            "watch_key": "gWRIBXjtGN8",
-            "state_key": "gWRIBXjtGN8",
+            "title": "بث مباشر لاستقبال الاقترحات و الاسئلة ( ١ ) ⚘️",
+            "entry_id": "yt-VVVseXRZaEw3dmtUaWlXY2F1eTNmWEt3LkQzVzZDY0Z5M2Iw",
+            "video_id": "D3W6CcFy3b0",
+            "watch_key": "D3W6CcFy3b0",
+            "state_key": "D3W6CcFy3b0",
             "channel_id": "UClytYhL7vkTiiWcauy3fXKw",
             "channel_name": "سامح الجنداوي ( القناة الرسمية )",
             "channel_title": "سامح الجنداوي ( القناة الرسمية )",
-            "published_at": "2026-08-21T18:21:31Z",
-            "published_display": "Aug 21, 2026 18:21",
-            "thumbnail": "https://i.ytimg.com/vi/gWRIBXjtGN8/maxresdefault.jpg",
-            "thumbnail_url": "https://i.ytimg.com/vi/gWRIBXjtGN8/maxresdefault.jpg",
-            "image_url": "https://i.ytimg.com/vi/gWRIBXjtGN8/maxresdefault.jpg",
-            "thumb": "https://i.ytimg.com/vi/gWRIBXjtGN8/maxresdefault.jpg",
-            "detail_url": "/video/yt-VVVseXRZaEw3dmtUaWlXY2F1eTNmWEt3LmdXUklCWGp0R044",
-            "url": "https://www.youtube.com/watch?v=gWRIBXjtGN8&list=UUlytYhL7vkTiiWcauy3fXKw",
+            "published_at": "2026-08-22T05:49:16Z",
+            "published_display": "Aug 22, 2026 05:49",
+            "thumbnail": "https://i.ytimg.com/vi/D3W6CcFy3b0/maxresdefault.jpg",
+            "thumbnail_url": "https://i.ytimg.com/vi/D3W6CcFy3b0/maxresdefault.jpg",
+            "image_url": "https://i.ytimg.com/vi/D3W6CcFy3b0/maxresdefault.jpg",
+            "thumb": "https://i.ytimg.com/vi/D3W6CcFy3b0/maxresdefault.jpg",
+            "detail_url": "/video/yt-VVVseXRZaEw3dmtUaWlXY2F1eTNmWEt3LkQzVzZDY0Z5M2Iw",
+            "url": "https://www.youtube.com/watch?v=D3W6CcFy3b0&list=UUlytYhL7vkTiiWcauy3fXKw",
             "group_name": "islamic knowledge",
             "group_key": "islamicknowledge",
             "group_names": [
@@ -29372,11 +29372,11 @@
               "cached-latest"
             ]
           },
-          "latest_video_id": "gWRIBXjtGN8",
-          "published_at": "2026-08-21T18:21:31Z",
-          "published_display": "Aug 21, 2026 18:21",
-          "thumbnail": "https://i.ytimg.com/vi/gWRIBXjtGN8/maxresdefault.jpg",
-          "url": "https://www.youtube.com/watch?v=gWRIBXjtGN8&list=UUlytYhL7vkTiiWcauy3fXKw",
+          "latest_video_id": "D3W6CcFy3b0",
+          "published_at": "2026-08-22T05:49:16Z",
+          "published_display": "Aug 22, 2026 05:49",
+          "thumbnail": "https://i.ytimg.com/vi/D3W6CcFy3b0/maxresdefault.jpg",
+          "url": "https://www.youtube.com/watch?v=D3W6CcFy3b0&list=UUlytYhL7vkTiiWcauy3fXKw",
           "reason_tags": [
             "source-diverse",
             "cached-empty",
@@ -30527,6 +30527,122 @@
       ],
       "videos": [
         {
+          "title": "كيف تتخلص من السحر؟ _ من أروع حلقات الدكتور مصطفى محمود رحمه الله",
+          "entry_id": "yt-VVVHNnRXWWw1WmI0OTBQa1NBakUyaVJnLmctc3lHM2otdjZB",
+          "video_id": "g-syG3j-v6A",
+          "watch_key": "g-syG3j-v6A",
+          "state_key": "g-syG3j-v6A",
+          "channel_id": "UCG6tWYl5Zb490PkSAjE2iRg",
+          "channel_name": "القناة الرسمية للدكتور مصطفى محمود",
+          "channel_title": "القناة الرسمية للدكتور مصطفى محمود",
+          "published_at": "2026-08-22T07:00:08Z",
+          "published_display": "Aug 22, 2026 07:00",
+          "thumbnail": "https://i.ytimg.com/vi/g-syG3j-v6A/maxresdefault_live.jpg",
+          "thumbnail_url": "https://i.ytimg.com/vi/g-syG3j-v6A/maxresdefault_live.jpg",
+          "image_url": "https://i.ytimg.com/vi/g-syG3j-v6A/maxresdefault_live.jpg",
+          "thumb": "https://i.ytimg.com/vi/g-syG3j-v6A/maxresdefault_live.jpg",
+          "detail_url": "/video/yt-VVVHNnRXWWw1WmI0OTBQa1NBakUyaVJnLmctc3lHM2otdjZB",
+          "url": "https://www.youtube.com/watch?v=g-syG3j-v6A&list=UUG6tWYl5Zb490PkSAjE2iRg",
+          "group_name": "islamic knowledge",
+          "group_key": "islamicknowledge",
+          "group_names": [
+            "islamic knowledge"
+          ],
+          "group_keys": [
+            "islamicknowledge"
+          ],
+          "reason_tags": [
+            "cached-latest"
+          ]
+        },
+        {
+          "title": "هذا ما فعله المسلمون عند عزل خالد بن الوليد",
+          "entry_id": "yt-VVVDRmNsdkl6SS1vcWR6UWNKLU9PaEVnLjB3LW5PTHNXbWtz",
+          "video_id": "0w-nOLsWmks",
+          "watch_key": "0w-nOLsWmks",
+          "state_key": "0w-nOLsWmks",
+          "channel_id": "UCCFclvIzI-oqdzQcJ-OOhEg",
+          "channel_name": "الدكتور راغب السرجاني",
+          "channel_title": "الدكتور راغب السرجاني",
+          "published_at": "2026-08-22T06:00:28Z",
+          "published_display": "Aug 22, 2026 06:00",
+          "thumbnail": "https://i.ytimg.com/vi/0w-nOLsWmks/maxresdefault.jpg",
+          "thumbnail_url": "https://i.ytimg.com/vi/0w-nOLsWmks/maxresdefault.jpg",
+          "image_url": "https://i.ytimg.com/vi/0w-nOLsWmks/maxresdefault.jpg",
+          "thumb": "https://i.ytimg.com/vi/0w-nOLsWmks/maxresdefault.jpg",
+          "detail_url": "/video/yt-VVVDRmNsdkl6SS1vcWR6UWNKLU9PaEVnLjB3LW5PTHNXbWtz",
+          "url": "https://www.youtube.com/watch?v=0w-nOLsWmks&list=UUCFclvIzI-oqdzQcJ-OOhEg",
+          "group_name": "islamic knowledge",
+          "group_key": "islamicknowledge",
+          "group_names": [
+            "islamic knowledge"
+          ],
+          "group_keys": [
+            "islamicknowledge"
+          ],
+          "reason_tags": [
+            "cached-latest"
+          ]
+        },
+        {
+          "title": "بث مباشر لاستقبال الاقترحات و الاسئلة ( ١ ) ⚘️",
+          "entry_id": "yt-VVVseXRZaEw3dmtUaWlXY2F1eTNmWEt3LkQzVzZDY0Z5M2Iw",
+          "video_id": "D3W6CcFy3b0",
+          "watch_key": "D3W6CcFy3b0",
+          "state_key": "D3W6CcFy3b0",
+          "channel_id": "UClytYhL7vkTiiWcauy3fXKw",
+          "channel_name": "سامح الجنداوي ( القناة الرسمية )",
+          "channel_title": "سامح الجنداوي ( القناة الرسمية )",
+          "published_at": "2026-08-22T05:49:16Z",
+          "published_display": "Aug 22, 2026 05:49",
+          "thumbnail": "https://i.ytimg.com/vi/D3W6CcFy3b0/maxresdefault.jpg",
+          "thumbnail_url": "https://i.ytimg.com/vi/D3W6CcFy3b0/maxresdefault.jpg",
+          "image_url": "https://i.ytimg.com/vi/D3W6CcFy3b0/maxresdefault.jpg",
+          "thumb": "https://i.ytimg.com/vi/D3W6CcFy3b0/maxresdefault.jpg",
+          "detail_url": "/video/yt-VVVseXRZaEw3dmtUaWlXY2F1eTNmWEt3LkQzVzZDY0Z5M2Iw",
+          "url": "https://www.youtube.com/watch?v=D3W6CcFy3b0&list=UUlytYhL7vkTiiWcauy3fXKw",
+          "group_name": "islamic knowledge",
+          "group_key": "islamicknowledge",
+          "group_names": [
+            "islamic knowledge"
+          ],
+          "group_keys": [
+            "islamicknowledge"
+          ],
+          "reason_tags": [
+            "cached-latest"
+          ]
+        },
+        {
+          "title": "Scientific and Logical Reasons for Prohibiting Alcohol in Islam - Dr Zakir Naik",
+          "entry_id": "yt-VVUzWW1QN25xZjUxNEkxemgxZVZienJBLnFyLVZTXzdyS3NF",
+          "video_id": "qr-VS_7rKsE",
+          "watch_key": "qr-VS_7rKsE",
+          "state_key": "qr-VS_7rKsE",
+          "channel_id": "UC3YmP7nqf514I1zh1eVbzrA",
+          "channel_name": "Dr Zakir Naik",
+          "channel_title": "Dr Zakir Naik",
+          "published_at": "2026-08-22T05:30:20Z",
+          "published_display": "Aug 22, 2026 05:30",
+          "thumbnail": "https://i.ytimg.com/vi/qr-VS_7rKsE/maxresdefault.jpg",
+          "thumbnail_url": "https://i.ytimg.com/vi/qr-VS_7rKsE/maxresdefault.jpg",
+          "image_url": "https://i.ytimg.com/vi/qr-VS_7rKsE/maxresdefault.jpg",
+          "thumb": "https://i.ytimg.com/vi/qr-VS_7rKsE/maxresdefault.jpg",
+          "detail_url": "/video/yt-VVUzWW1QN25xZjUxNEkxemgxZVZienJBLnFyLVZTXzdyS3NF",
+          "url": "https://www.youtube.com/watch?v=qr-VS_7rKsE&list=UU3YmP7nqf514I1zh1eVbzrA",
+          "group_name": "islamic knowledge",
+          "group_key": "islamicknowledge",
+          "group_names": [
+            "islamic knowledge"
+          ],
+          "group_keys": [
+            "islamicknowledge"
+          ],
+          "reason_tags": [
+            "cached-latest"
+          ]
+        },
+        {
           "title": "فاتحة الفاتحة | مهندس أمجد سمير #الباش_محفظ #السعودية #الكويت #قطر #كندا #مصر #فلسطين #غزة #ترند",
           "entry_id": "yt-VVU5b3hpOVVtS3NvSVdDbDRYRW54R21nLm9nOEFyVTRvLU5J",
           "video_id": "og8ArU4o-NI",
@@ -30759,35 +30875,6 @@
           ]
         },
         {
-          "title": "كيف تتخلص من السحر؟ _ من أروع حلقات الدكتور مصطفى محمود رحمه الله",
-          "entry_id": "yt-VVVHNnRXWWw1WmI0OTBQa1NBakUyaVJnLmctc3lHM2otdjZB",
-          "video_id": "g-syG3j-v6A",
-          "watch_key": "g-syG3j-v6A",
-          "state_key": "g-syG3j-v6A",
-          "channel_id": "UCG6tWYl5Zb490PkSAjE2iRg",
-          "channel_name": "القناة الرسمية للدكتور مصطفى محمود",
-          "channel_title": "القناة الرسمية للدكتور مصطفى محمود",
-          "published_at": "2026-08-21T19:08:59Z",
-          "published_display": "Aug 21, 2026 19:08",
-          "thumbnail": "https://i.ytimg.com/vi/g-syG3j-v6A/maxresdefault_live.jpg",
-          "thumbnail_url": "https://i.ytimg.com/vi/g-syG3j-v6A/maxresdefault_live.jpg",
-          "image_url": "https://i.ytimg.com/vi/g-syG3j-v6A/maxresdefault_live.jpg",
-          "thumb": "https://i.ytimg.com/vi/g-syG3j-v6A/maxresdefault_live.jpg",
-          "detail_url": "/video/yt-VVVHNnRXWWw1WmI0OTBQa1NBakUyaVJnLmctc3lHM2otdjZB",
-          "url": "https://www.youtube.com/watch?v=g-syG3j-v6A&list=UUG6tWYl5Zb490PkSAjE2iRg",
-          "group_name": "islamic knowledge",
-          "group_key": "islamicknowledge",
-          "group_names": [
-            "islamic knowledge"
-          ],
-          "group_keys": [
-            "islamicknowledge"
-          ],
-          "reason_tags": [
-            "cached-latest"
-          ]
-        },
-        {
           "title": "ابدأ بالمتاح! - ذ  ياسين العمري",
           "entry_id": "yt-VVVGUVdvQzRxb0tqcjNEbTdFYWQ5Njl3LnREYW1oOVFmMS0w",
           "video_id": "tDamh9Qf1-0",
@@ -30978,35 +31065,6 @@
           "thumb": "https://i.ytimg.com/vi/1viEDrMTfJ4/maxresdefault.jpg",
           "detail_url": "/video/yt-VVVDRmNsdkl6SS1vcWR6UWNKLU9PaEVnLjF2aUVEck1UZko0",
           "url": "https://www.youtube.com/watch?v=1viEDrMTfJ4&list=UUCFclvIzI-oqdzQcJ-OOhEg",
-          "group_name": "islamic knowledge",
-          "group_key": "islamicknowledge",
-          "group_names": [
-            "islamic knowledge"
-          ],
-          "group_keys": [
-            "islamicknowledge"
-          ],
-          "reason_tags": [
-            "cached-latest"
-          ]
-        },
-        {
-          "title": "بث مباشر لاستقبال الاقترحات و الاسئلة ( ١ ) ⚘️",
-          "entry_id": "yt-VVVseXRZaEw3dmtUaWlXY2F1eTNmWEt3LkQzVzZDY0Z5M2Iw",
-          "video_id": "D3W6CcFy3b0",
-          "watch_key": "D3W6CcFy3b0",
-          "state_key": "D3W6CcFy3b0",
-          "channel_id": "UClytYhL7vkTiiWcauy3fXKw",
-          "channel_name": "سامح الجنداوي ( القناة الرسمية )",
-          "channel_title": "سامح الجنداوي ( القناة الرسمية )",
-          "published_at": "2026-08-21T17:34:14Z",
-          "published_display": "Aug 21, 2026 17:34",
-          "thumbnail": "https://i.ytimg.com/vi/D3W6CcFy3b0/maxresdefault_live.jpg",
-          "thumbnail_url": "https://i.ytimg.com/vi/D3W6CcFy3b0/maxresdefault_live.jpg",
-          "image_url": "https://i.ytimg.com/vi/D3W6CcFy3b0/maxresdefault_live.jpg",
-          "thumb": "https://i.ytimg.com/vi/D3W6CcFy3b0/maxresdefault_live.jpg",
-          "detail_url": "/video/yt-VVVseXRZaEw3dmtUaWlXY2F1eTNmWEt3LkQzVzZDY0Z5M2Iw",
-          "url": "https://www.youtube.com/watch?v=D3W6CcFy3b0&list=UUlytYhL7vkTiiWcauy3fXKw",
           "group_name": "islamic knowledge",
           "group_key": "islamicknowledge",
           "group_names": [
@@ -33746,35 +33804,6 @@
           ]
         },
         {
-          "title": "إسلام قائد أوروبي أثناء المعركة",
-          "entry_id": "yt-VVVDRmNsdkl6SS1vcWR6UWNKLU9PaEVnLmhBc0RRZDlGY2lJ",
-          "video_id": "hAsDQd9FciI",
-          "watch_key": "hAsDQd9FciI",
-          "state_key": "hAsDQd9FciI",
-          "channel_id": "UCCFclvIzI-oqdzQcJ-OOhEg",
-          "channel_name": "الدكتور راغب السرجاني",
-          "channel_title": "الدكتور راغب السرجاني",
-          "published_at": "2026-08-20T06:00:33Z",
-          "published_display": "Aug 20, 2026 06:00",
-          "thumbnail": "https://i.ytimg.com/vi/hAsDQd9FciI/maxresdefault.jpg",
-          "thumbnail_url": "https://i.ytimg.com/vi/hAsDQd9FciI/maxresdefault.jpg",
-          "image_url": "https://i.ytimg.com/vi/hAsDQd9FciI/maxresdefault.jpg",
-          "thumb": "https://i.ytimg.com/vi/hAsDQd9FciI/maxresdefault.jpg",
-          "detail_url": "/video/yt-VVVDRmNsdkl6SS1vcWR6UWNKLU9PaEVnLmhBc0RRZDlGY2lJ",
-          "url": "https://www.youtube.com/watch?v=hAsDQd9FciI&list=UUCFclvIzI-oqdzQcJ-OOhEg",
-          "group_name": "islamic knowledge",
-          "group_key": "islamicknowledge",
-          "group_names": [
-            "islamic knowledge"
-          ],
-          "group_keys": [
-            "islamicknowledge"
-          ],
-          "reason_tags": [
-            "cached-latest"
-          ]
-        },
-        {
           "title": "Why is Pork Prohibited in Islam? - Dr Zakir Naik",
           "entry_id": "yt-VVUzWW1QN25xZjUxNEkxemgxZVZienJBLm5fQnNVQm15b2NR",
           "video_id": "n_BsUBmyocQ",
@@ -35950,35 +35979,6 @@
           ]
         },
         {
-          "title": "Killing Animals in Islam is the Best for the Humans and the Animals - Dr Zakir Naik",
-          "entry_id": "yt-VVUzWW1QN25xZjUxNEkxemgxZVZienJBLlJLNGVKQzRYSlpZ",
-          "video_id": "RK4eJC4XJZY",
-          "watch_key": "RK4eJC4XJZY",
-          "state_key": "RK4eJC4XJZY",
-          "channel_id": "UC3YmP7nqf514I1zh1eVbzrA",
-          "channel_name": "Dr Zakir Naik",
-          "channel_title": "Dr Zakir Naik",
-          "published_at": "2026-08-18T05:30:16Z",
-          "published_display": "Aug 18, 2026 05:30",
-          "thumbnail": "https://i.ytimg.com/vi/RK4eJC4XJZY/maxresdefault.jpg",
-          "thumbnail_url": "https://i.ytimg.com/vi/RK4eJC4XJZY/maxresdefault.jpg",
-          "image_url": "https://i.ytimg.com/vi/RK4eJC4XJZY/maxresdefault.jpg",
-          "thumb": "https://i.ytimg.com/vi/RK4eJC4XJZY/maxresdefault.jpg",
-          "detail_url": "/video/yt-VVUzWW1QN25xZjUxNEkxemgxZVZienJBLlJLNGVKQzRYSlpZ",
-          "url": "https://www.youtube.com/watch?v=RK4eJC4XJZY&list=UU3YmP7nqf514I1zh1eVbzrA",
-          "group_name": "islamic knowledge",
-          "group_key": "islamicknowledge",
-          "group_names": [
-            "islamic knowledge"
-          ],
-          "group_keys": [
-            "islamicknowledge"
-          ],
-          "reason_tags": [
-            "cached-latest"
-          ]
-        },
-        {
           "title": "المغني لابن قدامة (33)  - الصلاة ( 13)",
           "entry_id": "yt-VVVfS3dMakJXRU5sQVVuUXhwQkNkOFRBLjg2VXNvNWswSEs0",
           "video_id": "86Uso5k0HK4",
@@ -36440,8 +36440,8 @@
           "UCqF93nkibhEA1Sz8nZuqrVQ: no_upload_playlist - relatedPlaylists.uploads missing from channels.list response",
           "UCduD22OSc9f98Fg4NuJHU3Q: no_upload_playlist - relatedPlaylists.uploads missing from channels.list response"
         ],
-        "generated_at": "2026-08-22T01:53:51+00:00",
-        "synced_at": "2026-08-22T01:53:51+00:00"
+        "generated_at": "2026-08-22T07:02:46+00:00",
+        "synced_at": "2026-08-22T07:02:46+00:00"
       }
     },
     "knowledge": {
@@ -36454,22 +36454,22 @@
       "channel_count": 181,
       "latest_video_count": 200,
       "latest_video": {
-        "title": "3 Stoic Rules for Handling Pressure",
-        "entry_id": "yt-VVVrVWFUMFQwM1RKdmFmWWtmQVRNMkFnLnN0RVpyOVZHRy1F",
-        "video_id": "stEZr9VGG-E",
-        "watch_key": "stEZr9VGG-E",
-        "state_key": "stEZr9VGG-E",
-        "channel_id": "UCkUaT0T03TJvafYkfATM2Ag",
-        "channel_name": "Daily Stoic",
-        "channel_title": "Daily Stoic",
-        "published_at": "2026-08-22T00:00:21Z",
-        "published_display": "Aug 22, 2026 00:00",
-        "thumbnail": "https://i.ytimg.com/vi/stEZr9VGG-E/maxresdefault.jpg",
-        "thumbnail_url": "https://i.ytimg.com/vi/stEZr9VGG-E/maxresdefault.jpg",
-        "image_url": "https://i.ytimg.com/vi/stEZr9VGG-E/maxresdefault.jpg",
-        "thumb": "https://i.ytimg.com/vi/stEZr9VGG-E/maxresdefault.jpg",
-        "detail_url": "/video/yt-VVVrVWFUMFQwM1RKdmFmWWtmQVRNMkFnLnN0RVpyOVZHRy1F",
-        "url": "https://www.youtube.com/watch?v=stEZr9VGG-E&list=UUkUaT0T03TJvafYkfATM2Ag",
+        "title": "الملياردير الأميركي \"بيل غيتس\"",
+        "entry_id": "yt-VVU0RGFQc3dxSThmMG5QOThsZUljdmtRLlJqU2pfNEZsSldn",
+        "video_id": "RjSj_4FlJWg",
+        "watch_key": "RjSj_4FlJWg",
+        "state_key": "RjSj_4FlJWg",
+        "channel_id": "UC4DaPswqI8f0nP98leIcvkQ",
+        "channel_name": "سياسة لس",
+        "channel_title": "سياسة لس",
+        "published_at": "2026-08-22T07:00:38Z",
+        "published_display": "Aug 22, 2026 07:00",
+        "thumbnail": "https://i.ytimg.com/vi/RjSj_4FlJWg/maxresdefault.jpg",
+        "thumbnail_url": "https://i.ytimg.com/vi/RjSj_4FlJWg/maxresdefault.jpg",
+        "image_url": "https://i.ytimg.com/vi/RjSj_4FlJWg/maxresdefault.jpg",
+        "thumb": "https://i.ytimg.com/vi/RjSj_4FlJWg/maxresdefault.jpg",
+        "detail_url": "/video/yt-VVU0RGFQc3dxSThmMG5QOThsZUljdmtRLlJqU2pfNEZsSldn",
+        "url": "https://www.youtube.com/watch?v=RjSj_4FlJWg&list=UU4DaPswqI8f0nP98leIcvkQ",
         "group_name": "knowledge",
         "group_key": "knowledge",
         "group_names": [
@@ -36893,22 +36893,22 @@
           ],
           "group_key": "knowledge",
           "latest_video": {
-            "title": "حادثة مطار بريشتينا التي كادت تشعل الحرب العالمية الثالثة",
-            "entry_id": "yt-VVU0RGFQc3dxSThmMG5QOThsZUljdmtRLlktVlM3VWlTZXZZ",
-            "video_id": "Y-VS7UiSevY",
-            "watch_key": "Y-VS7UiSevY",
-            "state_key": "Y-VS7UiSevY",
+            "title": "الملياردير الأميركي \"بيل غيتس\"",
+            "entry_id": "yt-VVU0RGFQc3dxSThmMG5QOThsZUljdmtRLlJqU2pfNEZsSldn",
+            "video_id": "RjSj_4FlJWg",
+            "watch_key": "RjSj_4FlJWg",
+            "state_key": "RjSj_4FlJWg",
             "channel_id": "UC4DaPswqI8f0nP98leIcvkQ",
             "channel_name": "سياسة لس",
             "channel_title": "سياسة لس",
-            "published_at": "2026-08-21T22:00:38Z",
-            "published_display": "Aug 21, 2026 22:00",
-            "thumbnail": "https://i.ytimg.com/vi/Y-VS7UiSevY/maxresdefault.jpg",
-            "thumbnail_url": "https://i.ytimg.com/vi/Y-VS7UiSevY/maxresdefault.jpg",
-            "image_url": "https://i.ytimg.com/vi/Y-VS7UiSevY/maxresdefault.jpg",
-            "thumb": "https://i.ytimg.com/vi/Y-VS7UiSevY/maxresdefault.jpg",
-            "detail_url": "/video/yt-VVU0RGFQc3dxSThmMG5QOThsZUljdmtRLlktVlM3VWlTZXZZ",
-            "url": "https://www.youtube.com/watch?v=Y-VS7UiSevY&list=UU4DaPswqI8f0nP98leIcvkQ",
+            "published_at": "2026-08-22T07:00:38Z",
+            "published_display": "Aug 22, 2026 07:00",
+            "thumbnail": "https://i.ytimg.com/vi/RjSj_4FlJWg/maxresdefault.jpg",
+            "thumbnail_url": "https://i.ytimg.com/vi/RjSj_4FlJWg/maxresdefault.jpg",
+            "image_url": "https://i.ytimg.com/vi/RjSj_4FlJWg/maxresdefault.jpg",
+            "thumb": "https://i.ytimg.com/vi/RjSj_4FlJWg/maxresdefault.jpg",
+            "detail_url": "/video/yt-VVU0RGFQc3dxSThmMG5QOThsZUljdmtRLlJqU2pfNEZsSldn",
+            "url": "https://www.youtube.com/watch?v=RjSj_4FlJWg&list=UU4DaPswqI8f0nP98leIcvkQ",
             "group_name": "knowledge",
             "group_key": "knowledge",
             "group_names": [
@@ -36921,11 +36921,11 @@
               "cached-latest"
             ]
           },
-          "latest_video_id": "Y-VS7UiSevY",
-          "published_at": "2026-08-21T22:00:38Z",
-          "published_display": "Aug 21, 2026 22:00",
-          "thumbnail": "https://i.ytimg.com/vi/Y-VS7UiSevY/maxresdefault.jpg",
-          "url": "https://www.youtube.com/watch?v=Y-VS7UiSevY&list=UU4DaPswqI8f0nP98leIcvkQ",
+          "latest_video_id": "RjSj_4FlJWg",
+          "published_at": "2026-08-22T07:00:38Z",
+          "published_display": "Aug 22, 2026 07:00",
+          "thumbnail": "https://i.ytimg.com/vi/RjSj_4FlJWg/maxresdefault.jpg",
+          "url": "https://www.youtube.com/watch?v=RjSj_4FlJWg&list=UU4DaPswqI8f0nP98leIcvkQ",
           "reason_tags": [
             "source-diverse",
             "cached-empty",
@@ -37559,7 +37559,7 @@
           ],
           "group_key": "knowledge",
           "latest_video": {
-            "title": "مابقتش حمل قصص الناجحين",
+            "title": "تعبنا من قصص الناجحين",
             "entry_id": "yt-VVVFSHZhWjMzNnU3VElzVVEyYzZTQWVRLmNmRDB2d1RqVHpz",
             "video_id": "cfD0vwTjTzs",
             "watch_key": "cfD0vwTjTzs",
@@ -39953,22 +39953,22 @@
           ],
           "group_key": "knowledge",
           "latest_video": {
-            "title": "درعا: هل تُصان حرية التعبير بالقانون.. أم تُواجَه بالاستدعاء الأمني؟",
-            "entry_id": "yt-VVVxUFA0ZGJncjlVZGRuenp1enI4cVhRLkwwWFVnZkNsbERj",
-            "video_id": "L0XUgfCllDc",
-            "watch_key": "L0XUgfCllDc",
-            "state_key": "L0XUgfCllDc",
+            "title": "إحباط تهريب طائر الحسون من تركيا إلى سوريا",
+            "entry_id": "yt-VVVxUFA0ZGJncjlVZGRuenp1enI4cVhRLmU4bG12X1k0WlUw",
+            "video_id": "e8lmv_Y4ZU0",
+            "watch_key": "e8lmv_Y4ZU0",
+            "state_key": "e8lmv_Y4ZU0",
             "channel_id": "UCqPP4dbgr9Uddnzzuzr8qXQ",
             "channel_name": "SyriaNow - سوريا الآن",
             "channel_title": "SyriaNow - سوريا الآن",
-            "published_at": "2026-08-21T21:46:55Z",
-            "published_display": "Aug 21, 2026 21:46",
-            "thumbnail": "https://i.ytimg.com/vi/L0XUgfCllDc/maxresdefault.jpg",
-            "thumbnail_url": "https://i.ytimg.com/vi/L0XUgfCllDc/maxresdefault.jpg",
-            "image_url": "https://i.ytimg.com/vi/L0XUgfCllDc/maxresdefault.jpg",
-            "thumb": "https://i.ytimg.com/vi/L0XUgfCllDc/maxresdefault.jpg",
-            "detail_url": "/video/yt-VVVxUFA0ZGJncjlVZGRuenp1enI4cVhRLkwwWFVnZkNsbERj",
-            "url": "https://www.youtube.com/watch?v=L0XUgfCllDc&list=UUqPP4dbgr9Uddnzzuzr8qXQ",
+            "published_at": "2026-08-22T06:49:34Z",
+            "published_display": "Aug 22, 2026 06:49",
+            "thumbnail": "https://i.ytimg.com/vi/e8lmv_Y4ZU0/maxresdefault.jpg",
+            "thumbnail_url": "https://i.ytimg.com/vi/e8lmv_Y4ZU0/maxresdefault.jpg",
+            "image_url": "https://i.ytimg.com/vi/e8lmv_Y4ZU0/maxresdefault.jpg",
+            "thumb": "https://i.ytimg.com/vi/e8lmv_Y4ZU0/maxresdefault.jpg",
+            "detail_url": "/video/yt-VVVxUFA0ZGJncjlVZGRuenp1enI4cVhRLmU4bG12X1k0WlUw",
+            "url": "https://www.youtube.com/watch?v=e8lmv_Y4ZU0&list=UUqPP4dbgr9Uddnzzuzr8qXQ",
             "group_name": "knowledge",
             "group_key": "knowledge",
             "group_names": [
@@ -39981,11 +39981,11 @@
               "cached-latest"
             ]
           },
-          "latest_video_id": "L0XUgfCllDc",
-          "published_at": "2026-08-21T21:46:55Z",
-          "published_display": "Aug 21, 2026 21:46",
-          "thumbnail": "https://i.ytimg.com/vi/L0XUgfCllDc/maxresdefault.jpg",
-          "url": "https://www.youtube.com/watch?v=L0XUgfCllDc&list=UUqPP4dbgr9Uddnzzuzr8qXQ",
+          "latest_video_id": "e8lmv_Y4ZU0",
+          "published_at": "2026-08-22T06:49:34Z",
+          "published_display": "Aug 22, 2026 06:49",
+          "thumbnail": "https://i.ytimg.com/vi/e8lmv_Y4ZU0/maxresdefault.jpg",
+          "url": "https://www.youtube.com/watch?v=e8lmv_Y4ZU0&list=UUqPP4dbgr9Uddnzzuzr8qXQ",
           "reason_tags": [
             "source-diverse",
             "cached-empty",
@@ -41604,6 +41604,122 @@
       ],
       "videos": [
         {
+          "title": "الملياردير الأميركي \"بيل غيتس\"",
+          "entry_id": "yt-VVU0RGFQc3dxSThmMG5QOThsZUljdmtRLlJqU2pfNEZsSldn",
+          "video_id": "RjSj_4FlJWg",
+          "watch_key": "RjSj_4FlJWg",
+          "state_key": "RjSj_4FlJWg",
+          "channel_id": "UC4DaPswqI8f0nP98leIcvkQ",
+          "channel_name": "سياسة لس",
+          "channel_title": "سياسة لس",
+          "published_at": "2026-08-22T07:00:38Z",
+          "published_display": "Aug 22, 2026 07:00",
+          "thumbnail": "https://i.ytimg.com/vi/RjSj_4FlJWg/maxresdefault.jpg",
+          "thumbnail_url": "https://i.ytimg.com/vi/RjSj_4FlJWg/maxresdefault.jpg",
+          "image_url": "https://i.ytimg.com/vi/RjSj_4FlJWg/maxresdefault.jpg",
+          "thumb": "https://i.ytimg.com/vi/RjSj_4FlJWg/maxresdefault.jpg",
+          "detail_url": "/video/yt-VVU0RGFQc3dxSThmMG5QOThsZUljdmtRLlJqU2pfNEZsSldn",
+          "url": "https://www.youtube.com/watch?v=RjSj_4FlJWg&list=UU4DaPswqI8f0nP98leIcvkQ",
+          "group_name": "knowledge",
+          "group_key": "knowledge",
+          "group_names": [
+            "knowledge"
+          ],
+          "group_keys": [
+            "knowledge"
+          ],
+          "reason_tags": [
+            "cached-latest"
+          ]
+        },
+        {
+          "title": "إحباط تهريب طائر الحسون من تركيا إلى سوريا",
+          "entry_id": "yt-VVVxUFA0ZGJncjlVZGRuenp1enI4cVhRLmU4bG12X1k0WlUw",
+          "video_id": "e8lmv_Y4ZU0",
+          "watch_key": "e8lmv_Y4ZU0",
+          "state_key": "e8lmv_Y4ZU0",
+          "channel_id": "UCqPP4dbgr9Uddnzzuzr8qXQ",
+          "channel_name": "SyriaNow - سوريا الآن",
+          "channel_title": "SyriaNow - سوريا الآن",
+          "published_at": "2026-08-22T06:49:34Z",
+          "published_display": "Aug 22, 2026 06:49",
+          "thumbnail": "https://i.ytimg.com/vi/e8lmv_Y4ZU0/maxresdefault.jpg",
+          "thumbnail_url": "https://i.ytimg.com/vi/e8lmv_Y4ZU0/maxresdefault.jpg",
+          "image_url": "https://i.ytimg.com/vi/e8lmv_Y4ZU0/maxresdefault.jpg",
+          "thumb": "https://i.ytimg.com/vi/e8lmv_Y4ZU0/maxresdefault.jpg",
+          "detail_url": "/video/yt-VVVxUFA0ZGJncjlVZGRuenp1enI4cVhRLmU4bG12X1k0WlUw",
+          "url": "https://www.youtube.com/watch?v=e8lmv_Y4ZU0&list=UUqPP4dbgr9Uddnzzuzr8qXQ",
+          "group_name": "knowledge",
+          "group_key": "knowledge",
+          "group_names": [
+            "knowledge"
+          ],
+          "group_keys": [
+            "knowledge"
+          ],
+          "reason_tags": [
+            "cached-latest"
+          ]
+        },
+        {
+          "title": "فجوة دارين أخطر منطقة يسلكها المهاجرون غير الشرعيين إلى أميركا",
+          "entry_id": "yt-VVU0RGFQc3dxSThmMG5QOThsZUljdmtRLk1IVmNyREMyMFBj",
+          "video_id": "MHVcrDC20Pc",
+          "watch_key": "MHVcrDC20Pc",
+          "state_key": "MHVcrDC20Pc",
+          "channel_id": "UC4DaPswqI8f0nP98leIcvkQ",
+          "channel_name": "سياسة لس",
+          "channel_title": "سياسة لس",
+          "published_at": "2026-08-22T06:00:40Z",
+          "published_display": "Aug 22, 2026 06:00",
+          "thumbnail": "https://i.ytimg.com/vi/MHVcrDC20Pc/maxresdefault.jpg",
+          "thumbnail_url": "https://i.ytimg.com/vi/MHVcrDC20Pc/maxresdefault.jpg",
+          "image_url": "https://i.ytimg.com/vi/MHVcrDC20Pc/maxresdefault.jpg",
+          "thumb": "https://i.ytimg.com/vi/MHVcrDC20Pc/maxresdefault.jpg",
+          "detail_url": "/video/yt-VVU0RGFQc3dxSThmMG5QOThsZUljdmtRLk1IVmNyREMyMFBj",
+          "url": "https://www.youtube.com/watch?v=MHVcrDC20Pc&list=UU4DaPswqI8f0nP98leIcvkQ",
+          "group_name": "knowledge",
+          "group_key": "knowledge",
+          "group_names": [
+            "knowledge"
+          ],
+          "group_keys": [
+            "knowledge"
+          ],
+          "reason_tags": [
+            "cached-latest"
+          ]
+        },
+        {
+          "title": "\"خشب التيك\" سر الصراع في ميانمار",
+          "entry_id": "yt-VVU0RGFQc3dxSThmMG5QOThsZUljdmtRLmJpSGRlT2ZHcUxZ",
+          "video_id": "biHdeOfGqLY",
+          "watch_key": "biHdeOfGqLY",
+          "state_key": "biHdeOfGqLY",
+          "channel_id": "UC4DaPswqI8f0nP98leIcvkQ",
+          "channel_name": "سياسة لس",
+          "channel_title": "سياسة لس",
+          "published_at": "2026-08-22T05:00:37Z",
+          "published_display": "Aug 22, 2026 05:00",
+          "thumbnail": "https://i.ytimg.com/vi/biHdeOfGqLY/maxresdefault.jpg",
+          "thumbnail_url": "https://i.ytimg.com/vi/biHdeOfGqLY/maxresdefault.jpg",
+          "image_url": "https://i.ytimg.com/vi/biHdeOfGqLY/maxresdefault.jpg",
+          "thumb": "https://i.ytimg.com/vi/biHdeOfGqLY/maxresdefault.jpg",
+          "detail_url": "/video/yt-VVU0RGFQc3dxSThmMG5QOThsZUljdmtRLmJpSGRlT2ZHcUxZ",
+          "url": "https://www.youtube.com/watch?v=biHdeOfGqLY&list=UU4DaPswqI8f0nP98leIcvkQ",
+          "group_name": "knowledge",
+          "group_key": "knowledge",
+          "group_names": [
+            "knowledge"
+          ],
+          "group_keys": [
+            "knowledge"
+          ],
+          "reason_tags": [
+            "cached-latest"
+          ]
+        },
+        {
           "title": "3 Stoic Rules for Handling Pressure",
           "entry_id": "yt-VVVrVWFUMFQwM1RKdmFmWWtmQVRNMkFnLnN0RVpyOVZHRy1F",
           "video_id": "stEZr9VGG-E",
@@ -42329,35 +42445,6 @@
           ]
         },
         {
-          "title": "سوريا الآن تفتح نافذة على هندسة العمارة الطينية في بادية تدمر.. التفاصيل مع مراسلنا",
-          "entry_id": "yt-VVVxUFA0ZGJncjlVZGRuenp1enI4cVhRLlBRR2dPYWV6dTAw",
-          "video_id": "PQGgOaezu00",
-          "watch_key": "PQGgOaezu00",
-          "state_key": "PQGgOaezu00",
-          "channel_id": "UCqPP4dbgr9Uddnzzuzr8qXQ",
-          "channel_name": "SyriaNow - سوريا الآن",
-          "channel_title": "SyriaNow - سوريا الآن",
-          "published_at": "2026-08-21T18:48:45Z",
-          "published_display": "Aug 21, 2026 18:48",
-          "thumbnail": "https://i.ytimg.com/vi/PQGgOaezu00/maxresdefault.jpg",
-          "thumbnail_url": "https://i.ytimg.com/vi/PQGgOaezu00/maxresdefault.jpg",
-          "image_url": "https://i.ytimg.com/vi/PQGgOaezu00/maxresdefault.jpg",
-          "thumb": "https://i.ytimg.com/vi/PQGgOaezu00/maxresdefault.jpg",
-          "detail_url": "/video/yt-VVVxUFA0ZGJncjlVZGRuenp1enI4cVhRLlBRR2dPYWV6dTAw",
-          "url": "https://www.youtube.com/watch?v=PQGgOaezu00&list=UUqPP4dbgr9Uddnzzuzr8qXQ",
-          "group_name": "knowledge",
-          "group_key": "knowledge",
-          "group_names": [
-            "knowledge"
-          ],
-          "group_keys": [
-            "knowledge"
-          ],
-          "reason_tags": [
-            "cached-latest"
-          ]
-        },
-        {
           "title": "بعد غياب│ زول كافيه │ الموسم الخامس│ الحلقة 1",
           "entry_id": "yt-VVVQWEtGQVJycjlLSWF6S0ZzSWRacmJnLjRCM0tTczBrRG5Z",
           "video_id": "4B3KSs0kDnY",
@@ -42822,35 +42909,6 @@
           ]
         },
         {
-          "title": "منطقة تراقيا التي تضم الجزء الأوروبي الوحيد من تركيا",
-          "entry_id": "yt-VVU0RGFQc3dxSThmMG5QOThsZUljdmtRLnIxd25pUUlNWjEw",
-          "video_id": "r1wniQIMZ10",
-          "watch_key": "r1wniQIMZ10",
-          "state_key": "r1wniQIMZ10",
-          "channel_id": "UC4DaPswqI8f0nP98leIcvkQ",
-          "channel_name": "سياسة لس",
-          "channel_title": "سياسة لس",
-          "published_at": "2026-08-21T15:00:46Z",
-          "published_display": "Aug 21, 2026 15:00",
-          "thumbnail": "https://i.ytimg.com/vi/r1wniQIMZ10/maxresdefault.jpg",
-          "thumbnail_url": "https://i.ytimg.com/vi/r1wniQIMZ10/maxresdefault.jpg",
-          "image_url": "https://i.ytimg.com/vi/r1wniQIMZ10/maxresdefault.jpg",
-          "thumb": "https://i.ytimg.com/vi/r1wniQIMZ10/maxresdefault.jpg",
-          "detail_url": "/video/yt-VVU0RGFQc3dxSThmMG5QOThsZUljdmtRLnIxd25pUUlNWjEw",
-          "url": "https://www.youtube.com/watch?v=r1wniQIMZ10&list=UU4DaPswqI8f0nP98leIcvkQ",
-          "group_name": "knowledge",
-          "group_key": "knowledge",
-          "group_names": [
-            "knowledge"
-          ],
-          "group_keys": [
-            "knowledge"
-          ],
-          "reason_tags": [
-            "cached-latest"
-          ]
-        },
-        {
           "title": "The Only Accomplishment My Kids Care About",
           "entry_id": "yt-VVVrVWFUMFQwM1RKdmFmWWtmQVRNMkFnLkNuOHZHQjlKNU5B",
           "video_id": "Cn8vGB9J5NA",
@@ -43112,35 +43170,6 @@
           ]
         },
         {
-          "title": "كيف غرقت أميركا في الديون؟",
-          "entry_id": "yt-VVU0RGFQc3dxSThmMG5QOThsZUljdmtRLldIeGhnemJUZ3ZF",
-          "video_id": "WHxhgzbTgvE",
-          "watch_key": "WHxhgzbTgvE",
-          "state_key": "WHxhgzbTgvE",
-          "channel_id": "UC4DaPswqI8f0nP98leIcvkQ",
-          "channel_name": "سياسة لس",
-          "channel_title": "سياسة لس",
-          "published_at": "2026-08-21T14:00:35Z",
-          "published_display": "Aug 21, 2026 14:00",
-          "thumbnail": "https://i.ytimg.com/vi/WHxhgzbTgvE/maxresdefault.jpg",
-          "thumbnail_url": "https://i.ytimg.com/vi/WHxhgzbTgvE/maxresdefault.jpg",
-          "image_url": "https://i.ytimg.com/vi/WHxhgzbTgvE/maxresdefault.jpg",
-          "thumb": "https://i.ytimg.com/vi/WHxhgzbTgvE/maxresdefault.jpg",
-          "detail_url": "/video/yt-VVU0RGFQc3dxSThmMG5QOThsZUljdmtRLldIeGhnemJUZ3ZF",
-          "url": "https://www.youtube.com/watch?v=WHxhgzbTgvE&list=UU4DaPswqI8f0nP98leIcvkQ",
-          "group_name": "knowledge",
-          "group_key": "knowledge",
-          "group_names": [
-            "knowledge"
-          ],
-          "group_keys": [
-            "knowledge"
-          ],
-          "reason_tags": [
-            "cached-latest"
-          ]
-        },
-        {
           "title": "الشامي رجع؟!",
           "entry_id": "yt-VVVQWEtGQVJycjlLSWF6S0ZzSWRacmJnLndYZkNrb2FNeGhF",
           "video_id": "wXfCkoaMxhE",
@@ -43344,35 +43373,6 @@
           ]
         },
         {
-          "title": "كيف تطعم أميركا جنودها على حاملات الطائرات؟",
-          "entry_id": "yt-VVU0RGFQc3dxSThmMG5QOThsZUljdmtRLkE5Q0FhOUVGVUFj",
-          "video_id": "A9CAa9EFUAc",
-          "watch_key": "A9CAa9EFUAc",
-          "state_key": "A9CAa9EFUAc",
-          "channel_id": "UC4DaPswqI8f0nP98leIcvkQ",
-          "channel_name": "سياسة لس",
-          "channel_title": "سياسة لس",
-          "published_at": "2026-08-21T13:00:22Z",
-          "published_display": "Aug 21, 2026 13:00",
-          "thumbnail": "https://i.ytimg.com/vi/A9CAa9EFUAc/maxresdefault.jpg",
-          "thumbnail_url": "https://i.ytimg.com/vi/A9CAa9EFUAc/maxresdefault.jpg",
-          "image_url": "https://i.ytimg.com/vi/A9CAa9EFUAc/maxresdefault.jpg",
-          "thumb": "https://i.ytimg.com/vi/A9CAa9EFUAc/maxresdefault.jpg",
-          "detail_url": "/video/yt-VVU0RGFQc3dxSThmMG5QOThsZUljdmtRLkE5Q0FhOUVGVUFj",
-          "url": "https://www.youtube.com/watch?v=A9CAa9EFUAc&list=UU4DaPswqI8f0nP98leIcvkQ",
-          "group_name": "knowledge",
-          "group_key": "knowledge",
-          "group_names": [
-            "knowledge"
-          ],
-          "group_keys": [
-            "knowledge"
-          ],
-          "reason_tags": [
-            "cached-latest"
-          ]
-        },
-        {
           "title": "“Bad Luck” Is an Excuse.",
           "entry_id": "yt-VVUwVG5XOWFjTnhxZW9qeFhETWJvaGNBLjNQd2t1NHlUaHlB",
           "video_id": "3Pwku4yThyA",
@@ -43518,7 +43518,7 @@
           ]
         },
         {
-          "title": "مابقتش حمل قصص الناجحين",
+          "title": "تعبنا من قصص الناجحين",
           "entry_id": "yt-VVVFSHZhWjMzNnU3VElzVVEyYzZTQWVRLmNmRDB2d1RqVHpz",
           "video_id": "cfD0vwTjTzs",
           "watch_key": "cfD0vwTjTzs",
@@ -47609,8 +47609,8 @@
           "UCzmNyFIqGyVquE93gxRjQdw: no_upload_playlist - relatedPlaylists.uploads missing from channels.list response",
           "UCG7E24xqPnCcKSTKM1NYmWw: no_upload_playlist - relatedPlaylists.uploads missing from channels.list response"
         ],
-        "generated_at": "2026-08-22T01:54:33+00:00",
-        "synced_at": "2026-08-22T01:54:33+00:00"
+        "generated_at": "2026-08-22T07:03:30+00:00",
+        "synced_at": "2026-08-22T07:03:30+00:00"
       }
     },
     "language": {
@@ -54259,8 +54259,8 @@
           "UUwA7Aepp7nRUJNa8roQ-6Bw"
         ],
         "errors": [],
-        "generated_at": "2026-08-22T01:54:41+00:00",
-        "synced_at": "2026-08-22T01:54:41+00:00"
+        "generated_at": "2026-08-22T07:03:38+00:00",
+        "synced_at": "2026-08-22T07:03:38+00:00"
       }
     },
     "movise": {
@@ -60830,8 +60830,8 @@
           "UUyWHNjwSLMNGfaYKoCQd8kg"
         ],
         "errors": [],
-        "generated_at": "2026-08-22T01:54:50+00:00",
-        "synced_at": "2026-08-22T01:54:50+00:00"
+        "generated_at": "2026-08-22T07:03:44+00:00",
+        "synced_at": "2026-08-22T07:03:44+00:00"
       }
     },
     "musics": {
@@ -69126,8 +69126,8 @@
         "errors": [
           "UCUz6CXO5XIYD_7wmlK8mZsA: no_upload_playlist - relatedPlaylists.uploads missing from channels.list response"
         ],
-        "generated_at": "2026-08-22T01:55:04+00:00",
-        "synced_at": "2026-08-22T01:55:04+00:00"
+        "generated_at": "2026-08-22T07:03:59+00:00",
+        "synced_at": "2026-08-22T07:03:59+00:00"
       }
     },
     "myfavoret": {
@@ -71001,7 +71001,7 @@
           ],
           "group_key": "myfavoret",
           "latest_video": {
-            "title": "مابقتش حمل قصص الناجحين",
+            "title": "تعبنا من قصص الناجحين",
             "entry_id": "yt-VVVFSHZhWjMzNnU3VElzVVEyYzZTQWVRLmNmRDB2d1RqVHpz",
             "video_id": "cfD0vwTjTzs",
             "watch_key": "cfD0vwTjTzs",
@@ -75589,7 +75589,7 @@
           ]
         },
         {
-          "title": "مابقتش حمل قصص الناجحين",
+          "title": "تعبنا من قصص الناجحين",
           "entry_id": "yt-VVVFSHZhWjMzNnU3VElzVVEyYzZTQWVRLmNmRDB2d1RqVHpz",
           "video_id": "cfD0vwTjTzs",
           "watch_key": "cfD0vwTjTzs",
@@ -80818,8 +80818,8 @@
           "UCp24iCen1UdEJr4ZSMyYfKA: no_upload_playlist - relatedPlaylists.uploads missing from channels.list response",
           "UC8zcPIQGZMZfMh0Bgu7E2oA: no_upload_playlist - relatedPlaylists.uploads missing from channels.list response"
         ],
-        "generated_at": "2026-08-22T01:55:19+00:00",
-        "synced_at": "2026-08-22T01:55:19+00:00"
+        "generated_at": "2026-08-22T07:04:14+00:00",
+        "synced_at": "2026-08-22T07:04:14+00:00"
       }
     },
     "news": {
@@ -80832,22 +80832,22 @@
       "channel_count": 38,
       "latest_video_count": 200,
       "latest_video": {
-        "title": "خبير: إسرائيل تتجاهل الضغوط الغربية وتمضي في مشروع \"إي 1\" لفرض واقع الضم بالضفة",
-        "entry_id": "yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3LlBScTdqb3VqbTBF",
-        "video_id": "PRq7joujm0E",
-        "watch_key": "PRq7joujm0E",
-        "state_key": "PRq7joujm0E",
-        "channel_id": "UCfiwzLy-8yKzIbsmZTzxDgw",
-        "channel_name": "AlJazeera Arabic  قناة الجزيرة",
-        "channel_title": "AlJazeera Arabic  قناة الجزيرة",
-        "published_at": "2026-08-22T01:30:25Z",
-        "published_display": "Aug 22, 2026 01:30",
-        "thumbnail": "https://i.ytimg.com/vi/PRq7joujm0E/maxresdefault.jpg",
-        "thumbnail_url": "https://i.ytimg.com/vi/PRq7joujm0E/maxresdefault.jpg",
-        "image_url": "https://i.ytimg.com/vi/PRq7joujm0E/maxresdefault.jpg",
-        "thumb": "https://i.ytimg.com/vi/PRq7joujm0E/maxresdefault.jpg",
-        "detail_url": "/video/yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3LlBScTdqb3VqbTBF",
-        "url": "https://www.youtube.com/watch?v=PRq7joujm0E&list=UUfiwzLy-8yKzIbsmZTzxDgw",
+        "title": "معركة علي الطاهر.. هل يخسر حزب الله خط دفاعه الثاني؟ | #التاسعة",
+        "entry_id": "yt-VVVJSlhPdmdnakt0Q2FnTWZ4dmNDekFBLjV3YUs5aXJueUlJ",
+        "video_id": "5waK9irnyII",
+        "watch_key": "5waK9irnyII",
+        "state_key": "5waK9irnyII",
+        "channel_id": "UCIJXOvggjKtCagMfxvcCzAA",
+        "channel_name": "سكاي نيوز عربية",
+        "channel_title": "سكاي نيوز عربية",
+        "published_at": "2026-08-22T07:00:14Z",
+        "published_display": "Aug 22, 2026 07:00",
+        "thumbnail": "https://i.ytimg.com/vi/5waK9irnyII/maxresdefault.jpg",
+        "thumbnail_url": "https://i.ytimg.com/vi/5waK9irnyII/maxresdefault.jpg",
+        "image_url": "https://i.ytimg.com/vi/5waK9irnyII/maxresdefault.jpg",
+        "thumb": "https://i.ytimg.com/vi/5waK9irnyII/maxresdefault.jpg",
+        "detail_url": "/video/yt-VVVJSlhPdmdnakt0Q2FnTWZ4dmNDekFBLjV3YUs5aXJueUlJ",
+        "url": "https://www.youtube.com/watch?v=5waK9irnyII&list=UUIJXOvggjKtCagMfxvcCzAA",
         "group_name": "news",
         "group_key": "news",
         "group_names": [
@@ -81013,7 +81013,7 @@
           ],
           "group_key": "news",
           "latest_video": {
-            "title": "صدام حسين.. كيف نجا من محاولات اغتياله؟ وكيف سقط نظامه في أسابيع؟",
+            "title": "كيف حكم صدام حسين العراق بالقبضة الأمنية؟ ولماذا انهار نظامه بهذه السرعة؟",
             "entry_id": "yt-VVU0dE5DMFNEd2xHcngxU3BUei1nSkdBLmQweVhOVy1pRUEw",
             "video_id": "d0yXNW-iEA0",
             "watch_key": "d0yXNW-iEA0",
@@ -81307,22 +81307,22 @@
           ],
           "group_key": "news",
           "latest_video": {
-            "title": "مستوطنون يلقون نفاياتهم على منزل فلسطيني في قرية مادما، جنوب نابلس.",
-            "entry_id": "yt-VVVGRnVNR1RRWExpdE51aVU0U0llNXZRLkZaazF4V1Jaa01N",
-            "video_id": "FZk1xWRZkMM",
-            "watch_key": "FZk1xWRZkMM",
-            "state_key": "FZk1xWRZkMM",
+            "title": "إسلاميون ويساريون وتيارات مستقلة يجتمعون في قائمة واحدة، في مشهد قد يقلب حسابات الاحتلال",
+            "entry_id": "yt-VVVGRnVNR1RRWExpdE51aVU0U0llNXZRLmx0Z3FUbHgteTNz",
+            "video_id": "ltgqTlx-y3s",
+            "watch_key": "ltgqTlx-y3s",
+            "state_key": "ltgqTlx-y3s",
             "channel_id": "UCFFuMGTQXLitNuiU4SIe5vQ",
             "channel_name": "شبكة قدس الاخبارية",
             "channel_title": "شبكة قدس الاخبارية",
-            "published_at": "2026-08-21T20:00:36Z",
-            "published_display": "Aug 21, 2026 20:00",
-            "thumbnail": "https://i.ytimg.com/vi/FZk1xWRZkMM/maxresdefault.jpg",
-            "thumbnail_url": "https://i.ytimg.com/vi/FZk1xWRZkMM/maxresdefault.jpg",
-            "image_url": "https://i.ytimg.com/vi/FZk1xWRZkMM/maxresdefault.jpg",
-            "thumb": "https://i.ytimg.com/vi/FZk1xWRZkMM/maxresdefault.jpg",
-            "detail_url": "/video/yt-VVVGRnVNR1RRWExpdE51aVU0U0llNXZRLkZaazF4V1Jaa01N",
-            "url": "https://www.youtube.com/watch?v=FZk1xWRZkMM&list=UUFFuMGTQXLitNuiU4SIe5vQ",
+            "published_at": "2026-08-22T03:59:33Z",
+            "published_display": "Aug 22, 2026 03:59",
+            "thumbnail": "https://i.ytimg.com/vi/ltgqTlx-y3s/maxresdefault.jpg",
+            "thumbnail_url": "https://i.ytimg.com/vi/ltgqTlx-y3s/maxresdefault.jpg",
+            "image_url": "https://i.ytimg.com/vi/ltgqTlx-y3s/maxresdefault.jpg",
+            "thumb": "https://i.ytimg.com/vi/ltgqTlx-y3s/maxresdefault.jpg",
+            "detail_url": "/video/yt-VVVGRnVNR1RRWExpdE51aVU0U0llNXZRLmx0Z3FUbHgteTNz",
+            "url": "https://www.youtube.com/watch?v=ltgqTlx-y3s&list=UUFFuMGTQXLitNuiU4SIe5vQ",
             "group_name": "news",
             "group_key": "news",
             "group_names": [
@@ -81335,11 +81335,11 @@
               "cached-latest"
             ]
           },
-          "latest_video_id": "FZk1xWRZkMM",
-          "published_at": "2026-08-21T20:00:36Z",
-          "published_display": "Aug 21, 2026 20:00",
-          "thumbnail": "https://i.ytimg.com/vi/FZk1xWRZkMM/maxresdefault.jpg",
-          "url": "https://www.youtube.com/watch?v=FZk1xWRZkMM&list=UUFFuMGTQXLitNuiU4SIe5vQ",
+          "latest_video_id": "ltgqTlx-y3s",
+          "published_at": "2026-08-22T03:59:33Z",
+          "published_display": "Aug 22, 2026 03:59",
+          "thumbnail": "https://i.ytimg.com/vi/ltgqTlx-y3s/maxresdefault.jpg",
+          "url": "https://www.youtube.com/watch?v=ltgqTlx-y3s&list=UUFFuMGTQXLitNuiU4SIe5vQ",
           "reason_tags": [
             "source-diverse",
             "cached-empty",
@@ -81355,22 +81355,22 @@
           ],
           "group_key": "news",
           "latest_video": {
-            "title": "خبير: إسرائيل تتجاهل الضغوط الغربية وتمضي في مشروع \"إي 1\" لفرض واقع الضم بالضفة",
-            "entry_id": "yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3LlBScTdqb3VqbTBF",
-            "video_id": "PRq7joujm0E",
-            "watch_key": "PRq7joujm0E",
-            "state_key": "PRq7joujm0E",
+            "title": "إلى أين يتجه التصعيد بين تركيا وإسرائيل؟",
+            "entry_id": "yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3LjRDRUJyLWpFTDlR",
+            "video_id": "4CEBr-jEL9Q",
+            "watch_key": "4CEBr-jEL9Q",
+            "state_key": "4CEBr-jEL9Q",
             "channel_id": "UCfiwzLy-8yKzIbsmZTzxDgw",
             "channel_name": "AlJazeera Arabic  قناة الجزيرة",
             "channel_title": "AlJazeera Arabic  قناة الجزيرة",
-            "published_at": "2026-08-22T01:30:25Z",
-            "published_display": "Aug 22, 2026 01:30",
-            "thumbnail": "https://i.ytimg.com/vi/PRq7joujm0E/maxresdefault.jpg",
-            "thumbnail_url": "https://i.ytimg.com/vi/PRq7joujm0E/maxresdefault.jpg",
-            "image_url": "https://i.ytimg.com/vi/PRq7joujm0E/maxresdefault.jpg",
-            "thumb": "https://i.ytimg.com/vi/PRq7joujm0E/maxresdefault.jpg",
-            "detail_url": "/video/yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3LlBScTdqb3VqbTBF",
-            "url": "https://www.youtube.com/watch?v=PRq7joujm0E&list=UUfiwzLy-8yKzIbsmZTzxDgw",
+            "published_at": "2026-08-22T07:00:11Z",
+            "published_display": "Aug 22, 2026 07:00",
+            "thumbnail": "https://i.ytimg.com/vi/4CEBr-jEL9Q/maxresdefault.jpg",
+            "thumbnail_url": "https://i.ytimg.com/vi/4CEBr-jEL9Q/maxresdefault.jpg",
+            "image_url": "https://i.ytimg.com/vi/4CEBr-jEL9Q/maxresdefault.jpg",
+            "thumb": "https://i.ytimg.com/vi/4CEBr-jEL9Q/maxresdefault.jpg",
+            "detail_url": "/video/yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3LjRDRUJyLWpFTDlR",
+            "url": "https://www.youtube.com/watch?v=4CEBr-jEL9Q&list=UUfiwzLy-8yKzIbsmZTzxDgw",
             "group_name": "news",
             "group_key": "news",
             "group_names": [
@@ -81383,11 +81383,11 @@
               "cached-latest"
             ]
           },
-          "latest_video_id": "PRq7joujm0E",
-          "published_at": "2026-08-22T01:30:25Z",
-          "published_display": "Aug 22, 2026 01:30",
-          "thumbnail": "https://i.ytimg.com/vi/PRq7joujm0E/maxresdefault.jpg",
-          "url": "https://www.youtube.com/watch?v=PRq7joujm0E&list=UUfiwzLy-8yKzIbsmZTzxDgw",
+          "latest_video_id": "4CEBr-jEL9Q",
+          "published_at": "2026-08-22T07:00:11Z",
+          "published_display": "Aug 22, 2026 07:00",
+          "thumbnail": "https://i.ytimg.com/vi/4CEBr-jEL9Q/maxresdefault.jpg",
+          "url": "https://www.youtube.com/watch?v=4CEBr-jEL9Q&list=UUfiwzLy-8yKzIbsmZTzxDgw",
           "reason_tags": [
             "source-diverse",
             "cached-empty",
@@ -81547,22 +81547,22 @@
           ],
           "group_key": "news",
           "latest_video": {
-            "title": "حرب داخل الفيفا.. هل اقتربت نهاية عهد إنفانتينو؟ | #ستوديو_وان_مع_فضيلة",
-            "entry_id": "yt-VVVJSlhPdmdnakt0Q2FnTWZ4dmNDekFBLi13cE1ZdU1QQ1Uw",
-            "video_id": "-wpMYuMPCU0",
-            "watch_key": "-wpMYuMPCU0",
-            "state_key": "-wpMYuMPCU0",
+            "title": "معركة علي الطاهر.. هل يخسر حزب الله خط دفاعه الثاني؟ | #التاسعة",
+            "entry_id": "yt-VVVJSlhPdmdnakt0Q2FnTWZ4dmNDekFBLjV3YUs5aXJueUlJ",
+            "video_id": "5waK9irnyII",
+            "watch_key": "5waK9irnyII",
+            "state_key": "5waK9irnyII",
             "channel_id": "UCIJXOvggjKtCagMfxvcCzAA",
             "channel_name": "سكاي نيوز عربية",
             "channel_title": "سكاي نيوز عربية",
-            "published_at": "2026-08-22T01:00:06Z",
-            "published_display": "Aug 22, 2026 01:00",
-            "thumbnail": "https://i.ytimg.com/vi/-wpMYuMPCU0/maxresdefault.jpg",
-            "thumbnail_url": "https://i.ytimg.com/vi/-wpMYuMPCU0/maxresdefault.jpg",
-            "image_url": "https://i.ytimg.com/vi/-wpMYuMPCU0/maxresdefault.jpg",
-            "thumb": "https://i.ytimg.com/vi/-wpMYuMPCU0/maxresdefault.jpg",
-            "detail_url": "/video/yt-VVVJSlhPdmdnakt0Q2FnTWZ4dmNDekFBLi13cE1ZdU1QQ1Uw",
-            "url": "https://www.youtube.com/watch?v=-wpMYuMPCU0&list=UUIJXOvggjKtCagMfxvcCzAA",
+            "published_at": "2026-08-22T07:00:14Z",
+            "published_display": "Aug 22, 2026 07:00",
+            "thumbnail": "https://i.ytimg.com/vi/5waK9irnyII/maxresdefault.jpg",
+            "thumbnail_url": "https://i.ytimg.com/vi/5waK9irnyII/maxresdefault.jpg",
+            "image_url": "https://i.ytimg.com/vi/5waK9irnyII/maxresdefault.jpg",
+            "thumb": "https://i.ytimg.com/vi/5waK9irnyII/maxresdefault.jpg",
+            "detail_url": "/video/yt-VVVJSlhPdmdnakt0Q2FnTWZ4dmNDekFBLjV3YUs5aXJueUlJ",
+            "url": "https://www.youtube.com/watch?v=5waK9irnyII&list=UUIJXOvggjKtCagMfxvcCzAA",
             "group_name": "news",
             "group_key": "news",
             "group_names": [
@@ -81575,11 +81575,11 @@
               "cached-latest"
             ]
           },
-          "latest_video_id": "-wpMYuMPCU0",
-          "published_at": "2026-08-22T01:00:06Z",
-          "published_display": "Aug 22, 2026 01:00",
-          "thumbnail": "https://i.ytimg.com/vi/-wpMYuMPCU0/maxresdefault.jpg",
-          "url": "https://www.youtube.com/watch?v=-wpMYuMPCU0&list=UUIJXOvggjKtCagMfxvcCzAA",
+          "latest_video_id": "5waK9irnyII",
+          "published_at": "2026-08-22T07:00:14Z",
+          "published_display": "Aug 22, 2026 07:00",
+          "thumbnail": "https://i.ytimg.com/vi/5waK9irnyII/maxresdefault.jpg",
+          "url": "https://www.youtube.com/watch?v=5waK9irnyII&list=UUIJXOvggjKtCagMfxvcCzAA",
           "reason_tags": [
             "source-diverse",
             "cached-empty",
@@ -82165,22 +82165,22 @@
           ],
           "group_key": "news",
           "latest_video": {
-            "title": "بوتين يمطر أوكرانيا بقنابل خطيرة.. وموسكو تعلن ضربات ناجحة على 3 محاور #المشهد_تاغ مع #علاء_الدخاخني",
-            "entry_id": "yt-VVVXbkJUdXpVVURwS2hKUEd1RFFNeW5BLkp5OEFjNFM3MC1R",
-            "video_id": "Jy8Ac4S70-Q",
-            "watch_key": "Jy8Ac4S70-Q",
-            "state_key": "Jy8Ac4S70-Q",
+            "title": "ماذا قال ترامب لمحتج بعد طرده من تجمع انتخابي؟ #اخبار_المشهد #أميركا #المشهد",
+            "entry_id": "yt-VVVXbkJUdXpVVURwS2hKUEd1RFFNeW5BLnhIWXYwbmtpT1Jz",
+            "video_id": "xHYv0nkiORs",
+            "watch_key": "xHYv0nkiORs",
+            "state_key": "xHYv0nkiORs",
             "channel_id": "UCWnBTuzUUDpKhJPGuDQMynA",
             "channel_name": "Al Mashhad المشهد",
             "channel_title": "Al Mashhad المشهد",
-            "published_at": "2026-08-21T23:00:01Z",
-            "published_display": "Aug 21, 2026 23:00",
-            "thumbnail": "https://i.ytimg.com/vi/Jy8Ac4S70-Q/maxresdefault.jpg",
-            "thumbnail_url": "https://i.ytimg.com/vi/Jy8Ac4S70-Q/maxresdefault.jpg",
-            "image_url": "https://i.ytimg.com/vi/Jy8Ac4S70-Q/maxresdefault.jpg",
-            "thumb": "https://i.ytimg.com/vi/Jy8Ac4S70-Q/maxresdefault.jpg",
-            "detail_url": "/video/yt-VVVXbkJUdXpVVURwS2hKUEd1RFFNeW5BLkp5OEFjNFM3MC1R",
-            "url": "https://www.youtube.com/watch?v=Jy8Ac4S70-Q&list=UUWnBTuzUUDpKhJPGuDQMynA",
+            "published_at": "2026-08-22T06:50:01Z",
+            "published_display": "Aug 22, 2026 06:50",
+            "thumbnail": "https://i.ytimg.com/vi/xHYv0nkiORs/maxresdefault.jpg",
+            "thumbnail_url": "https://i.ytimg.com/vi/xHYv0nkiORs/maxresdefault.jpg",
+            "image_url": "https://i.ytimg.com/vi/xHYv0nkiORs/maxresdefault.jpg",
+            "thumb": "https://i.ytimg.com/vi/xHYv0nkiORs/maxresdefault.jpg",
+            "detail_url": "/video/yt-VVVXbkJUdXpVVURwS2hKUEd1RFFNeW5BLnhIWXYwbmtpT1Jz",
+            "url": "https://www.youtube.com/watch?v=xHYv0nkiORs&list=UUWnBTuzUUDpKhJPGuDQMynA",
             "group_name": "news",
             "group_key": "news",
             "group_names": [
@@ -82193,11 +82193,11 @@
               "cached-latest"
             ]
           },
-          "latest_video_id": "Jy8Ac4S70-Q",
-          "published_at": "2026-08-21T23:00:01Z",
-          "published_display": "Aug 21, 2026 23:00",
-          "thumbnail": "https://i.ytimg.com/vi/Jy8Ac4S70-Q/maxresdefault.jpg",
-          "url": "https://www.youtube.com/watch?v=Jy8Ac4S70-Q&list=UUWnBTuzUUDpKhJPGuDQMynA",
+          "latest_video_id": "xHYv0nkiORs",
+          "published_at": "2026-08-22T06:50:01Z",
+          "published_display": "Aug 22, 2026 06:50",
+          "thumbnail": "https://i.ytimg.com/vi/xHYv0nkiORs/maxresdefault.jpg",
+          "url": "https://www.youtube.com/watch?v=xHYv0nkiORs&list=UUWnBTuzUUDpKhJPGuDQMynA",
           "reason_tags": [
             "source-diverse",
             "cached-empty",
@@ -82448,22 +82448,22 @@
       ],
       "videos": [
         {
-          "title": "خبير: إسرائيل تتجاهل الضغوط الغربية وتمضي في مشروع \"إي 1\" لفرض واقع الضم بالضفة",
-          "entry_id": "yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3LlBScTdqb3VqbTBF",
-          "video_id": "PRq7joujm0E",
-          "watch_key": "PRq7joujm0E",
-          "state_key": "PRq7joujm0E",
-          "channel_id": "UCfiwzLy-8yKzIbsmZTzxDgw",
-          "channel_name": "AlJazeera Arabic  قناة الجزيرة",
-          "channel_title": "AlJazeera Arabic  قناة الجزيرة",
-          "published_at": "2026-08-22T01:30:25Z",
-          "published_display": "Aug 22, 2026 01:30",
-          "thumbnail": "https://i.ytimg.com/vi/PRq7joujm0E/maxresdefault.jpg",
-          "thumbnail_url": "https://i.ytimg.com/vi/PRq7joujm0E/maxresdefault.jpg",
-          "image_url": "https://i.ytimg.com/vi/PRq7joujm0E/maxresdefault.jpg",
-          "thumb": "https://i.ytimg.com/vi/PRq7joujm0E/maxresdefault.jpg",
-          "detail_url": "/video/yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3LlBScTdqb3VqbTBF",
-          "url": "https://www.youtube.com/watch?v=PRq7joujm0E&list=UUfiwzLy-8yKzIbsmZTzxDgw",
+          "title": "معركة علي الطاهر.. هل يخسر حزب الله خط دفاعه الثاني؟ | #التاسعة",
+          "entry_id": "yt-VVVJSlhPdmdnakt0Q2FnTWZ4dmNDekFBLjV3YUs5aXJueUlJ",
+          "video_id": "5waK9irnyII",
+          "watch_key": "5waK9irnyII",
+          "state_key": "5waK9irnyII",
+          "channel_id": "UCIJXOvggjKtCagMfxvcCzAA",
+          "channel_name": "سكاي نيوز عربية",
+          "channel_title": "سكاي نيوز عربية",
+          "published_at": "2026-08-22T07:00:14Z",
+          "published_display": "Aug 22, 2026 07:00",
+          "thumbnail": "https://i.ytimg.com/vi/5waK9irnyII/maxresdefault.jpg",
+          "thumbnail_url": "https://i.ytimg.com/vi/5waK9irnyII/maxresdefault.jpg",
+          "image_url": "https://i.ytimg.com/vi/5waK9irnyII/maxresdefault.jpg",
+          "thumb": "https://i.ytimg.com/vi/5waK9irnyII/maxresdefault.jpg",
+          "detail_url": "/video/yt-VVVJSlhPdmdnakt0Q2FnTWZ4dmNDekFBLjV3YUs5aXJueUlJ",
+          "url": "https://www.youtube.com/watch?v=5waK9irnyII&list=UUIJXOvggjKtCagMfxvcCzAA",
           "group_name": "news",
           "group_key": "news",
           "group_names": [
@@ -82477,22 +82477,22 @@
           ]
         },
         {
-          "title": "أسطول الصمود العالمي يدعم احتجاجا ضد مشروع مرتبط بصهر ترمب.. ما السبب؟",
-          "entry_id": "yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3Lm5TX0hJT2dNZzhV",
-          "video_id": "nS_HIOgMg8U",
-          "watch_key": "nS_HIOgMg8U",
-          "state_key": "nS_HIOgMg8U",
+          "title": "إلى أين يتجه التصعيد بين تركيا وإسرائيل؟",
+          "entry_id": "yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3LjRDRUJyLWpFTDlR",
+          "video_id": "4CEBr-jEL9Q",
+          "watch_key": "4CEBr-jEL9Q",
+          "state_key": "4CEBr-jEL9Q",
           "channel_id": "UCfiwzLy-8yKzIbsmZTzxDgw",
           "channel_name": "AlJazeera Arabic  قناة الجزيرة",
           "channel_title": "AlJazeera Arabic  قناة الجزيرة",
-          "published_at": "2026-08-22T01:30:11Z",
-          "published_display": "Aug 22, 2026 01:30",
-          "thumbnail": "https://i.ytimg.com/vi/nS_HIOgMg8U/maxresdefault.jpg",
-          "thumbnail_url": "https://i.ytimg.com/vi/nS_HIOgMg8U/maxresdefault.jpg",
-          "image_url": "https://i.ytimg.com/vi/nS_HIOgMg8U/maxresdefault.jpg",
-          "thumb": "https://i.ytimg.com/vi/nS_HIOgMg8U/maxresdefault.jpg",
-          "detail_url": "/video/yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3Lm5TX0hJT2dNZzhV",
-          "url": "https://www.youtube.com/watch?v=nS_HIOgMg8U&list=UUfiwzLy-8yKzIbsmZTzxDgw",
+          "published_at": "2026-08-22T07:00:11Z",
+          "published_display": "Aug 22, 2026 07:00",
+          "thumbnail": "https://i.ytimg.com/vi/4CEBr-jEL9Q/maxresdefault.jpg",
+          "thumbnail_url": "https://i.ytimg.com/vi/4CEBr-jEL9Q/maxresdefault.jpg",
+          "image_url": "https://i.ytimg.com/vi/4CEBr-jEL9Q/maxresdefault.jpg",
+          "thumb": "https://i.ytimg.com/vi/4CEBr-jEL9Q/maxresdefault.jpg",
+          "detail_url": "/video/yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3LjRDRUJyLWpFTDlR",
+          "url": "https://www.youtube.com/watch?v=4CEBr-jEL9Q&list=UUfiwzLy-8yKzIbsmZTzxDgw",
           "group_name": "news",
           "group_key": "news",
           "group_names": [
@@ -82506,22 +82506,22 @@
           ]
         },
         {
-          "title": "الخارجية الإيرانية: عقوبات أمريكا الاقتصادية فرض لسيادة تتجاوز الحدود الوطنية",
-          "entry_id": "yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3LjBBXzZZSjVxSjBR",
-          "video_id": "0A_6YJ5qJ0Q",
-          "watch_key": "0A_6YJ5qJ0Q",
-          "state_key": "0A_6YJ5qJ0Q",
-          "channel_id": "UCfiwzLy-8yKzIbsmZTzxDgw",
-          "channel_name": "AlJazeera Arabic  قناة الجزيرة",
-          "channel_title": "AlJazeera Arabic  قناة الجزيرة",
-          "published_at": "2026-08-22T01:14:08Z",
-          "published_display": "Aug 22, 2026 01:14",
-          "thumbnail": "https://i.ytimg.com/vi/0A_6YJ5qJ0Q/sddefault.jpg",
-          "thumbnail_url": "https://i.ytimg.com/vi/0A_6YJ5qJ0Q/sddefault.jpg",
-          "image_url": "https://i.ytimg.com/vi/0A_6YJ5qJ0Q/sddefault.jpg",
-          "thumb": "https://i.ytimg.com/vi/0A_6YJ5qJ0Q/sddefault.jpg",
-          "detail_url": "/video/yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3LjBBXzZZSjVxSjBR",
-          "url": "https://www.youtube.com/watch?v=0A_6YJ5qJ0Q&list=UUfiwzLy-8yKzIbsmZTzxDgw",
+          "title": "ماذا قال ترامب لمحتج بعد طرده من تجمع انتخابي؟ #اخبار_المشهد #أميركا #المشهد",
+          "entry_id": "yt-VVVXbkJUdXpVVURwS2hKUEd1RFFNeW5BLnhIWXYwbmtpT1Jz",
+          "video_id": "xHYv0nkiORs",
+          "watch_key": "xHYv0nkiORs",
+          "state_key": "xHYv0nkiORs",
+          "channel_id": "UCWnBTuzUUDpKhJPGuDQMynA",
+          "channel_name": "Al Mashhad المشهد",
+          "channel_title": "Al Mashhad المشهد",
+          "published_at": "2026-08-22T06:50:01Z",
+          "published_display": "Aug 22, 2026 06:50",
+          "thumbnail": "https://i.ytimg.com/vi/xHYv0nkiORs/maxresdefault.jpg",
+          "thumbnail_url": "https://i.ytimg.com/vi/xHYv0nkiORs/maxresdefault.jpg",
+          "image_url": "https://i.ytimg.com/vi/xHYv0nkiORs/maxresdefault.jpg",
+          "thumb": "https://i.ytimg.com/vi/xHYv0nkiORs/maxresdefault.jpg",
+          "detail_url": "/video/yt-VVVXbkJUdXpVVURwS2hKUEd1RFFNeW5BLnhIWXYwbmtpT1Jz",
+          "url": "https://www.youtube.com/watch?v=xHYv0nkiORs&list=UUWnBTuzUUDpKhJPGuDQMynA",
           "group_name": "news",
           "group_key": "news",
           "group_names": [
@@ -82535,22 +82535,22 @@
           ]
         },
         {
-          "title": "ترمب يكرر تصريحاته بشأن إيران: كانوا سيضربون إسرائيل والمنطقة بالسلاح النووي",
-          "entry_id": "yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3LkxnNUlxUGhGbC1j",
-          "video_id": "Lg5IqPhFl-c",
-          "watch_key": "Lg5IqPhFl-c",
-          "state_key": "Lg5IqPhFl-c",
+          "title": "هل تكفي الضغوط الدولية لوقف الاستيطان الإسرائيلي بالضفة الغربية؟",
+          "entry_id": "yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3LkdsNEN1YkIzQnY0",
+          "video_id": "Gl4CubB3Bv4",
+          "watch_key": "Gl4CubB3Bv4",
+          "state_key": "Gl4CubB3Bv4",
           "channel_id": "UCfiwzLy-8yKzIbsmZTzxDgw",
           "channel_name": "AlJazeera Arabic  قناة الجزيرة",
           "channel_title": "AlJazeera Arabic  قناة الجزيرة",
-          "published_at": "2026-08-22T01:01:49Z",
-          "published_display": "Aug 22, 2026 01:01",
-          "thumbnail": "https://i.ytimg.com/vi/Lg5IqPhFl-c/sddefault.jpg",
-          "thumbnail_url": "https://i.ytimg.com/vi/Lg5IqPhFl-c/sddefault.jpg",
-          "image_url": "https://i.ytimg.com/vi/Lg5IqPhFl-c/sddefault.jpg",
-          "thumb": "https://i.ytimg.com/vi/Lg5IqPhFl-c/sddefault.jpg",
-          "detail_url": "/video/yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3LkxnNUlxUGhGbC1j",
-          "url": "https://www.youtube.com/watch?v=Lg5IqPhFl-c&list=UUfiwzLy-8yKzIbsmZTzxDgw",
+          "published_at": "2026-08-22T06:45:17Z",
+          "published_display": "Aug 22, 2026 06:45",
+          "thumbnail": "https://i.ytimg.com/vi/Gl4CubB3Bv4/maxresdefault.jpg",
+          "thumbnail_url": "https://i.ytimg.com/vi/Gl4CubB3Bv4/maxresdefault.jpg",
+          "image_url": "https://i.ytimg.com/vi/Gl4CubB3Bv4/maxresdefault.jpg",
+          "thumb": "https://i.ytimg.com/vi/Gl4CubB3Bv4/maxresdefault.jpg",
+          "detail_url": "/video/yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3LkdsNEN1YkIzQnY0",
+          "url": "https://www.youtube.com/watch?v=Gl4CubB3Bv4&list=UUfiwzLy-8yKzIbsmZTzxDgw",
           "group_name": "news",
           "group_key": "news",
           "group_names": [
@@ -82564,22 +82564,22 @@
           ]
         },
         {
-          "title": "ترمب: لو امتلكت إيران سلاحا نوويا واستخدمته كانت ستقضي على إسرائيل فورا",
-          "entry_id": "yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3LlQzWFA4NnhjSmlV",
-          "video_id": "T3XP86xcJiU",
-          "watch_key": "T3XP86xcJiU",
-          "state_key": "T3XP86xcJiU",
-          "channel_id": "UCfiwzLy-8yKzIbsmZTzxDgw",
-          "channel_name": "AlJazeera Arabic  قناة الجزيرة",
-          "channel_title": "AlJazeera Arabic  قناة الجزيرة",
-          "published_at": "2026-08-22T01:00:27Z",
-          "published_display": "Aug 22, 2026 01:00",
-          "thumbnail": "https://i.ytimg.com/vi/T3XP86xcJiU/maxresdefault.jpg",
-          "thumbnail_url": "https://i.ytimg.com/vi/T3XP86xcJiU/maxresdefault.jpg",
-          "image_url": "https://i.ytimg.com/vi/T3XP86xcJiU/maxresdefault.jpg",
-          "thumb": "https://i.ytimg.com/vi/T3XP86xcJiU/maxresdefault.jpg",
-          "detail_url": "/video/yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3LlQzWFA4NnhjSmlV",
-          "url": "https://www.youtube.com/watch?v=T3XP86xcJiU&list=UUfiwzLy-8yKzIbsmZTzxDgw",
+          "title": "مقنّعان يحرقان متجرًا في البرازيل والعملاء بداخله! #اخبار_المشهد #البرازيل #المشهد",
+          "entry_id": "yt-VVVXbkJUdXpVVURwS2hKUEd1RFFNeW5BLk51Z3JtbkFBMHRz",
+          "video_id": "NugrmnAA0ts",
+          "watch_key": "NugrmnAA0ts",
+          "state_key": "NugrmnAA0ts",
+          "channel_id": "UCWnBTuzUUDpKhJPGuDQMynA",
+          "channel_name": "Al Mashhad المشهد",
+          "channel_title": "Al Mashhad المشهد",
+          "published_at": "2026-08-22T06:19:45Z",
+          "published_display": "Aug 22, 2026 06:19",
+          "thumbnail": "https://i.ytimg.com/vi/NugrmnAA0ts/maxresdefault.jpg",
+          "thumbnail_url": "https://i.ytimg.com/vi/NugrmnAA0ts/maxresdefault.jpg",
+          "image_url": "https://i.ytimg.com/vi/NugrmnAA0ts/maxresdefault.jpg",
+          "thumb": "https://i.ytimg.com/vi/NugrmnAA0ts/maxresdefault.jpg",
+          "detail_url": "/video/yt-VVVXbkJUdXpVVURwS2hKUEd1RFFNeW5BLk51Z3JtbkFBMHRz",
+          "url": "https://www.youtube.com/watch?v=NugrmnAA0ts&list=UUWnBTuzUUDpKhJPGuDQMynA",
           "group_name": "news",
           "group_key": "news",
           "group_names": [
@@ -82593,22 +82593,428 @@
           ]
         },
         {
-          "title": "ثلاجة بشرية لتخفيف حرارة الصيف عن العمال في مستودع بمدينة أوساكا اليابانية",
-          "entry_id": "yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3Lnp0OVNDNWVaYXdN",
-          "video_id": "zt9SC5eZawM",
-          "watch_key": "zt9SC5eZawM",
-          "state_key": "zt9SC5eZawM",
+          "title": "لحظة القبض على سارق سيارات بعد مطاردة شرطية بولاية فلوريدا الأمريكيك",
+          "entry_id": "yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3LlVZMXZFblAyS084",
+          "video_id": "UY1vEnP2KO8",
+          "watch_key": "UY1vEnP2KO8",
+          "state_key": "UY1vEnP2KO8",
           "channel_id": "UCfiwzLy-8yKzIbsmZTzxDgw",
           "channel_name": "AlJazeera Arabic  قناة الجزيرة",
           "channel_title": "AlJazeera Arabic  قناة الجزيرة",
-          "published_at": "2026-08-22T01:00:18Z",
-          "published_display": "Aug 22, 2026 01:00",
-          "thumbnail": "https://i.ytimg.com/vi/zt9SC5eZawM/maxresdefault.jpg",
-          "thumbnail_url": "https://i.ytimg.com/vi/zt9SC5eZawM/maxresdefault.jpg",
-          "image_url": "https://i.ytimg.com/vi/zt9SC5eZawM/maxresdefault.jpg",
-          "thumb": "https://i.ytimg.com/vi/zt9SC5eZawM/maxresdefault.jpg",
-          "detail_url": "/video/yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3Lnp0OVNDNWVaYXdN",
-          "url": "https://www.youtube.com/watch?v=zt9SC5eZawM&list=UUfiwzLy-8yKzIbsmZTzxDgw",
+          "published_at": "2026-08-22T06:00:30Z",
+          "published_display": "Aug 22, 2026 06:00",
+          "thumbnail": "https://i.ytimg.com/vi/UY1vEnP2KO8/maxresdefault.jpg",
+          "thumbnail_url": "https://i.ytimg.com/vi/UY1vEnP2KO8/maxresdefault.jpg",
+          "image_url": "https://i.ytimg.com/vi/UY1vEnP2KO8/maxresdefault.jpg",
+          "thumb": "https://i.ytimg.com/vi/UY1vEnP2KO8/maxresdefault.jpg",
+          "detail_url": "/video/yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3LlVZMXZFblAyS084",
+          "url": "https://www.youtube.com/watch?v=UY1vEnP2KO8&list=UUfiwzLy-8yKzIbsmZTzxDgw",
+          "group_name": "news",
+          "group_key": "news",
+          "group_names": [
+            "news"
+          ],
+          "group_keys": [
+            "news"
+          ],
+          "reason_tags": [
+            "cached-latest"
+          ]
+        },
+        {
+          "title": "باحث بمعهد الشرق الأوسط: ترمب لا يريد إسقاط النظام الإيراني بل إضعافه ودفعه إلى تنازلات",
+          "entry_id": "yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3LlBnWlBXOGJBcGxR",
+          "video_id": "PgZPW8bAplQ",
+          "watch_key": "PgZPW8bAplQ",
+          "state_key": "PgZPW8bAplQ",
+          "channel_id": "UCfiwzLy-8yKzIbsmZTzxDgw",
+          "channel_name": "AlJazeera Arabic  قناة الجزيرة",
+          "channel_title": "AlJazeera Arabic  قناة الجزيرة",
+          "published_at": "2026-08-22T06:00:24Z",
+          "published_display": "Aug 22, 2026 06:00",
+          "thumbnail": "https://i.ytimg.com/vi/PgZPW8bAplQ/maxresdefault.jpg",
+          "thumbnail_url": "https://i.ytimg.com/vi/PgZPW8bAplQ/maxresdefault.jpg",
+          "image_url": "https://i.ytimg.com/vi/PgZPW8bAplQ/maxresdefault.jpg",
+          "thumb": "https://i.ytimg.com/vi/PgZPW8bAplQ/maxresdefault.jpg",
+          "detail_url": "/video/yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3LlBnWlBXOGJBcGxR",
+          "url": "https://www.youtube.com/watch?v=PgZPW8bAplQ&list=UUfiwzLy-8yKzIbsmZTzxDgw",
+          "group_name": "news",
+          "group_key": "news",
+          "group_names": [
+            "news"
+          ],
+          "group_keys": [
+            "news"
+          ],
+          "reason_tags": [
+            "cached-latest"
+          ]
+        },
+        {
+          "title": "طهران ومسقط تبحثان استئناف المحادثات وأمن هرمز",
+          "entry_id": "yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3LkFkZXNFMXMwZG5V",
+          "video_id": "AdesE1s0dnU",
+          "watch_key": "AdesE1s0dnU",
+          "state_key": "AdesE1s0dnU",
+          "channel_id": "UCfiwzLy-8yKzIbsmZTzxDgw",
+          "channel_name": "AlJazeera Arabic  قناة الجزيرة",
+          "channel_title": "AlJazeera Arabic  قناة الجزيرة",
+          "published_at": "2026-08-22T05:49:11Z",
+          "published_display": "Aug 22, 2026 05:49",
+          "thumbnail": "https://i.ytimg.com/vi/AdesE1s0dnU/maxresdefault.jpg",
+          "thumbnail_url": "https://i.ytimg.com/vi/AdesE1s0dnU/maxresdefault.jpg",
+          "image_url": "https://i.ytimg.com/vi/AdesE1s0dnU/maxresdefault.jpg",
+          "thumb": "https://i.ytimg.com/vi/AdesE1s0dnU/maxresdefault.jpg",
+          "detail_url": "/video/yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3LkFkZXNFMXMwZG5V",
+          "url": "https://www.youtube.com/watch?v=AdesE1s0dnU&list=UUfiwzLy-8yKzIbsmZTzxDgw",
+          "group_name": "news",
+          "group_key": "news",
+          "group_names": [
+            "news"
+          ],
+          "group_keys": [
+            "news"
+          ],
+          "reason_tags": [
+            "cached-latest"
+          ]
+        },
+        {
+          "title": "الشرطة الفرنسية تُفشل محاولة عبور القناة الإنجليزية #اخبار_المشهد #فرنسا #المشهد",
+          "entry_id": "yt-VVVXbkJUdXpVVURwS2hKUEd1RFFNeW5BLlNWRnNiVEtqUHpB",
+          "video_id": "SVFsbTKjPzA",
+          "watch_key": "SVFsbTKjPzA",
+          "state_key": "SVFsbTKjPzA",
+          "channel_id": "UCWnBTuzUUDpKhJPGuDQMynA",
+          "channel_name": "Al Mashhad المشهد",
+          "channel_title": "Al Mashhad المشهد",
+          "published_at": "2026-08-22T05:33:29Z",
+          "published_display": "Aug 22, 2026 05:33",
+          "thumbnail": "https://i.ytimg.com/vi/SVFsbTKjPzA/maxresdefault.jpg",
+          "thumbnail_url": "https://i.ytimg.com/vi/SVFsbTKjPzA/maxresdefault.jpg",
+          "image_url": "https://i.ytimg.com/vi/SVFsbTKjPzA/maxresdefault.jpg",
+          "thumb": "https://i.ytimg.com/vi/SVFsbTKjPzA/maxresdefault.jpg",
+          "detail_url": "/video/yt-VVVXbkJUdXpVVURwS2hKUEd1RFFNeW5BLlNWRnNiVEtqUHpB",
+          "url": "https://www.youtube.com/watch?v=SVFsbTKjPzA&list=UUWnBTuzUUDpKhJPGuDQMynA",
+          "group_name": "news",
+          "group_key": "news",
+          "group_names": [
+            "news"
+          ],
+          "group_keys": [
+            "news"
+          ],
+          "reason_tags": [
+            "cached-latest"
+          ]
+        },
+        {
+          "title": "بعزيمة صلبة.. شاب سوري من ذوي الهمم يحفظ القرآن كاملا",
+          "entry_id": "yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3LlAwckNEREg0T0d3",
+          "video_id": "P0rCDDH4OGw",
+          "watch_key": "P0rCDDH4OGw",
+          "state_key": "P0rCDDH4OGw",
+          "channel_id": "UCfiwzLy-8yKzIbsmZTzxDgw",
+          "channel_name": "AlJazeera Arabic  قناة الجزيرة",
+          "channel_title": "AlJazeera Arabic  قناة الجزيرة",
+          "published_at": "2026-08-22T05:30:28Z",
+          "published_display": "Aug 22, 2026 05:30",
+          "thumbnail": "https://i.ytimg.com/vi/P0rCDDH4OGw/maxresdefault.jpg",
+          "thumbnail_url": "https://i.ytimg.com/vi/P0rCDDH4OGw/maxresdefault.jpg",
+          "image_url": "https://i.ytimg.com/vi/P0rCDDH4OGw/maxresdefault.jpg",
+          "thumb": "https://i.ytimg.com/vi/P0rCDDH4OGw/maxresdefault.jpg",
+          "detail_url": "/video/yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3LlAwckNEREg0T0d3",
+          "url": "https://www.youtube.com/watch?v=P0rCDDH4OGw&list=UUfiwzLy-8yKzIbsmZTzxDgw",
+          "group_name": "news",
+          "group_key": "news",
+          "group_names": [
+            "news"
+          ],
+          "group_keys": [
+            "news"
+          ],
+          "reason_tags": [
+            "cached-latest"
+          ]
+        },
+        {
+          "title": "هل تصريحات ترمب عن هرمز استعراض للقوة أم محاولة لفرض نفوذ أمريكي على المضيق؟",
+          "entry_id": "yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3Lk10bjIwY2E1ZjZJ",
+          "video_id": "Mtn20ca5f6I",
+          "watch_key": "Mtn20ca5f6I",
+          "state_key": "Mtn20ca5f6I",
+          "channel_id": "UCfiwzLy-8yKzIbsmZTzxDgw",
+          "channel_name": "AlJazeera Arabic  قناة الجزيرة",
+          "channel_title": "AlJazeera Arabic  قناة الجزيرة",
+          "published_at": "2026-08-22T05:30:12Z",
+          "published_display": "Aug 22, 2026 05:30",
+          "thumbnail": "https://i.ytimg.com/vi/Mtn20ca5f6I/maxresdefault.jpg",
+          "thumbnail_url": "https://i.ytimg.com/vi/Mtn20ca5f6I/maxresdefault.jpg",
+          "image_url": "https://i.ytimg.com/vi/Mtn20ca5f6I/maxresdefault.jpg",
+          "thumb": "https://i.ytimg.com/vi/Mtn20ca5f6I/maxresdefault.jpg",
+          "detail_url": "/video/yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3Lk10bjIwY2E1ZjZJ",
+          "url": "https://www.youtube.com/watch?v=Mtn20ca5f6I&list=UUfiwzLy-8yKzIbsmZTzxDgw",
+          "group_name": "news",
+          "group_key": "news",
+          "group_names": [
+            "news"
+          ],
+          "group_keys": [
+            "news"
+          ],
+          "reason_tags": [
+            "cached-latest"
+          ]
+        },
+        {
+          "title": "اصطدام بسيط ينتهي بسقوط مروع من المنحدر في سويسرا #اخبار_المشهد #سويسرا #المشهد",
+          "entry_id": "yt-VVVXbkJUdXpVVURwS2hKUEd1RFFNeW5BLmVZTDFOa0Z4TUQw",
+          "video_id": "eYL1NkFxMD0",
+          "watch_key": "eYL1NkFxMD0",
+          "state_key": "eYL1NkFxMD0",
+          "channel_id": "UCWnBTuzUUDpKhJPGuDQMynA",
+          "channel_name": "Al Mashhad المشهد",
+          "channel_title": "Al Mashhad المشهد",
+          "published_at": "2026-08-22T05:00:27Z",
+          "published_display": "Aug 22, 2026 05:00",
+          "thumbnail": "https://i.ytimg.com/vi/eYL1NkFxMD0/maxresdefault.jpg",
+          "thumbnail_url": "https://i.ytimg.com/vi/eYL1NkFxMD0/maxresdefault.jpg",
+          "image_url": "https://i.ytimg.com/vi/eYL1NkFxMD0/maxresdefault.jpg",
+          "thumb": "https://i.ytimg.com/vi/eYL1NkFxMD0/maxresdefault.jpg",
+          "detail_url": "/video/yt-VVVXbkJUdXpVVURwS2hKUEd1RFFNeW5BLmVZTDFOa0Z4TUQw",
+          "url": "https://www.youtube.com/watch?v=eYL1NkFxMD0&list=UUWnBTuzUUDpKhJPGuDQMynA",
+          "group_name": "news",
+          "group_key": "news",
+          "group_names": [
+            "news"
+          ],
+          "group_keys": [
+            "news"
+          ],
+          "reason_tags": [
+            "cached-latest"
+          ]
+        },
+        {
+          "title": "ترمب: كان علينا التوجه إلى إيران للقضاء على برنامج الأسلحة النووية",
+          "entry_id": "yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3LkFFV2tyNEFLVjFJ",
+          "video_id": "AEWkr4AKV1I",
+          "watch_key": "AEWkr4AKV1I",
+          "state_key": "AEWkr4AKV1I",
+          "channel_id": "UCfiwzLy-8yKzIbsmZTzxDgw",
+          "channel_name": "AlJazeera Arabic  قناة الجزيرة",
+          "channel_title": "AlJazeera Arabic  قناة الجزيرة",
+          "published_at": "2026-08-22T05:00:06Z",
+          "published_display": "Aug 22, 2026 05:00",
+          "thumbnail": "https://i.ytimg.com/vi/AEWkr4AKV1I/maxresdefault.jpg",
+          "thumbnail_url": "https://i.ytimg.com/vi/AEWkr4AKV1I/maxresdefault.jpg",
+          "image_url": "https://i.ytimg.com/vi/AEWkr4AKV1I/maxresdefault.jpg",
+          "thumb": "https://i.ytimg.com/vi/AEWkr4AKV1I/maxresdefault.jpg",
+          "detail_url": "/video/yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3LkFFV2tyNEFLVjFJ",
+          "url": "https://www.youtube.com/watch?v=AEWkr4AKV1I&list=UUfiwzLy-8yKzIbsmZTzxDgw",
+          "group_name": "news",
+          "group_key": "news",
+          "group_names": [
+            "news"
+          ],
+          "group_keys": [
+            "news"
+          ],
+          "reason_tags": [
+            "cached-latest"
+          ]
+        },
+        {
+          "title": "أم تقفز من قمة جبل في الهند خلف ابنها وزوجها.. ما القصة؟",
+          "entry_id": "yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3LmgwbWwzLWM5eVZV",
+          "video_id": "h0ml3-c9yVU",
+          "watch_key": "h0ml3-c9yVU",
+          "state_key": "h0ml3-c9yVU",
+          "channel_id": "UCfiwzLy-8yKzIbsmZTzxDgw",
+          "channel_name": "AlJazeera Arabic  قناة الجزيرة",
+          "channel_title": "AlJazeera Arabic  قناة الجزيرة",
+          "published_at": "2026-08-22T05:00:04Z",
+          "published_display": "Aug 22, 2026 05:00",
+          "thumbnail": "https://i.ytimg.com/vi/h0ml3-c9yVU/maxresdefault.jpg",
+          "thumbnail_url": "https://i.ytimg.com/vi/h0ml3-c9yVU/maxresdefault.jpg",
+          "image_url": "https://i.ytimg.com/vi/h0ml3-c9yVU/maxresdefault.jpg",
+          "thumb": "https://i.ytimg.com/vi/h0ml3-c9yVU/maxresdefault.jpg",
+          "detail_url": "/video/yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3LmgwbWwzLWM5eVZV",
+          "url": "https://www.youtube.com/watch?v=h0ml3-c9yVU&list=UUfiwzLy-8yKzIbsmZTzxDgw",
+          "group_name": "news",
+          "group_key": "news",
+          "group_names": [
+            "news"
+          ],
+          "group_keys": [
+            "news"
+          ],
+          "reason_tags": [
+            "cached-latest"
+          ]
+        },
+        {
+          "title": "حصار المستوطنين لبلدة قصرة في الضفة الغربية يطول 15 منزلا وأراضي ومصنعا",
+          "entry_id": "yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3LlVseU9mRU1hWW1B",
+          "video_id": "UlyOfEMaYmA",
+          "watch_key": "UlyOfEMaYmA",
+          "state_key": "UlyOfEMaYmA",
+          "channel_id": "UCfiwzLy-8yKzIbsmZTzxDgw",
+          "channel_name": "AlJazeera Arabic  قناة الجزيرة",
+          "channel_title": "AlJazeera Arabic  قناة الجزيرة",
+          "published_at": "2026-08-22T04:45:31Z",
+          "published_display": "Aug 22, 2026 04:45",
+          "thumbnail": "https://i.ytimg.com/vi/UlyOfEMaYmA/maxresdefault.jpg",
+          "thumbnail_url": "https://i.ytimg.com/vi/UlyOfEMaYmA/maxresdefault.jpg",
+          "image_url": "https://i.ytimg.com/vi/UlyOfEMaYmA/maxresdefault.jpg",
+          "thumb": "https://i.ytimg.com/vi/UlyOfEMaYmA/maxresdefault.jpg",
+          "detail_url": "/video/yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3LlVseU9mRU1hWW1B",
+          "url": "https://www.youtube.com/watch?v=UlyOfEMaYmA&list=UUfiwzLy-8yKzIbsmZTzxDgw",
+          "group_name": "news",
+          "group_key": "news",
+          "group_names": [
+            "news"
+          ],
+          "group_keys": [
+            "news"
+          ],
+          "reason_tags": [
+            "cached-latest"
+          ]
+        },
+        {
+          "title": "ترامب يمازح جمهوره: أقصف إيران مرة أخرى؟ #اخبار_المشهد #إيران #المشهد",
+          "entry_id": "yt-VVVXbkJUdXpVVURwS2hKUEd1RFFNeW5BLnZtTGI3a3lfbmJr",
+          "video_id": "vmLb7ky_nbk",
+          "watch_key": "vmLb7ky_nbk",
+          "state_key": "vmLb7ky_nbk",
+          "channel_id": "UCWnBTuzUUDpKhJPGuDQMynA",
+          "channel_name": "Al Mashhad المشهد",
+          "channel_title": "Al Mashhad المشهد",
+          "published_at": "2026-08-22T04:30:43Z",
+          "published_display": "Aug 22, 2026 04:30",
+          "thumbnail": "https://i.ytimg.com/vi/vmLb7ky_nbk/maxresdefault.jpg",
+          "thumbnail_url": "https://i.ytimg.com/vi/vmLb7ky_nbk/maxresdefault.jpg",
+          "image_url": "https://i.ytimg.com/vi/vmLb7ky_nbk/maxresdefault.jpg",
+          "thumb": "https://i.ytimg.com/vi/vmLb7ky_nbk/maxresdefault.jpg",
+          "detail_url": "/video/yt-VVVXbkJUdXpVVURwS2hKUEd1RFFNeW5BLnZtTGI3a3lfbmJr",
+          "url": "https://www.youtube.com/watch?v=vmLb7ky_nbk&list=UUWnBTuzUUDpKhJPGuDQMynA",
+          "group_name": "news",
+          "group_key": "news",
+          "group_names": [
+            "news"
+          ],
+          "group_keys": [
+            "news"
+          ],
+          "reason_tags": [
+            "cached-latest"
+          ]
+        },
+        {
+          "title": "لقطات جوية صادمة.. طريق كامل يختفى تحت الطين ويحاصر السيارات #اخبار_المشهد #بيرو #المشهد",
+          "entry_id": "yt-VVVXbkJUdXpVVURwS2hKUEd1RFFNeW5BLlVDME5fcFBSTkFz",
+          "video_id": "UC0N_pPRNAs",
+          "watch_key": "UC0N_pPRNAs",
+          "state_key": "UC0N_pPRNAs",
+          "channel_id": "UCWnBTuzUUDpKhJPGuDQMynA",
+          "channel_name": "Al Mashhad المشهد",
+          "channel_title": "Al Mashhad المشهد",
+          "published_at": "2026-08-22T04:00:18Z",
+          "published_display": "Aug 22, 2026 04:00",
+          "thumbnail": "https://i.ytimg.com/vi/UC0N_pPRNAs/maxresdefault.jpg",
+          "thumbnail_url": "https://i.ytimg.com/vi/UC0N_pPRNAs/maxresdefault.jpg",
+          "image_url": "https://i.ytimg.com/vi/UC0N_pPRNAs/maxresdefault.jpg",
+          "thumb": "https://i.ytimg.com/vi/UC0N_pPRNAs/maxresdefault.jpg",
+          "detail_url": "/video/yt-VVVXbkJUdXpVVURwS2hKUEd1RFFNeW5BLlVDME5fcFBSTkFz",
+          "url": "https://www.youtube.com/watch?v=UC0N_pPRNAs&list=UUWnBTuzUUDpKhJPGuDQMynA",
+          "group_name": "news",
+          "group_key": "news",
+          "group_names": [
+            "news"
+          ],
+          "group_keys": [
+            "news"
+          ],
+          "reason_tags": [
+            "cached-latest"
+          ]
+        },
+        {
+          "title": "إسلاميون ويساريون وتيارات مستقلة يجتمعون في قائمة واحدة، في مشهد قد يقلب حسابات الاحتلال",
+          "entry_id": "yt-VVVGRnVNR1RRWExpdE51aVU0U0llNXZRLmx0Z3FUbHgteTNz",
+          "video_id": "ltgqTlx-y3s",
+          "watch_key": "ltgqTlx-y3s",
+          "state_key": "ltgqTlx-y3s",
+          "channel_id": "UCFFuMGTQXLitNuiU4SIe5vQ",
+          "channel_name": "شبكة قدس الاخبارية",
+          "channel_title": "شبكة قدس الاخبارية",
+          "published_at": "2026-08-22T03:59:33Z",
+          "published_display": "Aug 22, 2026 03:59",
+          "thumbnail": "https://i.ytimg.com/vi/ltgqTlx-y3s/maxresdefault.jpg",
+          "thumbnail_url": "https://i.ytimg.com/vi/ltgqTlx-y3s/maxresdefault.jpg",
+          "image_url": "https://i.ytimg.com/vi/ltgqTlx-y3s/maxresdefault.jpg",
+          "thumb": "https://i.ytimg.com/vi/ltgqTlx-y3s/maxresdefault.jpg",
+          "detail_url": "/video/yt-VVVGRnVNR1RRWExpdE51aVU0U0llNXZRLmx0Z3FUbHgteTNz",
+          "url": "https://www.youtube.com/watch?v=ltgqTlx-y3s&list=UUFFuMGTQXLitNuiU4SIe5vQ",
+          "group_name": "news",
+          "group_key": "news",
+          "group_names": [
+            "news"
+          ],
+          "group_keys": [
+            "news"
+          ],
+          "reason_tags": [
+            "cached-latest"
+          ]
+        },
+        {
+          "title": "أميركا تحاصر إيران.. والصين والعراق وتركيا وروسيا أمام اختبار ترامب | تغطية خاصة من سكاي نيوز عربية",
+          "entry_id": "yt-VVVJSlhPdmdnakt0Q2FnTWZ4dmNDekFBLnN5N1pEbVMzR0NF",
+          "video_id": "sy7ZDmS3GCE",
+          "watch_key": "sy7ZDmS3GCE",
+          "state_key": "sy7ZDmS3GCE",
+          "channel_id": "UCIJXOvggjKtCagMfxvcCzAA",
+          "channel_name": "سكاي نيوز عربية",
+          "channel_title": "سكاي نيوز عربية",
+          "published_at": "2026-08-22T03:19:38Z",
+          "published_display": "Aug 22, 2026 03:19",
+          "thumbnail": "https://i.ytimg.com/vi/sy7ZDmS3GCE/maxresdefault.jpg",
+          "thumbnail_url": "https://i.ytimg.com/vi/sy7ZDmS3GCE/maxresdefault.jpg",
+          "image_url": "https://i.ytimg.com/vi/sy7ZDmS3GCE/maxresdefault.jpg",
+          "thumb": "https://i.ytimg.com/vi/sy7ZDmS3GCE/maxresdefault.jpg",
+          "detail_url": "/video/yt-VVVJSlhPdmdnakt0Q2FnTWZ4dmNDekFBLnN5N1pEbVMzR0NF",
+          "url": "https://www.youtube.com/watch?v=sy7ZDmS3GCE&list=UUIJXOvggjKtCagMfxvcCzAA",
+          "group_name": "news",
+          "group_key": "news",
+          "group_names": [
+            "news"
+          ],
+          "group_keys": [
+            "news"
+          ],
+          "reason_tags": [
+            "cached-latest"
+          ]
+        },
+        {
+          "title": "لحظة كروية مصرية.. وعموري حلم ميسي الإمارات | #Supperclub_بالعربي",
+          "entry_id": "yt-VVVJSlhPdmdnakt0Q2FnTWZ4dmNDekFBLm9wUTVuWHNiSlVZ",
+          "video_id": "opQ5nXsbJUY",
+          "watch_key": "opQ5nXsbJUY",
+          "state_key": "opQ5nXsbJUY",
+          "channel_id": "UCIJXOvggjKtCagMfxvcCzAA",
+          "channel_name": "سكاي نيوز عربية",
+          "channel_title": "سكاي نيوز عربية",
+          "published_at": "2026-08-22T03:00:35Z",
+          "published_display": "Aug 22, 2026 03:00",
+          "thumbnail": "https://i.ytimg.com/vi/opQ5nXsbJUY/maxresdefault.jpg",
+          "thumbnail_url": "https://i.ytimg.com/vi/opQ5nXsbJUY/maxresdefault.jpg",
+          "image_url": "https://i.ytimg.com/vi/opQ5nXsbJUY/maxresdefault.jpg",
+          "thumb": "https://i.ytimg.com/vi/opQ5nXsbJUY/maxresdefault.jpg",
+          "detail_url": "/video/yt-VVVJSlhPdmdnakt0Q2FnTWZ4dmNDekFBLm9wUTVuWHNiSlVZ",
+          "url": "https://www.youtube.com/watch?v=opQ5nXsbJUY&list=UUIJXOvggjKtCagMfxvcCzAA",
           "group_name": "news",
           "group_key": "news",
           "group_names": [
@@ -82638,122 +83044,6 @@
           "thumb": "https://i.ytimg.com/vi/-wpMYuMPCU0/maxresdefault.jpg",
           "detail_url": "/video/yt-VVVJSlhPdmdnakt0Q2FnTWZ4dmNDekFBLi13cE1ZdU1QQ1Uw",
           "url": "https://www.youtube.com/watch?v=-wpMYuMPCU0&list=UUIJXOvggjKtCagMfxvcCzAA",
-          "group_name": "news",
-          "group_key": "news",
-          "group_names": [
-            "news"
-          ],
-          "group_keys": [
-            "news"
-          ],
-          "reason_tags": [
-            "cached-latest"
-          ]
-        },
-        {
-          "title": "تركيا تطالب بـ\"نشرة حمراء\" لملاحقة نتنياهو دوليا.. ما التفاصيل؟",
-          "entry_id": "yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3LmRnZnhFbkNmVGhR",
-          "video_id": "dgfxEnCfThQ",
-          "watch_key": "dgfxEnCfThQ",
-          "state_key": "dgfxEnCfThQ",
-          "channel_id": "UCfiwzLy-8yKzIbsmZTzxDgw",
-          "channel_name": "AlJazeera Arabic  قناة الجزيرة",
-          "channel_title": "AlJazeera Arabic  قناة الجزيرة",
-          "published_at": "2026-08-22T00:30:17Z",
-          "published_display": "Aug 22, 2026 00:30",
-          "thumbnail": "https://i.ytimg.com/vi/dgfxEnCfThQ/maxresdefault.jpg",
-          "thumbnail_url": "https://i.ytimg.com/vi/dgfxEnCfThQ/maxresdefault.jpg",
-          "image_url": "https://i.ytimg.com/vi/dgfxEnCfThQ/maxresdefault.jpg",
-          "thumb": "https://i.ytimg.com/vi/dgfxEnCfThQ/maxresdefault.jpg",
-          "detail_url": "/video/yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3LmRnZnhFbkNmVGhR",
-          "url": "https://www.youtube.com/watch?v=dgfxEnCfThQ&list=UUfiwzLy-8yKzIbsmZTzxDgw",
-          "group_name": "news",
-          "group_key": "news",
-          "group_names": [
-            "news"
-          ],
-          "group_keys": [
-            "news"
-          ],
-          "reason_tags": [
-            "cached-latest"
-          ]
-        },
-        {
-          "title": "أمريكا تشدد خناقها الاقتصادي على إيران وتضغط على الصين لوقف شراء نفطها",
-          "entry_id": "yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3Ll9kaUY3aWhNX3A0",
-          "video_id": "_diF7ihM_p4",
-          "watch_key": "_diF7ihM_p4",
-          "state_key": "_diF7ihM_p4",
-          "channel_id": "UCfiwzLy-8yKzIbsmZTzxDgw",
-          "channel_name": "AlJazeera Arabic  قناة الجزيرة",
-          "channel_title": "AlJazeera Arabic  قناة الجزيرة",
-          "published_at": "2026-08-22T00:30:03Z",
-          "published_display": "Aug 22, 2026 00:30",
-          "thumbnail": "https://i.ytimg.com/vi/_diF7ihM_p4/maxresdefault.jpg",
-          "thumbnail_url": "https://i.ytimg.com/vi/_diF7ihM_p4/maxresdefault.jpg",
-          "image_url": "https://i.ytimg.com/vi/_diF7ihM_p4/maxresdefault.jpg",
-          "thumb": "https://i.ytimg.com/vi/_diF7ihM_p4/maxresdefault.jpg",
-          "detail_url": "/video/yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3Ll9kaUY3aWhNX3A0",
-          "url": "https://www.youtube.com/watch?v=_diF7ihM_p4&list=UUfiwzLy-8yKzIbsmZTzxDgw",
-          "group_name": "news",
-          "group_key": "news",
-          "group_names": [
-            "news"
-          ],
-          "group_keys": [
-            "news"
-          ],
-          "reason_tags": [
-            "cached-latest"
-          ]
-        },
-        {
-          "title": "ترمب: أعتبر مضيق هرمز حاليا أرضا أمريكية",
-          "entry_id": "yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3LlY2ajd6TGo5TkRZ",
-          "video_id": "V6j7zLj9NDY",
-          "watch_key": "V6j7zLj9NDY",
-          "state_key": "V6j7zLj9NDY",
-          "channel_id": "UCfiwzLy-8yKzIbsmZTzxDgw",
-          "channel_name": "AlJazeera Arabic  قناة الجزيرة",
-          "channel_title": "AlJazeera Arabic  قناة الجزيرة",
-          "published_at": "2026-08-22T00:03:56Z",
-          "published_display": "Aug 22, 2026 00:03",
-          "thumbnail": "https://i.ytimg.com/vi/V6j7zLj9NDY/sddefault.jpg",
-          "thumbnail_url": "https://i.ytimg.com/vi/V6j7zLj9NDY/sddefault.jpg",
-          "image_url": "https://i.ytimg.com/vi/V6j7zLj9NDY/sddefault.jpg",
-          "thumb": "https://i.ytimg.com/vi/V6j7zLj9NDY/sddefault.jpg",
-          "detail_url": "/video/yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3LlY2ajd6TGo5TkRZ",
-          "url": "https://www.youtube.com/watch?v=V6j7zLj9NDY&list=UUfiwzLy-8yKzIbsmZTzxDgw",
-          "group_name": "news",
-          "group_key": "news",
-          "group_names": [
-            "news"
-          ],
-          "group_keys": [
-            "news"
-          ],
-          "reason_tags": [
-            "cached-latest"
-          ]
-        },
-        {
-          "title": "لحظة اقتحام آليات الاحتلال بلدة تقوع جنوب شرق بيت لحم",
-          "entry_id": "yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3LmJnVHIzOVVmQ05B",
-          "video_id": "bgTr39UfCNA",
-          "watch_key": "bgTr39UfCNA",
-          "state_key": "bgTr39UfCNA",
-          "channel_id": "UCfiwzLy-8yKzIbsmZTzxDgw",
-          "channel_name": "AlJazeera Arabic  قناة الجزيرة",
-          "channel_title": "AlJazeera Arabic  قناة الجزيرة",
-          "published_at": "2026-08-22T00:00:30Z",
-          "published_display": "Aug 22, 2026 00:00",
-          "thumbnail": "https://i.ytimg.com/vi/bgTr39UfCNA/maxresdefault.jpg",
-          "thumbnail_url": "https://i.ytimg.com/vi/bgTr39UfCNA/maxresdefault.jpg",
-          "image_url": "https://i.ytimg.com/vi/bgTr39UfCNA/maxresdefault.jpg",
-          "thumb": "https://i.ytimg.com/vi/bgTr39UfCNA/maxresdefault.jpg",
-          "detail_url": "/video/yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3LmJnVHIzOVVmQ05B",
-          "url": "https://www.youtube.com/watch?v=bgTr39UfCNA&list=UUfiwzLy-8yKzIbsmZTzxDgw",
           "group_name": "news",
           "group_key": "news",
           "group_names": [
@@ -82999,35 +83289,6 @@
           ]
         },
         {
-          "title": "أميركية فقدت أطفالها الثلاثة في واقعة مأسوية... #المشهد_تاغ #ميرا_الشويكي",
-          "entry_id": "yt-VVVXbkJUdXpVVURwS2hKUEd1RFFNeW5BLm94ZTl5amc0cHVv",
-          "video_id": "oxe9yjg4puo",
-          "watch_key": "oxe9yjg4puo",
-          "state_key": "oxe9yjg4puo",
-          "channel_id": "UCWnBTuzUUDpKhJPGuDQMynA",
-          "channel_name": "Al Mashhad المشهد",
-          "channel_title": "Al Mashhad المشهد",
-          "published_at": "2026-08-21T21:40:00Z",
-          "published_display": "Aug 21, 2026 21:40",
-          "thumbnail": "https://i.ytimg.com/vi/oxe9yjg4puo/maxresdefault.jpg",
-          "thumbnail_url": "https://i.ytimg.com/vi/oxe9yjg4puo/maxresdefault.jpg",
-          "image_url": "https://i.ytimg.com/vi/oxe9yjg4puo/maxresdefault.jpg",
-          "thumb": "https://i.ytimg.com/vi/oxe9yjg4puo/maxresdefault.jpg",
-          "detail_url": "/video/yt-VVVXbkJUdXpVVURwS2hKUEd1RFFNeW5BLm94ZTl5amc0cHVv",
-          "url": "https://www.youtube.com/watch?v=oxe9yjg4puo&list=UUWnBTuzUUDpKhJPGuDQMynA",
-          "group_name": "news",
-          "group_key": "news",
-          "group_names": [
-            "news"
-          ],
-          "group_keys": [
-            "news"
-          ],
-          "reason_tags": [
-            "cached-latest"
-          ]
-        },
-        {
           "title": "المنصوري للشباب: بلادكم تملك الكثير لتقدمه لكم",
           "entry_id": "yt-VVV2eWl2ZmZiMld3TktvbktpTHdWQUVRLlM5MmdtZkJ6bE44",
           "video_id": "S92gmfBzlN8",
@@ -83044,64 +83305,6 @@
           "thumb": "https://i.ytimg.com/vi/S92gmfBzlN8/maxresdefault.jpg",
           "detail_url": "/video/yt-VVV2eWl2ZmZiMld3TktvbktpTHdWQUVRLlM5MmdtZkJ6bE44",
           "url": "https://www.youtube.com/watch?v=S92gmfBzlN8&list=UUvyivffb2WwNKonKiLwVAEQ",
-          "group_name": "news",
-          "group_key": "news",
-          "group_names": [
-            "news"
-          ],
-          "group_keys": [
-            "news"
-          ],
-          "reason_tags": [
-            "cached-latest"
-          ]
-        },
-        {
-          "title": "قبرص تثير قلق أنقرة.. حيث تعيد إحياء مساعيها لشراء دبابات ميركافا الإسرائيلية #اخبار_اليوم",
-          "entry_id": "yt-VVVXbkJUdXpVVURwS2hKUEd1RFFNeW5BLmdtTkZtN0FxY0lV",
-          "video_id": "gmNFm7AqcIU",
-          "watch_key": "gmNFm7AqcIU",
-          "state_key": "gmNFm7AqcIU",
-          "channel_id": "UCWnBTuzUUDpKhJPGuDQMynA",
-          "channel_name": "Al Mashhad المشهد",
-          "channel_title": "Al Mashhad المشهد",
-          "published_at": "2026-08-21T21:20:01Z",
-          "published_display": "Aug 21, 2026 21:20",
-          "thumbnail": "https://i.ytimg.com/vi/gmNFm7AqcIU/maxresdefault.jpg",
-          "thumbnail_url": "https://i.ytimg.com/vi/gmNFm7AqcIU/maxresdefault.jpg",
-          "image_url": "https://i.ytimg.com/vi/gmNFm7AqcIU/maxresdefault.jpg",
-          "thumb": "https://i.ytimg.com/vi/gmNFm7AqcIU/maxresdefault.jpg",
-          "detail_url": "/video/yt-VVVXbkJUdXpVVURwS2hKUEd1RFFNeW5BLmdtTkZtN0FxY0lV",
-          "url": "https://www.youtube.com/watch?v=gmNFm7AqcIU&list=UUWnBTuzUUDpKhJPGuDQMynA",
-          "group_name": "news",
-          "group_key": "news",
-          "group_names": [
-            "news"
-          ],
-          "group_keys": [
-            "news"
-          ],
-          "reason_tags": [
-            "cached-latest"
-          ]
-        },
-        {
-          "title": "\"مجزرة الغوطة\".. 13 عامًا من الألم! #اخبار_المشهد",
-          "entry_id": "yt-VVVXbkJUdXpVVURwS2hKUEd1RFFNeW5BLmNRS0hzRkFHZWcw",
-          "video_id": "cQKHsFAGeg0",
-          "watch_key": "cQKHsFAGeg0",
-          "state_key": "cQKHsFAGeg0",
-          "channel_id": "UCWnBTuzUUDpKhJPGuDQMynA",
-          "channel_name": "Al Mashhad المشهد",
-          "channel_title": "Al Mashhad المشهد",
-          "published_at": "2026-08-21T21:12:25Z",
-          "published_display": "Aug 21, 2026 21:12",
-          "thumbnail": "https://i.ytimg.com/vi/cQKHsFAGeg0/maxresdefault.jpg",
-          "thumbnail_url": "https://i.ytimg.com/vi/cQKHsFAGeg0/maxresdefault.jpg",
-          "image_url": "https://i.ytimg.com/vi/cQKHsFAGeg0/maxresdefault.jpg",
-          "thumb": "https://i.ytimg.com/vi/cQKHsFAGeg0/maxresdefault.jpg",
-          "detail_url": "/video/yt-VVVXbkJUdXpVVURwS2hKUEd1RFFNeW5BLmNRS0hzRkFHZWcw",
-          "url": "https://www.youtube.com/watch?v=cQKHsFAGeg0&list=UUWnBTuzUUDpKhJPGuDQMynA",
           "group_name": "news",
           "group_key": "news",
           "group_names": [
@@ -83144,35 +83347,6 @@
           ]
         },
         {
-          "title": "موسكو تنفذ الوعيد.. تسريبات سرية: أسلحة الانتقام باتت بيد الحرس الثوري #المشهد_الليلة مع #مالك_علاوي",
-          "entry_id": "yt-VVVXbkJUdXpVVURwS2hKUEd1RFFNeW5BLkFjVWZOOVRuZHRn",
-          "video_id": "AcUfN9Tndtg",
-          "watch_key": "AcUfN9Tndtg",
-          "state_key": "AcUfN9Tndtg",
-          "channel_id": "UCWnBTuzUUDpKhJPGuDQMynA",
-          "channel_name": "Al Mashhad المشهد",
-          "channel_title": "Al Mashhad المشهد",
-          "published_at": "2026-08-21T21:00:01Z",
-          "published_display": "Aug 21, 2026 21:00",
-          "thumbnail": "https://i.ytimg.com/vi/AcUfN9Tndtg/maxresdefault.jpg",
-          "thumbnail_url": "https://i.ytimg.com/vi/AcUfN9Tndtg/maxresdefault.jpg",
-          "image_url": "https://i.ytimg.com/vi/AcUfN9Tndtg/maxresdefault.jpg",
-          "thumb": "https://i.ytimg.com/vi/AcUfN9Tndtg/maxresdefault.jpg",
-          "detail_url": "/video/yt-VVVXbkJUdXpVVURwS2hKUEd1RFFNeW5BLkFjVWZOOVRuZHRn",
-          "url": "https://www.youtube.com/watch?v=AcUfN9Tndtg&list=UUWnBTuzUUDpKhJPGuDQMynA",
-          "group_name": "news",
-          "group_key": "news",
-          "group_names": [
-            "news"
-          ],
-          "group_keys": [
-            "news"
-          ],
-          "reason_tags": [
-            "cached-latest"
-          ]
-        },
-        {
           "title": "نسيم حداد يختم مهرجان الشواطئ بالمضيق أمام حضور جماهيري قياسي",
           "entry_id": "yt-VVV2eWl2ZmZiMld3TktvbktpTHdWQUVRLmRRMG9TTmpiNlhZ",
           "video_id": "dQ0oSNjb6XY",
@@ -83189,64 +83363,6 @@
           "thumb": "https://i.ytimg.com/vi/dQ0oSNjb6XY/maxresdefault.jpg",
           "detail_url": "/video/yt-VVV2eWl2ZmZiMld3TktvbktpTHdWQUVRLmRRMG9TTmpiNlhZ",
           "url": "https://www.youtube.com/watch?v=dQ0oSNjb6XY&list=UUvyivffb2WwNKonKiLwVAEQ",
-          "group_name": "news",
-          "group_key": "news",
-          "group_names": [
-            "news"
-          ],
-          "group_keys": [
-            "news"
-          ],
-          "reason_tags": [
-            "cached-latest"
-          ]
-        },
-        {
-          "title": "هدية كيم لبوتين .. صاروخ بالستي أثقل يصل إلى روسيا #المشهد_تاغ مع #ميرا_الشويكي",
-          "entry_id": "yt-VVVXbkJUdXpVVURwS2hKUEd1RFFNeW5BLlNVSjl0dDBscWFj",
-          "video_id": "SUJ9tt0lqac",
-          "watch_key": "SUJ9tt0lqac",
-          "state_key": "SUJ9tt0lqac",
-          "channel_id": "UCWnBTuzUUDpKhJPGuDQMynA",
-          "channel_name": "Al Mashhad المشهد",
-          "channel_title": "Al Mashhad المشهد",
-          "published_at": "2026-08-21T20:40:00Z",
-          "published_display": "Aug 21, 2026 20:40",
-          "thumbnail": "https://i.ytimg.com/vi/SUJ9tt0lqac/maxresdefault.jpg",
-          "thumbnail_url": "https://i.ytimg.com/vi/SUJ9tt0lqac/maxresdefault.jpg",
-          "image_url": "https://i.ytimg.com/vi/SUJ9tt0lqac/maxresdefault.jpg",
-          "thumb": "https://i.ytimg.com/vi/SUJ9tt0lqac/maxresdefault.jpg",
-          "detail_url": "/video/yt-VVVXbkJUdXpVVURwS2hKUEd1RFFNeW5BLlNVSjl0dDBscWFj",
-          "url": "https://www.youtube.com/watch?v=SUJ9tt0lqac&list=UUWnBTuzUUDpKhJPGuDQMynA",
-          "group_name": "news",
-          "group_key": "news",
-          "group_names": [
-            "news"
-          ],
-          "group_keys": [
-            "news"
-          ],
-          "reason_tags": [
-            "cached-latest"
-          ]
-        },
-        {
-          "title": "الناتو يعلن التأهب بشأن هرمز! #الناتو #أميركا #هرمز #إيران #أخبار #مالك_علاوي",
-          "entry_id": "yt-VVVXbkJUdXpVVURwS2hKUEd1RFFNeW5BLm8zdzBUUU9MaXNz",
-          "video_id": "o3w0TQOLiss",
-          "watch_key": "o3w0TQOLiss",
-          "state_key": "o3w0TQOLiss",
-          "channel_id": "UCWnBTuzUUDpKhJPGuDQMynA",
-          "channel_name": "Al Mashhad المشهد",
-          "channel_title": "Al Mashhad المشهد",
-          "published_at": "2026-08-21T20:27:48Z",
-          "published_display": "Aug 21, 2026 20:27",
-          "thumbnail": "https://i.ytimg.com/vi/o3w0TQOLiss/maxresdefault.jpg",
-          "thumbnail_url": "https://i.ytimg.com/vi/o3w0TQOLiss/maxresdefault.jpg",
-          "image_url": "https://i.ytimg.com/vi/o3w0TQOLiss/maxresdefault.jpg",
-          "thumb": "https://i.ytimg.com/vi/o3w0TQOLiss/maxresdefault.jpg",
-          "detail_url": "/video/yt-VVVXbkJUdXpVVURwS2hKUEd1RFFNeW5BLm8zdzBUUU9MaXNz",
-          "url": "https://www.youtube.com/watch?v=o3w0TQOLiss&list=UUWnBTuzUUDpKhJPGuDQMynA",
           "group_name": "news",
           "group_key": "news",
           "group_names": [
@@ -83695,7 +83811,7 @@
           ]
         },
         {
-          "title": "صدام حسين.. كيف نجا من محاولات اغتياله؟ وكيف سقط نظامه في أسابيع؟",
+          "title": "كيف حكم صدام حسين العراق بالقبضة الأمنية؟ ولماذا انهار نظامه بهذه السرعة؟",
           "entry_id": "yt-VVU0dE5DMFNEd2xHcngxU3BUei1nSkdBLmQweVhOVy1pRUEw",
           "video_id": "d0yXNW-iEA0",
           "watch_key": "d0yXNW-iEA0",
@@ -84333,35 +84449,6 @@
           ]
         },
         {
-          "title": "السلطة الفلسطينية تُصعد من وتيرة الاعتقالات السياسية والملاحقة على خلفية الرأي والتعبير",
-          "entry_id": "yt-VVVGRnVNR1RRWExpdE51aVU0U0llNXZRLklZOGYtc0FRdVk0",
-          "video_id": "IY8f-sAQuY4",
-          "watch_key": "IY8f-sAQuY4",
-          "state_key": "IY8f-sAQuY4",
-          "channel_id": "UCFFuMGTQXLitNuiU4SIe5vQ",
-          "channel_name": "شبكة قدس الاخبارية",
-          "channel_title": "شبكة قدس الاخبارية",
-          "published_at": "2026-08-21T16:47:42Z",
-          "published_display": "Aug 21, 2026 16:47",
-          "thumbnail": "https://i.ytimg.com/vi/IY8f-sAQuY4/maxresdefault.jpg",
-          "thumbnail_url": "https://i.ytimg.com/vi/IY8f-sAQuY4/maxresdefault.jpg",
-          "image_url": "https://i.ytimg.com/vi/IY8f-sAQuY4/maxresdefault.jpg",
-          "thumb": "https://i.ytimg.com/vi/IY8f-sAQuY4/maxresdefault.jpg",
-          "detail_url": "/video/yt-VVVGRnVNR1RRWExpdE51aVU0U0llNXZRLklZOGYtc0FRdVk0",
-          "url": "https://www.youtube.com/watch?v=IY8f-sAQuY4&list=UUFFuMGTQXLitNuiU4SIe5vQ",
-          "group_name": "news",
-          "group_key": "news",
-          "group_names": [
-            "news"
-          ],
-          "group_keys": [
-            "news"
-          ],
-          "reason_tags": [
-            "cached-latest"
-          ]
-        },
-        {
           "title": "لماذا فتح بوتين أبواب الكرملين لـ صدام حفتر كأنه رئيس دولة؟ أسرار الصفقة الكبرى!",
           "entry_id": "yt-VVVGWHlIUWpsTnJkVllLeXdldHBJai1BLld2WEJ2OXNTLTFj",
           "video_id": "WvXBv9sS-1c",
@@ -84710,64 +84797,6 @@
           ]
         },
         {
-          "title": "قسد تندمج في الدولة السورية.. هل انتهى نفوذ الأكراد؟ | #ستوديو_وان_مع_فضيلة",
-          "entry_id": "yt-VVVJSlhPdmdnakt0Q2FnTWZ4dmNDekFBLi12M2VKQ3Bxclg0",
-          "video_id": "-v3eJCpqrX4",
-          "watch_key": "-v3eJCpqrX4",
-          "state_key": "-v3eJCpqrX4",
-          "channel_id": "UCIJXOvggjKtCagMfxvcCzAA",
-          "channel_name": "سكاي نيوز عربية",
-          "channel_title": "سكاي نيوز عربية",
-          "published_at": "2026-08-21T15:00:18Z",
-          "published_display": "Aug 21, 2026 15:00",
-          "thumbnail": "https://i.ytimg.com/vi/-v3eJCpqrX4/maxresdefault.jpg",
-          "thumbnail_url": "https://i.ytimg.com/vi/-v3eJCpqrX4/maxresdefault.jpg",
-          "image_url": "https://i.ytimg.com/vi/-v3eJCpqrX4/maxresdefault.jpg",
-          "thumb": "https://i.ytimg.com/vi/-v3eJCpqrX4/maxresdefault.jpg",
-          "detail_url": "/video/yt-VVVJSlhPdmdnakt0Q2FnTWZ4dmNDekFBLi12M2VKQ3Bxclg0",
-          "url": "https://www.youtube.com/watch?v=-v3eJCpqrX4&list=UUIJXOvggjKtCagMfxvcCzAA",
-          "group_name": "news",
-          "group_key": "news",
-          "group_names": [
-            "news"
-          ],
-          "group_keys": [
-            "news"
-          ],
-          "reason_tags": [
-            "cached-latest"
-          ]
-        },
-        {
-          "title": "أميركا تحاصر إيران.. والصين والعراق وتركيا وروسيا أمام اختبار ترامب | تغطية خاصة من سكاي نيوز عربية",
-          "entry_id": "yt-VVVJSlhPdmdnakt0Q2FnTWZ4dmNDekFBLnN5N1pEbVMzR0NF",
-          "video_id": "sy7ZDmS3GCE",
-          "watch_key": "sy7ZDmS3GCE",
-          "state_key": "sy7ZDmS3GCE",
-          "channel_id": "UCIJXOvggjKtCagMfxvcCzAA",
-          "channel_name": "سكاي نيوز عربية",
-          "channel_title": "سكاي نيوز عربية",
-          "published_at": "2026-08-21T14:56:23Z",
-          "published_display": "Aug 21, 2026 14:56",
-          "thumbnail": "https://i.ytimg.com/vi/sy7ZDmS3GCE/maxresdefault_live.jpg",
-          "thumbnail_url": "https://i.ytimg.com/vi/sy7ZDmS3GCE/maxresdefault_live.jpg",
-          "image_url": "https://i.ytimg.com/vi/sy7ZDmS3GCE/maxresdefault_live.jpg",
-          "thumb": "https://i.ytimg.com/vi/sy7ZDmS3GCE/maxresdefault_live.jpg",
-          "detail_url": "/video/yt-VVVJSlhPdmdnakt0Q2FnTWZ4dmNDekFBLnN5N1pEbVMzR0NF",
-          "url": "https://www.youtube.com/watch?v=sy7ZDmS3GCE&list=UUIJXOvggjKtCagMfxvcCzAA",
-          "group_name": "news",
-          "group_key": "news",
-          "group_names": [
-            "news"
-          ],
-          "group_keys": [
-            "news"
-          ],
-          "reason_tags": [
-            "cached-latest"
-          ]
-        },
-        {
           "title": "تونسيون يحتجون ضد الرئيس قيس سعيد وسط أزمة اقتصادية متفاقمة",
           "entry_id": "yt-VVVlbGs2YUhpalpxLUdKQkJCOVlwUmVBLm5sSkE2aVd6MkdN",
           "video_id": "nlJA6iWz2GM",
@@ -84813,35 +84842,6 @@
           "thumb": "https://i.ytimg.com/vi/7XwauJ9A3Iw/maxresdefault.jpg",
           "detail_url": "/video/yt-VVUtNEtuUE1tWnp3QXpXN1NiVkFUVVpRLjdYd2F1SjlBM0l3",
           "url": "https://www.youtube.com/watch?v=7XwauJ9A3Iw&list=UU-4KnPMmZzwAzW7SbVATUZQ",
-          "group_name": "news",
-          "group_key": "news",
-          "group_names": [
-            "news"
-          ],
-          "group_keys": [
-            "news"
-          ],
-          "reason_tags": [
-            "cached-latest"
-          ]
-        },
-        {
-          "title": "ترامب يحاصر إيران ويهدد حلفاءها.. فمن يجرؤ على كسر الحصار؟ | #ستوديو_وان_مع_فضيلة",
-          "entry_id": "yt-VVVJSlhPdmdnakt0Q2FnTWZ4dmNDekFBLmRUaTg4TUdQMnFj",
-          "video_id": "dTi88MGP2qc",
-          "watch_key": "dTi88MGP2qc",
-          "state_key": "dTi88MGP2qc",
-          "channel_id": "UCIJXOvggjKtCagMfxvcCzAA",
-          "channel_name": "سكاي نيوز عربية",
-          "channel_title": "سكاي نيوز عربية",
-          "published_at": "2026-08-21T14:00:24Z",
-          "published_display": "Aug 21, 2026 14:00",
-          "thumbnail": "https://i.ytimg.com/vi/dTi88MGP2qc/maxresdefault.jpg",
-          "thumbnail_url": "https://i.ytimg.com/vi/dTi88MGP2qc/maxresdefault.jpg",
-          "image_url": "https://i.ytimg.com/vi/dTi88MGP2qc/maxresdefault.jpg",
-          "thumb": "https://i.ytimg.com/vi/dTi88MGP2qc/maxresdefault.jpg",
-          "detail_url": "/video/yt-VVVJSlhPdmdnakt0Q2FnTWZ4dmNDekFBLmRUaTg4TUdQMnFj",
-          "url": "https://www.youtube.com/watch?v=dTi88MGP2qc&list=UUIJXOvggjKtCagMfxvcCzAA",
           "group_name": "news",
           "group_key": "news",
           "group_names": [
@@ -88309,8 +88309,8 @@
           "UUzXHxl02PLrMi_qnz-rq10w"
         ],
         "errors": [],
-        "generated_at": "2026-08-22T01:55:48+00:00",
-        "synced_at": "2026-08-22T01:55:48+00:00"
+        "generated_at": "2026-08-22T07:04:48+00:00",
+        "synced_at": "2026-08-22T07:04:48+00:00"
       }
     },
     "podcasts": {
@@ -95941,8 +95941,8 @@
           "UUymWuP1OfcUkj5pS1mCUFYQ"
         ],
         "errors": [],
-        "generated_at": "2026-08-22T01:55:49+00:00",
-        "synced_at": "2026-08-22T01:55:49+00:00"
+        "generated_at": "2026-08-22T07:04:49+00:00",
+        "synced_at": "2026-08-22T07:04:49+00:00"
       }
     },
     "poetry": {
@@ -102251,8 +102251,8 @@
           "UUzkMOtR7pTpa9K1VK6QG9Vw"
         ],
         "errors": [],
-        "generated_at": "2026-08-22T01:55:53+00:00",
-        "synced_at": "2026-08-22T01:55:53+00:00"
+        "generated_at": "2026-08-22T07:04:52+00:00",
+        "synced_at": "2026-08-22T07:04:52+00:00"
       }
     },
     "school": {
@@ -108316,8 +108316,8 @@
           "UUm13TDUuCw8DMRgYh_f2Akw"
         ],
         "errors": [],
-        "generated_at": "2026-08-22T01:55:56+00:00",
-        "synced_at": "2026-08-22T01:55:56+00:00"
+        "generated_at": "2026-08-22T07:04:55+00:00",
+        "synced_at": "2026-08-22T07:04:55+00:00"
       }
     },
     "sports": {
@@ -115513,8 +115513,8 @@
           "UUyUFNfWWyfJgnG6j0rWbxMQ"
         ],
         "errors": [],
-        "generated_at": "2026-08-22T01:56:07+00:00",
-        "synced_at": "2026-08-22T01:56:07+00:00"
+        "generated_at": "2026-08-22T07:05:06+00:00",
+        "synced_at": "2026-08-22T07:05:06+00:00"
       }
     },
     "tech": {
@@ -115527,22 +115527,22 @@
       "channel_count": 88,
       "latest_video_count": 200,
       "latest_video": {
-        "title": "NEW Google Gemini Updates are CRAZY GOOD! 🤯",
-        "entry_id": "yt-VVVHcHNnTmJ6ZEY3QkVDQ1ZiQjFDT0h3LlFtY3RMZmxOSUsw",
-        "video_id": "QmctLflNIK0",
-        "watch_key": "QmctLflNIK0",
-        "state_key": "QmctLflNIK0",
+        "title": "OpenBot Just CHANGED AI Agents Forever!",
+        "entry_id": "yt-VVVHcHNnTmJ6ZEY3QkVDQ1ZiQjFDT0h3LkcyZDhFTWZXOFJR",
+        "video_id": "G2d8EMfW8RQ",
+        "watch_key": "G2d8EMfW8RQ",
+        "state_key": "G2d8EMfW8RQ",
         "channel_id": "UCGpsgNbzdF7BECCVbB1COHw",
         "channel_name": "Julian Goldie SEO",
         "channel_title": "Julian Goldie SEO",
-        "published_at": "2026-08-22T01:30:26Z",
-        "published_display": "Aug 22, 2026 01:30",
-        "thumbnail": "https://i.ytimg.com/vi/QmctLflNIK0/maxresdefault.jpg",
-        "thumbnail_url": "https://i.ytimg.com/vi/QmctLflNIK0/maxresdefault.jpg",
-        "image_url": "https://i.ytimg.com/vi/QmctLflNIK0/maxresdefault.jpg",
-        "thumb": "https://i.ytimg.com/vi/QmctLflNIK0/maxresdefault.jpg",
-        "detail_url": "/video/yt-VVVHcHNnTmJ6ZEY3QkVDQ1ZiQjFDT0h3LlFtY3RMZmxOSUsw",
-        "url": "https://www.youtube.com/watch?v=QmctLflNIK0&list=UUGpsgNbzdF7BECCVbB1COHw",
+        "published_at": "2026-08-22T05:30:05Z",
+        "published_display": "Aug 22, 2026 05:30",
+        "thumbnail": "https://i.ytimg.com/vi/G2d8EMfW8RQ/maxresdefault.jpg",
+        "thumbnail_url": "https://i.ytimg.com/vi/G2d8EMfW8RQ/maxresdefault.jpg",
+        "image_url": "https://i.ytimg.com/vi/G2d8EMfW8RQ/maxresdefault.jpg",
+        "thumb": "https://i.ytimg.com/vi/G2d8EMfW8RQ/maxresdefault.jpg",
+        "detail_url": "/video/yt-VVVHcHNnTmJ6ZEY3QkVDQ1ZiQjFDT0h3LkcyZDhFTWZXOFJR",
+        "url": "https://www.youtube.com/watch?v=G2d8EMfW8RQ&list=UUGpsgNbzdF7BECCVbB1COHw",
         "group_name": "tech",
         "group_key": "tech",
         "group_names": [
@@ -116476,22 +116476,22 @@
           ],
           "group_key": "tech",
           "latest_video": {
-            "title": "NEW Google Gemini Updates are CRAZY GOOD! 🤯",
-            "entry_id": "yt-VVVHcHNnTmJ6ZEY3QkVDQ1ZiQjFDT0h3LlFtY3RMZmxOSUsw",
-            "video_id": "QmctLflNIK0",
-            "watch_key": "QmctLflNIK0",
-            "state_key": "QmctLflNIK0",
+            "title": "OpenBot Just CHANGED AI Agents Forever!",
+            "entry_id": "yt-VVVHcHNnTmJ6ZEY3QkVDQ1ZiQjFDT0h3LkcyZDhFTWZXOFJR",
+            "video_id": "G2d8EMfW8RQ",
+            "watch_key": "G2d8EMfW8RQ",
+            "state_key": "G2d8EMfW8RQ",
             "channel_id": "UCGpsgNbzdF7BECCVbB1COHw",
             "channel_name": "Julian Goldie SEO",
             "channel_title": "Julian Goldie SEO",
-            "published_at": "2026-08-22T01:30:26Z",
-            "published_display": "Aug 22, 2026 01:30",
-            "thumbnail": "https://i.ytimg.com/vi/QmctLflNIK0/maxresdefault.jpg",
-            "thumbnail_url": "https://i.ytimg.com/vi/QmctLflNIK0/maxresdefault.jpg",
-            "image_url": "https://i.ytimg.com/vi/QmctLflNIK0/maxresdefault.jpg",
-            "thumb": "https://i.ytimg.com/vi/QmctLflNIK0/maxresdefault.jpg",
-            "detail_url": "/video/yt-VVVHcHNnTmJ6ZEY3QkVDQ1ZiQjFDT0h3LlFtY3RMZmxOSUsw",
-            "url": "https://www.youtube.com/watch?v=QmctLflNIK0&list=UUGpsgNbzdF7BECCVbB1COHw",
+            "published_at": "2026-08-22T05:30:05Z",
+            "published_display": "Aug 22, 2026 05:30",
+            "thumbnail": "https://i.ytimg.com/vi/G2d8EMfW8RQ/maxresdefault.jpg",
+            "thumbnail_url": "https://i.ytimg.com/vi/G2d8EMfW8RQ/maxresdefault.jpg",
+            "image_url": "https://i.ytimg.com/vi/G2d8EMfW8RQ/maxresdefault.jpg",
+            "thumb": "https://i.ytimg.com/vi/G2d8EMfW8RQ/maxresdefault.jpg",
+            "detail_url": "/video/yt-VVVHcHNnTmJ6ZEY3QkVDQ1ZiQjFDT0h3LkcyZDhFTWZXOFJR",
+            "url": "https://www.youtube.com/watch?v=G2d8EMfW8RQ&list=UUGpsgNbzdF7BECCVbB1COHw",
             "group_name": "tech",
             "group_key": "tech",
             "group_names": [
@@ -116504,11 +116504,11 @@
               "cached-latest"
             ]
           },
-          "latest_video_id": "QmctLflNIK0",
-          "published_at": "2026-08-22T01:30:26Z",
-          "published_display": "Aug 22, 2026 01:30",
-          "thumbnail": "https://i.ytimg.com/vi/QmctLflNIK0/maxresdefault.jpg",
-          "url": "https://www.youtube.com/watch?v=QmctLflNIK0&list=UUGpsgNbzdF7BECCVbB1COHw",
+          "latest_video_id": "G2d8EMfW8RQ",
+          "published_at": "2026-08-22T05:30:05Z",
+          "published_display": "Aug 22, 2026 05:30",
+          "thumbnail": "https://i.ytimg.com/vi/G2d8EMfW8RQ/maxresdefault.jpg",
+          "url": "https://www.youtube.com/watch?v=G2d8EMfW8RQ&list=UUGpsgNbzdF7BECCVbB1COHw",
           "reason_tags": [
             "source-diverse",
             "cached-empty",
@@ -116542,7 +116542,7 @@
           ],
           "group_key": "tech",
           "latest_video": {
-            "title": "جعلت AI يبحث عن وظائف تناسب سيرتي الذاتية تلقائياً! | Hermes AI",
+            "title": "أعطيته سيرتي الذاتية… فوجد لي 10 وظائف حقيقية وأنا نايم!",
             "entry_id": "yt-VVVHclZ2cXU4UGxWdjB3UHFBNWtnWThBLjhjTTZ4U2Q0MV9j",
             "video_id": "8cM6xSd41_c",
             "watch_key": "8cM6xSd41_c",
@@ -118493,6 +118493,93 @@
       ],
       "videos": [
         {
+          "title": "OpenBot Just CHANGED AI Agents Forever!",
+          "entry_id": "yt-VVVHcHNnTmJ6ZEY3QkVDQ1ZiQjFDT0h3LkcyZDhFTWZXOFJR",
+          "video_id": "G2d8EMfW8RQ",
+          "watch_key": "G2d8EMfW8RQ",
+          "state_key": "G2d8EMfW8RQ",
+          "channel_id": "UCGpsgNbzdF7BECCVbB1COHw",
+          "channel_name": "Julian Goldie SEO",
+          "channel_title": "Julian Goldie SEO",
+          "published_at": "2026-08-22T05:30:05Z",
+          "published_display": "Aug 22, 2026 05:30",
+          "thumbnail": "https://i.ytimg.com/vi/G2d8EMfW8RQ/maxresdefault.jpg",
+          "thumbnail_url": "https://i.ytimg.com/vi/G2d8EMfW8RQ/maxresdefault.jpg",
+          "image_url": "https://i.ytimg.com/vi/G2d8EMfW8RQ/maxresdefault.jpg",
+          "thumb": "https://i.ytimg.com/vi/G2d8EMfW8RQ/maxresdefault.jpg",
+          "detail_url": "/video/yt-VVVHcHNnTmJ6ZEY3QkVDQ1ZiQjFDT0h3LkcyZDhFTWZXOFJR",
+          "url": "https://www.youtube.com/watch?v=G2d8EMfW8RQ&list=UUGpsgNbzdF7BECCVbB1COHw",
+          "group_name": "tech",
+          "group_key": "tech",
+          "group_names": [
+            "tech"
+          ],
+          "group_keys": [
+            "tech"
+          ],
+          "reason_tags": [
+            "cached-latest"
+          ]
+        },
+        {
+          "title": "NEW Hermes Update Makes AI Memory Way More Powerful",
+          "entry_id": "yt-VVVHcHNnTmJ6ZEY3QkVDQ1ZiQjFDT0h3LjVyaWcwTDdrRlFZ",
+          "video_id": "5rig0L7kFQY",
+          "watch_key": "5rig0L7kFQY",
+          "state_key": "5rig0L7kFQY",
+          "channel_id": "UCGpsgNbzdF7BECCVbB1COHw",
+          "channel_name": "Julian Goldie SEO",
+          "channel_title": "Julian Goldie SEO",
+          "published_at": "2026-08-22T04:30:08Z",
+          "published_display": "Aug 22, 2026 04:30",
+          "thumbnail": "https://i.ytimg.com/vi/5rig0L7kFQY/maxresdefault.jpg",
+          "thumbnail_url": "https://i.ytimg.com/vi/5rig0L7kFQY/maxresdefault.jpg",
+          "image_url": "https://i.ytimg.com/vi/5rig0L7kFQY/maxresdefault.jpg",
+          "thumb": "https://i.ytimg.com/vi/5rig0L7kFQY/maxresdefault.jpg",
+          "detail_url": "/video/yt-VVVHcHNnTmJ6ZEY3QkVDQ1ZiQjFDT0h3LjVyaWcwTDdrRlFZ",
+          "url": "https://www.youtube.com/watch?v=5rig0L7kFQY&list=UUGpsgNbzdF7BECCVbB1COHw",
+          "group_name": "tech",
+          "group_key": "tech",
+          "group_names": [
+            "tech"
+          ],
+          "group_keys": [
+            "tech"
+          ],
+          "reason_tags": [
+            "cached-latest"
+          ]
+        },
+        {
+          "title": "This New API Scrapes ChatGPT, Perplexity & Gemini in Real-Time (INSANE)",
+          "entry_id": "yt-VVVHcHNnTmJ6ZEY3QkVDQ1ZiQjFDT0h3LmdBVW9RSDN5NF9B",
+          "video_id": "gAUoQH3y4_A",
+          "watch_key": "gAUoQH3y4_A",
+          "state_key": "gAUoQH3y4_A",
+          "channel_id": "UCGpsgNbzdF7BECCVbB1COHw",
+          "channel_name": "Julian Goldie SEO",
+          "channel_title": "Julian Goldie SEO",
+          "published_at": "2026-08-22T03:30:37Z",
+          "published_display": "Aug 22, 2026 03:30",
+          "thumbnail": "https://i.ytimg.com/vi/gAUoQH3y4_A/maxresdefault.jpg",
+          "thumbnail_url": "https://i.ytimg.com/vi/gAUoQH3y4_A/maxresdefault.jpg",
+          "image_url": "https://i.ytimg.com/vi/gAUoQH3y4_A/maxresdefault.jpg",
+          "thumb": "https://i.ytimg.com/vi/gAUoQH3y4_A/maxresdefault.jpg",
+          "detail_url": "/video/yt-VVVHcHNnTmJ6ZEY3QkVDQ1ZiQjFDT0h3LmdBVW9RSDN5NF9B",
+          "url": "https://www.youtube.com/watch?v=gAUoQH3y4_A&list=UUGpsgNbzdF7BECCVbB1COHw",
+          "group_name": "tech",
+          "group_key": "tech",
+          "group_names": [
+            "tech"
+          ],
+          "group_keys": [
+            "tech"
+          ],
+          "reason_tags": [
+            "cached-latest"
+          ]
+        },
+        {
           "title": "NEW Google Gemini Updates are CRAZY GOOD! 🤯",
           "entry_id": "yt-VVVHcHNnTmJ6ZEY3QkVDQ1ZiQjFDT0h3LlFtY3RMZmxOSUsw",
           "video_id": "QmctLflNIK0",
@@ -118899,35 +118986,6 @@
           ]
         },
         {
-          "title": "NEW Open Bot Is an Open-Source Grok Bot!",
-          "entry_id": "yt-VVVHcHNnTmJ6ZEY3QkVDQ1ZiQjFDT0h3LnFKUXpZajlQdzJr",
-          "video_id": "qJQzYj9Pw2k",
-          "watch_key": "qJQzYj9Pw2k",
-          "state_key": "qJQzYj9Pw2k",
-          "channel_id": "UCGpsgNbzdF7BECCVbB1COHw",
-          "channel_name": "Julian Goldie SEO",
-          "channel_title": "Julian Goldie SEO",
-          "published_at": "2026-08-21T18:30:04Z",
-          "published_display": "Aug 21, 2026 18:30",
-          "thumbnail": "https://i.ytimg.com/vi/qJQzYj9Pw2k/maxresdefault.jpg",
-          "thumbnail_url": "https://i.ytimg.com/vi/qJQzYj9Pw2k/maxresdefault.jpg",
-          "image_url": "https://i.ytimg.com/vi/qJQzYj9Pw2k/maxresdefault.jpg",
-          "thumb": "https://i.ytimg.com/vi/qJQzYj9Pw2k/maxresdefault.jpg",
-          "detail_url": "/video/yt-VVVHcHNnTmJ6ZEY3QkVDQ1ZiQjFDT0h3LnFKUXpZajlQdzJr",
-          "url": "https://www.youtube.com/watch?v=qJQzYj9Pw2k&list=UUGpsgNbzdF7BECCVbB1COHw",
-          "group_name": "tech",
-          "group_key": "tech",
-          "group_names": [
-            "tech"
-          ],
-          "group_keys": [
-            "tech"
-          ],
-          "reason_tags": [
-            "cached-latest"
-          ]
-        },
-        {
           "title": "Claude vs. ChatGPT Just Got Serious",
           "entry_id": "yt-VVVIaFlYc0xCRVZWbmJ2c3E1N24xTVRRLkFSblVsRXlWUm9Z",
           "video_id": "ARnUlEyVRoY",
@@ -118944,35 +119002,6 @@
           "thumb": "https://i.ytimg.com/vi/ARnUlEyVRoY/maxresdefault.jpg",
           "detail_url": "/video/yt-VVVIaFlYc0xCRVZWbmJ2c3E1N24xTVRRLkFSblVsRXlWUm9Z",
           "url": "https://www.youtube.com/watch?v=ARnUlEyVRoY&list=UUHhYXsLBEVVnbvsq57n1MTQ",
-          "group_name": "tech",
-          "group_key": "tech",
-          "group_names": [
-            "tech"
-          ],
-          "group_keys": [
-            "tech"
-          ],
-          "reason_tags": [
-            "cached-latest"
-          ]
-        },
-        {
-          "title": "NEW Toast 1 is INSANE! 12x Faster AI Search Agent 🤯",
-          "entry_id": "yt-VVVHcHNnTmJ6ZEY3QkVDQ1ZiQjFDT0h3LnhrblNqM1I1Vm5N",
-          "video_id": "xknSj3R5VnM",
-          "watch_key": "xknSj3R5VnM",
-          "state_key": "xknSj3R5VnM",
-          "channel_id": "UCGpsgNbzdF7BECCVbB1COHw",
-          "channel_name": "Julian Goldie SEO",
-          "channel_title": "Julian Goldie SEO",
-          "published_at": "2026-08-21T17:30:14Z",
-          "published_display": "Aug 21, 2026 17:30",
-          "thumbnail": "https://i.ytimg.com/vi/xknSj3R5VnM/maxresdefault.jpg",
-          "thumbnail_url": "https://i.ytimg.com/vi/xknSj3R5VnM/maxresdefault.jpg",
-          "image_url": "https://i.ytimg.com/vi/xknSj3R5VnM/maxresdefault.jpg",
-          "thumb": "https://i.ytimg.com/vi/xknSj3R5VnM/maxresdefault.jpg",
-          "detail_url": "/video/yt-VVVHcHNnTmJ6ZEY3QkVDQ1ZiQjFDT0h3LnhrblNqM1I1Vm5N",
-          "url": "https://www.youtube.com/watch?v=xknSj3R5VnM&list=UUGpsgNbzdF7BECCVbB1COHw",
           "group_name": "tech",
           "group_key": "tech",
           "group_names": [
@@ -119044,36 +119073,7 @@
           ]
         },
         {
-          "title": "Gemini Spark Just Got 10X Better!",
-          "entry_id": "yt-VVVHcHNnTmJ6ZEY3QkVDQ1ZiQjFDT0h3Lk04TFRDZC0zZjZz",
-          "video_id": "M8LTCd-3f6s",
-          "watch_key": "M8LTCd-3f6s",
-          "state_key": "M8LTCd-3f6s",
-          "channel_id": "UCGpsgNbzdF7BECCVbB1COHw",
-          "channel_name": "Julian Goldie SEO",
-          "channel_title": "Julian Goldie SEO",
-          "published_at": "2026-08-21T16:30:24Z",
-          "published_display": "Aug 21, 2026 16:30",
-          "thumbnail": "https://i.ytimg.com/vi/M8LTCd-3f6s/maxresdefault.jpg",
-          "thumbnail_url": "https://i.ytimg.com/vi/M8LTCd-3f6s/maxresdefault.jpg",
-          "image_url": "https://i.ytimg.com/vi/M8LTCd-3f6s/maxresdefault.jpg",
-          "thumb": "https://i.ytimg.com/vi/M8LTCd-3f6s/maxresdefault.jpg",
-          "detail_url": "/video/yt-VVVHcHNnTmJ6ZEY3QkVDQ1ZiQjFDT0h3Lk04TFRDZC0zZjZz",
-          "url": "https://www.youtube.com/watch?v=M8LTCd-3f6s&list=UUGpsgNbzdF7BECCVbB1COHw",
-          "group_name": "tech",
-          "group_key": "tech",
-          "group_names": [
-            "tech"
-          ],
-          "group_keys": [
-            "tech"
-          ],
-          "reason_tags": [
-            "cached-latest"
-          ]
-        },
-        {
-          "title": "جعلت AI يبحث عن وظائف تناسب سيرتي الذاتية تلقائياً! | Hermes AI",
+          "title": "أعطيته سيرتي الذاتية… فوجد لي 10 وظائف حقيقية وأنا نايم!",
           "entry_id": "yt-VVVHclZ2cXU4UGxWdjB3UHFBNWtnWThBLjhjTTZ4U2Q0MV9j",
           "video_id": "8cM6xSd41_c",
           "watch_key": "8cM6xSd41_c",
@@ -124405,8 +124405,8 @@
         "errors": [
           "UCTxhd-f3WmraKfCQSambCxA: no_upload_playlist - relatedPlaylists.uploads missing from channels.list response"
         ],
-        "generated_at": "2026-08-22T01:56:24+00:00",
-        "synced_at": "2026-08-22T01:56:24+00:00"
+        "generated_at": "2026-08-22T07:05:25+00:00",
+        "synced_at": "2026-08-22T07:05:25+00:00"
       }
     }
   },
@@ -126380,22 +126380,22 @@
       "channel_id": "UC3YmP7nqf514I1zh1eVbzrA",
       "channel_title": "UC3YmP7nqf514I1zh1eVbzrA",
       "latest_video": {
-        "title": "All the Christians Need to Believe in Prophet Muhammad (pbuh), who is Mentioned in the Bible",
-        "entry_id": "yt-VVUzWW1QN25xZjUxNEkxemgxZVZienJBLnhkVFgtN285OXdF",
-        "video_id": "xdTX-7o99wE",
-        "watch_key": "xdTX-7o99wE",
-        "state_key": "xdTX-7o99wE",
+        "title": "Scientific and Logical Reasons for Prohibiting Alcohol in Islam - Dr Zakir Naik",
+        "entry_id": "yt-VVUzWW1QN25xZjUxNEkxemgxZVZienJBLnFyLVZTXzdyS3NF",
+        "video_id": "qr-VS_7rKsE",
+        "watch_key": "qr-VS_7rKsE",
+        "state_key": "qr-VS_7rKsE",
         "channel_id": "UC3YmP7nqf514I1zh1eVbzrA",
         "channel_name": "Dr Zakir Naik",
         "channel_title": "Dr Zakir Naik",
-        "published_at": "2026-08-21T13:30:35Z",
-        "published_display": "Aug 21, 2026 13:30",
-        "thumbnail": "https://i.ytimg.com/vi/xdTX-7o99wE/maxresdefault.jpg",
-        "thumbnail_url": "https://i.ytimg.com/vi/xdTX-7o99wE/maxresdefault.jpg",
-        "image_url": "https://i.ytimg.com/vi/xdTX-7o99wE/maxresdefault.jpg",
-        "thumb": "https://i.ytimg.com/vi/xdTX-7o99wE/maxresdefault.jpg",
-        "detail_url": "/video/yt-VVUzWW1QN25xZjUxNEkxemgxZVZienJBLnhkVFgtN285OXdF",
-        "url": "https://www.youtube.com/watch?v=xdTX-7o99wE&list=UU3YmP7nqf514I1zh1eVbzrA",
+        "published_at": "2026-08-22T05:30:20Z",
+        "published_display": "Aug 22, 2026 05:30",
+        "thumbnail": "https://i.ytimg.com/vi/qr-VS_7rKsE/maxresdefault.jpg",
+        "thumbnail_url": "https://i.ytimg.com/vi/qr-VS_7rKsE/maxresdefault.jpg",
+        "image_url": "https://i.ytimg.com/vi/qr-VS_7rKsE/maxresdefault.jpg",
+        "thumb": "https://i.ytimg.com/vi/qr-VS_7rKsE/maxresdefault.jpg",
+        "detail_url": "/video/yt-VVUzWW1QN25xZjUxNEkxemgxZVZienJBLnFyLVZTXzdyS3NF",
+        "url": "https://www.youtube.com/watch?v=qr-VS_7rKsE&list=UU3YmP7nqf514I1zh1eVbzrA",
         "group_name": "islamic knowledge",
         "group_key": "islamicknowledge",
         "group_names": [
@@ -126411,11 +126411,11 @@
       "group_names": [
         "islamic knowledge"
       ],
-      "latest_video_id": "xdTX-7o99wE",
-      "published_at": "2026-08-21T13:30:35Z",
-      "published_display": "Aug 21, 2026 13:30",
-      "thumbnail": "https://i.ytimg.com/vi/xdTX-7o99wE/maxresdefault.jpg",
-      "url": "https://www.youtube.com/watch?v=xdTX-7o99wE&list=UU3YmP7nqf514I1zh1eVbzrA",
+      "latest_video_id": "qr-VS_7rKsE",
+      "published_at": "2026-08-22T05:30:20Z",
+      "published_display": "Aug 22, 2026 05:30",
+      "thumbnail": "https://i.ytimg.com/vi/qr-VS_7rKsE/maxresdefault.jpg",
+      "url": "https://www.youtube.com/watch?v=qr-VS_7rKsE&list=UU3YmP7nqf514I1zh1eVbzrA",
       "reason_tags": [
         "source-diverse",
         "cached-empty",
@@ -126573,22 +126573,22 @@
       "channel_id": "UC4DaPswqI8f0nP98leIcvkQ",
       "channel_title": "UC4DaPswqI8f0nP98leIcvkQ",
       "latest_video": {
-        "title": "حادثة مطار بريشتينا التي كادت تشعل الحرب العالمية الثالثة",
-        "entry_id": "yt-VVU0RGFQc3dxSThmMG5QOThsZUljdmtRLlktVlM3VWlTZXZZ",
-        "video_id": "Y-VS7UiSevY",
-        "watch_key": "Y-VS7UiSevY",
-        "state_key": "Y-VS7UiSevY",
+        "title": "الملياردير الأميركي \"بيل غيتس\"",
+        "entry_id": "yt-VVU0RGFQc3dxSThmMG5QOThsZUljdmtRLlJqU2pfNEZsSldn",
+        "video_id": "RjSj_4FlJWg",
+        "watch_key": "RjSj_4FlJWg",
+        "state_key": "RjSj_4FlJWg",
         "channel_id": "UC4DaPswqI8f0nP98leIcvkQ",
         "channel_name": "سياسة لس",
         "channel_title": "سياسة لس",
-        "published_at": "2026-08-21T22:00:38Z",
-        "published_display": "Aug 21, 2026 22:00",
-        "thumbnail": "https://i.ytimg.com/vi/Y-VS7UiSevY/maxresdefault.jpg",
-        "thumbnail_url": "https://i.ytimg.com/vi/Y-VS7UiSevY/maxresdefault.jpg",
-        "image_url": "https://i.ytimg.com/vi/Y-VS7UiSevY/maxresdefault.jpg",
-        "thumb": "https://i.ytimg.com/vi/Y-VS7UiSevY/maxresdefault.jpg",
-        "detail_url": "/video/yt-VVU0RGFQc3dxSThmMG5QOThsZUljdmtRLlktVlM3VWlTZXZZ",
-        "url": "https://www.youtube.com/watch?v=Y-VS7UiSevY&list=UU4DaPswqI8f0nP98leIcvkQ",
+        "published_at": "2026-08-22T07:00:38Z",
+        "published_display": "Aug 22, 2026 07:00",
+        "thumbnail": "https://i.ytimg.com/vi/RjSj_4FlJWg/maxresdefault.jpg",
+        "thumbnail_url": "https://i.ytimg.com/vi/RjSj_4FlJWg/maxresdefault.jpg",
+        "image_url": "https://i.ytimg.com/vi/RjSj_4FlJWg/maxresdefault.jpg",
+        "thumb": "https://i.ytimg.com/vi/RjSj_4FlJWg/maxresdefault.jpg",
+        "detail_url": "/video/yt-VVU0RGFQc3dxSThmMG5QOThsZUljdmtRLlJqU2pfNEZsSldn",
+        "url": "https://www.youtube.com/watch?v=RjSj_4FlJWg&list=UU4DaPswqI8f0nP98leIcvkQ",
         "group_name": "knowledge",
         "group_key": "knowledge",
         "group_names": [
@@ -126604,11 +126604,11 @@
       "group_names": [
         "knowledge"
       ],
-      "latest_video_id": "Y-VS7UiSevY",
-      "published_at": "2026-08-21T22:00:38Z",
-      "published_display": "Aug 21, 2026 22:00",
-      "thumbnail": "https://i.ytimg.com/vi/Y-VS7UiSevY/maxresdefault.jpg",
-      "url": "https://www.youtube.com/watch?v=Y-VS7UiSevY&list=UU4DaPswqI8f0nP98leIcvkQ",
+      "latest_video_id": "RjSj_4FlJWg",
+      "published_at": "2026-08-22T07:00:38Z",
+      "published_display": "Aug 22, 2026 07:00",
+      "thumbnail": "https://i.ytimg.com/vi/RjSj_4FlJWg/maxresdefault.jpg",
+      "url": "https://www.youtube.com/watch?v=RjSj_4FlJWg&list=UU4DaPswqI8f0nP98leIcvkQ",
       "reason_tags": [
         "source-diverse",
         "cached-empty",
@@ -126749,7 +126749,7 @@
       "channel_id": "UC4tNC0SDwlGrx1SpTz-gJGA",
       "channel_title": "UC4tNC0SDwlGrx1SpTz-gJGA",
       "latest_video": {
-        "title": "صدام حسين.. كيف نجا من محاولات اغتياله؟ وكيف سقط نظامه في أسابيع؟",
+        "title": "كيف حكم صدام حسين العراق بالقبضة الأمنية؟ ولماذا انهار نظامه بهذه السرعة؟",
         "entry_id": "yt-VVU0dE5DMFNEd2xHcngxU3BUei1nSkdBLmQweVhOVy1pRUEw",
         "video_id": "d0yXNW-iEA0",
         "watch_key": "d0yXNW-iEA0",
@@ -131010,22 +131010,22 @@
       "channel_id": "UCCFclvIzI-oqdzQcJ-OOhEg",
       "channel_title": "UCCFclvIzI-oqdzQcJ-OOhEg",
       "latest_video": {
-        "title": "سقوط وشيك لحجارة من السماء في 3 دول",
-        "entry_id": "yt-VVVDRmNsdkl6SS1vcWR6UWNKLU9PaEVnLkhHVW16LUlrVWw0",
-        "video_id": "HGUmz-IkUl4",
-        "watch_key": "HGUmz-IkUl4",
-        "state_key": "HGUmz-IkUl4",
+        "title": "هذا ما فعله المسلمون عند عزل خالد بن الوليد",
+        "entry_id": "yt-VVVDRmNsdkl6SS1vcWR6UWNKLU9PaEVnLjB3LW5PTHNXbWtz",
+        "video_id": "0w-nOLsWmks",
+        "watch_key": "0w-nOLsWmks",
+        "state_key": "0w-nOLsWmks",
         "channel_id": "UCCFclvIzI-oqdzQcJ-OOhEg",
         "channel_name": "الدكتور راغب السرجاني",
         "channel_title": "الدكتور راغب السرجاني",
-        "published_at": "2026-08-21T21:00:38Z",
-        "published_display": "Aug 21, 2026 21:00",
-        "thumbnail": "https://i.ytimg.com/vi/HGUmz-IkUl4/maxresdefault.jpg",
-        "thumbnail_url": "https://i.ytimg.com/vi/HGUmz-IkUl4/maxresdefault.jpg",
-        "image_url": "https://i.ytimg.com/vi/HGUmz-IkUl4/maxresdefault.jpg",
-        "thumb": "https://i.ytimg.com/vi/HGUmz-IkUl4/maxresdefault.jpg",
-        "detail_url": "/video/yt-VVVDRmNsdkl6SS1vcWR6UWNKLU9PaEVnLkhHVW16LUlrVWw0",
-        "url": "https://www.youtube.com/watch?v=HGUmz-IkUl4&list=UUCFclvIzI-oqdzQcJ-OOhEg",
+        "published_at": "2026-08-22T06:00:28Z",
+        "published_display": "Aug 22, 2026 06:00",
+        "thumbnail": "https://i.ytimg.com/vi/0w-nOLsWmks/maxresdefault.jpg",
+        "thumbnail_url": "https://i.ytimg.com/vi/0w-nOLsWmks/maxresdefault.jpg",
+        "image_url": "https://i.ytimg.com/vi/0w-nOLsWmks/maxresdefault.jpg",
+        "thumb": "https://i.ytimg.com/vi/0w-nOLsWmks/maxresdefault.jpg",
+        "detail_url": "/video/yt-VVVDRmNsdkl6SS1vcWR6UWNKLU9PaEVnLjB3LW5PTHNXbWtz",
+        "url": "https://www.youtube.com/watch?v=0w-nOLsWmks&list=UUCFclvIzI-oqdzQcJ-OOhEg",
         "group_name": "islamic knowledge",
         "group_key": "islamicknowledge",
         "group_names": [
@@ -131041,11 +131041,11 @@
       "group_names": [
         "islamic knowledge"
       ],
-      "latest_video_id": "HGUmz-IkUl4",
-      "published_at": "2026-08-21T21:00:38Z",
-      "published_display": "Aug 21, 2026 21:00",
-      "thumbnail": "https://i.ytimg.com/vi/HGUmz-IkUl4/maxresdefault.jpg",
-      "url": "https://www.youtube.com/watch?v=HGUmz-IkUl4&list=UUCFclvIzI-oqdzQcJ-OOhEg",
+      "latest_video_id": "0w-nOLsWmks",
+      "published_at": "2026-08-22T06:00:28Z",
+      "published_display": "Aug 22, 2026 06:00",
+      "thumbnail": "https://i.ytimg.com/vi/0w-nOLsWmks/maxresdefault.jpg",
+      "url": "https://www.youtube.com/watch?v=0w-nOLsWmks&list=UUCFclvIzI-oqdzQcJ-OOhEg",
       "reason_tags": [
         "source-diverse",
         "cached-empty",
@@ -132733,7 +132733,7 @@
       "channel_id": "UCEHvaZ336u7TIsUQ2c6SAeQ",
       "channel_title": "UCEHvaZ336u7TIsUQ2c6SAeQ",
       "latest_video": {
-        "title": "مابقتش حمل قصص الناجحين",
+        "title": "تعبنا من قصص الناجحين",
         "entry_id": "yt-VVVFSHZhWjMzNnU3VElzVVEyYzZTQWVRLmNmRDB2d1RqVHpz",
         "video_id": "cfD0vwTjTzs",
         "watch_key": "cfD0vwTjTzs",
@@ -133559,22 +133559,22 @@
       "channel_id": "UCFFuMGTQXLitNuiU4SIe5vQ",
       "channel_title": "UCFFuMGTQXLitNuiU4SIe5vQ",
       "latest_video": {
-        "title": "مستوطنون يلقون نفاياتهم على منزل فلسطيني في قرية مادما، جنوب نابلس.",
-        "entry_id": "yt-VVVGRnVNR1RRWExpdE51aVU0U0llNXZRLkZaazF4V1Jaa01N",
-        "video_id": "FZk1xWRZkMM",
-        "watch_key": "FZk1xWRZkMM",
-        "state_key": "FZk1xWRZkMM",
+        "title": "إسلاميون ويساريون وتيارات مستقلة يجتمعون في قائمة واحدة، في مشهد قد يقلب حسابات الاحتلال",
+        "entry_id": "yt-VVVGRnVNR1RRWExpdE51aVU0U0llNXZRLmx0Z3FUbHgteTNz",
+        "video_id": "ltgqTlx-y3s",
+        "watch_key": "ltgqTlx-y3s",
+        "state_key": "ltgqTlx-y3s",
         "channel_id": "UCFFuMGTQXLitNuiU4SIe5vQ",
         "channel_name": "شبكة قدس الاخبارية",
         "channel_title": "شبكة قدس الاخبارية",
-        "published_at": "2026-08-21T20:00:36Z",
-        "published_display": "Aug 21, 2026 20:00",
-        "thumbnail": "https://i.ytimg.com/vi/FZk1xWRZkMM/maxresdefault.jpg",
-        "thumbnail_url": "https://i.ytimg.com/vi/FZk1xWRZkMM/maxresdefault.jpg",
-        "image_url": "https://i.ytimg.com/vi/FZk1xWRZkMM/maxresdefault.jpg",
-        "thumb": "https://i.ytimg.com/vi/FZk1xWRZkMM/maxresdefault.jpg",
-        "detail_url": "/video/yt-VVVGRnVNR1RRWExpdE51aVU0U0llNXZRLkZaazF4V1Jaa01N",
-        "url": "https://www.youtube.com/watch?v=FZk1xWRZkMM&list=UUFFuMGTQXLitNuiU4SIe5vQ",
+        "published_at": "2026-08-22T03:59:33Z",
+        "published_display": "Aug 22, 2026 03:59",
+        "thumbnail": "https://i.ytimg.com/vi/ltgqTlx-y3s/maxresdefault.jpg",
+        "thumbnail_url": "https://i.ytimg.com/vi/ltgqTlx-y3s/maxresdefault.jpg",
+        "image_url": "https://i.ytimg.com/vi/ltgqTlx-y3s/maxresdefault.jpg",
+        "thumb": "https://i.ytimg.com/vi/ltgqTlx-y3s/maxresdefault.jpg",
+        "detail_url": "/video/yt-VVVGRnVNR1RRWExpdE51aVU0U0llNXZRLmx0Z3FUbHgteTNz",
+        "url": "https://www.youtube.com/watch?v=ltgqTlx-y3s&list=UUFFuMGTQXLitNuiU4SIe5vQ",
         "group_name": "news",
         "group_key": "news",
         "group_names": [
@@ -133590,11 +133590,11 @@
       "group_names": [
         "news"
       ],
-      "latest_video_id": "FZk1xWRZkMM",
-      "published_at": "2026-08-21T20:00:36Z",
-      "published_display": "Aug 21, 2026 20:00",
-      "thumbnail": "https://i.ytimg.com/vi/FZk1xWRZkMM/maxresdefault.jpg",
-      "url": "https://www.youtube.com/watch?v=FZk1xWRZkMM&list=UUFFuMGTQXLitNuiU4SIe5vQ",
+      "latest_video_id": "ltgqTlx-y3s",
+      "published_at": "2026-08-22T03:59:33Z",
+      "published_display": "Aug 22, 2026 03:59",
+      "thumbnail": "https://i.ytimg.com/vi/ltgqTlx-y3s/maxresdefault.jpg",
+      "url": "https://www.youtube.com/watch?v=ltgqTlx-y3s&list=UUFFuMGTQXLitNuiU4SIe5vQ",
       "reason_tags": [
         "source-diverse",
         "cached-empty",
@@ -133606,22 +133606,22 @@
       "channel_id": "UCfiwzLy-8yKzIbsmZTzxDgw",
       "channel_title": "UCfiwzLy-8yKzIbsmZTzxDgw",
       "latest_video": {
-        "title": "خبير: إسرائيل تتجاهل الضغوط الغربية وتمضي في مشروع \"إي 1\" لفرض واقع الضم بالضفة",
-        "entry_id": "yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3LlBScTdqb3VqbTBF",
-        "video_id": "PRq7joujm0E",
-        "watch_key": "PRq7joujm0E",
-        "state_key": "PRq7joujm0E",
+        "title": "إلى أين يتجه التصعيد بين تركيا وإسرائيل؟",
+        "entry_id": "yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3LjRDRUJyLWpFTDlR",
+        "video_id": "4CEBr-jEL9Q",
+        "watch_key": "4CEBr-jEL9Q",
+        "state_key": "4CEBr-jEL9Q",
         "channel_id": "UCfiwzLy-8yKzIbsmZTzxDgw",
         "channel_name": "AlJazeera Arabic  قناة الجزيرة",
         "channel_title": "AlJazeera Arabic  قناة الجزيرة",
-        "published_at": "2026-08-22T01:30:25Z",
-        "published_display": "Aug 22, 2026 01:30",
-        "thumbnail": "https://i.ytimg.com/vi/PRq7joujm0E/maxresdefault.jpg",
-        "thumbnail_url": "https://i.ytimg.com/vi/PRq7joujm0E/maxresdefault.jpg",
-        "image_url": "https://i.ytimg.com/vi/PRq7joujm0E/maxresdefault.jpg",
-        "thumb": "https://i.ytimg.com/vi/PRq7joujm0E/maxresdefault.jpg",
-        "detail_url": "/video/yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3LlBScTdqb3VqbTBF",
-        "url": "https://www.youtube.com/watch?v=PRq7joujm0E&list=UUfiwzLy-8yKzIbsmZTzxDgw",
+        "published_at": "2026-08-22T07:00:11Z",
+        "published_display": "Aug 22, 2026 07:00",
+        "thumbnail": "https://i.ytimg.com/vi/4CEBr-jEL9Q/maxresdefault.jpg",
+        "thumbnail_url": "https://i.ytimg.com/vi/4CEBr-jEL9Q/maxresdefault.jpg",
+        "image_url": "https://i.ytimg.com/vi/4CEBr-jEL9Q/maxresdefault.jpg",
+        "thumb": "https://i.ytimg.com/vi/4CEBr-jEL9Q/maxresdefault.jpg",
+        "detail_url": "/video/yt-VVVmaXd6THktOHlLeklic21aVHp4RGd3LjRDRUJyLWpFTDlR",
+        "url": "https://www.youtube.com/watch?v=4CEBr-jEL9Q&list=UUfiwzLy-8yKzIbsmZTzxDgw",
         "group_name": "news",
         "group_key": "news",
         "group_names": [
@@ -133637,11 +133637,11 @@
       "group_names": [
         "news"
       ],
-      "latest_video_id": "PRq7joujm0E",
-      "published_at": "2026-08-22T01:30:25Z",
-      "published_display": "Aug 22, 2026 01:30",
-      "thumbnail": "https://i.ytimg.com/vi/PRq7joujm0E/maxresdefault.jpg",
-      "url": "https://www.youtube.com/watch?v=PRq7joujm0E&list=UUfiwzLy-8yKzIbsmZTzxDgw",
+      "latest_video_id": "4CEBr-jEL9Q",
+      "published_at": "2026-08-22T07:00:11Z",
+      "published_display": "Aug 22, 2026 07:00",
+      "thumbnail": "https://i.ytimg.com/vi/4CEBr-jEL9Q/maxresdefault.jpg",
+      "url": "https://www.youtube.com/watch?v=4CEBr-jEL9Q&list=UUfiwzLy-8yKzIbsmZTzxDgw",
       "reason_tags": [
         "source-diverse",
         "cached-empty",
@@ -134158,8 +134158,8 @@
         "channel_id": "UCG6tWYl5Zb490PkSAjE2iRg",
         "channel_name": "القناة الرسمية للدكتور مصطفى محمود",
         "channel_title": "القناة الرسمية للدكتور مصطفى محمود",
-        "published_at": "2026-08-21T19:08:59Z",
-        "published_display": "Aug 21, 2026 19:08",
+        "published_at": "2026-08-22T07:00:08Z",
+        "published_display": "Aug 22, 2026 07:00",
         "thumbnail": "https://i.ytimg.com/vi/g-syG3j-v6A/maxresdefault_live.jpg",
         "thumbnail_url": "https://i.ytimg.com/vi/g-syG3j-v6A/maxresdefault_live.jpg",
         "image_url": "https://i.ytimg.com/vi/g-syG3j-v6A/maxresdefault_live.jpg",
@@ -134182,8 +134182,8 @@
         "islamic knowledge"
       ],
       "latest_video_id": "g-syG3j-v6A",
-      "published_at": "2026-08-21T19:08:59Z",
-      "published_display": "Aug 21, 2026 19:08",
+      "published_at": "2026-08-22T07:00:08Z",
+      "published_display": "Aug 22, 2026 07:00",
       "thumbnail": "https://i.ytimg.com/vi/g-syG3j-v6A/maxresdefault_live.jpg",
       "url": "https://www.youtube.com/watch?v=g-syG3j-v6A&list=UUG6tWYl5Zb490PkSAjE2iRg",
       "reason_tags": [
@@ -134673,22 +134673,22 @@
       "channel_id": "UCGpsgNbzdF7BECCVbB1COHw",
       "channel_title": "UCGpsgNbzdF7BECCVbB1COHw",
       "latest_video": {
-        "title": "NEW Google Gemini Updates are CRAZY GOOD! 🤯",
-        "entry_id": "yt-VVVHcHNnTmJ6ZEY3QkVDQ1ZiQjFDT0h3LlFtY3RMZmxOSUsw",
-        "video_id": "QmctLflNIK0",
-        "watch_key": "QmctLflNIK0",
-        "state_key": "QmctLflNIK0",
+        "title": "OpenBot Just CHANGED AI Agents Forever!",
+        "entry_id": "yt-VVVHcHNnTmJ6ZEY3QkVDQ1ZiQjFDT0h3LkcyZDhFTWZXOFJR",
+        "video_id": "G2d8EMfW8RQ",
+        "watch_key": "G2d8EMfW8RQ",
+        "state_key": "G2d8EMfW8RQ",
         "channel_id": "UCGpsgNbzdF7BECCVbB1COHw",
         "channel_name": "Julian Goldie SEO",
         "channel_title": "Julian Goldie SEO",
-        "published_at": "2026-08-22T01:30:26Z",
-        "published_display": "Aug 22, 2026 01:30",
-        "thumbnail": "https://i.ytimg.com/vi/QmctLflNIK0/maxresdefault.jpg",
-        "thumbnail_url": "https://i.ytimg.com/vi/QmctLflNIK0/maxresdefault.jpg",
-        "image_url": "https://i.ytimg.com/vi/QmctLflNIK0/maxresdefault.jpg",
-        "thumb": "https://i.ytimg.com/vi/QmctLflNIK0/maxresdefault.jpg",
-        "detail_url": "/video/yt-VVVHcHNnTmJ6ZEY3QkVDQ1ZiQjFDT0h3LlFtY3RMZmxOSUsw",
-        "url": "https://www.youtube.com/watch?v=QmctLflNIK0&list=UUGpsgNbzdF7BECCVbB1COHw",
+        "published_at": "2026-08-22T05:30:05Z",
+        "published_display": "Aug 22, 2026 05:30",
+        "thumbnail": "https://i.ytimg.com/vi/G2d8EMfW8RQ/maxresdefault.jpg",
+        "thumbnail_url": "https://i.ytimg.com/vi/G2d8EMfW8RQ/maxresdefault.jpg",
+        "image_url": "https://i.ytimg.com/vi/G2d8EMfW8RQ/maxresdefault.jpg",
+        "thumb": "https://i.ytimg.com/vi/G2d8EMfW8RQ/maxresdefault.jpg",
+        "detail_url": "/video/yt-VVVHcHNnTmJ6ZEY3QkVDQ1ZiQjFDT0h3LkcyZDhFTWZXOFJR",
+        "url": "https://www.youtube.com/watch?v=G2d8EMfW8RQ&list=UUGpsgNbzdF7BECCVbB1COHw",
         "group_name": "tech",
         "group_key": "tech",
         "group_names": [
@@ -134704,11 +134704,11 @@
       "group_names": [
         "tech"
       ],
-      "latest_video_id": "QmctLflNIK0",
-      "published_at": "2026-08-22T01:30:26Z",
-      "published_display": "Aug 22, 2026 01:30",
-      "thumbnail": "https://i.ytimg.com/vi/QmctLflNIK0/maxresdefault.jpg",
-      "url": "https://www.youtube.com/watch?v=QmctLflNIK0&list=UUGpsgNbzdF7BECCVbB1COHw",
+      "latest_video_id": "G2d8EMfW8RQ",
+      "published_at": "2026-08-22T05:30:05Z",
+      "published_display": "Aug 22, 2026 05:30",
+      "thumbnail": "https://i.ytimg.com/vi/G2d8EMfW8RQ/maxresdefault.jpg",
+      "url": "https://www.youtube.com/watch?v=G2d8EMfW8RQ&list=UUGpsgNbzdF7BECCVbB1COHw",
       "reason_tags": [
         "source-diverse",
         "cached-empty",
@@ -134737,7 +134737,7 @@
       "channel_id": "UCGrVvqu8PlVv0wPqA5kgY8A",
       "channel_title": "UCGrVvqu8PlVv0wPqA5kgY8A",
       "latest_video": {
-        "title": "جعلت AI يبحث عن وظائف تناسب سيرتي الذاتية تلقائياً! | Hermes AI",
+        "title": "أعطيته سيرتي الذاتية… فوجد لي 10 وظائف حقيقية وأنا نايم!",
         "entry_id": "yt-VVVHclZ2cXU4UGxWdjB3UHFBNWtnWThBLjhjTTZ4U2Q0MV9j",
         "video_id": "8cM6xSd41_c",
         "watch_key": "8cM6xSd41_c",
@@ -135907,22 +135907,22 @@
       "channel_id": "UCIJXOvggjKtCagMfxvcCzAA",
       "channel_title": "UCIJXOvggjKtCagMfxvcCzAA",
       "latest_video": {
-        "title": "حرب داخل الفيفا.. هل اقتربت نهاية عهد إنفانتينو؟ | #ستوديو_وان_مع_فضيلة",
-        "entry_id": "yt-VVVJSlhPdmdnakt0Q2FnTWZ4dmNDekFBLi13cE1ZdU1QQ1Uw",
-        "video_id": "-wpMYuMPCU0",
-        "watch_key": "-wpMYuMPCU0",
-        "state_key": "-wpMYuMPCU0",
+        "title": "معركة علي الطاهر.. هل يخسر حزب الله خط دفاعه الثاني؟ | #التاسعة",
+        "entry_id": "yt-VVVJSlhPdmdnakt0Q2FnTWZ4dmNDekFBLjV3YUs5aXJueUlJ",
+        "video_id": "5waK9irnyII",
+        "watch_key": "5waK9irnyII",
+        "state_key": "5waK9irnyII",
         "channel_id": "UCIJXOvggjKtCagMfxvcCzAA",
         "channel_name": "سكاي نيوز عربية",
         "channel_title": "سكاي نيوز عربية",
-        "published_at": "2026-08-22T01:00:06Z",
-        "published_display": "Aug 22, 2026 01:00",
-        "thumbnail": "https://i.ytimg.com/vi/-wpMYuMPCU0/maxresdefault.jpg",
-        "thumbnail_url": "https://i.ytimg.com/vi/-wpMYuMPCU0/maxresdefault.jpg",
-        "image_url": "https://i.ytimg.com/vi/-wpMYuMPCU0/maxresdefault.jpg",
-        "thumb": "https://i.ytimg.com/vi/-wpMYuMPCU0/maxresdefault.jpg",
-        "detail_url": "/video/yt-VVVJSlhPdmdnakt0Q2FnTWZ4dmNDekFBLi13cE1ZdU1QQ1Uw",
-        "url": "https://www.youtube.com/watch?v=-wpMYuMPCU0&list=UUIJXOvggjKtCagMfxvcCzAA",
+        "published_at": "2026-08-22T07:00:14Z",
+        "published_display": "Aug 22, 2026 07:00",
+        "thumbnail": "https://i.ytimg.com/vi/5waK9irnyII/maxresdefault.jpg",
+        "thumbnail_url": "https://i.ytimg.com/vi/5waK9irnyII/maxresdefault.jpg",
+        "image_url": "https://i.ytimg.com/vi/5waK9irnyII/maxresdefault.jpg",
+        "thumb": "https://i.ytimg.com/vi/5waK9irnyII/maxresdefault.jpg",
+        "detail_url": "/video/yt-VVVJSlhPdmdnakt0Q2FnTWZ4dmNDekFBLjV3YUs5aXJueUlJ",
+        "url": "https://www.youtube.com/watch?v=5waK9irnyII&list=UUIJXOvggjKtCagMfxvcCzAA",
         "group_name": "news",
         "group_key": "news",
         "group_names": [
@@ -135938,11 +135938,11 @@
       "group_names": [
         "news"
       ],
-      "latest_video_id": "-wpMYuMPCU0",
-      "published_at": "2026-08-22T01:00:06Z",
-      "published_display": "Aug 22, 2026 01:00",
-      "thumbnail": "https://i.ytimg.com/vi/-wpMYuMPCU0/maxresdefault.jpg",
-      "url": "https://www.youtube.com/watch?v=-wpMYuMPCU0&list=UUIJXOvggjKtCagMfxvcCzAA",
+      "latest_video_id": "5waK9irnyII",
+      "published_at": "2026-08-22T07:00:14Z",
+      "published_display": "Aug 22, 2026 07:00",
+      "thumbnail": "https://i.ytimg.com/vi/5waK9irnyII/maxresdefault.jpg",
+      "url": "https://www.youtube.com/watch?v=5waK9irnyII&list=UUIJXOvggjKtCagMfxvcCzAA",
       "reason_tags": [
         "source-diverse",
         "cached-empty",
@@ -139569,22 +139569,22 @@
       "channel_id": "UClytYhL7vkTiiWcauy3fXKw",
       "channel_title": "UClytYhL7vkTiiWcauy3fXKw",
       "latest_video": {
-        "title": "بث مباشر لاستقبال الاقتراحات و الاسئلة ( ٢ ) 🌱⚘️",
-        "entry_id": "yt-VVVseXRZaEw3dmtUaWlXY2F1eTNmWEt3LmdXUklCWGp0R044",
-        "video_id": "gWRIBXjtGN8",
-        "watch_key": "gWRIBXjtGN8",
-        "state_key": "gWRIBXjtGN8",
+        "title": "بث مباشر لاستقبال الاقترحات و الاسئلة ( ١ ) ⚘️",
+        "entry_id": "yt-VVVseXRZaEw3dmtUaWlXY2F1eTNmWEt3LkQzVzZDY0Z5M2Iw",
+        "video_id": "D3W6CcFy3b0",
+        "watch_key": "D3W6CcFy3b0",
+        "state_key": "D3W6CcFy3b0",
         "channel_id": "UClytYhL7vkTiiWcauy3fXKw",
         "channel_name": "سامح الجنداوي ( القناة الرسمية )",
         "channel_title": "سامح الجنداوي ( القناة الرسمية )",
-        "published_at": "2026-08-21T18:21:31Z",
-        "published_display": "Aug 21, 2026 18:21",
-        "thumbnail": "https://i.ytimg.com/vi/gWRIBXjtGN8/maxresdefault.jpg",
-        "thumbnail_url": "https://i.ytimg.com/vi/gWRIBXjtGN8/maxresdefault.jpg",
-        "image_url": "https://i.ytimg.com/vi/gWRIBXjtGN8/maxresdefault.jpg",
-        "thumb": "https://i.ytimg.com/vi/gWRIBXjtGN8/maxresdefault.jpg",
-        "detail_url": "/video/yt-VVVseXRZaEw3dmtUaWlXY2F1eTNmWEt3LmdXUklCWGp0R044",
-        "url": "https://www.youtube.com/watch?v=gWRIBXjtGN8&list=UUlytYhL7vkTiiWcauy3fXKw",
+        "published_at": "2026-08-22T05:49:16Z",
+        "published_display": "Aug 22, 2026 05:49",
+        "thumbnail": "https://i.ytimg.com/vi/D3W6CcFy3b0/maxresdefault.jpg",
+        "thumbnail_url": "https://i.ytimg.com/vi/D3W6CcFy3b0/maxresdefault.jpg",
+        "image_url": "https://i.ytimg.com/vi/D3W6CcFy3b0/maxresdefault.jpg",
+        "thumb": "https://i.ytimg.com/vi/D3W6CcFy3b0/maxresdefault.jpg",
+        "detail_url": "/video/yt-VVVseXRZaEw3dmtUaWlXY2F1eTNmWEt3LkQzVzZDY0Z5M2Iw",
+        "url": "https://www.youtube.com/watch?v=D3W6CcFy3b0&list=UUlytYhL7vkTiiWcauy3fXKw",
         "group_name": "islamic knowledge",
         "group_key": "islamicknowledge",
         "group_names": [
@@ -139600,11 +139600,11 @@
       "group_names": [
         "islamic knowledge"
       ],
-      "latest_video_id": "gWRIBXjtGN8",
-      "published_at": "2026-08-21T18:21:31Z",
-      "published_display": "Aug 21, 2026 18:21",
-      "thumbnail": "https://i.ytimg.com/vi/gWRIBXjtGN8/maxresdefault.jpg",
-      "url": "https://www.youtube.com/watch?v=gWRIBXjtGN8&list=UUlytYhL7vkTiiWcauy3fXKw",
+      "latest_video_id": "D3W6CcFy3b0",
+      "published_at": "2026-08-22T05:49:16Z",
+      "published_display": "Aug 22, 2026 05:49",
+      "thumbnail": "https://i.ytimg.com/vi/D3W6CcFy3b0/maxresdefault.jpg",
+      "url": "https://www.youtube.com/watch?v=D3W6CcFy3b0&list=UUlytYhL7vkTiiWcauy3fXKw",
       "reason_tags": [
         "source-diverse",
         "cached-empty",
@@ -143956,22 +143956,22 @@
       "channel_id": "UCqPP4dbgr9Uddnzzuzr8qXQ",
       "channel_title": "UCqPP4dbgr9Uddnzzuzr8qXQ",
       "latest_video": {
-        "title": "درعا: هل تُصان حرية التعبير بالقانون.. أم تُواجَه بالاستدعاء الأمني؟",
-        "entry_id": "yt-VVVxUFA0ZGJncjlVZGRuenp1enI4cVhRLkwwWFVnZkNsbERj",
-        "video_id": "L0XUgfCllDc",
-        "watch_key": "L0XUgfCllDc",
-        "state_key": "L0XUgfCllDc",
+        "title": "إحباط تهريب طائر الحسون من تركيا إلى سوريا",
+        "entry_id": "yt-VVVxUFA0ZGJncjlVZGRuenp1enI4cVhRLmU4bG12X1k0WlUw",
+        "video_id": "e8lmv_Y4ZU0",
+        "watch_key": "e8lmv_Y4ZU0",
+        "state_key": "e8lmv_Y4ZU0",
         "channel_id": "UCqPP4dbgr9Uddnzzuzr8qXQ",
         "channel_name": "SyriaNow - سوريا الآن",
         "channel_title": "SyriaNow - سوريا الآن",
-        "published_at": "2026-08-21T21:46:55Z",
-        "published_display": "Aug 21, 2026 21:46",
-        "thumbnail": "https://i.ytimg.com/vi/L0XUgfCllDc/maxresdefault.jpg",
-        "thumbnail_url": "https://i.ytimg.com/vi/L0XUgfCllDc/maxresdefault.jpg",
-        "image_url": "https://i.ytimg.com/vi/L0XUgfCllDc/maxresdefault.jpg",
-        "thumb": "https://i.ytimg.com/vi/L0XUgfCllDc/maxresdefault.jpg",
-        "detail_url": "/video/yt-VVVxUFA0ZGJncjlVZGRuenp1enI4cVhRLkwwWFVnZkNsbERj",
-        "url": "https://www.youtube.com/watch?v=L0XUgfCllDc&list=UUqPP4dbgr9Uddnzzuzr8qXQ",
+        "published_at": "2026-08-22T06:49:34Z",
+        "published_display": "Aug 22, 2026 06:49",
+        "thumbnail": "https://i.ytimg.com/vi/e8lmv_Y4ZU0/maxresdefault.jpg",
+        "thumbnail_url": "https://i.ytimg.com/vi/e8lmv_Y4ZU0/maxresdefault.jpg",
+        "image_url": "https://i.ytimg.com/vi/e8lmv_Y4ZU0/maxresdefault.jpg",
+        "thumb": "https://i.ytimg.com/vi/e8lmv_Y4ZU0/maxresdefault.jpg",
+        "detail_url": "/video/yt-VVVxUFA0ZGJncjlVZGRuenp1enI4cVhRLmU4bG12X1k0WlUw",
+        "url": "https://www.youtube.com/watch?v=e8lmv_Y4ZU0&list=UUqPP4dbgr9Uddnzzuzr8qXQ",
         "group_name": "knowledge",
         "group_key": "knowledge",
         "group_names": [
@@ -143987,11 +143987,11 @@
       "group_names": [
         "knowledge"
       ],
-      "latest_video_id": "L0XUgfCllDc",
-      "published_at": "2026-08-21T21:46:55Z",
-      "published_display": "Aug 21, 2026 21:46",
-      "thumbnail": "https://i.ytimg.com/vi/L0XUgfCllDc/maxresdefault.jpg",
-      "url": "https://www.youtube.com/watch?v=L0XUgfCllDc&list=UUqPP4dbgr9Uddnzzuzr8qXQ",
+      "latest_video_id": "e8lmv_Y4ZU0",
+      "published_at": "2026-08-22T06:49:34Z",
+      "published_display": "Aug 22, 2026 06:49",
+      "thumbnail": "https://i.ytimg.com/vi/e8lmv_Y4ZU0/maxresdefault.jpg",
+      "url": "https://www.youtube.com/watch?v=e8lmv_Y4ZU0&list=UUqPP4dbgr9Uddnzzuzr8qXQ",
       "reason_tags": [
         "source-diverse",
         "cached-empty",
@@ -148983,22 +148983,22 @@
       "channel_id": "UCWnBTuzUUDpKhJPGuDQMynA",
       "channel_title": "UCWnBTuzUUDpKhJPGuDQMynA",
       "latest_video": {
-        "title": "بوتين يمطر أوكرانيا بقنابل خطيرة.. وموسكو تعلن ضربات ناجحة على 3 محاور #المشهد_تاغ مع #علاء_الدخاخني",
-        "entry_id": "yt-VVVXbkJUdXpVVURwS2hKUEd1RFFNeW5BLkp5OEFjNFM3MC1R",
-        "video_id": "Jy8Ac4S70-Q",
-        "watch_key": "Jy8Ac4S70-Q",
-        "state_key": "Jy8Ac4S70-Q",
+        "title": "ماذا قال ترامب لمحتج بعد طرده من تجمع انتخابي؟ #اخبار_المشهد #أميركا #المشهد",
+        "entry_id": "yt-VVVXbkJUdXpVVURwS2hKUEd1RFFNeW5BLnhIWXYwbmtpT1Jz",
+        "video_id": "xHYv0nkiORs",
+        "watch_key": "xHYv0nkiORs",
+        "state_key": "xHYv0nkiORs",
         "channel_id": "UCWnBTuzUUDpKhJPGuDQMynA",
         "channel_name": "Al Mashhad المشهد",
         "channel_title": "Al Mashhad المشهد",
-        "published_at": "2026-08-21T23:00:01Z",
-        "published_display": "Aug 21, 2026 23:00",
-        "thumbnail": "https://i.ytimg.com/vi/Jy8Ac4S70-Q/maxresdefault.jpg",
-        "thumbnail_url": "https://i.ytimg.com/vi/Jy8Ac4S70-Q/maxresdefault.jpg",
-        "image_url": "https://i.ytimg.com/vi/Jy8Ac4S70-Q/maxresdefault.jpg",
-        "thumb": "https://i.ytimg.com/vi/Jy8Ac4S70-Q/maxresdefault.jpg",
-        "detail_url": "/video/yt-VVVXbkJUdXpVVURwS2hKUEd1RFFNeW5BLkp5OEFjNFM3MC1R",
-        "url": "https://www.youtube.com/watch?v=Jy8Ac4S70-Q&list=UUWnBTuzUUDpKhJPGuDQMynA",
+        "published_at": "2026-08-22T06:50:01Z",
+        "published_display": "Aug 22, 2026 06:50",
+        "thumbnail": "https://i.ytimg.com/vi/xHYv0nkiORs/maxresdefault.jpg",
+        "thumbnail_url": "https://i.ytimg.com/vi/xHYv0nkiORs/maxresdefault.jpg",
+        "image_url": "https://i.ytimg.com/vi/xHYv0nkiORs/maxresdefault.jpg",
+        "thumb": "https://i.ytimg.com/vi/xHYv0nkiORs/maxresdefault.jpg",
+        "detail_url": "/video/yt-VVVXbkJUdXpVVURwS2hKUEd1RFFNeW5BLnhIWXYwbmtpT1Jz",
+        "url": "https://www.youtube.com/watch?v=xHYv0nkiORs&list=UUWnBTuzUUDpKhJPGuDQMynA",
         "group_name": "news",
         "group_key": "news",
         "group_names": [
@@ -149014,11 +149014,11 @@
       "group_names": [
         "news"
       ],
-      "latest_video_id": "Jy8Ac4S70-Q",
-      "published_at": "2026-08-21T23:00:01Z",
-      "published_display": "Aug 21, 2026 23:00",
-      "thumbnail": "https://i.ytimg.com/vi/Jy8Ac4S70-Q/maxresdefault.jpg",
-      "url": "https://www.youtube.com/watch?v=Jy8Ac4S70-Q&list=UUWnBTuzUUDpKhJPGuDQMynA",
+      "latest_video_id": "xHYv0nkiORs",
+      "published_at": "2026-08-22T06:50:01Z",
+      "published_display": "Aug 22, 2026 06:50",
+      "thumbnail": "https://i.ytimg.com/vi/xHYv0nkiORs/maxresdefault.jpg",
+      "url": "https://www.youtube.com/watch?v=xHYv0nkiORs&list=UUWnBTuzUUDpKhJPGuDQMynA",
       "reason_tags": [
         "source-diverse",
         "cached-empty",
