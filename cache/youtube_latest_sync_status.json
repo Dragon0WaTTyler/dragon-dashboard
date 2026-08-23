@@ -2,12 +2,28 @@
   "status": "completed",
   "requested_at": "",
   "started_at": "",
-  "completed_at": "2026-08-23T13:07:39+00:00",
+  "completed_at": "2026-08-23T18:50:20+00:00",
   "last_error": "",
-  "warnings": [],
+  "warnings": [
+    "archive: 5 channels, 0 stored videos",
+    "booktube: 96 channels, 0 stored videos (UCgc_gk5APR4QcpeuLiIJ0qw: fetch_error - YouTube returned status 403)",
+    "entertainment: 230 channels, 0 stored videos (UCd4FmcWIVdWAy0-Q8OJBloQ: fetch_error - YouTube returned status 403)",
+    "islamicknowledge: 89 channels, 0 stored videos (UC2qcjzOEX3lxE73cyroWdiw: fetch_error - YouTube returned status 403)",
+    "knowledge: 181 channels, 0 stored videos (UC-4-KHSUKDlreMZ3oki2BLA: fetch_error - YouTube returned status 403)",
+    "language: 19 channels, 0 stored videos (UC4A4fNfRCXJXYVbnE9yqkaQ: fetch_error - YouTube returned status 403)",
+    "movise: 18 channels, 0 stored videos (UCyWHNjwSLMNGfaYKoCQd8kg: fetch_error - YouTube returned status 403)",
+    "musics: 74 channels, 0 stored videos (UCkmRmkVpLaHXpQRx4k3cZyA: fetch_error - YouTube returned status 403)",
+    "myfavoret: 188 channels, 0 stored videos (UCTL6WoJRe45BB75cBNH3JMw: fetch_error - YouTube returned status 403)",
+    "news: 38 channels, 0 stored videos (UCTL6WoJRe45BB75cBNH3JMw: fetch_error - YouTube returned status 403)",
+    "podcasts: 47 channels, 0 stored videos (UC2qcjzOEX3lxE73cyroWdiw: fetch_error - YouTube returned status 403)",
+    "poetry: 9 channels, 0 stored videos (UC-YgH2hgO0ggLLvoMKV756Q: fetch_error - YouTube returned status 403)",
+    "school: 4 channels, 0 stored videos (UCm13TDUuCw8DMRgYh_f2Akw: fetch_error - YouTube returned status 403)",
+    "sports: 32 channels, 0 stored videos (UCE5hSysXd4vCwdVUAEHhw1Q: fetch_error - YouTube returned status 403)",
+    "tech: 88 channels, 0 stored videos (UCkpqgOtfBsATqRsAYP2XXGg: fetch_error - YouTube returned status 403)"
+  ],
   "scope": "",
   "run_id": "",
   "run_url": "",
   "source": "workflow",
-  "updated_at": "2026-08-23T13:07:39+00:00"
+  "updated_at": "2026-08-23T18:50:20+00:00"
 }
